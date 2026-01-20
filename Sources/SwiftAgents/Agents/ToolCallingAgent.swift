@@ -4,6 +4,7 @@
 // Tool-calling agent that uses structured LLM tool calling APIs.
 
 import Foundation
+import Logging
 
 // MARK: - ToolCallingAgent
 
@@ -106,6 +107,7 @@ public actor ToolCallingAgent: Agent {
             agentName: configuration.name.isEmpty ? "ToolCallingAgent" : configuration.name
         )
         await tracing.traceStart(input: input)
+        Log.agents.info("Agent started with input: \(input)")
 
         // Notify hooks of agent start
         await hooks?.onAgentStart(context: nil, agent: self, input: input)
@@ -164,12 +166,14 @@ public actor ToolCallingAgent: Agent {
 
             let result = resultBuilder.build()
             await tracing.traceComplete(result: result)
+            Log.agents.info("Agent completed in \(result.duration)s")
 
             // Notify hooks of agent completion
             await hooks?.onAgentEnd(context: nil, agent: self, result: result)
 
             return result
         } catch {
+            Log.agents.error("Agent execution failed: \(error.localizedDescription)")
             // Notify hooks of error
             await hooks?.onError(context: nil, agent: self, error: error)
             await tracing.traceError(error)
@@ -208,6 +212,7 @@ public actor ToolCallingAgent: Agent {
 
     /// Cancels any ongoing execution.
     public func cancel() async {
+        Log.agents.info("Agent execution cancelled")
         isCancelled = true
         currentTask?.cancel()
         currentTask = nil
@@ -371,14 +376,80 @@ public actor ToolCallingAgent: Agent {
         let toolCallSummary = response.toolCalls.map { "Calling tool: \($0.name)" }.joined(separator: ", ")
         conversationHistory.append(.assistant(response.content ?? toolCallSummary))
 
-        for parsedCall in response.toolCalls {
-            try await executeSingleToolCall(
-                parsedCall: parsedCall,
-                conversationHistory: &conversationHistory,
-                resultBuilder: resultBuilder,
-                hooks: hooks,
-                tracing: tracing
+        let calls = response.toolCalls.map { parsedCall in
+            ToolCall(
+                providerCallId: parsedCall.id,
+                toolName: parsedCall.name,
+                arguments: parsedCall.arguments
             )
+        }
+
+        // If we need fail-fast behavior or parallel execution is disabled, execute sequentially.
+        if configuration.stopOnToolError || calls.count == 1 || !configuration.parallelToolCalls {
+            for parsedCall in response.toolCalls {
+                try await executeSingleToolCall(
+                    parsedCall: parsedCall,
+                    conversationHistory: &conversationHistory,
+                    resultBuilder: resultBuilder,
+                    hooks: hooks,
+                    tracing: tracing
+                )
+            }
+        } else {
+            // Parallel execution using ParallelToolExecutor
+            let executor = ParallelToolExecutor()
+            
+            // Log the tool calls being made
+            for call in calls {
+                _ = resultBuilder.addToolCall(call)
+                await hooks?.onToolStart(context: nil, agent: self, call: call)
+            }
+            
+            // Execute in parallel capturing errors (since we handle them below)
+            let results = try await executor.executeAllCapturingErrors(
+                calls,
+                using: toolRegistry,
+                agent: self,
+                context: nil
+            )
+            
+            // Process results and update history
+            for (call, executionResult) in zip(calls, results) {
+                let toolResult: ToolResult
+                
+                if executionResult.isSuccess, let value = executionResult.value {
+                    toolResult = ToolResult.success(
+                        callId: call.id,
+                        output: value,
+                        duration: executionResult.duration
+                    )
+                } else {
+                    let errorMsg = executionResult.error?.localizedDescription ?? "Unknown error"
+                    toolResult = ToolResult.failure(
+                        callId: call.id,
+                        error: errorMsg,
+                        duration: executionResult.duration
+                    )
+                }
+                
+                // Record result in builder
+                _ = resultBuilder.addToolResult(toolResult)
+                await hooks?.onToolEnd(context: nil, agent: self, result: toolResult)
+                
+                if toolResult.isSuccess {
+                    conversationHistory.append(.toolResult(toolName: call.toolName, result: toolResult.output.description))
+                } else {
+                    let errorMessage = toolResult.errorMessage ?? "Unknown error"
+                    conversationHistory.append(.toolResult(
+                        toolName: call.toolName,
+                        result: "[TOOL ERROR] Execution failed: \(errorMessage). Please try a different approach or tool."
+                    ))
+                    
+                    if configuration.stopOnToolError {
+                         throw AgentError.toolExecutionFailed(toolName: call.toolName, underlyingError: errorMessage)
+                    }
+                }
+            }
         }
     }
 

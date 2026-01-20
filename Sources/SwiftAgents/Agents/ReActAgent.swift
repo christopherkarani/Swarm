@@ -5,6 +5,7 @@
 // Implements the ReAct paradigm for interleaved reasoning and action.
 
 import Foundation
+import Logging
 
 // MARK: - ReActAgent
 
@@ -104,6 +105,7 @@ public actor ReActAgent: Agent {
             agentName: configuration.name.isEmpty ? "ReActAgent" : configuration.name
         )
         await tracing.traceStart(input: input)
+        Log.agents.info("Agent started with input: \(input)")
 
         // Notify hooks of agent start
         await hooks?.onAgentStart(context: nil, agent: self, input: input)
@@ -162,9 +164,11 @@ public actor ReActAgent: Agent {
 
             let result = resultBuilder.build()
             await tracing.traceComplete(result: result)
+            Log.agents.info("Agent completed in \(result.duration)s")
             await hooks?.onAgentEnd(context: nil, agent: self, result: result)
             return result
         } catch {
+            Log.agents.error("Agent execution failed: \(error.localizedDescription)")
             await hooks?.onError(context: nil, agent: self, error: error)
             await tracing.traceError(error)
             throw error
@@ -202,9 +206,8 @@ public actor ReActAgent: Agent {
 
     /// Cancels any ongoing execution.
     public func cancel() async {
+        Log.agents.info("Agent execution cancelled")
         isCancelled = true
-        currentTask?.cancel()
-        currentTask = nil
     }
 
     // MARK: Private
@@ -213,7 +216,6 @@ public actor ReActAgent: Agent {
 
     // MARK: - Internal State
 
-    private var currentTask: Task<Void, Never>?
     private var isCancelled: Bool = false
     private let toolRegistry: ToolRegistry
 

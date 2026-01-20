@@ -406,9 +406,9 @@ private enum ToolArgumentProcessor {
 // MARK: - ToolParameter
 
 /// Describes a parameter that a tool accepts.
-public struct ToolParameter: Sendable, Equatable {
+public struct ToolParameter: Sendable, Equatable, Encodable {
     /// The type of a tool parameter.
-    indirect public enum ParameterType: Sendable, Equatable, CustomStringConvertible {
+    indirect public enum ParameterType: Sendable, Equatable, CustomStringConvertible, Encodable {
         // MARK: Public
 
         public var description: String {
@@ -422,6 +422,12 @@ public struct ToolParameter: Sendable, Equatable {
             case let .oneOf(options): "oneOf(\(options.joined(separator: "|")))"
             case .any: "any"
             }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            let schema = ToolSchemaBuilder.schema(for: self)
+            var container = encoder.singleValueContainer()
+            try container.encode(schema)
         }
 
         case string
@@ -477,7 +483,7 @@ public struct ToolParameter: Sendable, Equatable {
 ///
 /// This is a serializable representation of a tool's interface without
 /// the actual execution logic.
-public struct ToolDefinition: Sendable, Equatable {
+public struct ToolDefinition: Sendable, Equatable, Encodable {
     /// The name of the tool.
     public let name: String
 
@@ -504,6 +510,113 @@ public struct ToolDefinition: Sendable, Equatable {
         name = tool.name
         description = tool.description
         parameters = tool.parameters
+    }
+}
+
+// MARK: - Tool JSON Schema
+
+public extension ToolParameter {
+    /// JSON Schema representation of this parameter.
+    var jsonSchema: SendableValue {
+        ToolSchemaBuilder.parameterSchema(self)
+    }
+}
+
+public extension ToolDefinition {
+    /// JSON Schema representation of this tool's parameters.
+    var jsonSchema: SendableValue {
+        ToolSchemaBuilder.definitionSchema(self)
+    }
+}
+
+private enum ToolSchemaBuilder {
+    static func parameterSchema(_ parameter: ToolParameter) -> SendableValue {
+        var schema = typeSchema(parameter.type)
+        if !parameter.description.isEmpty {
+            schema["description"] = .string(parameter.description)
+        }
+        if let defaultValue = parameter.defaultValue {
+            schema["default"] = defaultValue
+        }
+        return .dictionary(schema)
+    }
+
+    static func definitionSchema(_ definition: ToolDefinition) -> SendableValue {
+        var properties: [String: SendableValue] = [:]
+        var required: [SendableValue] = []
+
+        for parameter in definition.parameters {
+            properties[parameter.name] = parameterSchema(parameter)
+            if parameter.isRequired {
+                required.append(.string(parameter.name))
+            }
+        }
+
+        var schema: [String: SendableValue] = [
+            "type": .string("object"),
+            "properties": .dictionary(properties)
+        ]
+        if !required.isEmpty {
+            schema["required"] = .array(required)
+        }
+        return .dictionary(schema)
+    }
+
+    static func schema(for type: ToolParameter.ParameterType) -> [String: SendableValue] {
+        typeSchema(type)
+    }
+
+    private static func typeSchema(_ type: ToolParameter.ParameterType) -> [String: SendableValue] {
+        switch type {
+        case .string:
+            return ["type": .string("string")]
+        case .int:
+            return ["type": .string("integer")]
+        case .double:
+            return ["type": .string("number")]
+        case .bool:
+            return ["type": .string("boolean")]
+        case let .array(elementType):
+            return [
+                "type": .string("array"),
+                "items": .dictionary(typeSchema(elementType))
+            ]
+        case let .object(properties):
+            var propsDict: [String: SendableValue] = [:]
+            var required: [SendableValue] = []
+
+            for parameter in properties {
+                propsDict[parameter.name] = parameterSchema(parameter)
+                if parameter.isRequired {
+                    required.append(.string(parameter.name))
+                }
+            }
+
+            var schema: [String: SendableValue] = [
+                "type": .string("object"),
+                "properties": .dictionary(propsDict)
+            ]
+            if !required.isEmpty {
+                schema["required"] = .array(required)
+            }
+            return schema
+        case let .oneOf(options):
+            return [
+                "type": .string("string"),
+                "enum": .array(options.map { .string($0) })
+            ]
+        case .any:
+            let types: [SendableValue] = [
+                .string("string"),
+                .string("number"),
+                .string("integer"),
+                .string("boolean"),
+                .string("object"),
+                .string("array"),
+                .string("null")
+            ]
+            return ["type": .array(types)]
+        }
     }
 }
 

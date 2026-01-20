@@ -24,32 +24,32 @@ PlaygroundPage.current.needsIndefiniteExecution = true
 //: ## 1. Creating a Custom Tool
 //: Tools extend your agent's capabilities. Here's a weather lookup example:
 
-struct WeatherTool: Tool, Sendable {
-    let name = "weather_lookup"
-    let description = "Looks up the current weather for a given city."
-    
-    let parameters: [ToolParameter] = [
-        ToolParameter(
-            name: "city",
-            description: "The city name (e.g., 'San Francisco')",
-            type: .string,
-            isRequired: true
-        )
-    ]
-    
-    mutating func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
-        let city = try requiredString("city", from: arguments)
-        let conditions = ["sunny", "cloudy", "rainy"].randomElement() ?? "clear"
-        let temp = Int.random(in: 15...30)
-        
-        return .dictionary([
-            "city": .string(city),
-            "temperature": .int(temp),
-            "conditions": .string(conditions),
-            "description": .string("Currently \(conditions) in \(city) at \(temp)°C")
-        ])
-    }
-}
+//struct WeatherTool: Tool, Sendable {
+//    let name = "weather_lookup"
+//    let description = "Looks up the current weather for a given city."
+//    
+//    let parameters: [ToolParameter] = [
+//        ToolParameter(
+//            name: "city",
+//            description: "The city name (e.g., 'San Francisco')",
+//            type: .string,
+//            isRequired: true
+//        )
+//    ]
+//    
+//    mutating func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
+//        let city = try requiredString("city", from: arguments)
+//        let conditions = ["sunny", "cloudy", "rainy"].randomElement() ?? "clear"
+//        let temp = Int.random(in: 15...30)
+//        
+//        return .dictionary([
+//            "city": .string(city),
+//            "temperature": .int(temp),
+//            "conditions": .string(conditions),
+//            "description": .string("Currently \(conditions) in \(city) at \(temp)°C")
+//        ])
+//    }
+//}
 
 //: ## 2. Creating a Custom Memory
 //: Memory maintains conversation context across turns:
@@ -246,7 +246,6 @@ Task { @MainActor in
         .inferenceProvider(provider)
         .instructions("You are a helpful assistant. Be concise.")
         .configuration(Configs.fast)
-        .addTool(WeatherTool())
         .addTool(DateTimeTool())
         .addTool(StringTool())
         .memory(SimpleMemory())

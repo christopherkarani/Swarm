@@ -582,6 +582,13 @@ public actor PlanAndExecuteAgent: Agent {
                         continue
                     } else {
                         // Max replans exceeded, synthesize answer with partial results
+                        Log.agents.warning("Max replan attempts exceeded. Skipping remaining steps.")
+
+                        // Mark remaining pending steps as skipped
+                        for index in plan.steps.indices where plan.steps[index].status == .pending {
+                            plan.steps[index].status = .skipped
+                            plan.steps[index].error = "Skipped: Max replan attempts exceeded"
+                        }
                         break
                     }
                 }

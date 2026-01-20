@@ -4,6 +4,7 @@
 // Planning logic for Plan-and-Execute agent.
 
 import Foundation
+import Logging
 
 // MARK: - PlanAndExecuteAgent Planning
 
@@ -101,7 +102,12 @@ extension PlanAndExecuteAgent {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-        guard let planResponse = try? decoder.decode(PlanResponse.self, from: jsonData) else {
+        let planResponse: PlanResponse
+        do {
+            planResponse = try decoder.decode(PlanResponse.self, from: jsonData)
+        } catch {
+            Log.agents.error("JSON plan decoding failed: \(error.localizedDescription)")
+            Log.agents.debug("Invalid JSON content: \(jsonString)")
             return nil
         }
 
