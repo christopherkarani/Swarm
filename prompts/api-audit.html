@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en-US" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>API Audit Prompt — Swarm Framework | Swarm</title>
+    <meta name="description" content="Multi-agent orchestration for Swift — built for production, not demos.">
+    <meta name="generator" content="VitePress v1.6.4">
+    <link rel="preload stylesheet" href="/assets/style.C3kmbArm.css" as="style">
+    <link rel="preload stylesheet" href="/vp-icons.css" as="style">
+    
+    <script type="module" src="/assets/app.DufaO1LT.js"></script>
+    <link rel="preload" href="/assets/inter-roman-latin.Di8DUHzh.woff2" as="font" type="font/woff2" crossorigin="">
+    <link rel="modulepreload" href="/assets/chunks/theme.Ba9aHiWc.js">
+    <link rel="modulepreload" href="/assets/chunks/framework.DEqXEGcv.js">
+    <link rel="modulepreload" href="/assets/prompts_api-audit.md.mTZ4gdvr.lean.js">
+    <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600&amp;display=swap">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&amp;family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&amp;display=swap">
+    <link rel="icon" type="image/svg+xml" href="/logo.svg">
+    <script id="check-dark-mode">(()=>{const e=localStorage.getItem("vitepress-theme-appearance")||"dark",a=window.matchMedia("(prefers-color-scheme: dark)").matches;(!e||e==="auto"?a:e==="dark")&&document.documentElement.classList.add("dark")})();</script>
+    <script id="check-mac-os">document.documentElement.classList.toggle("mac",/Mac|iPhone|iPod|iPad/i.test(navigator.platform));</script>
+  </head>
+  <body>
+    <div id="app"><div class="Layout" data-v-5d98c3a5><!--[--><!--]--><!--[--><span tabindex="-1" data-v-0b0ada53></span><a href="#VPContent" class="VPSkipLink visually-hidden" data-v-0b0ada53>Skip to content</a><!--]--><!----><header class="VPNav" data-v-5d98c3a5 data-v-ae24b3ad><div class="VPNavBar" data-v-ae24b3ad data-v-6aa21345><div class="wrapper" data-v-6aa21345><div class="container" data-v-6aa21345><div class="title" data-v-6aa21345><div class="VPNavBarTitle" data-v-6aa21345 data-v-1168a8e4><a class="title" href="/" data-v-1168a8e4><!--[--><!--]--><!--[--><img class="VPImage logo" src="/logo.svg" alt data-v-8426fc1a><!--]--><span data-v-1168a8e4>Swarm</span><!--[--><!--]--></a></div></div><div class="content" data-v-6aa21345><div class="content-body" data-v-6aa21345><!--[--><!--]--><div class="VPNavBarSearch search" data-v-6aa21345><!--[--><!----><div id="local-search"><button type="button" class="DocSearch DocSearch-Button" aria-label="Search"><span class="DocSearch-Button-Container"><span class="vp-icon DocSearch-Search-Icon"></span><span class="DocSearch-Button-Placeholder">Search</span></span><span class="DocSearch-Button-Keys"><kbd class="DocSearch-Button-Key"></kbd><kbd class="DocSearch-Button-Key">K</kbd></span></button></div><!--]--></div><nav aria-labelledby="main-nav-aria-label" class="VPNavBarMenu menu" data-v-6aa21345 data-v-dc692963><span id="main-nav-aria-label" class="visually-hidden" data-v-dc692963> Main Navigation </span><!--[--><!--[--><a class="VPLink link VPNavBarMenuLink" href="/guide/getting-started" tabindex="0" data-v-dc692963 data-v-e56f3d57><!--[--><span data-v-e56f3d57>Guide</span><!--]--></a><!--]--><!--[--><a class="VPLink link VPNavBarMenuLink" href="/reference/overview" tabindex="0" data-v-dc692963 data-v-e56f3d57><!--[--><span data-v-e56f3d57>API Reference</span><!--]--></a><!--]--><!--[--><a class="VPLink link vp-external-link-icon VPNavBarMenuLink" href="https://github.com/christopherkarani/Swarm" target="_blank" rel="noreferrer" tabindex="0" data-v-dc692963 data-v-e56f3d57><!--[--><span data-v-e56f3d57>GitHub</span><!--]--></a><!--]--><!--]--></nav><!----><div class="VPNavBarAppearance appearance" data-v-6aa21345 data-v-6c893767><button class="VPSwitch VPSwitchAppearance" type="button" role="switch" title aria-checked="true" data-v-6c893767 data-v-5337faa4 data-v-1d5665e3><span class="check" data-v-1d5665e3><span class="icon" data-v-1d5665e3><!--[--><span class="vpi-sun sun" data-v-5337faa4></span><span class="vpi-moon moon" data-v-5337faa4></span><!--]--></span></span></button></div><div class="VPSocialLinks VPNavBarSocialLinks social-links" data-v-6aa21345 data-v-0394ad82 data-v-7bc22406><!--[--><a class="VPSocialLink no-icon" href="https://github.com/christopherkarani/Swarm" aria-label="github" target="_blank" rel="noopener" data-v-7bc22406 data-v-bd121fe5><span class="vpi-social-github"></span></a><a class="VPSocialLink no-icon" href="https://x.com/ckarani7" aria-label="x" target="_blank" rel="noopener" data-v-7bc22406 data-v-bd121fe5><span class="vpi-social-x"></span></a><!--]--></div><div class="VPFlyout VPNavBarExtra extra" data-v-6aa21345 data-v-bb2aa2f0 data-v-cf11d7a2><button type="button" class="button" aria-haspopup="true" aria-expanded="false" aria-label="extra navigation" data-v-cf11d7a2><span class="vpi-more-horizontal icon" data-v-cf11d7a2></span></button><div class="menu" data-v-cf11d7a2><div class="VPMenu" data-v-cf11d7a2 data-v-b98bc113><!----><!--[--><!--[--><!----><div class="group" data-v-bb2aa2f0><div class="item appearance" data-v-bb2aa2f0><p class="label" data-v-bb2aa2f0>Appearance</p><div class="appearance-action" data-v-bb2aa2f0><button class="VPSwitch VPSwitchAppearance" type="button" role="switch" title aria-checked="true" data-v-bb2aa2f0 data-v-5337faa4 data-v-1d5665e3><span class="check" data-v-1d5665e3><span class="icon" data-v-1d5665e3><!--[--><span class="vpi-sun sun" data-v-5337faa4></span><span class="vpi-moon moon" data-v-5337faa4></span><!--]--></span></span></button></div></div></div><div class="group" data-v-bb2aa2f0><div class="item social-links" data-v-bb2aa2f0><div class="VPSocialLinks social-links-list" data-v-bb2aa2f0 data-v-7bc22406><!--[--><a class="VPSocialLink no-icon" href="https://github.com/christopherkarani/Swarm" aria-label="github" target="_blank" rel="noopener" data-v-7bc22406 data-v-bd121fe5><span class="vpi-social-github"></span></a><a class="VPSocialLink no-icon" href="https://x.com/ckarani7" aria-label="x" target="_blank" rel="noopener" data-v-7bc22406 data-v-bd121fe5><span class="vpi-social-x"></span></a><!--]--></div></div></div><!--]--><!--]--></div></div></div><!--[--><!--]--><button type="button" class="VPNavBarHamburger hamburger" aria-label="mobile navigation" aria-expanded="false" aria-controls="VPNavScreen" data-v-6aa21345 data-v-e5dd9c1c><span class="container" data-v-e5dd9c1c><span class="top" data-v-e5dd9c1c></span><span class="middle" data-v-e5dd9c1c></span><span class="bottom" data-v-e5dd9c1c></span></span></button></div></div></div></div><div class="divider" data-v-6aa21345><div class="divider-line" data-v-6aa21345></div></div></div><!----></header><div class="VPLocalNav empty fixed" data-v-5d98c3a5 data-v-a6f0e41e><div class="container" data-v-a6f0e41e><!----><div class="VPLocalNavOutlineDropdown" style="--vp-vh:0px;" data-v-a6f0e41e data-v-8a42e2b4><button data-v-8a42e2b4>Return to top</button><!----></div></div></div><!----><div class="VPContent" id="VPContent" data-v-5d98c3a5 data-v-1428d186><div class="VPDoc has-aside" data-v-1428d186 data-v-39a288b8><!--[--><!--]--><div class="container" data-v-39a288b8><div class="aside" data-v-39a288b8><div class="aside-curtain" data-v-39a288b8></div><div class="aside-container" data-v-39a288b8><div class="aside-content" data-v-39a288b8><div class="VPDocAside" data-v-39a288b8 data-v-3f215769><!--[--><!--]--><!--[--><!--]--><nav aria-labelledby="doc-outline-aria-label" class="VPDocAsideOutline" data-v-3f215769 data-v-a5bbad30><div class="content" data-v-a5bbad30><div class="outline-marker" data-v-a5bbad30></div><div aria-level="2" class="outline-title" id="doc-outline-aria-label" role="heading" data-v-a5bbad30>On this page</div><ul class="VPDocOutlineItem root" data-v-a5bbad30 data-v-b933a997><!--[--><!--]--></ul></div></nav><!--[--><!--]--><div class="spacer" data-v-3f215769></div><!--[--><!--]--><!----><!--[--><!--]--><!--[--><!--]--></div></div></div></div><div class="content" data-v-39a288b8><div class="content-container" data-v-39a288b8><!--[--><!--]--><main class="main" data-v-39a288b8><div style="position:relative;" class="vp-doc _prompts_api-audit" data-v-39a288b8><div><h1 id="api-audit-prompt-—-swarm-framework" tabindex="-1">API Audit Prompt — Swarm Framework <a class="header-anchor" href="#api-audit-prompt-—-swarm-framework" aria-label="Permalink to &quot;API Audit Prompt — Swarm Framework&quot;">​</a></h1><p>Use this prompt to run a structured audit of the Swarm public API surface. It produces a ranked findings table graded on two axes: impact for human developers and impact for coding agents (LLMs writing Swarm code).</p><hr><h2 id="prompt" tabindex="-1">Prompt <a class="header-anchor" href="#prompt" aria-label="Permalink to &quot;Prompt&quot;">​</a></h2><div class="language- vp-adaptive-theme"><button title="Copy Code" class="copy"></button><span class="lang"></span><pre class="shiki shiki-themes github-light github-dark vp-code" tabindex="0"><code><span class="line"><span>&lt;role&gt;</span></span>
+<span class="line"><span>You are a principal Swift 6.2 API designer with deep expertise in framework ergonomics for two audiences:</span></span>
+<span class="line"><span>1. Human developers building AI applications on Apple platforms.</span></span>
+<span class="line"><span>2. Coding agents (LLMs like Claude, GPT, Gemini) that write, extend, and debug Swarm code autonomously.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Your goal is to audit the Swarm framework&#39;s public API and produce a prioritized list of issues and improvements, each graded by impact on both audiences.</span></span>
+<span class="line"><span>&lt;/role&gt;</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>&lt;context&gt;</span></span>
+<span class="line"><span>## What Swarm is</span></span>
+<span class="line"><span>Swarm is a Swift 6.2 multi-agent orchestration framework for Apple platforms and Linux. It provides:</span></span>
+<span class="line"><span>- `AgentRuntime` protocol — the central abstraction every agent conforms to</span></span>
+<span class="line"><span>- `Agent` actor — the primary concrete agent type (tool-calling via LLMs)</span></span>
+<span class="line"><span>- `Workflow` struct — fluent multi-agent pipeline composition</span></span>
+<span class="line"><span>- `Conversation` class — high-level multi-turn interface</span></span>
+<span class="line"><span>- `@Tool` / `@Parameter` / `@AgentActor` macros — zero-boilerplate tool and agent definition</span></span>
+<span class="line"><span>- Memory, Guardrails, Handoffs, Observability, Resilience subsystems</span></span>
+<span class="line"><span>- MCP integration (as client and server)</span></span>
+<span class="line"><span>- HiveCore DAG runtime bridge</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>## Source files to read</span></span>
+<span class="line"><span>Read these files to ground your analysis in the actual implementation:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Core protocol and types:</span></span>
+<span class="line"><span>- Sources/Swarm/Core/AgentRuntime.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/AnyAgent.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/Conversation.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/Environment.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/AgentEnvironment.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/ObservedAgent.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/RunHooks.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/EventStreamHooks.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/StreamOperations.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Agent implementation and builder:</span></span>
+<span class="line"><span>- Sources/Swarm/Agents/Agent.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Agents/AgentBuilder.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Workflow and handoff:</span></span>
+<span class="line"><span>- Sources/Swarm/Workflow/Workflow.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Workflow/Workflow+Durable.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/Handoff/Handoff.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/Handoff/HandoffConfiguration.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/Handoff/HandoffOptions.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Core/Handoff/HandoffBuilder.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Tools:</span></span>
+<span class="line"><span>- Sources/Swarm/Tools/Tool.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Tools/AgentTool.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Tools/BuiltInTools.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Tools/ToolCallGoal.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Tools/ToolExecutionEngine.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Memory and sessions:</span></span>
+<span class="line"><span>- Sources/Swarm/Memory/MemorySessionLifecycle.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Macros:</span></span>
+<span class="line"><span>- Sources/Swarm/Macros/MacroDeclarations.swift</span></span>
+<span class="line"><span>- Sources/SwarmMacros/AgentMacro.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Guardrails:</span></span>
+<span class="line"><span>- Sources/Swarm/Guardrails/GuardrailRunner.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Observability:</span></span>
+<span class="line"><span>- Sources/Swarm/Observability/TracingHelper.swift</span></span>
+<span class="line"><span>- Sources/Swarm/Observability/SwiftLogTracer.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Providers:</span></span>
+<span class="line"><span>- Sources/Swarm/Providers/Conduit/ConduitProviderSelection.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>HiveSwarm:</span></span>
+<span class="line"><span>- Sources/Swarm/HiveSwarm/RetryPolicyBridge.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>MCP:</span></span>
+<span class="line"><span>- Sources/SwarmMCP/SwarmMCPErrorMapper.swift</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Reference docs (read these for design intent before reading source):</span></span>
+<span class="line"><span>- docs/reference/front-facing-api.md       ← canonical design spec</span></span>
+<span class="line"><span>- docs/reference/api-catalog.md            ← full type catalog with signatures</span></span>
+<span class="line"><span>- docs/plans/2026-03-02-swarm-api-redesign.md ← locked design decisions</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>## Grading rubric</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Score each finding on two axes, 1–5:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>**Human developer score (H)** — how much this affects a Swift developer writing Swarm-powered apps:</span></span>
+<span class="line"><span>- 5: Blocks or confuses all users; misuse is the default</span></span>
+<span class="line"><span>- 4: Causes regular confusion; workaround exists but isn&#39;t obvious</span></span>
+<span class="line"><span>- 3: Causes occasional confusion; easy to work around once known</span></span>
+<span class="line"><span>- 2: Minor friction; most developers adapt quickly</span></span>
+<span class="line"><span>- 1: Edge case; rarely encountered</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>**Coding agent score (A)** — how much this affects an LLM writing or debugging Swarm code:</span></span>
+<span class="line"><span>- 5: Causes the agent to generate incorrect or ambiguous code nearly every time</span></span>
+<span class="line"><span>- 4: Causes frequent wrong-first-attempts; agent corrects after feedback</span></span>
+<span class="line"><span>- 3: Causes plausible-but-wrong first attempt in non-trivial scenarios</span></span>
+<span class="line"><span>- 2: Occasionally misleads; agent self-corrects from context</span></span>
+<span class="line"><span>- 1: Rarely encountered; agent handles via pattern matching</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>**Impact = H + A** (max 10). Sort findings descending by Impact.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>## Categories to investigate</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Work through each category in order. For each, read the relevant source files before forming opinions.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>1. **Naming consistency** — Do type names, parameter labels, and DSL component names follow a single coherent convention? Look for cases where the same concept has different names in different parts of the API (e.g., `Memory` protocol vs `AgentMemoryComponent` DSL type).</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>2. **Construction path ambiguity** — How many ways can you construct the same thing? For each major type, count the construction paths (memberwise init, builder, DSL, factory function). Flag cases where 3+ paths exist without a documented &quot;preferred&quot; path.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>3. **Behavioral consistency** — Do methods with similar names behave the same way across types? Specifically check:</span></span>
+<span class="line"><span>   - Every `.stream()` method: what does it return? (`AsyncThrowingStream&lt;AgentEvent, Error&gt;` vs `String`)</span></span>
+<span class="line"><span>   - Every `.run()` method: does it always return `AgentResult`?</span></span>
+<span class="line"><span>   - Does `Workflow` expose all the same capabilities as running agents directly?</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>4. **Type safety gaps** — Find places where the API falls back to `String`-keyed or `Any`-based patterns instead of typed alternatives. Check `AgentContext`, handoff context dictionaries, metadata on results.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>5. **Misleading names** — Find public names whose surface meaning contradicts their implementation. Examples to verify: `MergeStrategy.structured` — is the output actually structured data? `HandoffHistory` cases — do they clearly communicate what history is included?</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>6. **Discovery failure points** — Identify parts of the API a developer would not find without reading docs. This includes: non-obvious entry points, buried capabilities in nested namespaces (e.g., `Workflow.advanced`), types that look internal but are public.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>7. **Surface area excess** — Find public types or overloads that solve the same problem and could be consolidated. Focus on cases where removing one path would make the remaining path obviously correct.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>8. **Concurrency contract gaps** — Check whether every `async` requirement is justified, whether `nonisolated` is used consistently on read-only properties, and whether any `@unchecked Sendable` is used in public API (a red flag for API consumers).</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>9. **Error completeness** — For each major subsystem, can a caller fully handle failures with the errors thrown? Look for cases where `Error` is thrown (not `AgentError` or a typed error) forcing callers to cast.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>10. **Coding-agent-specific traps** — Find patterns that would cause an LLM to generate plausible-but-wrong code. These include: two systems that solve the same problem (dual handoff systems), naming that matches standard Swift patterns but behaves differently, DSL components that look optional but are required for correct behavior.</span></span>
+<span class="line"><span>&lt;/context&gt;</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>&lt;instructions&gt;</span></span>
+<span class="line"><span>## Phase 1 — Ground yourself in the codebase</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Before forming any opinions, read the reference docs in this order:</span></span>
+<span class="line"><span>1. docs/reference/front-facing-api.md (design intent and invariants)</span></span>
+<span class="line"><span>2. docs/reference/api-catalog.md (full type catalog)</span></span>
+<span class="line"><span>3. docs/plans/2026-03-02-swarm-api-redesign.md (locked decisions — do not flag these as issues)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Then read the source files listed in the context. For each source file:</span></span>
+<span class="line"><span>- Note the public declarations (types, methods, properties)</span></span>
+<span class="line"><span>- Note any inconsistencies with the design spec</span></span>
+<span class="line"><span>- Note any `@unchecked Sendable`, stringly-typed APIs, or naming mismatches</span></span>
+<span class="line"><span>- Note any inline comments that suggest instability (e.g. &quot;// Phase N&quot;, &quot;// TODO&quot;, &quot;// FIXME&quot;, &quot;// legacy&quot;)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>## Phase 2 — Identify findings</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Work through each of the 10 categories from the context. For each finding:</span></span>
+<span class="line"><span>- State the specific type/method/file where the issue occurs</span></span>
+<span class="line"><span>- Describe the expected vs actual behavior (for behavioral issues) or the expected vs actual name (for naming issues)</span></span>
+<span class="line"><span>- State the concrete failure mode for a human developer</span></span>
+<span class="line"><span>- State the concrete failure mode for a coding agent</span></span>
+<span class="line"><span>- Assign H score and A score (1–5 each)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>A &quot;finding&quot; is a specific, actionable observation. Do not report vague findings like &quot;the API is large.&quot; Report findings like: &quot;`Conversation.stream()` returns `String` instead of `AsyncThrowingStream&lt;AgentEvent, Error&gt;`, breaking the behavioral contract set by `AgentRuntime.stream()`.&quot;</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Each finding must have a proposed resolution — a concrete change to the API (rename, remove, change signature, add documentation, etc.).</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>## Phase 3 — Rank and report</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Sort all findings by Impact (H + A) descending. For ties, sort by H score descending (human impact is the tiebreaker).</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Output your findings in the structured format specified below. Do not truncate — include every finding you identified.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>## Phase 4 — Summary</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>After the findings table, write a brief executive summary (max 200 words) covering:</span></span>
+<span class="line"><span>- The single most important theme across the findings</span></span>
+<span class="line"><span>- The three highest-leverage fixes (those that improve both H and A scores simultaneously)</span></span>
+<span class="line"><span>- Any locked design decisions from the redesign plan that partially address existing findings</span></span>
+<span class="line"><span>&lt;/instructions&gt;</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>&lt;output_format&gt;</span></span>
+<span class="line"><span>## API Audit Findings</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>| # | Finding | File | H | A | Impact | Proposed Resolution |</span></span>
+<span class="line"><span>|---|---------|------|---|---|--------|-------------------|</span></span>
+<span class="line"><span>| 1 | [concise finding title] | [file:line] | [1-5] | [1-5] | [H+A] | [one-line fix] |</span></span>
+<span class="line"><span>| 2 | ... | | | | | |</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>(sort by Impact descending)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>---</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>## Detailed Findings</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>### [#N] [Finding Title] · Impact [score]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>**Location**: `TypeName.methodName` in `path/to/file.swift:line`</span></span>
+<span class="line"><span>**Category**: [one of the 10 categories above]</span></span>
+<span class="line"><span>**Human impact (H=[score])**: [1-2 sentences describing a human developer hitting this]</span></span>
+<span class="line"><span>**Agent impact (A=[score])**: [1-2 sentences describing an LLM generating wrong code because of this]</span></span>
+<span class="line"><span>**Root cause**: [what in the implementation causes this]</span></span>
+<span class="line"><span>**Proposed resolution**: [specific, actionable API change with example if helpful]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>---</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>## Executive Summary</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>[max 200 words]</span></span>
+<span class="line"><span>&lt;/output_format&gt;</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>&lt;examples&gt;</span></span>
+<span class="line"><span>  &lt;example&gt;</span></span>
+<span class="line"><span>    &lt;input&gt;</span></span>
+<span class="line"><span>      You find that `Conversation.stream(_ input: String)` returns `String` while</span></span>
+<span class="line"><span>      `AgentRuntime.stream(_ input: String, ...)` returns `AsyncThrowingStream&lt;AgentEvent, Error&gt;`.</span></span>
+<span class="line"><span>    &lt;/input&gt;</span></span>
+<span class="line"><span>    &lt;ideal_output&gt;</span></span>
+<span class="line"><span>      ### [#3] `Conversation.stream()` breaks `AgentRuntime.stream()` contract · Impact 8</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>      **Location**: `Conversation.stream` in `Sources/Swarm/Core/Conversation.swift:57`</span></span>
+<span class="line"><span>      **Category**: Behavioral consistency</span></span>
+<span class="line"><span>      **Human impact (H=4)**: A developer who learns streaming via `AgentRuntime` writes</span></span>
+<span class="line"><span>      `for try await event in conversation.stream(input)` and gets a compile error because</span></span>
+<span class="line"><span>      `String` is not an `AsyncSequence`. The error message does not point to the API mismatch.</span></span>
+<span class="line"><span>      **Agent impact (A=4)**: An LLM that has seen `AgentRuntime.stream()` will generate</span></span>
+<span class="line"><span>      `for try await event in conversation.stream(input)` — syntactically plausible, type-incorrect.</span></span>
+<span class="line"><span>      The agent self-corrects only after seeing the type error.</span></span>
+<span class="line"><span>      **Root cause**: `Conversation.stream()` was designed as a convenience that buffers the full</span></span>
+<span class="line"><span>      output and returns a `String`, but its name matches the streaming pattern exactly.</span></span>
+<span class="line"><span>      **Proposed resolution**: Rename `Conversation.stream()` to `Conversation.streamToString()`,</span></span>
+<span class="line"><span>      and add a true `Conversation.stream()` returning `AsyncThrowingStream&lt;AgentEvent, Error&gt;`</span></span>
+<span class="line"><span>      that delegates to the underlying agent&#39;s `stream()` method.</span></span>
+<span class="line"><span>    &lt;/ideal_output&gt;</span></span>
+<span class="line"><span>  &lt;/example&gt;</span></span>
+<span class="line"><span>&lt;/examples&gt;</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>&lt;constraints&gt;</span></span>
+<span class="line"><span>- Ground every finding in the actual source code. Quote file paths and line numbers.</span></span>
+<span class="line"><span>- Do not flag locked design decisions from docs/plans/2026-03-02-swarm-api-redesign.md as issues.</span></span>
+<span class="line"><span>- Do not invent findings. If you cannot find evidence of an issue in the source, do not report it.</span></span>
+<span class="line"><span>- Distinguish between &quot;the implementation is wrong&quot; and &quot;the API design is ambiguous&quot; — both are valid findings but require different resolutions.</span></span>
+<span class="line"><span>- A finding with only H&gt;3 is a human-experience issue. A finding with only A&gt;3 is an agent-experience issue. The most valuable findings are those with both H≥3 and A≥3 — these should be fixed first.</span></span>
+<span class="line"><span>- Keep each proposed resolution specific enough that a developer could implement it without asking follow-up questions.</span></span>
+<span class="line"><span>- If you are unsure about a finding (e.g. you cannot tell whether a behavior is intentional from reading the source), mark it [UNVERIFIED] and note what additional context would confirm or refute it.</span></span>
+<span class="line"><span>&lt;/constraints&gt;</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Keep working until you have read all listed source files and produced a complete findings table and detailed section. Only stop when you are confident every source file has been examined and every finding has a concrete location reference and proposed resolution.</span></span></code></pre></div><hr><h2 id="how-to-use-this-prompt" tabindex="-1">How to use this prompt <a class="header-anchor" href="#how-to-use-this-prompt" aria-label="Permalink to &quot;How to use this prompt&quot;">​</a></h2><h3 id="as-a-claude-code-agent-task" tabindex="-1">As a Claude Code agent task <a class="header-anchor" href="#as-a-claude-code-agent-task" aria-label="Permalink to &quot;As a Claude Code agent task&quot;">​</a></h3><div class="language-bash vp-adaptive-theme"><button title="Copy Code" class="copy"></button><span class="lang">bash</span><pre class="shiki shiki-themes github-light github-dark vp-code" tabindex="0"><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D;"># Paste directly into a claude session in the Swarm repo:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D;"># The agent will read all source files and produce the audit report.</span></span></code></pre></div><h3 id="as-a-sub-agent-prompt" tabindex="-1">As a sub-agent prompt <a class="header-anchor" href="#as-a-sub-agent-prompt" aria-label="Permalink to &quot;As a sub-agent prompt&quot;">​</a></h3><p>Invoke via the <code>Explore</code> or <code>general-purpose</code> agent with <code>subagent_type: &quot;general-purpose&quot;</code> and set <code>mode: &quot;plan&quot;</code> for review before the agent writes anything.</p><h3 id="expected-output-structure" tabindex="-1">Expected output structure <a class="header-anchor" href="#expected-output-structure" aria-label="Permalink to &quot;Expected output structure&quot;">​</a></h3><p>The prompt produces three artifacts:</p><ol><li><strong>Summary table</strong> — sortable at a glance by Impact</li><li><strong>Detailed findings</strong> — each with location, root cause, and resolution</li><li><strong>Executive summary</strong> — prioritized action list</li></ol><h3 id="scoring-reminder" tabindex="-1">Scoring reminder <a class="header-anchor" href="#scoring-reminder" aria-label="Permalink to &quot;Scoring reminder&quot;">​</a></h3><ul><li><strong>H</strong> = human developer friction (1–5)</li><li><strong>A</strong> = coding agent confusion (1–5)</li><li><strong>Impact</strong> = H + A (max 10)</li><li>Fix order: Impact ≥ 8 first, then ≥ 6, then ≤ 5 as bandwidth allows</li></ul><h3 id="what-this-prompt-does-not-do" tabindex="-1">What this prompt does NOT do <a class="header-anchor" href="#what-this-prompt-does-not-do" aria-label="Permalink to &quot;What this prompt does NOT do&quot;">​</a></h3><ul><li>It does not write fixes — it identifies them. Use a <code>swarm-implementer</code> sub-agent for that.</li><li>It does not test the API — it reads source and reasons statically. Pair with <code>swift test</code> to validate proposed resolutions.</li><li>It does not flag locked decisions from the redesign plan — those are immutable by sub-agents per AGENTS.md.</li></ul></div></div></main><footer class="VPDocFooter" data-v-39a288b8 data-v-e257564d><!--[--><!--]--><div class="edit-info" data-v-e257564d><div class="edit-link" data-v-e257564d><a class="VPLink link vp-external-link-icon no-icon edit-link-button" href="https://github.com/christopherkarani/Swarm/edit/main/docs/prompts/api-audit.md" target="_blank" rel="noreferrer" data-v-e257564d><!--[--><span class="vpi-square-pen edit-link-icon" data-v-e257564d></span> Edit this page on GitHub<!--]--></a></div><div class="last-updated" data-v-e257564d><p class="VPLastUpdated" data-v-e257564d data-v-e98dd255>Last updated: <time datetime="2026-03-04T15:26:20.000Z" data-v-e98dd255></time></p></div></div><!----></footer><!--[--><!--]--></div></div></div><!--[--><!--]--></div></div><footer class="VPFooter" data-v-5d98c3a5 data-v-e315a0ad><div class="container" data-v-e315a0ad><p class="message" data-v-e315a0ad>Released under the MIT License.</p><p class="copyright" data-v-e315a0ad>Copyright © 2025-present Christopher Karani</p></div></footer><!--[--><!--]--></div></div>
+    <script>window.__VP_HASH_MAP__=JSON.parse("{\"guide_getting-started.md\":\"DQ7tQCIt\",\"guide_why-swarm.md\":\"Cz5b-bsu\",\"index.md\":\"CMfSXv6N\",\"prompts_api-audit.md\":\"mTZ4gdvr\",\"prompts_phase-4-5-6-workflow-observer-deprecation.md\":\"B04aIhxX\",\"reference_api-catalog.md\":\"CSgXOWsu\",\"reference_api-improvement-report.md\":\"DtzRbEiA\",\"reference_api-quality-assessment.md\":\"DDmlc07k\",\"reference_api-surface-catalog.md\":\"DBhrugYy\",\"reference_front-facing-api.md\":\"CmgKF8nH\",\"reference_hive-swarm-nonfork-hardening.md\":\"Cuuzld5r\",\"reference_overview.md\":\"CMMmnOyI\",\"superpowers_specs_2026-03-16-v3-final-push-design.md\":\"CzeiWBIN\",\"swarm-complete-reference.md\":\"BlWnjj0C\"}");window.__VP_SITE_DATA__=JSON.parse("{\"lang\":\"en-US\",\"dir\":\"ltr\",\"title\":\"Swarm\",\"description\":\"Multi-agent orchestration for Swift — built for production, not demos.\",\"base\":\"/\",\"head\":[],\"router\":{\"prefetchLinks\":true},\"appearance\":\"dark\",\"themeConfig\":{\"logo\":\"/logo.svg\",\"nav\":[{\"text\":\"Guide\",\"link\":\"/guide/getting-started\"},{\"text\":\"API Reference\",\"link\":\"/reference/overview\"},{\"text\":\"GitHub\",\"link\":\"https://github.com/christopherkarani/Swarm\"}],\"sidebar\":{\"/guide/\":[{\"text\":\"Introduction\",\"items\":[{\"text\":\"Getting Started\",\"link\":\"/guide/getting-started\"},{\"text\":\"Why Swarm\",\"link\":\"/guide/why-swarm\"}]},{\"text\":\"API Reference\",\"items\":[{\"text\":\"Overview\",\"link\":\"/reference/overview\"},{\"text\":\"Complete Reference\",\"link\":\"/swarm-complete-reference\"}]}],\"/reference/\":[{\"text\":\"API Reference\",\"items\":[{\"text\":\"Overview\",\"link\":\"/reference/overview\"},{\"text\":\"Complete Reference\",\"link\":\"/swarm-complete-reference\"}]}]},\"socialLinks\":[{\"icon\":\"github\",\"link\":\"https://github.com/christopherkarani/Swarm\"},{\"icon\":\"x\",\"link\":\"https://x.com/ckarani7\"}],\"search\":{\"provider\":\"local\"},\"editLink\":{\"pattern\":\"https://github.com/christopherkarani/Swarm/edit/main/docs/:path\",\"text\":\"Edit this page on GitHub\"},\"footer\":{\"message\":\"Released under the MIT License.\",\"copyright\":\"Copyright © 2025-present Christopher Karani\"}},\"locales\":{},\"scrollOffset\":134,\"cleanUrls\":true}");</script>
+    
+  </body>
+</html>
