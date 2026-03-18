@@ -532,7 +532,7 @@ struct HiveAgentsTests {
             _ = try await runControl.getCheckpointHistory(threadID: HiveThreadID("query-unsupported"), limit: 1)
         }
         let queryError = try #require(thrown as? HiveCheckpointQueryError)
-        #expect(queryError == .unsupported)
+        #expect(queryError == .unsupported(operation: .listCheckpoints))
     }
 
     @Test("getState returns nil for missing thread and deterministic snapshot for existing thread")
@@ -875,6 +875,82 @@ struct HiveAgentsTests {
         let diff = HiveDeterminism.firstTranscriptDiff(expected: first.transcript, actual: mutatedTranscript)
         let firstDiff = try #require(diff)
         #expect(firstDiff.path == "events[0].kind")
+    }
+
+    @Test("Determinism transcript canonicalizes fork lifecycle events")
+    func determinismUtilities_canonicalizesForkEvents() throws {
+        let runID = HiveRunID(UUID(uuidString: "00000000-0000-0000-0000-000000000111")!)
+        let attemptID = HiveRunAttemptID(UUID(uuidString: "00000000-0000-0000-0000-000000000222")!)
+        let metadata = [EventSchemaVersion.metadataKey: EventSchemaVersion.current]
+
+        let events: [HiveEvent] = [
+            HiveEvent(
+                id: HiveEventID(
+                    runID: runID,
+                    attemptID: attemptID,
+                    eventIndex: 0,
+                    stepIndex: nil,
+                    taskOrdinal: nil
+                ),
+                kind: .forkStarted(
+                    sourceThreadID: HiveThreadID("thread-source"),
+                    targetThreadID: HiveThreadID("thread-target"),
+                    sourceCheckpointID: nil
+                ),
+                metadata: metadata
+            ),
+            HiveEvent(
+                id: HiveEventID(
+                    runID: runID,
+                    attemptID: attemptID,
+                    eventIndex: 1,
+                    stepIndex: nil,
+                    taskOrdinal: nil
+                ),
+                kind: .forkCompleted(
+                    sourceThreadID: HiveThreadID("thread-source"),
+                    targetThreadID: HiveThreadID("thread-target"),
+                    sourceCheckpointID: HiveCheckpointID("ckpt-source"),
+                    targetCheckpointID: HiveCheckpointID("ckpt-target")
+                ),
+                metadata: metadata
+            ),
+            HiveEvent(
+                id: HiveEventID(
+                    runID: runID,
+                    attemptID: attemptID,
+                    eventIndex: 2,
+                    stepIndex: nil,
+                    taskOrdinal: nil
+                ),
+                kind: .forkFailed(
+                    sourceThreadID: HiveThreadID("thread-source"),
+                    targetThreadID: HiveThreadID("thread-target"),
+                    sourceCheckpointID: HiveCheckpointID("ckpt-source"),
+                    errorCode: "schema_mismatch"
+                ),
+                metadata: metadata
+            )
+        ]
+
+        let transcript = try HiveDeterminism.projectTranscript(events)
+        #expect(transcript.events.count == 3)
+
+        let started = transcript.events[0]
+        #expect(started.kind == "forkStarted")
+        #expect(started.attributes["sourceThreadID"] == "thread-source")
+        #expect(started.attributes["targetThreadID"] == "thread-target")
+        #expect(started.attributes["sourceCheckpointID"] == "nil")
+
+        let completed = transcript.events[1]
+        #expect(completed.kind == "forkCompleted")
+        #expect(completed.attributes["sourceCheckpointID"] == "ckpt-source")
+        #expect(completed.attributes["targetCheckpointID"] == "ckpt-target")
+
+        let failed = transcript.events[2]
+        #expect(failed.kind == "forkFailed")
+        #expect(failed.attributes["sourceCheckpointID"] == "ckpt-source")
+        #expect(failed.attributes["errorCode"] == "schema_mismatch")
     }
 
     @Test("Cancel/checkpoint race is classified deterministically")

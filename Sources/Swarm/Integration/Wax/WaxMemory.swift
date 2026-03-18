@@ -93,6 +93,7 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle {
     public func clear() async {
         do {
             try await store.close()
+            try clearPersistedStoreArtifacts()
             var waxConfig = Wax.Memory.Config.default
             waxConfig.enableVectorSearch = embedder != nil && configuration.enableVectorSearch
 
@@ -125,6 +126,20 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle {
     private let embedder: (any WaxVectorSearch.EmbeddingProvider)?
     private var messages: [MemoryMessage] = []
     private let isoFormatter = ISO8601DateFormatter()
+
+    private func clearPersistedStoreArtifacts() throws {
+        let fileManager = FileManager.default
+        let storeName = url.lastPathComponent
+        let parent = url.deletingLastPathComponent()
+
+        if let entries = try? fileManager.contentsOfDirectory(at: parent, includingPropertiesForKeys: nil) {
+            for entry in entries where entry.lastPathComponent.hasPrefix(storeName) {
+                try? fileManager.removeItem(at: entry)
+            }
+        } else if fileManager.fileExists(atPath: url.path) {
+            try? fileManager.removeItem(at: url)
+        }
+    }
 
     private func formatRAGContext(_ rag: RAGContext, tokenLimit: Int) -> String {
         guard tokenLimit > 0 else { return "" }

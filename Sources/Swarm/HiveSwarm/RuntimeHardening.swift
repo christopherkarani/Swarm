@@ -541,7 +541,35 @@ enum HiveDeterminism {
             ("runResumed", ["interruptID": interruptID.rawValue])
         case .runCancelled:
             ("runCancelled", [:])
-        // Fork events removed — not available in current HiveCore version
+        case let .forkStarted(sourceThreadID, targetThreadID, sourceCheckpointID):
+            (
+                "forkStarted",
+                [
+                    "sourceThreadID": sourceThreadID.rawValue,
+                    "targetThreadID": targetThreadID.rawValue,
+                    "sourceCheckpointID": sourceCheckpointID?.rawValue ?? "nil"
+                ]
+            )
+        case let .forkCompleted(sourceThreadID, targetThreadID, sourceCheckpointID, targetCheckpointID):
+            (
+                "forkCompleted",
+                [
+                    "sourceThreadID": sourceThreadID.rawValue,
+                    "targetThreadID": targetThreadID.rawValue,
+                    "sourceCheckpointID": sourceCheckpointID.rawValue,
+                    "targetCheckpointID": targetCheckpointID?.rawValue ?? "nil"
+                ]
+            )
+        case let .forkFailed(sourceThreadID, targetThreadID, sourceCheckpointID, errorCode):
+            (
+                "forkFailed",
+                [
+                    "sourceThreadID": sourceThreadID.rawValue,
+                    "targetThreadID": targetThreadID.rawValue,
+                    "sourceCheckpointID": sourceCheckpointID?.rawValue ?? "nil",
+                    "errorCode": errorCode
+                ]
+            )
         case let .stepStarted(stepIndex, frontierCount):
             ("stepStarted", ["stepIndex": String(stepIndex), "frontierCount": String(frontierCount)])
         case let .stepFinished(stepIndex, nextFrontierCount):
