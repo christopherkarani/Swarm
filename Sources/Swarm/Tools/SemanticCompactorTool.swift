@@ -63,6 +63,13 @@ public struct SemanticCompactorTool {
     
     // MARK: - Execution
     
+    /// Compacts or summarizes the input text using the configured summarizer.
+    ///
+    /// Uses on-device Foundation Models when available, falling back to truncation
+    /// on unsupported platforms or when the summarizer fails.
+    ///
+    /// - Returns: A compacted version of the input text according to the specified strategy.
+    /// - Throws: An error if summarization fails (though typically falls back to truncation).
     public func execute() async throws -> String {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return "No text provided to compact."

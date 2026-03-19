@@ -11,18 +11,41 @@ import Foundation
 public struct AnyJSONToolAdapter<T: Tool>: AnyJSONTool, Sendable {
     // MARK: Public
 
+    /// The wrapped typed tool instance.
     public let tool: T
 
+    /// The tool name, forwarded from the wrapped tool.
     public var name: String { tool.name }
+
+    /// The tool description, forwarded from the wrapped tool.
     public var description: String { tool.description }
+
+    /// The tool parameters, forwarded from the wrapped tool.
     public var parameters: [ToolParameter] { tool.parameters }
+
+    /// Input guardrails from the wrapped tool.
     public var inputGuardrails: [any ToolInputGuardrail] { tool.inputGuardrails }
+
+    /// Output guardrails from the wrapped tool.
     public var outputGuardrails: [any ToolOutputGuardrail] { tool.outputGuardrails }
 
+    /// Creates an adapter that wraps the given typed tool.
+    ///
+    /// - Parameter tool: The typed `Tool` to adapt to the `AnyJSONTool` protocol.
     public init(_ tool: T) {
         self.tool = tool
     }
 
+    /// Executes the wrapped tool with the provided arguments.
+    ///
+    /// This method bridges between the dynamic `AnyJSONTool` ABI and the typed `Tool` protocol
+    /// by decoding arguments into the tool's `Input` type, executing, and encoding the output.
+    ///
+    /// - Parameter arguments: The raw arguments dictionary from the LLM tool call.
+    /// - Returns: The tool output encoded as a `SendableValue`.
+    /// - Throws: `AgentError.invalidToolArguments` if argument decoding fails.
+    /// - Throws: `AgentError.toolExecutionFailed` if output encoding fails.
+    /// - Throws: Any error thrown by the wrapped tool's `execute` method.
     public func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
         let input: T.Input
         do {

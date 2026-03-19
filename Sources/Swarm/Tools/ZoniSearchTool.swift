@@ -44,6 +44,10 @@ public struct ZoniSearchTool {
         // self.pipeline = pipeline
     }
     
+    /// Executes the Zoni search query against the configured RAG pipeline.
+    ///
+    /// - Returns: A formatted string containing the answer and source references.
+    /// - Throws: `Error.pipelineNotConfigured` if no pipeline was set up.
     public func execute() async throws -> String {
         // Example integration:
         /*

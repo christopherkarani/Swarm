@@ -532,7 +532,7 @@ struct HiveAgentsTests {
             _ = try await runControl.getCheckpointHistory(threadID: HiveThreadID("query-unsupported"), limit: 1)
         }
         let queryError = try #require(thrown as? HiveCheckpointQueryError)
-        #expect(queryError == .unsupported)
+        #expect(queryError == .unsupported(operation: .listCheckpoints))
     }
 
     @Test("getState returns nil for missing thread and deterministic snapshot for existing thread")
@@ -877,6 +877,44 @@ struct HiveAgentsTests {
         #expect(firstDiff.path == "events[0].kind")
     }
 
+    @Test("Conversation branch forks Hive-backed runtime state")
+    func conversationBranch_forksHiveBackedRuntimeState() async throws {
+        let graph = try ChatGraph.makeToolUsingChatAgent()
+        let checkpointStore = InMemoryCheckpointStore<ChatGraph.Schema>()
+        let context = RuntimeContext(modelName: "test-model", toolApprovalPolicy: .never)
+        let environment = HiveEnvironment<ChatGraph.Schema>(
+            context: context,
+            clock: NoopClock(),
+            logger: NoopLogger(),
+            model: AnyHiveModelClient(CountingMessagesModelClient()),
+            modelRouter: nil,
+            tools: AnyHiveToolRegistry(StubToolRegistry(resultContent: "ok")),
+            checkpointStore: AnyHiveCheckpointStore(checkpointStore)
+        )
+        let runtime = try HiveRuntime(graph: graph, environment: environment)
+        let hiveRuntime = GraphRuntimeAdapter(runControl: GraphRunController(runtime: runtime))
+        let agent = GraphAgent(
+            runtime: hiveRuntime,
+            name: "branchable-graph",
+            threadID: HiveThreadID("conversation-branch-source"),
+            runOptions: HiveRunOptions(maxSteps: 10, checkpointPolicy: .everyStep)
+        )
+
+        let conversation = Conversation(with: agent)
+        _ = try await conversation.send("seed")
+
+        let branch = try await conversation.branch()
+        let branchResult = try await branch.send("branch follow-up")
+        let originalResult = try await conversation.send("original follow-up")
+
+        #expect(branchResult.output == originalResult.output)
+
+        let originalMessages = await conversation.messages
+        let branchMessages = await branch.messages
+        #expect(originalMessages.count == 4)
+        #expect(branchMessages.count == 4)
+    }
+
     @Test("Cancel/checkpoint race is classified deterministically")
     func cancelCheckpointRace_classifiesDeterministically() async throws {
         let graph = try ChatGraph.makeToolUsingChatAgent()
@@ -1169,6 +1207,31 @@ private actor ModelScript {
     // MARK: Private
 
     private var chunksByInvocation: [[HiveChatStreamChunk]]
+}
+
+private struct CountingMessagesModelClient: HiveModelClient {
+    func complete(_ request: HiveChatRequest) async throws -> HiveChatResponse {
+        HiveChatResponse(
+            message: message(
+                id: UUID().uuidString,
+                role: .assistant,
+                content: "messages:\(request.messages.count)"
+            )
+        )
+    }
+
+    func stream(_ request: HiveChatRequest) -> AsyncThrowingStream<HiveChatStreamChunk, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(.final(HiveChatResponse(
+                message: message(
+                    id: UUID().uuidString,
+                    role: .assistant,
+                    content: "messages:\(request.messages.count)"
+                )
+            )))
+            continuation.finish()
+        }
+    }
 }
 
 // MARK: - ScriptedModelClient

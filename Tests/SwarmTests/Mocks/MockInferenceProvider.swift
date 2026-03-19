@@ -20,7 +20,11 @@ import Foundation
 /// let agent = try Agent(tools: [CalculatorTool()], inferenceProvider: mock)
 /// let result = try await agent.run("What is 2+2?")
 /// ```
-public actor MockInferenceProvider: InferenceProvider {
+public actor MockInferenceProvider: InferenceProvider,
+    CapabilityReportingInferenceProvider,
+    ConversationInferenceProvider,
+    StreamingConversationInferenceProvider
+{
     // MARK: Public
 
     // MARK: - Configurable Behavior
@@ -43,23 +47,35 @@ public actor MockInferenceProvider: InferenceProvider {
     /// Default response when responses array is exhausted.
     public var defaultResponse = "Mock response"
 
+    /// Provider capabilities advertised to the agent.
+    public nonisolated let capabilities: InferenceProviderCapabilities
+
     // MARK: - Call Recording
 
-    /// Recorded generate calls for verification.
+    /// Recorded prompt-based generate calls for verification.
     public private(set) var generateCalls: [(prompt: String, options: InferenceOptions)] = []
 
-    /// Recorded stream calls for verification.
+    /// Recorded prompt-based stream calls for verification.
     public private(set) var streamCalls: [(prompt: String, options: InferenceOptions)] = []
 
-    /// Recorded tool call generations for verification.
+    /// Recorded structured-message generations for verification.
+    public private(set) var generateMessageCalls: [(messages: [InferenceMessage], options: InferenceOptions)] = []
+
+    /// Recorded structured-message streams for verification.
+    public private(set) var streamMessageCalls: [(messages: [InferenceMessage], options: InferenceOptions)] = []
+
+    /// Recorded prompt-based tool call generations for verification.
     public private(set) var toolCallCalls: [(prompt: String, tools: [ToolSchema], options: InferenceOptions)] = []
 
-    /// Gets the number of generate calls made.
+    /// Recorded structured tool-call generations for verification.
+    public private(set) var toolCallMessageCalls: [(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions)] = []
+
+    /// Gets the number of prompt-based generate calls made.
     public var generateCallCount: Int {
         generateCalls.count
     }
 
-    /// Gets the last generate call, if any.
+    /// Gets the last prompt-based generate call, if any.
     public var lastGenerateCall: (prompt: String, options: InferenceOptions)? {
         generateCalls.last
     }
@@ -67,12 +83,18 @@ public actor MockInferenceProvider: InferenceProvider {
     // MARK: - Initialization
 
     /// Creates a new mock inference provider.
-    public init() {}
+    public init(capabilities: InferenceProviderCapabilities = []) {
+        self.capabilities = capabilities
+    }
 
     /// Creates a mock with predefined responses.
     /// - Parameter responses: The responses to return in sequence.
-    public init(responses: [String]) {
+    public init(
+        responses: [String],
+        capabilities: InferenceProviderCapabilities = []
+    ) {
         self.responses = responses
+        self.capabilities = capabilities
     }
 
     // MARK: - Configuration Methods
@@ -103,22 +125,7 @@ public actor MockInferenceProvider: InferenceProvider {
 
     public func generate(prompt: String, options: InferenceOptions) async throws -> String {
         generateCalls.append((prompt, options))
-
-        if let error = errorToThrow {
-            throw error
-        }
-
-        if responseDelay > .zero {
-            try await Task.sleep(for: responseDelay)
-        }
-
-        if responseIndex < responses.count {
-            let response = responses[responseIndex]
-            responseIndex += 1
-            return response
-        }
-
-        return defaultResponse
+        return try await nextTextResponse()
     }
 
     nonisolated public func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
@@ -132,7 +139,6 @@ public actor MockInferenceProvider: InferenceProvider {
             do {
                 await recordStreamCall(prompt: prompt, options: options)
                 let response = try await generate(prompt: prompt, options: options)
-                // Stream character by character
                 for char in response {
                     continuation.yield(String(char))
                     try await Task.sleep(for: .milliseconds(1))
@@ -152,24 +158,48 @@ public actor MockInferenceProvider: InferenceProvider {
         options: InferenceOptions
     ) async throws -> InferenceResponse {
         toolCallCalls.append((prompt, tools, options))
+        return try await nextToolCallResponse()
+    }
 
-        if let error = errorToThrow {
-            throw error
+    public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        generateMessageCalls.append((messages, options))
+        return try await nextTextResponse()
+    }
+
+    nonisolated public func stream(
+        messages: [InferenceMessage],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
+
+        Task { @Sendable [weak self] in
+            guard let self else {
+                continuation.finish()
+                return
+            }
+            do {
+                await recordStreamMessageCall(messages: messages, options: options)
+                let response = try await generate(messages: messages, options: options)
+                for char in response {
+                    continuation.yield(String(char))
+                    try await Task.sleep(for: .milliseconds(1))
+                }
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
         }
 
-        if responseDelay > .zero {
-            try await Task.sleep(for: responseDelay)
-        }
+        return stream
+    }
 
-        if toolCallResponseIndex < toolCallResponses.count {
-            let response = toolCallResponses[toolCallResponseIndex]
-            toolCallResponseIndex += 1
-            return response
-        }
-
-        // Fall back to text generation when no structured responses are configured.
-        let content = try await generate(prompt: prompt, options: options)
-        return InferenceResponse(content: content, finishReason: .completed)
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse {
+        toolCallMessageCalls.append((messages, tools, options))
+        return try await nextToolCallResponse()
     }
 
     // MARK: - Test Helpers
@@ -180,7 +210,10 @@ public actor MockInferenceProvider: InferenceProvider {
         toolCallResponseIndex = 0
         generateCalls = []
         streamCalls = []
+        generateMessageCalls = []
+        streamMessageCalls = []
         toolCallCalls = []
+        toolCallMessageCalls = []
         toolCallResponses = []
         errorToThrow = nil
     }
@@ -239,8 +272,6 @@ public actor MockInferenceProvider: InferenceProvider {
             finishReason: .toolCall,
             usage: nil
         )
-        // Set a single tool call response. For maxIterations=1, one response is sufficient
-        // because the agent will consume it, process the tool call, and then exit the loop.
         toolCallResponses = [loopingToolCall]
         toolCallResponseIndex = 0
     }
@@ -253,7 +284,48 @@ public actor MockInferenceProvider: InferenceProvider {
     /// Current index in the tool call responses array.
     private var toolCallResponseIndex = 0
 
+    private func nextTextResponse() async throws -> String {
+        if let error = errorToThrow {
+            throw error
+        }
+
+        if responseDelay > .zero {
+            try await Task.sleep(for: responseDelay)
+        }
+
+        if responseIndex < responses.count {
+            let response = responses[responseIndex]
+            responseIndex += 1
+            return response
+        }
+
+        return defaultResponse
+    }
+
+    private func nextToolCallResponse() async throws -> InferenceResponse {
+        if let error = errorToThrow {
+            throw error
+        }
+
+        if responseDelay > .zero {
+            try await Task.sleep(for: responseDelay)
+        }
+
+        if toolCallResponseIndex < toolCallResponses.count {
+            let response = toolCallResponses[toolCallResponseIndex]
+            toolCallResponseIndex += 1
+            return response
+        }
+
+        let content = try await nextTextResponse()
+        return InferenceResponse(content: content, finishReason: .completed)
+    }
+
     private func recordStreamCall(prompt: String, options: InferenceOptions) {
         streamCalls.append((prompt, options))
+    }
+
+    private func recordStreamMessageCall(messages: [InferenceMessage], options: InferenceOptions) {
+        streamMessageCalls.append((messages, options))
     }
 }

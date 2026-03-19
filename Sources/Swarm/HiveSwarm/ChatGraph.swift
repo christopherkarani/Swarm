@@ -3,6 +3,11 @@ import Foundation
 import HiveCore
 import Swarm
 
+#if SWARM_MEMBRANE
+import MembraneCore
+import MembraneHive
+#endif
+
 enum ToolApprovalPolicy: Sendable, Equatable {
     case never
     case always
@@ -48,13 +53,24 @@ protocol ToolResultTransformer: Sendable {
     func transform(result: String, toolName: String, tokenEstimate: Int) async -> String
 }
 
+#if SWARM_MEMBRANE
 protocol MembraneCheckpointAdapter: Sendable {
-    /// Restore adapter state from checkpointed membrane payload before model invocation.
-    func restore(checkpointData: Data?) async throws
-
-    /// Snapshot adapter state for deterministic checkpoint persistence.
-    func snapshotCheckpointData() async throws -> Data?
+    func restore(snapshot: MembraneContextSnapshot?) async throws
+    func snapshot() async throws -> MembraneContextSnapshot?
 }
+
+extension ContextSnapshotCheckpointAdapter: MembraneCheckpointAdapter {
+    func restore(snapshot: MembraneContextSnapshot?) async throws {
+        replaceSnapshot(snapshot)
+    }
+
+    func snapshot() async throws -> MembraneContextSnapshot? {
+        currentSnapshot()
+    }
+}
+#else
+protocol MembraneCheckpointAdapter: Sendable {}
+#endif
 
 struct NoopPreModelHook: PreModelHook {
     init() {}
@@ -326,6 +342,19 @@ struct GraphRunController: Sendable {
         await stateTracker.markAttemptStarted(threadID: threadID, runID: handle.runID)
         return decorate(handle: handle, threadID: threadID, eventBufferCapacity: options.eventBufferCapacity)
     }
+
+    func branch(
+        threadID: HiveThreadID,
+        options: HiveRunOptions? = nil
+    ) async throws -> HiveThreadID {
+        let branchedThreadID = HiveThreadID(UUID().uuidString)
+        _ = try await runtime.fork(
+            threadID: threadID,
+            to: branchedThreadID,
+            options: options
+        )
+        return branchedThreadID
+    }
 }
 
 extension ChatGraph {
@@ -339,7 +368,7 @@ extension ChatGraph {
         static let pendingToolCallsKey = HiveChannelKey<Self, [HiveToolCall]>(HiveChannelID("pendingToolCalls"))
         static let finalAnswerKey = HiveChannelKey<Self, String?>(HiveChannelID("finalAnswer"))
         static let llmInputMessagesKey = HiveChannelKey<Self, [HiveChatMessage]?>(HiveChannelID("llmInputMessages"))
-        static let membraneCheckpointDataKey = HiveChannelKey<Self, Data?>(HiveChannelID("membraneCheckpointData"))
+        static let membraneCheckpointDataKey = HiveChannelKey<Self, MembraneContextSnapshot?>(HiveChannelID("membraneCheckpointData"))
 
         static var channelSpecs: [AnyHiveChannelSpec<Self>] {
             [
@@ -393,8 +422,8 @@ extension ChatGraph {
                         scope: .global,
                         reducer: .lastWriteWins(),
                         updatePolicy: .single,
-                        initial: { Optional<Data>.none },
-                        codec: HiveAnyCodec(HiveCodableJSONCodec<Data?>()),
+                        initial: { Optional<MembraneContextSnapshot>.none },
+                        codec: HiveAnyCodec(HiveCodableJSONCodec<MembraneContextSnapshot?>()),
                         persistence: .checkpointed
                     )
                 )
@@ -564,15 +593,17 @@ extension ChatGraph {
             // Ensure membrane checkpoint payload channel is initialized before invocation.
             let membraneCheckpointData = try input.store.get(Schema.membraneCheckpointDataKey)
 
-            var membraneCheckpointWrite: Data?
+            var membraneCheckpointWrite: MembraneContextSnapshot?
             var shouldWriteMembraneCheckpoint = false
             if let adapter = input.context.membraneCheckpointAdapter {
-                try await adapter.restore(checkpointData: membraneCheckpointData)
-                let snapshot = try await adapter.snapshotCheckpointData()
+                #if SWARM_MEMBRANE
+                try await adapter.restore(snapshot: membraneCheckpointData)
+                let snapshot = try await adapter.snapshot()
                 if snapshot != membraneCheckpointData {
                     membraneCheckpointWrite = snapshot
                     shouldWriteMembraneCheckpoint = true
                 }
+                #endif
             }
 
             var preModelMessages = messages

@@ -3,10 +3,9 @@ import PackageDescription
 import CompilerPluginSupport
 import Foundation
 
-let includeDemo = ProcessInfo.processInfo.environment["SWARM_INCLUDE_DEMO"] == "1"
-
 let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-let useLocalDependencies = ProcessInfo.processInfo.environment["SWARM_USE_LOCAL_DEPS"] == "1"
+let includeDemo = ProcessInfo.processInfo.environment["SWARM_INCLUDE_DEMO"] == "1"
+let useLocalDeps = ProcessInfo.processInfo.environment["AISTACK_USE_LOCAL_DEPS"] == "1"
 
 var packageProducts: [Product] = [
     .library(name: "Swarm", targets: ["Swarm"]),
@@ -23,36 +22,26 @@ if includeDemo {
 var packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/swiftlang/swift-syntax.git", "600.0.0"..<"603.0.0"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
-    .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0")
+    .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0"),
 ]
 
-if useLocalDependencies {
-    // NOTE: Local development override.
-    let waxCandidates = ["../Wax", "../rag/Wax"]
-    let waxPath = waxCandidates.first(where: { candidate in
-        FileManager.default.fileExists(atPath: packageRoot.appendingPathComponent(candidate).path)
-    }) ?? "../Wax"
-
-    packageDependencies.append(.package(path: waxPath))
-    packageDependencies.append(
+if useLocalDeps {
+    packageDependencies += [
+        .package(path: packageRoot.appendingPathComponent("../Wax").path),
         .package(
-            path: "../Conduit",
+            path: packageRoot.appendingPathComponent("../Conduit").path,
             traits: [
                 .trait(name: "OpenAI"),
                 .trait(name: "OpenRouter"),
                 .trait(name: "Anthropic"),
             ]
-        )
-    )
-    packageDependencies.append(.package(path: "../Membrane"))
+        ),
+        .package(path: packageRoot.appendingPathComponent("../Membrane").path),
+        .package(path: packageRoot.appendingPathComponent("../Hive").path),
+    ]
 } else {
-    packageDependencies.append(
-        .package(
-            url: "https://github.com/christopherkarani/Wax.git",
-            from: "0.1.3"
-        )
-    )
-    packageDependencies.append(
+    packageDependencies += [
+        .package(url: "https://github.com/christopherkarani/Wax.git", from: "0.1.17"),
         .package(
             url: "https://github.com/christopherkarani/Conduit",
             exact: "0.3.5",
@@ -61,23 +50,17 @@ if useLocalDependencies {
                 .trait(name: "OpenRouter"),
                 .trait(name: "Anthropic"),
             ]
-        )
-    )
-    packageDependencies.append(
-        .package(
-            url: "https://github.com/christopherkarani/Membrane",
-            .branch("main")
-        )
-    )
+        ),
+        .package(url: "https://github.com/christopherkarani/Membrane", from: "0.1.1"),
+        .package(url: "https://github.com/christopherkarani/Hive", from: "0.1.7"),
+    ]
 }
-
-packageDependencies.append(.package(url: "https://github.com/christopherkarani/Hive", from: "0.1.0"))
 
 var swarmDependencies: [Target.Dependency] = [
     "SwarmMacros",
     .product(name: "Logging", package: "swift-log"),
-    .product(name: "Conduit", package: "Conduit"),
     .product(name: "Wax", package: "Wax"),
+    .product(name: "ConduitAdvanced", package: "Conduit"),
     .product(name: "HiveCore", package: "Hive"),
     .product(name: "Membrane", package: "Membrane", condition: .when(traits: ["membrane"])),
     .product(name: "MembraneHive", package: "Membrane", condition: .when(traits: ["membrane"]))
@@ -146,6 +129,7 @@ var packageTargets: [Target] = [
             "Swarm",
             "SwarmHive",
             "SwarmMCP",
+            .product(name: "ConduitAdvanced", package: "Conduit"),
         ],
         resources: [
             .copy("Guardrails/INTEGRATION_TEST_SUMMARY.md"),

@@ -31,7 +31,10 @@ struct ReActAgentTests {
         // Verify the output — Agent returns the raw model response
         #expect(result.output == "42")
         #expect(result.iterationCount == 1)
-        #expect(await mockProvider.generateCallCount == 1)
+        let promptCalls = await mockProvider.generateCalls
+        let messageCalls = await mockProvider.generateMessageCalls
+        #expect(promptCalls.isEmpty)
+        #expect(messageCalls.count == 1)
     }
 
     @Test("Native tool calling executes provider tool calls")
@@ -82,7 +85,7 @@ struct ReActAgentTests {
         #expect(await spyTool.callCount == 1)
         #expect(await spyTool.wasCalledWith(argument: "location", value: .string("NYC")))
 
-        let recordedToolCalls = await mockProvider.toolCallCalls
+        let recordedToolCalls = await mockProvider.toolCallMessageCalls
         #expect(recordedToolCalls.count == 2)
         #expect(recordedToolCalls.first?.options.toolChoice == .required)
         #expect(recordedToolCalls.first?.tools.contains { $0.name == "test_tool" } == true)

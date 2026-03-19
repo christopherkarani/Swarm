@@ -14,8 +14,8 @@ import Foundation
 /// await Swarm.configure(provider: AnthropicProvider(apiKey: key))
 /// ```
 ///
-/// For hybrid setups where Foundation Models handle chat but a cloud provider
-/// handles tool calling:
+/// For hybrid setups where a cloud provider should take priority for tool
+/// calling while Foundation Models remain available as a fallback:
 ///
 /// ```swift
 /// await Swarm.configure(cloudProvider: AnthropicProvider(apiKey: key))
@@ -48,7 +48,7 @@ public extension Swarm {
         get async { await Configuration.shared.provider }
     }
 
-    /// The currently configured cloud provider for tool calling, if any.
+    /// The currently configured higher-priority provider for tool-calling flows, if any.
     static var cloudProvider: (any InferenceProvider)? {
         get async { await Configuration.shared.cloud }
     }
@@ -61,8 +61,8 @@ public extension Swarm {
     /// 1. Explicit provider on the agent
     /// 2. TaskLocal via `.environment(\.inferenceProvider, ...)`
     /// 3. `Swarm.defaultProvider` (set here)
-    /// 4. `Swarm.cloudProvider` (if tool calling is required)
-    /// 5. Foundation Models (if no tools, on Apple platform)
+    /// 4. `Swarm.cloudProvider` (when tool calling is required and a cloud provider is configured)
+    /// 5. Foundation Models (on Apple platform, including prompt-based tool emulation when selected)
     /// 6. Throw `AgentError.inferenceProviderUnavailable`
     static func configure(provider: some InferenceProvider) async {
         await Configuration.shared.setProvider(provider)
@@ -70,9 +70,11 @@ public extension Swarm {
 
     /// Sets a cloud provider for tool-calling agents.
     ///
-    /// Foundation Models do not support tool calling. Use this to configure
-    /// a cloud provider (Anthropic, OpenAI, Ollama) specifically for agents
-    /// that use tools, while letting Foundation Models handle plain chat.
+    /// Use this to configure a higher-priority provider (Anthropic, OpenAI,
+    /// Ollama) for agents that use tools when you want native/provider-managed
+    /// tool calling. If no cloud provider is configured, Apple Foundation
+    /// Models can still service tool requests through Swarm's prompt-based
+    /// emulation path when available.
     static func configure(cloudProvider: some InferenceProvider) async {
         await Configuration.shared.setCloudProvider(cloudProvider)
     }

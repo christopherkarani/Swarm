@@ -37,9 +37,8 @@ struct MembraneIntegrationTests {
 
         _ = try await agent.run("needle-user-input", session: session, observer: nil)
 
-        let lastCall = await provider.toolCallCalls.last
-        let prompt = try #require(lastCall?.prompt)
-        let plannedTools = try #require(lastCall?.tools)
+        let prompt = try #require(await lastToolPrompt(from: provider))
+        let plannedTools = try #require(await lastToolSchemas(from: provider))
 
         #expect(!prompt.contains("[... context truncated for strict4k budget ...]"))
 
@@ -93,8 +92,7 @@ struct MembraneIntegrationTests {
 
         _ = try await agent.run("hello")
 
-        let lastCall = try #require(await provider.toolCallCalls.last)
-        let providerSettings = try #require(lastCall.options.providerSettings)
+        let providerSettings = try #require(await lastToolProviderSettings(from: provider))
 
         #expect(providerSettings["conduit.runtime.policy.kv_quantization.enabled"] == .bool(true))
         #expect(providerSettings["conduit.runtime.policy.attention_sinks.enabled"] == .bool(false))
@@ -107,7 +105,7 @@ struct MembraneIntegrationTests {
     @Test("membraneThrowFallsBackWithoutCrash")
     func membraneThrowFallsBackWithoutCrash() async throws {
         let provider = MockInferenceProvider(responses: ["fallback-ok"])
-        let throwingAdapter = ThrowingMembraneAdapter()
+        let throwingSession = MembraneSession(backend: ThrowingMembraneBackend())
         let agent = try Agent(
             tools: [],
             instructions: "Fallback test",
@@ -119,7 +117,7 @@ struct MembraneIntegrationTests {
             inferenceProvider: provider
         ).environment(
             \.membrane,
-            MembraneEnvironment(isEnabled: true, adapter: throwingAdapter)
+            MembraneEnvironment(isEnabled: true, session: throwingSession)
         )
 
         let result = try await agent.run("hello")
@@ -131,53 +129,58 @@ struct MembraneIntegrationTests {
 
     @Test("Default adapter checkpoint state roundtrips loaded tools")
     func defaultAdapterCheckpointRoundtrip() async throws {
-        let adapter = DefaultMembraneAgentAdapter(
+        let session = MembraneSession(
             configuration: MembraneFeatureConfiguration(jitMinToolCount: 2, defaultJITLoadCount: 1)
         )
-        _ = try await adapter.handleInternalToolCall(
+        _ = try await session.handleInternalToolCall(
             name: MembraneInternalToolName.addTools,
-            arguments: ["tool_names": .array([.string("zzz_tool")])]
+            arguments: ["tool_names": "zzz_tool"]
         )
-        let snapshot = try await adapter.snapshotCheckpointData()
+        let snapshot = try await session.snapshot()
         #expect(snapshot != nil)
 
-        let restored = DefaultMembraneAgentAdapter(
+        let restored = MembraneSession(
             configuration: MembraneFeatureConfiguration(jitMinToolCount: 2, defaultJITLoadCount: 1)
         )
-        try await restored.restore(checkpointData: snapshot)
-
-        let planned = try await restored.plan(
-            prompt: "hello",
-            toolSchemas: defaultAdapterToolSchemas(),
-            profile: .strict4k
+        try await restored.restore(snapshot: snapshot)
+        let prepared = try await restored.prepare(
+            ContextRequest(
+                systemPrompt: "test",
+                basePrompt: "hello",
+                userInput: "hello",
+                tools: defaultAdapterToolSchemas().map { ToolManifest(name: $0.name, description: $0.description) }
+            )
         )
 
-        #expect(planned.toolSchemas.contains(where: { $0.name == "zzz_tool" }))
+        #expect(prepared.selectedToolNames.contains("zzz_tool"))
     }
 
     @Test("Default adapter restore(nil) clears checkpointed state")
     func defaultAdapterRestoreNilClearsState() async throws {
-        let adapter = DefaultMembraneAgentAdapter(
+        let session = MembraneSession(
             configuration: MembraneFeatureConfiguration(jitMinToolCount: 2, defaultJITLoadCount: 1)
         )
-        _ = try await adapter.handleInternalToolCall(
+        _ = try await session.handleInternalToolCall(
             name: MembraneInternalToolName.addTools,
-            arguments: ["tool_names": .array([.string("zzz_tool")])]
+            arguments: ["tool_names": "zzz_tool"]
         )
 
-        try await adapter.restore(checkpointData: nil)
+        try await session.restore(snapshot: nil)
 
-        let planned = try await adapter.plan(
-            prompt: "hello",
-            toolSchemas: defaultAdapterToolSchemas(),
-            profile: .strict4k
+        let prepared = try await session.prepare(
+            ContextRequest(
+                systemPrompt: "test",
+                basePrompt: "hello",
+                userInput: "hello",
+                tools: defaultAdapterToolSchemas().map { ToolManifest(name: $0.name, description: $0.description) }
+            )
         )
         // Without SWARM_MEMBRANE, plan() always uses allowAll mode (no JIT filtering).
         // The exclusion assertion only applies when JIT is active.
         #if SWARM_MEMBRANE
-        #expect(planned.toolSchemas.contains(where: { $0.name == "zzz_tool" }) == false)
+        #expect(prepared.selectedToolNames.contains("zzz_tool") == false)
         #else
-        _ = planned
+        _ = prepared
         #endif
     }
 }
@@ -187,6 +190,36 @@ private func defaultAdapterToolSchemas() -> [ToolSchema] {
     return names.map { name in
         ToolSchema(name: name, description: "test \(name)", parameters: [])
     }
+}
+
+private func lastToolPrompt(from provider: MockInferenceProvider) async -> String? {
+    if let lastCall = await provider.toolCallCalls.last {
+        return lastCall.prompt
+    }
+    if let lastCall = await provider.toolCallMessageCalls.last {
+        return InferenceMessage.flattenPrompt(lastCall.messages)
+    }
+    return nil
+}
+
+private func lastToolSchemas(from provider: MockInferenceProvider) async -> [ToolSchema]? {
+    if let lastCall = await provider.toolCallCalls.last {
+        return lastCall.tools
+    }
+    if let lastCall = await provider.toolCallMessageCalls.last {
+        return lastCall.tools
+    }
+    return nil
+}
+
+private func lastToolProviderSettings(from provider: MockInferenceProvider) async -> [String: SendableValue]? {
+    if let lastCall = await provider.toolCallCalls.last {
+        return lastCall.options.providerSettings
+    }
+    if let lastCall = await provider.toolCallMessageCalls.last {
+        return lastCall.options.providerSettings
+    }
+    return nil
 }
 
 private func makeLargeSession() async throws -> InMemorySession {
@@ -232,32 +265,22 @@ private struct MembraneTestTool: AnyJSONTool, Sendable {
     }
 }
 
-private actor ThrowingMembraneAdapter: MembraneAgentAdapter {
-    func plan(
-        prompt _: String,
-        toolSchemas _: [ToolSchema],
-        profile _: ContextProfile
-    ) async throws -> MembranePlannedBoundary {
+private struct ThrowingMembraneBackend: MembraneContextBackend {
+    let backendID = "throwing"
+
+    func prepare(
+        request _: ContextRequest,
+        budget _: ContextBudget,
+        snapshot _: ContextSnapshot?
+    ) async throws -> MembraneBackendPreparation {
         struct ForcedFailure: Error, CustomStringConvertible {
             let description = "forced membrane failure"
         }
         throw ForcedFailure()
     }
 
-    func transformToolResult(
-        toolName _: String,
-        output: String
-    ) async throws -> MembraneToolResultBoundary {
-        MembraneToolResultBoundary(textForConversation: output)
-    }
-
-    func handleInternalToolCall(
-        name _: String,
-        arguments _: [String: SendableValue]
-    ) async throws -> String? {
+    func restore(snapshot _: ContextSnapshot?) async throws {}
+    func snapshot() async throws -> ContextSnapshot? {
         nil
     }
-
-    func restore(checkpointData _: Data?) async throws {}
-    func snapshotCheckpointData() async throws -> Data? { nil }
 }

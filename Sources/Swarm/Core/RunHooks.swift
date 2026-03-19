@@ -444,6 +444,9 @@ public struct LoggingObserver: AgentObserver {
 
     // MARK: - AgentObserver Implementation
 
+    /// Logs when an agent starts execution.
+    ///
+    /// Logs the input (truncated to 100 characters) and context ID at info level.
     public func onAgentStart(context: AgentContext?, agent _: any AgentRuntime, input: String) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"
@@ -454,6 +457,9 @@ public struct LoggingObserver: AgentObserver {
         Log.agents.info("LegacyAgent started\(contextId) - input: \"\(truncatedInput)\"")
     }
 
+    /// Logs when an agent completes execution.
+    ///
+    /// Logs iteration count, duration, and tool call count at info level.
     public func onAgentEnd(context: AgentContext?, agent _: any AgentRuntime, result: AgentResult) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"
@@ -463,6 +469,9 @@ public struct LoggingObserver: AgentObserver {
         Log.agents.info("LegacyAgent completed\(contextId) - iterations: \(result.iterationCount), duration: \(result.duration), tools: \(result.toolCalls.count)")
     }
 
+    /// Logs when an agent encounters an error.
+    ///
+    /// Logs the error description at error level.
     public func onError(context: AgentContext?, agent _: any AgentRuntime, error: Error) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"
@@ -472,6 +481,9 @@ public struct LoggingObserver: AgentObserver {
         Log.agents.error("LegacyAgent error\(contextId) - \(error.localizedDescription)")
     }
 
+    /// Logs when a handoff occurs between agents.
+    ///
+    /// Logs the source and target agent names at info level.
     public func onHandoff(context: AgentContext?, fromAgent: any AgentRuntime, toAgent: any AgentRuntime) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"
@@ -483,6 +495,9 @@ public struct LoggingObserver: AgentObserver {
         Log.agents.info("LegacyAgent handoff\(contextId) - from: \(fromName) to: \(toName)")
     }
 
+    /// Logs when a tool execution starts.
+    ///
+    /// Logs the tool name and argument count at info level.
     public func onToolStart(context: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"
@@ -492,6 +507,9 @@ public struct LoggingObserver: AgentObserver {
         Log.agents.info("Tool started\(contextId) - name: \(call.toolName), args: \(call.arguments.count) parameter(s)")
     }
 
+    /// Logs when a tool execution completes.
+    ///
+    /// Logs the success/failure status and duration at info level.
     public func onToolEnd(context: AgentContext?, agent _: any AgentRuntime, result: ToolResult) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"
@@ -504,6 +522,9 @@ public struct LoggingObserver: AgentObserver {
         Log.agents.info("Tool execution \(status)\(contextId) - duration: \(result.duration)")
     }
 
+    /// Logs when an LLM call starts.
+    ///
+    /// Logs the number of input messages at info level.
     public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [MemoryMessage]) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"
@@ -513,6 +534,9 @@ public struct LoggingObserver: AgentObserver {
         Log.agents.info("LLM call started\(contextId) - messages: \(inputMessages.count)")
     }
 
+    /// Logs when an LLM call completes.
+    ///
+    /// Logs token usage (input and output) at info level when available.
     public func onLLMEnd(context: AgentContext?, agent _: any AgentRuntime, response _: String, usage: TokenUsage?) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"
@@ -527,6 +551,9 @@ public struct LoggingObserver: AgentObserver {
         Log.agents.info("LLM call completed\(contextId)\(usageInfo)")
     }
 
+    /// Logs when a guardrail is triggered.
+    ///
+    /// Logs the guardrail name, type, and message at warning level.
     public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"

@@ -27,12 +27,16 @@ import Foundation
     public struct CalculatorTool: AnyJSONTool, Sendable {
         // MARK: Public
 
+        /// The unique identifier for this tool: "calculator".
         public let name = "calculator"
+
+        /// Describes the calculator tool's capabilities to the LLM.
         public let description = """
         Evaluates a mathematical expression and returns the result. \
         Supports +, -, *, /, parentheses, and decimal numbers.
         """
 
+        /// The parameters accepted by the calculator: a single "expression" string.
         public let parameters: [ToolParameter] = [
             ToolParameter(
                 name: "expression",
@@ -45,6 +49,11 @@ import Foundation
         /// Creates a new calculator tool.
         public init() {}
 
+        /// Executes the mathematical expression and returns the result.
+        ///
+        /// - Parameter arguments: Must contain an "expression" key with a string value.
+        /// - Returns: The result as a `.double` value.
+        /// - Throws: `AgentError.invalidToolArguments` if the expression is missing or contains invalid characters.
         public func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
             guard let expression = arguments["expression"]?.stringValue else {
                 throw AgentError.invalidToolArguments(
@@ -107,9 +116,13 @@ import Foundation
 /// // result == .string("2024-01-15T10:30:45Z")
 /// ```
 public struct DateTimeTool: AnyJSONTool, Sendable {
+    /// The unique identifier for this tool: "datetime".
     public let name = "datetime"
+
+    /// Describes the date/time tool's capabilities to the LLM.
     public let description = "Gets the current date and time in various formats."
 
+    /// The parameters accepted by the date/time tool.
     public let parameters: [ToolParameter] = [
         ToolParameter(
             name: "format",
@@ -132,6 +145,12 @@ public struct DateTimeTool: AnyJSONTool, Sendable {
     /// Creates a new date/time tool.
     public init() {}
 
+    /// Executes the date/time query and returns formatted results.
+    ///
+    /// - Parameter arguments: May contain "format" (default: "full") and "timezone" (optional).
+    ///   Supported formats: "full", "date", "time", "iso8601", "unix", or custom format strings.
+    /// - Returns: The formatted date/time as a `.string`, or Unix timestamp as `.double`.
+    /// - Throws: `AgentError.invalidToolArguments` if the timezone identifier is invalid.
     public func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
         let formatString = arguments["format"]?.stringValue ?? "full"
         let timezoneId = arguments["timezone"]?.stringValue
@@ -199,12 +218,16 @@ public struct DateTimeTool: AnyJSONTool, Sendable {
 /// // result == .string("hello Swift")
 /// ```
 public struct StringTool: AnyJSONTool, Sendable {
+    /// The unique identifier for this tool: "string".
     public let name = "string"
+
+    /// Describes the string tool's capabilities to the LLM.
     public let description = """
     Performs string operations: length, uppercase, lowercase, trim, split, \
     replace, contains, reverse, substring.
     """
 
+    /// The parameters accepted by the string tool.
     public let parameters: [ToolParameter] = [
         ToolParameter(
             name: "operation",
@@ -250,6 +273,13 @@ public struct StringTool: AnyJSONTool, Sendable {
     /// Creates a new string tool.
     public init() {}
 
+    /// Executes the string operation and returns the result.
+    ///
+    /// - Parameter arguments: Must contain "operation" and "input" keys.
+    ///   Additional keys depend on the operation (pattern, replacement, start, end).
+    /// - Returns: The operation result as a `.string` or `.int` value.
+    /// - Throws: `AgentError.invalidToolArguments` if required arguments are missing
+    ///   or if indices are out of bounds for substring operations.
     public func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
         guard let operation = arguments["operation"]?.stringValue else {
             throw AgentError.invalidToolArguments(

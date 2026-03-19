@@ -65,6 +65,13 @@ public struct WebSearchTool {
     
     // MARK: - Execution
     
+    /// Executes the web search using the Tavily API.
+    ///
+    /// Validates the query, makes the API request, and formats the results.
+    ///
+    /// - Returns: A formatted string containing search results with titles, URLs, and snippets.
+    /// - Throws: `AgentError.toolExecutionFailed` if the API request fails or returns an error.
+    /// - Throws: `AgentError.invalidToolArguments` if the query is too long (exceeds 2000 characters).
     public func execute() async throws -> String {
         guard !apiKey.isEmpty else {
             throw AgentError.toolExecutionFailed(

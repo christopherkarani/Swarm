@@ -16,7 +16,7 @@ struct MembraneHiveCheckpointTests {
     @Test("Pre-model restores membrane checkpoint state before model invocation")
     func preModelRestoresBeforeModelInvocation() async throws {
         let graph = try ChatGraph.makeToolUsingChatAgent()
-        let adapter = RecordingMembraneAdapter(snapshotData: Data("membrane-v1".utf8))
+        let adapter = RecordingMembraneAdapter(snapshot: makeSnapshot(payload: "membrane-v1"))
 
         let context = RuntimeContext(
             modelName: "test-model",
@@ -60,7 +60,7 @@ struct MembraneHiveCheckpointTests {
         let graph = try ChatGraph.makeToolUsingChatAgent()
         let checkpointStore = InMemoryCheckpointStore<ChatGraph.Schema>()
 
-        let writerAdapter = RecordingMembraneAdapter(snapshotData: Data("state-v1".utf8))
+        let writerAdapter = RecordingMembraneAdapter(snapshot: makeSnapshot(payload: "state-v1"))
         let writerContext = RuntimeContext(
             modelName: "test-model",
             toolApprovalPolicy: .never,
@@ -92,7 +92,7 @@ struct MembraneHiveCheckpointTests {
             )
         )
 
-        let restoredAdapter = RecordingMembraneAdapter(snapshotData: nil)
+        let restoredAdapter = RecordingMembraneAdapter(snapshot: nil)
         let restoredContext = RuntimeContext(
             modelName: "test-model",
             toolApprovalPolicy: .never,
@@ -124,36 +124,48 @@ struct MembraneHiveCheckpointTests {
             )
         )
 
-        let restored = await restoredAdapter.lastRestoredData()
-        #expect(restored == Data("state-v1".utf8))
+        let restored = await restoredAdapter.lastRestoredSnapshot()
+        #expect(restored?.backendState == Data("state-v1".utf8))
     }
 }
 
 private actor RecordingMembraneAdapter: MembraneCheckpointAdapter {
-    private var restored: Data?
+    private var restored: MembraneContextSnapshot?
     private var restoreCalls: Int = 0
-    private let snapshot: Data?
+    private let storedSnapshot: MembraneContextSnapshot?
 
-    init(snapshotData: Data?) {
-        snapshot = snapshotData
+    init(snapshot: MembraneContextSnapshot?) {
+        storedSnapshot = snapshot
     }
 
-    func restore(checkpointData: Data?) async throws {
+    func restore(snapshot: MembraneContextSnapshot?) async throws {
         restoreCalls += 1
-        restored = checkpointData
+        restored = snapshot
     }
 
-    func snapshotCheckpointData() async throws -> Data? {
-        snapshot ?? restored
+    func snapshot() async throws -> MembraneContextSnapshot? {
+        storedSnapshot ?? restored
     }
 
-    func lastRestoredData() -> Data? {
+    func lastRestoredSnapshot() -> MembraneContextSnapshot? {
         restored
     }
 
     func restoreCount() -> Int {
         restoreCalls
     }
+}
+
+private func makeSnapshot(payload: String) -> MembraneContextSnapshot {
+    MembraneContextSnapshot(
+        budget: .init(totalTokens: 2048),
+        csoSummaries: [],
+        pagingCursor: nil,
+        toolState: .init(mode: .allowAll, loadedToolNames: [], allowListToolNames: [], usageCounts: []),
+        pointerIDs: [],
+        backendID: "test",
+        backendState: Data(payload.utf8)
+    )
 }
 
 private struct StubModelClient: HiveModelClient {

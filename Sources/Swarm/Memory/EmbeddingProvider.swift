@@ -7,83 +7,206 @@ import Foundation
 
 // MARK: - EmbeddingProvider
 
-/// Protocol for embedding text into vectors for semantic search
+/// Protocol for embedding text into vectors for semantic search.
 ///
 /// Embedding providers convert text into dense vector representations
 /// that capture semantic meaning. These vectors enable similarity search
-/// in VectorMemory for retrieval-augmented generation (RAG) applications.
+/// in ``VectorMemory`` for retrieval-augmented generation (RAG) applications.
 ///
-/// Implementations might include:
-/// - OpenAI embeddings API
-/// - Sentence transformers
-/// - On-device models (e.g., via MLX)
-/// - Foundation Models embeddings (when available)
+/// ## Overview
 ///
-/// Example Implementation:
+/// Text embeddings are numerical representations of text where semantically
+/// similar texts have similar vector representations. This enables:
+///
+/// - Semantic search: Find documents about similar topics even with different words
+/// - Clustering: Group related texts automatically
+/// - Classification: Use embeddings as features for ML models
+///
+/// ## Common Embedding Dimensions
+///
+/// | Provider | Dimensions | Notes |
+/// |----------|------------|-------|
+/// | OpenAI text-embedding-3-small | 1536 | Good balance of quality and cost |
+/// | OpenAI text-embedding-3-large | 3072 | Highest quality |
+/// | Cohere embed | 1024 | Multilingual support |
+/// | Sentence Transformers | 384-768 | On-device capable |
+///
+/// ## Implementing a Provider
+///
+/// Create a custom provider by conforming to `EmbeddingProvider`:
+///
 /// ```swift
 /// struct OpenAIEmbeddingProvider: EmbeddingProvider {
 ///     let apiKey: String
 ///     let model: String = "text-embedding-3-small"
 ///
 ///     var dimensions: Int { 1536 }
+///     var modelIdentifier: String { model }
 ///
 ///     func embed(_ text: String) async throws -> [Float] {
 ///         // Call OpenAI embeddings API
+///         let request = EmbeddingRequest(
+///             model: model,
+///             input: text
+///         )
+///         let response = try await api.embed(request)
+///         return response.embedding
 ///     }
 /// }
 /// ```
+///
+/// ## Usage with VectorMemory
+///
+/// ```swift
+/// let provider = OpenAIEmbeddingProvider(apiKey: apiKey)
+/// let memory = Memory.vector(
+///     embeddingProvider: provider,
+///     similarityThreshold: 0.75,
+///     maxResults: 10
+/// )
+/// ```
+///
+/// ## Query vs Document Embeddings
+///
+/// Some models (like Snowflake Arctic) benefit from different processing
+/// for queries versus documents. Override ``embedQuery(_:)`` if your
+/// provider supports this optimization:
+///
+/// ```swift
+/// func embedQuery(_ query: String) async throws -> [Float] {
+///     // Add query-specific prefix if required by model
+///     let prefixed = "Represent this sentence for searching: \(query)"
+///     return try await embed(prefixed)
+/// }
+/// ```
+///
+/// - SeeAlso: ``VectorMemory``, ``EmbeddingError``, ``EmbeddingUtils``
 public protocol EmbeddingProvider: Sendable {
-    /// The dimensionality of embeddings produced by this provider
+    /// The dimensionality of embeddings produced by this provider.
     ///
     /// All embeddings from this provider will have this many dimensions.
-    /// Common values: 384, 768, 1024, 1536, 3072
+    /// Common values include 384, 768, 1024, 1536, and 3072.
+    ///
+    /// This property is used by ``VectorMemory`` to validate embeddings
+    /// and allocate appropriate storage.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// var dimensions: Int { 1536 }  // OpenAI text-embedding-3-small
+    /// ```
     var dimensions: Int { get }
 
-    /// Optional: The model identifier used for embeddings
+    /// The model identifier used for embeddings.
+    ///
+    /// A human-readable string identifying the embedding model.
+    /// Used for logging, diagnostics, and cache key generation.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// var modelIdentifier: String { "text-embedding-3-small" }
+    /// ```
+    ///
+    /// Default implementation returns `"unknown"`.
     var modelIdentifier: String { get }
 
-    /// Embed a single text into a vector
+    /// Embeds a single text into a vector.
     ///
-    /// - Parameter text: The text to embed
-    /// - Returns: A vector of floats representing the text's semantic meaning
-    /// - Throws: `EmbeddingError` if embedding fails
+    /// This is the core method that converts text into a dense vector
+    /// representation. The returned vector should have length equal to
+    /// ``dimensions``.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let embedding = try await provider.embed("The quick brown fox")
+    /// // embedding.count == provider.dimensions
+    /// ```
+    ///
+    /// - Parameter text: The text to embed.
+    /// - Returns: A vector of floats representing the text's semantic meaning.
+    ///   The vector length equals ``dimensions``.
+    /// - Throws: ``EmbeddingError`` if embedding fails, or provider-specific errors.
     func embed(_ text: String) async throws -> [Float]
 
-    /// Embed a query text into a vector (optimized for retrieval)
+    /// Embeds a query text into a vector (optimized for retrieval).
     ///
-    /// Some models (like Snowflake Arctic) benefit from different processing
-    /// for queries vs documents. Default implementation calls `embed(_:)`.
+    /// Some embedding models benefit from different processing for queries
+    /// versus documents. For example, bi-encoder models may use special
+    /// prefixes to indicate query intent.
     ///
-    /// - Parameter query: The search query to embed
-    /// - Returns: A vector of floats representing the query's semantic meaning
-    /// - Throws: `EmbeddingError` if embedding fails
+    /// Default implementation calls ``embed(_:)``.
+    ///
+    /// ## When to Override
+    ///
+    /// Override this method if your embedding model:
+    /// - Requires query-specific prefixes
+    /// - Uses different models for queries vs documents
+    /// - Benefits from query expansion or preprocessing
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// func embedQuery(_ query: String) async throws -> [Float] {
+    ///     // Snowflake Arctic style query prefix
+    ///     return try await embed("Represent this sentence for retrieval: \(query)")
+    /// }
+    /// ```
+    ///
+    /// - Parameter query: The search query to embed.
+    /// - Returns: A vector of floats representing the query's semantic meaning.
+    /// - Throws: ``EmbeddingError`` if embedding fails.
     func embedQuery(_ query: String) async throws -> [Float]
 
-    /// Batch embed multiple texts
+    /// Embeds multiple texts in a batch.
     ///
-    /// Default implementation calls `embed(_:)` sequentially.
-    /// Override for optimized batch processing.
+    /// Batch embedding is more efficient than calling ``embed(_:)`` multiple
+    /// times, as it reduces network round-trips and enables provider-level
+    /// optimizations.
     ///
-    /// - Parameter texts: Array of texts to embed
-    /// - Returns: Array of embedding vectors (same order as input)
-    /// - Throws: `EmbeddingError` if any embedding fails
+    /// Default implementation calls ``embed(_:)`` sequentially. Override
+    /// this method for providers that support native batch operations.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let texts = ["First document", "Second document", "Third document"]
+    /// let embeddings = try await provider.embed(texts)
+    /// // embeddings.count == 3
+    /// // embeddings[0].count == provider.dimensions
+    /// ```
+    ///
+    /// - Parameter texts: Array of texts to embed.
+    /// - Returns: Array of embedding vectors in the same order as input.
+    /// - Throws: ``EmbeddingError`` if any embedding fails, including
+    ///   ``EmbeddingError/batchTooLarge(size:limit:)`` if the batch
+    ///   exceeds provider limits.
     func embed(_ texts: [String]) async throws -> [[Float]]
 }
 
 // MARK: - Default Implementations
 
 public extension EmbeddingProvider {
-    /// Default model identifier
+    /// Default model identifier.
+    ///
+    /// Returns `"unknown"`. Override to provide a specific model name.
     var modelIdentifier: String { "unknown" }
 
-    /// Default query embedding implementation
+    /// Default query embedding implementation.
+    ///
+    /// Simply calls ``embed(_:)`` with the query text.
     func embedQuery(_ query: String) async throws -> [Float] {
         try await embed(query)
     }
 
-    /// Default batch implementation - sequential embedding
+    /// Default batch implementation - sequential embedding.
     ///
-    /// Override this for providers that support native batch operations.
+    /// Processes texts one at a time. Override this for providers that
+    /// support native batch operations for better performance.
+    ///
+    /// This implementation checks for task cancellation between each
+    /// embedding operation.
     func embed(_ texts: [String]) async throws -> [[Float]] {
         var results: [[Float]] = []
         results.reserveCapacity(texts.count)
@@ -100,10 +223,84 @@ public extension EmbeddingProvider {
 
 // MARK: - EmbeddingError
 
-/// Errors specific to embedding operations
+/// Errors specific to embedding operations.
+///
+/// `EmbeddingError` provides detailed information about failures during
+/// text embedding operations, enabling appropriate error handling and
+/// retry strategies.
+///
+/// ## Error Handling Example
+///
+/// ```swift
+/// do {
+///     let embedding = try await provider.embed(text)
+/// } catch let error as EmbeddingError {
+///     switch error {
+///     case .rateLimitExceeded(let retryAfter):
+///         // Wait and retry
+///         try await Task.sleep(nanoseconds: UInt64(retryAfter * 1_000_000_000))
+///     case .networkError(let underlying):
+///         // Log and retry with backoff
+///         logger.error("Network error: \(underlying)")
+///     case .authenticationFailed:
+///         // Refresh credentials
+///         await refreshAPIKey()
+///     default:
+///         throw error
+///     }
+/// }
+/// ```
+///
+/// - SeeAlso: ``EmbeddingProvider``
 public enum EmbeddingError: Error, Sendable, CustomStringConvertible {
-    // MARK: Public
+    /// The embedding model is not available.
+    ///
+    /// The model may be loading, disabled, or the specified model
+    /// name may not exist.
+    case modelUnavailable(reason: String)
 
+    /// Embedding dimensions don't match expected.
+    ///
+    /// The returned embedding has a different dimensionality than
+    /// the provider's ``EmbeddingProvider/dimensions`` property.
+    case dimensionMismatch(expected: Int, got: Int)
+
+    /// Input text is empty or invalid.
+    ///
+    /// The embedding provider cannot process empty strings or
+    /// the input contains invalid characters.
+    case emptyInput
+
+    /// Batch size exceeds provider limits.
+    ///
+    /// The requested batch size is larger than the provider supports.
+    /// Retry with a smaller batch.
+    case batchTooLarge(size: Int, limit: Int)
+
+    /// Network or API error.
+    ///
+    /// A network-level error occurred while communicating with the
+    /// embedding service. The underlying error provides more details.
+    case networkError(underlying: any Error & Sendable)
+
+    /// Rate limit exceeded.
+    ///
+    /// Too many requests have been made. Wait for the specified
+    /// duration before retrying.
+    case rateLimitExceeded(retryAfter: TimeInterval?)
+
+    /// Invalid API key or authentication failure.
+    ///
+    /// The credentials provided are invalid or expired.
+    case authenticationFailed
+
+    /// Generic embedding failure.
+    ///
+    /// An unspecified error occurred during embedding. The reason
+    /// string provides additional context.
+    case embeddingFailed(reason: String)
+
+    /// Human-readable description of the error.
     public var description: String {
         switch self {
         case let .modelUnavailable(reason):
@@ -127,42 +324,54 @@ public enum EmbeddingError: Error, Sendable, CustomStringConvertible {
             return "Embedding failed: \(reason)"
         }
     }
-
-    /// The embedding model is not available
-    case modelUnavailable(reason: String)
-
-    /// Embedding dimensions don't match expected
-    case dimensionMismatch(expected: Int, got: Int)
-
-    /// Input text is empty or invalid
-    case emptyInput
-
-    /// Batch size exceeds provider limits
-    case batchTooLarge(size: Int, limit: Int)
-
-    /// Network or API error
-    case networkError(underlying: any Error & Sendable)
-
-    /// Rate limit exceeded
-    case rateLimitExceeded(retryAfter: TimeInterval?)
-
-    /// Invalid API key or authentication failure
-    case authenticationFailed
-
-    /// Generic embedding failure
-    case embeddingFailed(reason: String)
 }
 
 // MARK: - EmbeddingUtils
 
-/// Utility functions for working with embeddings
+/// Utility functions for working with embeddings.
+///
+/// `EmbeddingUtils` provides common vector operations used in semantic
+/// search and similarity calculations. These functions are optimized
+/// for embedding comparison tasks.
+///
+/// ## Example Usage
+///
+/// ```swift
+/// let vec1 = try await provider.embed("King")
+/// let vec2 = try await provider.embed("Queen")
+///
+/// let similarity = EmbeddingUtils.cosineSimilarity(vec1, vec2)
+/// // similarity is between -1 and 1, higher means more similar
+/// ```
+///
+/// - SeeAlso: ``VectorMemory``, ``EmbeddingProvider``
 enum EmbeddingUtils {
-    /// Calculate cosine similarity between two vectors
+    /// Calculates cosine similarity between two vectors.
+    ///
+    /// Cosine similarity measures the cosine of the angle between two vectors,
+    /// indicating their directional similarity regardless of magnitude.
+    ///
+    /// ## Formula
+    ///
+    /// ```
+    /// similarity = (A · B) / (||A|| × ||B||)
+    /// ```
+    ///
+    /// ## Interpretation
+    ///
+    /// | Score | Meaning |
+    /// |-------|---------|
+    /// | 1.0 | Identical direction (most similar) |
+    /// | 0.0 | Orthogonal (unrelated) |
+    /// | -1.0 | Opposite direction (most dissimilar) |
+    ///
+    /// In practice, embeddings for similar texts typically score 0.7-0.9.
     ///
     /// - Parameters:
-    ///   - vec1: First vector
-    ///   - vec2: Second vector
-    /// - Returns: Similarity score between -1 and 1 (1 = identical)
+    ///   - vec1: First vector.
+    ///   - vec2: Second vector.
+    /// - Returns: Similarity score between -1 and 1 (1 = identical).
+    ///   Returns 0 if vectors have different lengths or are empty.
     static func cosineSimilarity(_ vec1: [Float], _ vec2: [Float]) -> Float {
         guard vec1.count == vec2.count, !vec1.isEmpty else { return 0 }
 
@@ -180,12 +389,28 @@ enum EmbeddingUtils {
         return denominator > 0 ? dotProduct / denominator : 0
     }
 
-    /// Calculate Euclidean distance between two vectors
+    /// Calculates Euclidean distance between two vectors.
+    ///
+    /// Euclidean distance measures the straight-line distance between
+    /// two points in vector space. Lower values indicate more similar vectors.
+    ///
+    /// ## Formula
+    ///
+    /// ```
+    /// distance = √Σ(A[i] - B[i])²
+    /// ```
+    ///
+    /// ## Interpretation
+    ///
+    /// - Distance of 0 means identical vectors
+    /// - Smaller distances mean more similar vectors
+    /// - For normalized vectors, related to cosine similarity
     ///
     /// - Parameters:
-    ///   - embedding1: First vector
-    ///   - embedding2: Second vector
-    /// - Returns: Euclidean distance (lower = more similar)
+    ///   - embedding1: First vector.
+    ///   - embedding2: Second vector.
+    /// - Returns: Euclidean distance (lower = more similar).
+    ///   Returns `Float.infinity` if vectors have different lengths.
     static func euclideanDistance(_ embedding1: [Float], _ embedding2: [Float]) -> Float {
         guard embedding1.count == embedding2.count else { return Float.infinity }
 
@@ -198,10 +423,21 @@ enum EmbeddingUtils {
         return sqrt(sum)
     }
 
-    /// Normalize a vector to unit length
+    /// Normalizes a vector to unit length.
     ///
-    /// - Parameter vector: The vector to normalize
-    /// - Returns: Unit vector (magnitude = 1)
+    /// L2 normalization scales a vector so its Euclidean norm (magnitude)
+    /// equals 1. This is useful for preparing vectors for cosine similarity
+    /// calculations.
+    ///
+    /// ## Formula
+    ///
+    /// ```
+    /// normalized[i] = vec[i] / ||vec||
+    /// ```
+    ///
+    /// - Parameter vector: The vector to normalize.
+    /// - Returns: Unit vector (magnitude = 1). Returns original vector if
+    ///   it has zero magnitude.
     static func normalize(_ vector: [Float]) -> [Float] {
         let magnitude = sqrt(vector.reduce(0) { $0 + $1 * $1 })
         guard magnitude > 0 else { return vector }

@@ -3,7 +3,7 @@
 //
 // Lightweight OpenRouter routing configuration without exposing Conduit types.
 
-import Conduit
+import ConduitAdvanced
 import Foundation
 
 /// OpenRouter routing preferences.
@@ -80,7 +80,7 @@ public enum OpenRouterDataCollectionPolicy: String, Sendable, Hashable, CaseIter
 // MARK: - Conduit Mapping
 
 extension OpenRouterProvider {
-    func toConduit() -> Conduit.OpenRouterProvider {
+    func toConduit() -> ConduitAdvanced.OpenRouterProvider {
         switch self {
         case .openai:
             return .openai
@@ -115,7 +115,7 @@ extension OpenRouterProvider {
 }
 
 extension OpenRouterDataCollectionPolicy {
-    func toConduit() -> Conduit.OpenRouterDataCollection {
+    func toConduit() -> ConduitAdvanced.OpenRouterDataCollection {
         switch self {
         case .allow:
             return .allow

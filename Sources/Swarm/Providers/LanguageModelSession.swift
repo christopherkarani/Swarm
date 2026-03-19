@@ -54,12 +54,13 @@ import Foundation
             tools: [ToolSchema],
             options: InferenceOptions
         ) async throws -> InferenceResponse {
-            if !tools.isEmpty {
-                throw AgentError.toolCallingRequiresCloudProvider
+            try await LanguageModelSessionToolCallingEmulation.generateResponse(
+                prompt: prompt,
+                tools: tools,
+                options: options
+            ) { toolPrompt, options in
+                try await self.generate(prompt: toolPrompt, options: options)
             }
-
-            let content = try await generate(prompt: prompt, options: options)
-            return InferenceResponse(content: content, toolCalls: [], finishReason: .completed)
         }
     }
 #endif
