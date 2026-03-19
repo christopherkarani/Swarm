@@ -5,7 +5,15 @@ import Foundation
 ///
 /// This adapter keeps tool execution in Swarm by returning tool calls
 /// upstream, avoiding Conduit's internal ToolExecutor.
-struct ConduitInferenceProvider<Provider: Conduit.TextGenerator>: InferenceProvider, ToolCallStreamingInferenceProvider {
+struct ConduitInferenceProvider<Provider: Conduit.TextGenerator>: InferenceProvider,
+    ToolCallStreamingInferenceProvider,
+    CapabilityReportingInferenceProvider,
+    ConversationInferenceProvider,
+    StructuredOutputInferenceProvider,
+    StructuredOutputConversationInferenceProvider,
+    StreamingConversationInferenceProvider,
+    ToolCallStreamingConversationInferenceProvider
+{
     init(
         provider: Provider,
         model: Provider.ModelID,
@@ -21,6 +29,15 @@ struct ConduitInferenceProvider<Provider: Conduit.TextGenerator>: InferenceProvi
         return try await provider.generate(prompt, model: model, config: config)
     }
 
+    var capabilities: InferenceProviderCapabilities {
+        [
+            .conversationMessages,
+            .nativeToolCalling,
+            .streamingToolCalls,
+            .structuredOutputs,
+        ]
+    }
+
     func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
         let config: Conduit.GenerateConfig
         do {
@@ -33,6 +50,38 @@ struct ConduitInferenceProvider<Provider: Conduit.TextGenerator>: InferenceProvi
         return provider.stream(prompt, model: model, config: config)
     }
 
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        let config = try apply(options: options, to: baseConfig)
+        let conduitMessages = try Self.conduitMessages(from: messages)
+        let result = try await provider.generate(messages: conduitMessages, model: model, config: config)
+        return result.text
+    }
+
+    func generateStructured(
+        prompt: String,
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        var structuredOptions = options
+        structuredOptions.structuredOutput = request
+        let config = try apply(options: structuredOptions, to: baseConfig)
+        let text = try await provider.generate(prompt, model: model, config: config)
+        return try StructuredOutputParser.parse(text, request: request, source: .providerNative)
+    }
+
+    func generateStructured(
+        messages: [InferenceMessage],
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        var structuredOptions = options
+        structuredOptions.structuredOutput = request
+        let config = try apply(options: structuredOptions, to: baseConfig)
+        let conduitMessages = try Self.conduitMessages(from: messages)
+        let result = try await provider.generate(messages: conduitMessages, model: model, config: config)
+        return try StructuredOutputParser.parse(result.text, request: request, source: .providerNative)
+    }
+
     func generateWithToolCalls(
         prompt: String,
         tools: [ToolSchema],
@@ -43,11 +92,68 @@ struct ConduitInferenceProvider<Provider: Conduit.TextGenerator>: InferenceProvi
         config = config.tools(toolDefinitions)
 
         if !tools.isEmpty, let toolChoice = options.toolChoice {
-            config = config.toolChoice(toolChoice.toConduitToolChoice())
+            let conduitToolChoice: Conduit.ToolChoice = switch toolChoice {
+                case .auto:
+                    .auto
+                case .none:
+                    .none
+                case .required:
+                    .required
+                case .specific(let toolName):
+                    .tool(name: toolName)
+                }
+            config = config.toolChoice(conduitToolChoice)
         }
 
         let result = try await provider.generate(
             messages: [Conduit.Message.user(prompt)],
+            model: model,
+            config: config
+        )
+
+        let parsedToolCalls = try ConduitToolCallConverter.toParsedToolCalls(result.toolCalls)
+        let finishReason = mapFinishReason(result.finishReason, toolCalls: parsedToolCalls)
+        let usage = result.usage.map { usage in
+            TokenUsage(
+                inputTokens: usage.promptTokens,
+                outputTokens: usage.completionTokens
+            )
+        }
+
+        return InferenceResponse(
+            content: result.text.isEmpty ? nil : result.text,
+            toolCalls: parsedToolCalls,
+            finishReason: finishReason,
+            usage: usage
+        )
+    }
+
+    func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse {
+        var config = try apply(options: options, to: baseConfig)
+        let toolDefinitions = try ConduitToolSchemaConverter.toolDefinitions(from: tools)
+        config = config.tools(toolDefinitions)
+
+        if !tools.isEmpty, let toolChoice = options.toolChoice {
+            let conduitToolChoice: Conduit.ToolChoice = switch toolChoice {
+                case .auto:
+                    .auto
+                case .none:
+                    .none
+                case .required:
+                    .required
+                case .specific(let toolName):
+                    .tool(name: toolName)
+                }
+            config = config.toolChoice(conduitToolChoice)
+        }
+
+        let conduitMessages = try Self.conduitMessages(from: messages)
+        let result = try await provider.generate(
+            messages: conduitMessages,
             model: model,
             config: config
         )
@@ -80,7 +186,17 @@ struct ConduitInferenceProvider<Provider: Conduit.TextGenerator>: InferenceProvi
             config = config.tools(toolDefinitions)
 
             if !tools.isEmpty, let toolChoice = options.toolChoice {
-                config = config.toolChoice(toolChoice.toConduitToolChoice())
+                let conduitToolChoice: Conduit.ToolChoice = switch toolChoice {
+                    case .auto:
+                        .auto
+                    case .none:
+                        .none
+                    case .required:
+                        .required
+                    case .specific(let toolName):
+                        .tool(name: toolName)
+                    }
+                config = config.toolChoice(conduitToolChoice)
             }
 
             var lastFragmentByCallId: [String: String] = [:]
@@ -130,11 +246,179 @@ struct ConduitInferenceProvider<Provider: Conduit.TextGenerator>: InferenceProvi
         }
     }
 
+    func stream(
+        messages: [InferenceMessage],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            let config = try apply(options: options, to: baseConfig)
+            let conduitMessages = try Self.conduitMessages(from: messages)
+            let stream = provider.streamWithMetadata(messages: conduitMessages, model: model, config: config)
+
+            for try await chunk in stream {
+                if !chunk.text.isEmpty {
+                    continuation.yield(chunk.text)
+                }
+            }
+
+            continuation.finish()
+        }
+    }
+
+    func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            var config = try apply(options: options, to: baseConfig)
+            let toolDefinitions = try ConduitToolSchemaConverter.toolDefinitions(from: tools)
+            config = config.tools(toolDefinitions)
+
+            if !tools.isEmpty, let toolChoice = options.toolChoice {
+                let conduitToolChoice: Conduit.ToolChoice = switch toolChoice {
+                    case .auto:
+                        .auto
+                    case .none:
+                        .none
+                    case .required:
+                        .required
+                    case .specific(let toolName):
+                        .tool(name: toolName)
+                    }
+                config = config.toolChoice(conduitToolChoice)
+            }
+
+            var lastFragmentByCallId: [String: String] = [:]
+            let conduitMessages = try Self.conduitMessages(from: messages)
+            let chunkStream = provider.streamWithMetadata(
+                messages: conduitMessages,
+                model: model,
+                config: config
+            )
+
+            for try await chunk in chunkStream {
+                if !chunk.text.isEmpty {
+                    continuation.yield(.outputChunk(chunk.text))
+                }
+
+                if let partial = chunk.partialToolCall {
+                    if lastFragmentByCallId[partial.id] != partial.argumentsFragment {
+                        lastFragmentByCallId[partial.id] = partial.argumentsFragment
+                        continuation.yield(.toolCallPartial(
+                            PartialToolCallUpdate(
+                                providerCallId: partial.id,
+                                toolName: partial.toolName,
+                                index: partial.index,
+                                argumentsFragment: partial.argumentsFragment
+                            )
+                        ))
+                    }
+                }
+
+                if let usage = chunk.usage {
+                    continuation.yield(.usage(
+                        TokenUsage(
+                            inputTokens: usage.promptTokens,
+                            outputTokens: usage.completionTokens
+                        )
+                    ))
+                }
+
+                if let completed = chunk.completedToolCalls, !completed.isEmpty {
+                    let parsedToolCalls = try ConduitToolCallConverter.toParsedToolCalls(completed)
+                    continuation.yield(.toolCallsCompleted(parsedToolCalls))
+                }
+            }
+
+            continuation.finish()
+        }
+    }
+
     // MARK: - Private
 
     private let provider: Provider
     private let model: Provider.ModelID
     private let baseConfig: Conduit.GenerateConfig
+
+    private static func conduitMessages(from messages: [InferenceMessage]) throws -> [Conduit.Message] {
+        let toolNamesByCallID = Dictionary(
+            uniqueKeysWithValues: messages
+                .flatMap(\.toolCalls)
+                .compactMap { call in
+                    call.id.map { ($0, call.name) }
+                }
+        )
+
+        return try messages.map { message in
+            try conduitMessage(from: message, toolNamesByCallID: toolNamesByCallID)
+        }
+    }
+
+    private static func conduitMessage(
+        from message: InferenceMessage,
+        toolNamesByCallID: [String: String]
+    ) throws -> Conduit.Message {
+        switch message.role {
+        case .system:
+            return .system(message.content)
+        case .user:
+            return .user(message.content)
+        case .assistant:
+            let toolCalls = try message.toolCalls.map(conduitToolCall(from:))
+            if !toolCalls.isEmpty {
+                return .assistant(message.content, toolCalls: toolCalls)
+            }
+            return .assistant(message.content)
+        case .tool:
+            guard let toolCallID = message.toolCallID else {
+                throw AgentError.generationFailed(reason: "Structured tool message is missing toolCallID")
+            }
+
+            let toolName = message.name ?? toolNamesByCallID[toolCallID]
+            guard let toolName else {
+                throw AgentError.generationFailed(reason: "Structured tool message is missing tool name for \(toolCallID)")
+            }
+
+            return .toolOutput(
+                Conduit.Transcript.ToolOutput(
+                    id: toolCallID,
+                    toolName: toolName,
+                    segments: [.text(.init(content: message.content))]
+                )
+            )
+        }
+    }
+
+    private static func conduitToolCall(from toolCall: InferenceMessage.ToolCall) throws -> Conduit.Transcript.ToolCall {
+        let jsonObject = try jsonObject(from: .dictionary(toolCall.arguments))
+        let data = try JSONSerialization.data(withJSONObject: jsonObject, options: [.sortedKeys])
+        let json = String(decoding: data, as: UTF8.self)
+        return try Conduit.Transcript.ToolCall(
+            id: toolCall.id ?? UUID().uuidString,
+            toolName: toolCall.name,
+            argumentsJSON: json
+        )
+    }
+
+    private static func jsonObject(from value: SendableValue) throws -> Any {
+        switch value {
+        case .null:
+            return NSNull()
+        case let .bool(bool):
+            return bool
+        case let .int(int):
+            return int
+        case let .double(double):
+            return double
+        case let .string(string):
+            return string
+        case let .array(elements):
+            return try elements.map(jsonObject(from:))
+        case let .dictionary(dictionary):
+            return try dictionary.mapValues { try jsonObject(from: $0) }
+        }
+    }
 
     private func apply(options: InferenceOptions, to config: Conduit.GenerateConfig) throws -> Conduit.GenerateConfig {
         var updated = config
@@ -173,6 +457,10 @@ struct ConduitInferenceProvider<Provider: Conduit.TextGenerator>: InferenceProvi
             updated = updated.parallelToolCalls(parallelToolCalls)
         }
 
+        if let structuredOutput = options.structuredOutput {
+            updated = updated.responseFormat(try Self.conduitResponseFormat(from: structuredOutput.format))
+        }
+
         if let providerSettings = options.providerSettings, !providerSettings.isEmpty {
             updated = try applyProviderRuntimeSettings(providerSettings, to: updated)
         }
@@ -196,6 +484,27 @@ struct ConduitInferenceProvider<Provider: Conduit.TextGenerator>: InferenceProvi
         }
 
         return config
+    }
+
+    private static func conduitResponseFormat(
+        from format: StructuredOutputFormat
+    ) throws -> Conduit.ResponseFormat {
+        switch format {
+        case .jsonObject:
+            return .jsonObject
+        case .jsonSchema(let name, let schemaJSON):
+            guard let data = schemaJSON.data(using: .utf8) else {
+                throw AgentError.generationFailed(reason: "Structured output schema is not valid UTF-8")
+            }
+            do {
+                let schema = try JSONDecoder().decode(Conduit.GenerationSchema.self, from: data)
+                return .jsonSchema(name: name, schema: schema)
+            } catch {
+                throw AgentError.generationFailed(
+                    reason: "Failed to decode structured output schema for Conduit: \(error.localizedDescription)"
+                )
+            }
+        }
     }
 
 
@@ -263,23 +572,6 @@ struct ConduitInferenceProvider<Provider: Conduit.TextGenerator>: InferenceProvi
             return .cancelled
         default:
             return .completed
-        }
-    }
-}
-
-// MARK: - ToolChoice Mapping
-
-private extension ToolChoice {
-    func toConduitToolChoice() -> Conduit.ToolChoice {
-        switch self {
-        case .auto:
-            return .auto
-        case .none:
-            return .none
-        case .required:
-            return .required
-        case .specific(let toolName):
-            return .tool(name: toolName)
         }
     }
 }

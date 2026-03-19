@@ -108,9 +108,9 @@ struct StreamingEventTests {
 
         for try await _ in agent.stream("Start") {}
 
-        let toolCallCount = await mockProvider.toolCallCalls.count
+        let toolCallCount = await mockProvider.toolCallMessageCalls.count
         let streamCount = await mockProvider.streamCalls.count
-        let generateCount = await mockProvider.generateCallCount
+        let generateCount = await mockProvider.generateMessageCalls.count
 
         #expect(toolCallCount == 1)
         #expect(streamCount == 0)
@@ -133,9 +133,9 @@ struct StreamingEventTests {
 
         for try await _ in agent.stream("Start") {}
 
-        let toolCallCount = await mockProvider.toolCallCalls.count
+        let toolCallCount = await mockProvider.toolCallMessageCalls.count
         let streamCount = await mockProvider.streamCalls.count
-        let generateCount = await mockProvider.generateCallCount
+        let generateCount = await mockProvider.generateMessageCalls.count
 
         #expect(toolCallCount == 1)
         #expect(streamCount == 0)

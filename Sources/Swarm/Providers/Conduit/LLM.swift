@@ -18,6 +18,7 @@ public struct LLM: Sendable, InferenceProvider {
         case openAI(OpenAIConfig)
         case anthropic(AnthropicConfig)
         case openRouter(OpenRouterConfig)
+        case minimax(MiniMaxConfig)
         case ollama(OllamaConfig)
     }
 
@@ -67,6 +68,29 @@ public struct LLM: Sendable, InferenceProvider {
         model: String = "anthropic/claude-3.5-sonnet"
     ) -> LLM {
         openRouter(apiKey: key, model: model)
+    }
+
+    /// Creates a MiniMax-backed `LLM` provider via OpenRouter.
+    ///
+    /// MiniMax models are routed through OpenRouter using the `minimax/<model>` namespace.
+    /// The `apiKey` should be your OpenRouter API key.
+    ///
+    /// - Parameters:
+    ///   - apiKey: Your OpenRouter API key.
+    ///   - model: The MiniMax model identifier, e.g. `"minimax-01"`.
+    ///     This is automatically prefixed with `"minimax/"` when needed.
+    public static func minimax(
+        apiKey: String,
+        model: String = "minimax-01"
+    ) -> LLM {
+        LLM(kind: .minimax(MiniMaxConfig(apiKey: apiKey, model: model)))
+    }
+
+    public static func minimax(
+        key: String,
+        model: String = "minimax-01"
+    ) -> LLM {
+        minimax(apiKey: key, model: model)
     }
 
     /// Creates an Ollama-backed `LLM` provider for local inference.
@@ -168,6 +192,26 @@ public struct LLM: Sendable, InferenceProvider {
                 model: modelID,
                 baseConfig: config.advanced.baseConfig
             )
+        case let .minimax(config):
+            #if CONDUIT_TRAIT_MINIMAX
+                let provider = MiniMaxProvider(apiKey: config.apiKey)
+                let modelID = ModelIdentifier.miniMax(config.model)
+                return ConduitInferenceProvider(
+                    provider: provider,
+                    model: modelID,
+                    baseConfig: config.advanced.baseConfig
+                )
+            #else
+                let routedModel = config.model.hasPrefix("minimax/") ? config.model : "minimax/\(config.model)"
+                let configuration = OpenAIConfiguration.openRouter(apiKey: config.apiKey)
+                let provider = OpenAIProvider(configuration: configuration)
+                let modelID = OpenAIModelID.openRouter(routedModel)
+                return ConduitInferenceProvider(
+                    provider: provider,
+                    model: modelID,
+                    baseConfig: config.advanced.baseConfig
+                )
+            #endif
         case let .ollama(config):
             let configuration = OpenAIConfiguration.ollama(
                 host: config.settings.host,
@@ -207,6 +251,80 @@ extension LLM: ToolCallStreamingInferenceProvider {
     }
 }
 
+extension LLM: CapabilityReportingInferenceProvider {
+    public var capabilities: InferenceProviderCapabilities {
+        var capabilities = InferenceProviderCapabilities.resolved(for: makeProvider())
+        capabilities.insert(.conversationMessages)
+        return capabilities
+    }
+}
+
+extension LLM: ConversationInferenceProvider {
+    public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        let provider = makeProvider()
+        if let conversationProvider = provider as? any ConversationInferenceProvider {
+            return try await conversationProvider.generate(messages: messages, options: options)
+        }
+        return try await provider.generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    }
+
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse {
+        let provider = makeProvider()
+        if let conversationProvider = provider as? any ConversationInferenceProvider {
+            return try await conversationProvider.generateWithToolCalls(
+                messages: messages,
+                tools: tools,
+                options: options
+            )
+        }
+        return try await provider.generateWithToolCalls(
+            prompt: InferenceMessage.flattenPrompt(messages),
+            tools: tools,
+            options: options
+        )
+    }
+}
+
+extension LLM: StreamingConversationInferenceProvider {
+    public func stream(
+        messages: [InferenceMessage],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        let provider = makeProvider()
+        if let conversationProvider = provider as? any StreamingConversationInferenceProvider {
+            return conversationProvider.stream(messages: messages, options: options)
+        }
+        return provider.stream(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    }
+}
+
+extension LLM: ToolCallStreamingConversationInferenceProvider {
+    public func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        let provider = makeProvider()
+        if let conversationProvider = provider as? any ToolCallStreamingConversationInferenceProvider {
+            return conversationProvider.streamWithToolCalls(messages: messages, tools: tools, options: options)
+        }
+        guard let promptProvider = provider as? any ToolCallStreamingInferenceProvider else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: AgentError.generationFailed(reason: "Provider does not support tool-call streaming"))
+            }
+        }
+        return promptProvider.streamWithToolCalls(
+            prompt: InferenceMessage.flattenPrompt(messages),
+            tools: tools,
+            options: options
+        )
+    }
+}
+
 // MARK: - Dot-syntax Entry Points
 
 public extension InferenceProvider where Self == LLM {
@@ -232,6 +350,14 @@ public extension InferenceProvider where Self == LLM {
 
     static func openRouter(key: String, model: String = "anthropic/claude-3.5-sonnet") -> LLM {
         LLM.openRouter(key: key, model: model)
+    }
+
+    static func minimax(apiKey: String, model: String = "minimax-01") -> LLM {
+        LLM.minimax(apiKey: apiKey, model: model)
+    }
+
+    static func minimax(key: String, model: String = "minimax-01") -> LLM {
+        LLM.minimax(key: key, model: model)
     }
 
     /// Creates an Ollama-backed `LLM` provider for local inference.
@@ -304,6 +430,17 @@ extension LLM {
     }
 
     struct OpenRouterConfig: Sendable {
+        var apiKey: String
+        var model: String
+        var advanced: AdvancedOptions = .default
+
+        init(apiKey: String, model: String) {
+            self.apiKey = apiKey
+            self.model = model
+        }
+    }
+
+    struct MiniMaxConfig: Sendable {
         var apiKey: String
         var model: String
         var advanced: AdvancedOptions = .default

@@ -37,9 +37,8 @@ struct MembraneIntegrationTests {
 
         _ = try await agent.run("needle-user-input", session: session, observer: nil)
 
-        let lastCall = await provider.toolCallCalls.last
-        let prompt = try #require(lastCall?.prompt)
-        let plannedTools = try #require(lastCall?.tools)
+        let prompt = try #require(await lastToolPrompt(from: provider))
+        let plannedTools = try #require(await lastToolSchemas(from: provider))
 
         #expect(!prompt.contains("[... context truncated for strict4k budget ...]"))
 
@@ -93,8 +92,7 @@ struct MembraneIntegrationTests {
 
         _ = try await agent.run("hello")
 
-        let lastCall = try #require(await provider.toolCallCalls.last)
-        let providerSettings = try #require(lastCall.options.providerSettings)
+        let providerSettings = try #require(await lastToolProviderSettings(from: provider))
 
         #expect(providerSettings["conduit.runtime.policy.kv_quantization.enabled"] == .bool(true))
         #expect(providerSettings["conduit.runtime.policy.attention_sinks.enabled"] == .bool(false))
@@ -187,6 +185,36 @@ private func defaultAdapterToolSchemas() -> [ToolSchema] {
     return names.map { name in
         ToolSchema(name: name, description: "test \(name)", parameters: [])
     }
+}
+
+private func lastToolPrompt(from provider: MockInferenceProvider) async -> String? {
+    if let lastCall = await provider.toolCallCalls.last {
+        return lastCall.prompt
+    }
+    if let lastCall = await provider.toolCallMessageCalls.last {
+        return InferenceMessage.flattenPrompt(lastCall.messages)
+    }
+    return nil
+}
+
+private func lastToolSchemas(from provider: MockInferenceProvider) async -> [ToolSchema]? {
+    if let lastCall = await provider.toolCallCalls.last {
+        return lastCall.tools
+    }
+    if let lastCall = await provider.toolCallMessageCalls.last {
+        return lastCall.tools
+    }
+    return nil
+}
+
+private func lastToolProviderSettings(from provider: MockInferenceProvider) async -> [String: SendableValue]? {
+    if let lastCall = await provider.toolCallCalls.last {
+        return lastCall.options.providerSettings
+    }
+    if let lastCall = await provider.toolCallMessageCalls.last {
+        return lastCall.options.providerSettings
+    }
+    return nil
 }
 
 private func makeLargeSession() async throws -> InMemorySession {

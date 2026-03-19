@@ -125,6 +125,30 @@ public enum ConduitProviderSelection: Sendable, InferenceProvider {
         return openRouter(apiKey: apiKey, model: routedModel)
     }
 
+    /// Creates a Conduit-backed MiniMax provider via OpenRouter.
+    ///
+    /// MiniMax models are accessed through OpenRouter using the `minimax/<model>` namespace.
+    /// The `apiKey` should be your OpenRouter API key.
+    ///
+    /// - Parameters:
+    ///   - apiKey: Your OpenRouter API key.
+    ///   - model: The MiniMax model identifier, e.g. `"minimax-01"`.
+    ///     This is automatically prefixed with `"minimax/"` when needed.
+    public static func minimax(
+        apiKey: String,
+        model: String = "minimax-01"
+    ) -> ConduitProviderSelection {
+        #if CONDUIT_TRAIT_MINIMAX
+            let provider = MiniMaxProvider(apiKey: apiKey)
+            let modelID = ModelIdentifier.miniMax(model)
+            let bridge = ConduitInferenceProvider(provider: provider, model: modelID)
+            return .provider(bridge)
+        #else
+            let routedModel = model.hasPrefix("minimax/") ? model : "minimax/\(model)"
+            return openRouter(apiKey: apiKey, model: routedModel)
+        #endif
+    }
+
     /// Exposes the underlying inference provider.
     public func makeProvider() -> any InferenceProvider {
         switch self {
@@ -176,6 +200,96 @@ public enum ConduitProviderSelection: Sendable, InferenceProvider {
         let modelID = OpenAIModelID.ollama(model)
         let bridge = ConduitInferenceProvider(provider: provider, model: modelID)
         return .provider(bridge)
+    }
+}
+
+extension ConduitProviderSelection: CapabilityReportingInferenceProvider {
+    public var capabilities: InferenceProviderCapabilities {
+        var capabilities = InferenceProviderCapabilities.resolved(for: makeProvider())
+        capabilities.insert(.conversationMessages)
+        return capabilities
+    }
+}
+
+extension ConduitProviderSelection: ConversationInferenceProvider {
+    public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        let provider = makeProvider()
+        if let conversationProvider = provider as? any ConversationInferenceProvider {
+            return try await conversationProvider.generate(messages: messages, options: options)
+        }
+        return try await provider.generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    }
+
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse {
+        let provider = makeProvider()
+        if let conversationProvider = provider as? any ConversationInferenceProvider {
+            return try await conversationProvider.generateWithToolCalls(
+                messages: messages,
+                tools: tools,
+                options: options
+            )
+        }
+        return try await provider.generateWithToolCalls(
+            prompt: InferenceMessage.flattenPrompt(messages),
+            tools: tools,
+            options: options
+        )
+    }
+}
+
+extension ConduitProviderSelection: StreamingConversationInferenceProvider {
+    public func stream(
+        messages: [InferenceMessage],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        let provider = makeProvider()
+        if let conversationProvider = provider as? any StreamingConversationInferenceProvider {
+            return conversationProvider.stream(messages: messages, options: options)
+        }
+        return provider.stream(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    }
+}
+
+extension ConduitProviderSelection: ToolCallStreamingInferenceProvider {
+    public func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        let provider = makeProvider()
+        guard let streaming = provider as? any ToolCallStreamingInferenceProvider else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: AgentError.generationFailed(reason: "Provider does not support tool-call streaming"))
+            }
+        }
+        return streaming.streamWithToolCalls(prompt: prompt, tools: tools, options: options)
+    }
+}
+
+extension ConduitProviderSelection: ToolCallStreamingConversationInferenceProvider {
+    public func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        let provider = makeProvider()
+        if let conversationProvider = provider as? any ToolCallStreamingConversationInferenceProvider {
+            return conversationProvider.streamWithToolCalls(messages: messages, tools: tools, options: options)
+        }
+        guard let promptProvider = provider as? any ToolCallStreamingInferenceProvider else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: AgentError.generationFailed(reason: "Provider does not support tool-call streaming"))
+            }
+        }
+        return promptProvider.streamWithToolCalls(
+            prompt: InferenceMessage.flattenPrompt(messages),
+            tools: tools,
+            options: options
+        )
     }
 }
 
@@ -233,24 +347,11 @@ public extension InferenceProvider where Self == ConduitProviderSelection {
     ) -> ConduitProviderSelection {
         ConduitProviderSelection.gemini(apiKey: apiKey, model: model)
     }
-}
 
-// MARK: - Tool-call streaming forwarding
-
-extension ConduitProviderSelection: ToolCallStreamingInferenceProvider {
-    public func streamWithToolCalls(
-        prompt: String,
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        guard let streamingProvider = makeProvider() as? any ToolCallStreamingInferenceProvider else {
-            return StreamHelper.makeTrackedStream { continuation in
-                continuation.finish(throwing: AgentError.generationFailed(
-                    reason: "Underlying provider does not support tool-call streaming"
-                ))
-            }
-        }
-
-        return streamingProvider.streamWithToolCalls(prompt: prompt, tools: tools, options: options)
+    static func minimax(
+        apiKey: String,
+        model: String = "minimax-01"
+    ) -> ConduitProviderSelection {
+        ConduitProviderSelection.minimax(apiKey: apiKey, model: model)
     }
 }

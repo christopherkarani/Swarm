@@ -26,7 +26,8 @@ struct LanguageModelSessionToolPromptTests {
         let basePrompt = "What is 2+2?"
         let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
             basePrompt: basePrompt,
-            tools: [tool]
+            tools: [tool],
+            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(prompt.contains("Available tools:"))
@@ -42,11 +43,14 @@ struct LanguageModelSessionToolPromptTests {
         let tool = ToolSchema(name: "test", description: "Test tool", parameters: [])
         let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
             basePrompt: "Hello",
-            tools: [tool]
+            tools: [tool],
+            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
         )
-        
+
+        #expect(prompt.contains(#""swarm_tool_call""#))
+        #expect(prompt.contains(#""nonce": "nonce-123""#))
         #expect(prompt.contains("\"tool\":"))
-        #expect(prompt.contains("\"arguments\":"))
+        #expect(prompt.contains("only a single JSON object"))
     }
     
     @Test("Tool prompt with multiple tools")
@@ -69,7 +73,8 @@ struct LanguageModelSessionToolPromptTests {
         
         let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
             basePrompt: "What is the weather in London?",
-            tools: [calculator, weather]
+            tools: [calculator, weather],
+            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(prompt.contains("calculator:"))
@@ -83,7 +88,8 @@ struct LanguageModelSessionToolPromptTests {
         let basePrompt = "Hello, how are you?"
         let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
             basePrompt: basePrompt,
-            tools: []
+            tools: [],
+            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(prompt == basePrompt)
@@ -105,7 +111,8 @@ struct LanguageModelSessionToolPromptTests {
         
         let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
             basePrompt: "Test",
-            tools: [tool]
+            tools: [tool],
+            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(prompt.contains("integer"))
@@ -116,16 +123,94 @@ struct LanguageModelSessionToolPromptTests {
     }
 }
 
+// MARK: - Tool Calling Emulation Tests
+
+@Suite("LanguageModelSession Tool Calling Emulation Tests")
+struct LanguageModelSessionToolCallingEmulationTests {
+    @Test("No-tool emulation preserves the original prompt and returns completed content")
+    func noToolEmulationPreservesPrompt() async throws {
+        let basePrompt = "Say hi"
+
+        let response = try await LanguageModelSessionToolCallingEmulation.generateResponse(
+            prompt: basePrompt,
+            tools: [],
+            options: .default
+        ) { prompt, _ in
+            #expect(prompt == basePrompt)
+            return "hi"
+        }
+
+        #expect(response.content == "hi")
+        #expect(response.toolCalls.isEmpty)
+        #expect(response.finishReason == .completed)
+    }
+
+    @Test("Valid tool output maps to tool calls with toolCall finish reason")
+    func validToolOutputMapsToToolCalls() {
+        let tools = [
+            ToolSchema(name: "lookup", description: "Look up information", parameters: []),
+        ]
+        let context = LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+
+        let response = LanguageModelSessionToolCallingEmulation.makeInferenceResponse(
+            from: #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":{"query":"swift"}}}"#,
+            availableTools: tools,
+            context: context
+        )
+
+        #expect(response.content == nil)
+        #expect(response.finishReason == .toolCall)
+        #expect(response.toolCalls.count == 1)
+        #expect(response.toolCalls.first?.name == "lookup")
+        #expect(response.toolCalls.first?.arguments["query"] == .string("swift"))
+    }
+
+    @Test("Malformed tool output fails safely as plain content")
+    func malformedToolOutputFailsSafely() {
+        let tools = [
+            ToolSchema(name: "lookup", description: "Look up information", parameters: []),
+        ]
+        let context = LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+
+        let response = LanguageModelSessionToolCallingEmulation.makeInferenceResponse(
+            from: #"{"tool":"lookup","arguments":{"query":"swift""#,
+            availableTools: tools,
+            context: context
+        )
+
+        #expect(response.content == #"{"tool":"lookup","arguments":{"query":"swift""#)
+        #expect(response.toolCalls.isEmpty)
+        #expect(response.finishReason == .completed)
+    }
+
+    @Test("Plain non-tool output fails safely as completed content")
+    func plainOutputFailsSafely() {
+        let tools = [
+            ToolSchema(name: "lookup", description: "Look up information", parameters: []),
+        ]
+        let context = LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+
+        let response = LanguageModelSessionToolCallingEmulation.makeInferenceResponse(
+            from: "Here is the answer without a tool.",
+            availableTools: tools,
+            context: context
+        )
+
+        #expect(response.content == "Here is the answer without a tool.")
+        #expect(response.toolCalls.isEmpty)
+        #expect(response.finishReason == .completed)
+    }
+}
+
 // MARK: - Tool Call Parser Tests
 
 @Suite("LanguageModelSession Tool Call Parser Tests")
 struct LanguageModelSessionToolParserTests {
+    private let context = LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+
     @Test("Parse valid JSON tool call")
     func parseValidJSONToolCall() {
-        let response = """
-        I'll help you calculate that.
-        {"tool": "calculator", "arguments": {"expression": "2+2"}}
-        """
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"calculator","arguments":{"expression":"2+2"}}}"#
         
         let availableTools = [
             ToolSchema(name: "calculator", description: "Calc", parameters: [])
@@ -133,7 +218,8 @@ struct LanguageModelSessionToolParserTests {
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: availableTools
+            availableTools: availableTools,
+            context: context
         )
         
         #expect(toolCalls != nil)
@@ -142,11 +228,9 @@ struct LanguageModelSessionToolParserTests {
         #expect(toolCalls?[0].arguments["expression"] == .string("2+2"))
     }
     
-    @Test("Parse tool call with 'name' key instead of 'tool'")
-    func parseToolCallWithNameKey() {
-        let response = """
-        {"name": "weather", "arguments": {"city": "London"}}
-        """
+    @Test("Return nil for plain JSON without Swarm envelope")
+    func plainJSONWithoutEnvelopeIsRejected() {
+        let response = #"{"tool":"weather","arguments":{"city":"London"}}"#
         
         let availableTools = [
             ToolSchema(name: "weather", description: "Weather", parameters: [])
@@ -154,18 +238,16 @@ struct LanguageModelSessionToolParserTests {
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: availableTools
+            availableTools: availableTools,
+            context: context
         )
-        
-        #expect(toolCalls?.first?.name == "weather")
-        #expect(toolCalls?.first?.arguments["city"] == .string("London"))
+
+        #expect(toolCalls == nil)
     }
     
     @Test("Parse tool call with call ID")
     func parseToolCallWithCallId() {
-        let response = """
-        {"id": "call_123", "tool": "search", "arguments": {"query": "Swift"}}
-        """
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","id":"call_123","tool":"search","arguments":{"query":"Swift"}}}"#
         
         let availableTools = [
             ToolSchema(name: "search", description: "Search", parameters: [])
@@ -173,17 +255,60 @@ struct LanguageModelSessionToolParserTests {
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: availableTools
+            availableTools: availableTools,
+            context: context
         )
         
         #expect(toolCalls?.first?.id == "call_123")
     }
+
+    @Test("Parse wrapped tool call with surrounding prose")
+    func parseWrappedToolCallWithProse() {
+        let response = """
+        I'll use the lookup tool.
+        {"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":{"query":"Swift"}}}
+        """
+
+        let availableTools = [
+            ToolSchema(name: "lookup", description: "Lookup", parameters: [])
+        ]
+
+        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+            from: response,
+            availableTools: availableTools,
+            context: context
+        )
+
+        #expect(toolCalls?.count == 1)
+        #expect(toolCalls?.first?.name == "lookup")
+        #expect(toolCalls?.first?.arguments["query"] == .string("Swift"))
+    }
+
+    @Test("Parse wrapped tool call inside markdown fence")
+    func parseWrappedToolCallInsideMarkdownFence() {
+        let response = """
+        ```json
+        {"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":{"query":"Swift"}}}
+        ```
+        """
+
+        let availableTools = [
+            ToolSchema(name: "lookup", description: "Lookup", parameters: [])
+        ]
+
+        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+            from: response,
+            availableTools: availableTools,
+            context: context
+        )
+
+        #expect(toolCalls?.count == 1)
+        #expect(toolCalls?.first?.name == "lookup")
+    }
     
     @Test("Parse tool call with various argument types")
     func parseToolCallWithVariousTypes() {
-        let response = """
-        {"tool": "test", "arguments": {"str": "hello", "num": 42, "float": 3.14, "bool": true, "null": null}}
-        """
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"test","arguments":{"str":"hello","num":42,"float":3.14,"bool":true,"null":null}}}"#
         
         let availableTools = [
             ToolSchema(name: "test", description: "Test", parameters: [])
@@ -191,7 +316,8 @@ struct LanguageModelSessionToolParserTests {
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: availableTools
+            availableTools: availableTools,
+            context: context
         )
         
         #expect(toolCalls?.first?.arguments["str"] == .string("hello"))
@@ -201,9 +327,7 @@ struct LanguageModelSessionToolParserTests {
     
     @Test("Parse tool call with nested arguments")
     func parseToolCallWithNestedArguments() {
-        let response = """
-        {"tool": "createUser", "arguments": {"user": {"name": "Alice", "age": 30}}}
-        """
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"createUser","arguments":{"user":{"name":"Alice","age":30}}}}"#
         
         let availableTools = [
             ToolSchema(name: "createUser", description: "Create user", parameters: [])
@@ -211,7 +335,8 @@ struct LanguageModelSessionToolParserTests {
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: availableTools
+            availableTools: availableTools,
+            context: context
         )
         
         let userDict = toolCalls?.first?.arguments["user"]?.dictionaryValue
@@ -221,9 +346,7 @@ struct LanguageModelSessionToolParserTests {
     
     @Test("Parse tool call with array arguments")
     func parseToolCallWithArrayArguments() {
-        let response = """
-        {"tool": "search", "arguments": {"tags": ["swift", "ai", "ios"]}}
-        """
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"search","arguments":{"tags":["swift","ai","ios"]}}}"#
         
         let availableTools = [
             ToolSchema(name: "search", description: "Search", parameters: [])
@@ -231,7 +354,8 @@ struct LanguageModelSessionToolParserTests {
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: availableTools
+            availableTools: availableTools,
+            context: context
         )
         
         let tags = toolCalls?.first?.arguments["tags"]?.arrayValue
@@ -245,7 +369,8 @@ struct LanguageModelSessionToolParserTests {
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: [ToolSchema(name: "tool", description: "Tool", parameters: [])]
+            availableTools: [ToolSchema(name: "tool", description: "Tool", parameters: [])],
+            context: context
         )
         
         #expect(toolCalls == nil)
@@ -253,9 +378,7 @@ struct LanguageModelSessionToolParserTests {
     
     @Test("Return nil for unknown tool name")
     func returnNilForUnknownToolName() {
-        let response = """
-        {"tool": "unknownTool", "arguments": {}}
-        """
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"unknownTool","arguments":{}}}"#
         
         let availableTools = [
             ToolSchema(name: "knownTool", description: "Known", parameters: [])
@@ -263,7 +386,8 @@ struct LanguageModelSessionToolParserTests {
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: availableTools
+            availableTools: availableTools,
+            context: context
         )
         
         #expect(toolCalls == nil)
@@ -277,7 +401,8 @@ struct LanguageModelSessionToolParserTests {
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: [ToolSchema(name: "test", description: "Test", parameters: [])]
+            availableTools: [ToolSchema(name: "test", description: "Test", parameters: [])],
+            context: context
         )
         
         #expect(toolCalls == nil)
@@ -285,23 +410,51 @@ struct LanguageModelSessionToolParserTests {
     
     @Test("Return nil for JSON without tool name")
     func returnNilForJSONWithoutToolName() {
-        let response = """
-        {"arguments": {"x": 1}}
-        """
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","arguments":{"x":1}}}"#
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: [ToolSchema(name: "test", description: "Test", parameters: [])]
+            availableTools: [ToolSchema(name: "test", description: "Test", parameters: [])],
+            context: context
         )
         
         #expect(toolCalls == nil)
     }
     
+    @Test("Return nil for envelope with wrong nonce")
+    func returnNilForWrongNonce() {
+        let response = #"{"swarm_tool_call":{"nonce":"different","tool":"getTime","arguments":{}}}"#
+
+        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+            from: response,
+            availableTools: [ToolSchema(name: "getTime", description: "Get time", parameters: [])],
+            context: context
+        )
+
+        #expect(toolCalls == nil)
+    }
+
+    @Test("Return nil for multiple wrapped tool envelopes")
+    func returnNilForMultipleWrappedToolEnvelopes() {
+        let response = """
+        First:
+        {"swarm_tool_call":{"nonce":"nonce-123","tool":"getTime","arguments":{}}}
+        Second:
+        {"swarm_tool_call":{"nonce":"nonce-123","tool":"getTime","arguments":{}}}
+        """
+
+        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+            from: response,
+            availableTools: [ToolSchema(name: "getTime", description: "Get time", parameters: [])],
+            context: context
+        )
+
+        #expect(toolCalls == nil)
+    }
+
     @Test("Parse tool call with empty arguments")
     func parseToolCallWithEmptyArguments() {
-        let response = """
-        {"tool": "getTime", "arguments": {}}
-        """
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"getTime","arguments":{}}}"#
         
         let availableTools = [
             ToolSchema(name: "getTime", description: "Get time", parameters: [])
@@ -309,7 +462,8 @@ struct LanguageModelSessionToolParserTests {
         
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: response,
-            availableTools: availableTools
+            availableTools: availableTools,
+            context: context
         )
         
         #expect(toolCalls?.first?.name == "getTime")
@@ -327,7 +481,8 @@ struct LanguageModelSessionIntegrationTests {
         // by testing the helper types directly
         let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
             from: "Just a normal response",
-            availableTools: []
+            availableTools: [],
+            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(toolCalls == nil)

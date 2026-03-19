@@ -227,4 +227,27 @@
         /// The SwiftData backend used for persistence.
         private let backend: SwiftDataBackend
     }
+
+    extension PersistentSession: ConversationBranchingSession {
+        package func branchConversationSession() async throws -> any Session {
+            let branched = PersistentSession(sessionId: UUID().uuidString, backend: backend)
+            let originalItems = try await getAllItems()
+            let items = originalItems.map { item in
+                var metadata = item.metadata
+                if metadata[SwarmTranscriptCodec.entryIDKey] == nil {
+                    metadata[SwarmTranscriptCodec.entryIDKey] = item.id.uuidString
+                }
+
+                return MemoryMessage(
+                    id: UUID(),
+                    role: item.role,
+                    content: item.content,
+                    timestamp: item.timestamp,
+                    metadata: metadata
+                )
+            }
+            try await branched.addItems(items)
+            return branched
+        }
+    }
 #endif

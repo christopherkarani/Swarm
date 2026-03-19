@@ -74,13 +74,13 @@ struct SessionIntegrationTests {
         _ = try await agent.run("Do you remember my name?", session: session)
 
         // Verify the second call received the session history in the prompt
-        let generateCalls = await mockProvider.generateCalls
-        #expect(generateCalls.count == 2)
+        let messageCalls = await mockProvider.generateMessageCalls
+        #expect(messageCalls.count == 2)
 
-        // The second prompt should contain conversation history with the user's previous input
-        let secondPrompt = generateCalls[1].prompt
-        #expect(secondPrompt.contains("Alice"))
-        #expect(secondPrompt.contains("My name is Alice"))
+        // The second request should contain conversation history with the user's previous input
+        let secondMessages = messageCalls[1].messages
+        #expect(secondMessages.contains { $0.content.contains("Alice") })
+        #expect(secondMessages.contains { $0.content.contains("My name is Alice") })
     }
 
     // MARK: - Multiple Agents Sharing Session Tests
@@ -121,10 +121,10 @@ struct SessionIntegrationTests {
         #expect(items.count == 4)
 
         // Verify agent 2 received the history from agent 1
-        let agent2Calls = await mockProvider2.generateCalls
+        let agent2Calls = await mockProvider2.generateMessageCalls
         #expect(agent2Calls.count == 1)
-        let agent2Prompt = agent2Calls[0].prompt
-        #expect(agent2Prompt.contains("calculate"))
+        let agent2Messages = agent2Calls[0].messages
+        #expect(agent2Messages.contains { $0.content.contains("calculate") })
     }
 
     // MARK: - Session Limits Tests
@@ -309,18 +309,20 @@ struct SessionIntegrationTests {
         _ = try await agent.run("What is my name?", session: sessionBob)
 
         // Verify prompts contain correct session context
-        let generateCalls = await mockProvider.generateCalls
-        #expect(generateCalls.count == 4)
+        let messageCalls = await mockProvider.generateMessageCalls
+        #expect(messageCalls.count == 4)
 
         // Third call (Alice asking) should contain "Alice" in history
-        let aliceSecondPrompt = generateCalls[2].prompt
-        #expect(aliceSecondPrompt.contains("Alice"))
-        #expect(!aliceSecondPrompt.contains("Bob"))
+        let aliceSecondMessages = messageCalls[2].messages
+        let aliceCombined = aliceSecondMessages.map(\.content).joined(separator: "\n")
+        #expect(aliceCombined.contains("Alice"))
+        #expect(!aliceCombined.contains("Bob"))
 
         // Fourth call (Bob asking) should contain "Bob" in history
-        let bobSecondPrompt = generateCalls[3].prompt
-        #expect(bobSecondPrompt.contains("Bob"))
-        #expect(!bobSecondPrompt.contains("Alice"))
+        let bobSecondMessages = messageCalls[3].messages
+        let bobCombined = bobSecondMessages.map(\.content).joined(separator: "\n")
+        #expect(bobCombined.contains("Bob"))
+        #expect(!bobCombined.contains("Alice"))
     }
 
     // MARK: - Tool Calls with Session Tests
@@ -370,13 +372,25 @@ struct SessionIntegrationTests {
         // Verify result
         #expect(result.output == "The result is 4")
 
-        // Verify session contains the conversation (user + assistant)
+        // Verify session stores the replayable transcript shape
         let items = try await session.getAllItems()
-        #expect(items.count == 2)
+        #expect(items.count == 4)
         #expect(items[0].role == .user)
         #expect(items[0].content == "What is 2+2?")
         #expect(items[1].role == .assistant)
-        #expect(items[1].content == "The result is 4")
+        #expect(items[2].role == .tool)
+        #expect(items[2].content == "4")
+        #expect(items[3].role == .assistant)
+        #expect(items[3].content == "The result is 4")
+
+        let transcript = SwarmTranscript(memoryMessages: items)
+        try transcript.validateReplayCompatibility()
+        #expect(transcript.entries.count == 4)
+        #expect(transcript.entries[1].toolCalls.count == 1)
+        #expect(transcript.entries[1].toolCalls.first?.id == "call_calc")
+        #expect(transcript.entries[1].toolCalls.first?.name == "calculator")
+        #expect(transcript.entries[2].toolCallID == "call_calc")
+        #expect(transcript.entries[2].toolName == "calculator")
     }
 
     // MARK: - Session Persistence Behavior Tests
@@ -412,10 +426,10 @@ struct SessionIntegrationTests {
             _ = try await agent.run("Second message", session: session)
 
             // Verify session history is available to second agent
-            let calls = await mockProvider.generateCalls
+            let calls = await mockProvider.generateMessageCalls
             #expect(calls.count == 1)
-            let prompt = calls[0].prompt
-            #expect(prompt.contains("First message"))
+            let combined = calls[0].messages.map(\.content).joined(separator: "\n")
+            #expect(combined.contains("First message"))
         }
 
         // Verify total session content

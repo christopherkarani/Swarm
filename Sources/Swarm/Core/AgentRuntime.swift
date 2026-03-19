@@ -343,6 +343,9 @@ public struct InferenceOptions: Sendable, Equatable {
     /// Provider response identifier used to continue a prior conversation when supported.
     public var previousResponseId: String?
 
+    /// Optional structured output contract for the request.
+    public var structuredOutput: StructuredOutputRequest?
+
     /// Creates inference options.
     /// - Parameters:
     ///   - temperature: Generation temperature. Default: 1.0
@@ -373,7 +376,8 @@ public struct InferenceOptions: Sendable, Equatable {
         truncation: TruncationStrategy? = nil,
         verbosity: Verbosity? = nil,
         providerSettings: [String: SendableValue]? = nil,
-        previousResponseId: String? = nil
+        previousResponseId: String? = nil,
+        structuredOutput: StructuredOutputRequest? = nil
     ) {
         self.temperature = temperature
         self.maxTokens = maxTokens
@@ -389,6 +393,7 @@ public struct InferenceOptions: Sendable, Equatable {
         self.verbosity = verbosity
         self.providerSettings = providerSettings
         self.previousResponseId = previousResponseId
+        self.structuredOutput = structuredOutput
     }
 
     // MARK: - Special Builder Methods

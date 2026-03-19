@@ -52,6 +52,11 @@ struct MyApp {
         #endif
 
         let input = "Conduct deep research on the war on ukraine and its impact on global security. Provide a detailed report with findings, potential implications, and recommendations."
+        let tools: [any AnyJSONTool] = [
+            searchTool.asAnyJSONTool(),
+            StringTool(),
+            DateTimeTool(),
+        ]
 
         // V3 canonical Agent init — one path, no Builder.
         // Provider resolution order:
@@ -62,7 +67,7 @@ struct MyApp {
         let agent: Agent
         do {
             agent = try Agent(
-                tools: [searchTool, StringTool(), DateTimeTool()],
+                tools: tools,
                 instructions: "You are a deep research Agent. When you don't find something you keep looking.",
                 inferenceProvider: inferenceProvider,
                 tracer: ConsoleTracer()

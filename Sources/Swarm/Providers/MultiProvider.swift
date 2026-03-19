@@ -71,7 +71,7 @@ public enum MultiProviderError: Error, Sendable, LocalizedError, Equatable {
 ///
 /// MultiProvider is implemented as an actor, providing thread-safe access
 /// to mutable state including the provider registry and current model.
-public actor MultiProvider: InferenceProvider {
+public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, CapabilityReportingInferenceProvider {
     // MARK: Public
 
     /// Returns all registered prefixes.
@@ -89,6 +89,10 @@ public actor MultiProvider: InferenceProvider {
         currentModel
     }
 
+    nonisolated public var capabilities: InferenceProviderCapabilities {
+        capabilitySnapshot.load()
+    }
+
     // MARK: - Initialization
 
     /// Creates a MultiProvider with a default provider for unmatched prefixes.
@@ -102,6 +106,7 @@ public actor MultiProvider: InferenceProvider {
     public init(defaultProvider: any InferenceProvider) {
         self.defaultProvider = defaultProvider
         providerDescription = "MultiProvider(default: \(type(of: defaultProvider)))"
+        capabilitySnapshot = CapabilitySnapshot(Self.capabilities(for: defaultProvider))
     }
 
     // MARK: - Provider Registration
@@ -121,6 +126,7 @@ public actor MultiProvider: InferenceProvider {
             throw MultiProviderError.emptyPrefix
         }
         providers[trimmed.lowercased()] = provider
+        refreshCapabilitySnapshot()
     }
 
     /// Unregisters a provider for a specific prefix.
@@ -131,6 +137,7 @@ public actor MultiProvider: InferenceProvider {
     public func unregister(prefix: String) {
         let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         providers.removeValue(forKey: trimmed)
+        refreshCapabilitySnapshot()
     }
 
     // MARK: - Model Selection
@@ -147,11 +154,13 @@ public actor MultiProvider: InferenceProvider {
         // Sanitize: strip control characters (newlines, null bytes) to prevent header injection
         let sanitized = String(trimmed.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
         currentModel = String(sanitized.prefix(256))
+        refreshCapabilitySnapshot()
     }
 
     /// Clears the current model selection.
     public func clearModel() {
         currentModel = nil
+        refreshCapabilitySnapshot()
     }
 
     // MARK: - InferenceProvider Conformance
@@ -215,6 +224,34 @@ public actor MultiProvider: InferenceProvider {
         return try await provider.generateWithToolCalls(prompt: prompt, tools: tools, options: options)
     }
 
+    public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        let provider = resolveProvider(for: currentModel)
+        if let conversationProvider = provider as? any ConversationInferenceProvider {
+            return try await conversationProvider.generate(messages: messages, options: options)
+        }
+        return try await provider.generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    }
+
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse {
+        let provider = resolveProvider(for: currentModel)
+        if let conversationProvider = provider as? any ConversationInferenceProvider {
+            return try await conversationProvider.generateWithToolCalls(
+                messages: messages,
+                tools: tools,
+                options: options
+            )
+        }
+        return try await provider.generateWithToolCalls(
+            prompt: InferenceMessage.flattenPrompt(messages),
+            tools: tools,
+            options: options
+        )
+    }
+
     /// Checks if a provider is registered for the given prefix.
     ///
     /// - Parameter prefix: The prefix to check.
@@ -247,6 +284,9 @@ public actor MultiProvider: InferenceProvider {
     /// Cached description for nonisolated access.
     private let providerDescription: String
 
+    /// Capability snapshot for the provider currently selected by `currentModel`.
+    private let capabilitySnapshot: CapabilitySnapshot
+
     // MARK: - Private Methods
 
     /// Performs the streaming operation within actor isolation.
@@ -260,6 +300,76 @@ public actor MultiProvider: InferenceProvider {
         for try await token in provider.stream(prompt: prompt, options: options) {
             try Task.checkCancellation()
             continuation.yield(token)
+        }
+
+        continuation.finish()
+    }
+
+    private func performConversationStream(
+        messages: [InferenceMessage],
+        options: InferenceOptions,
+        continuation: AsyncThrowingStream<String, Error>.Continuation
+    ) async throws {
+        let provider = resolveProvider(for: currentModel)
+
+        let stream: AsyncThrowingStream<String, Error>
+        if let conversationProvider = provider as? any StreamingConversationInferenceProvider {
+            stream = conversationProvider.stream(messages: messages, options: options)
+        } else {
+            stream = provider.stream(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+        }
+
+        for try await token in stream {
+            try Task.checkCancellation()
+            continuation.yield(token)
+        }
+
+        continuation.finish()
+    }
+
+    private func performToolCallStream(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        continuation: AsyncThrowingStream<InferenceStreamUpdate, Error>.Continuation
+    ) async throws {
+        let provider = resolveProvider(for: currentModel)
+        guard let streamingProvider = provider as? any ToolCallStreamingInferenceProvider else {
+            throw AgentError.generationFailed(reason: "Resolved provider does not support tool-call streaming")
+        }
+
+        for try await update in streamingProvider.streamWithToolCalls(prompt: prompt, tools: tools, options: options) {
+            try Task.checkCancellation()
+            continuation.yield(update)
+        }
+
+        continuation.finish()
+    }
+
+    private func performConversationToolCallStream(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        continuation: AsyncThrowingStream<InferenceStreamUpdate, Error>.Continuation
+    ) async throws {
+        let provider = resolveProvider(for: currentModel)
+
+        let stream: AsyncThrowingStream<InferenceStreamUpdate, Error>
+        if let conversationProvider = provider as? any ToolCallStreamingConversationInferenceProvider {
+            stream = conversationProvider.streamWithToolCalls(messages: messages, tools: tools, options: options)
+        } else if let promptProvider = provider as? any ToolCallStreamingInferenceProvider {
+            stream = promptProvider.streamWithToolCalls(
+                prompt: InferenceMessage.flattenPrompt(messages),
+                tools: tools,
+                options: options
+            )
+        } else {
+            throw AgentError.generationFailed(reason: "Resolved provider does not support tool-call streaming")
+        }
+
+        for try await update in stream {
+            try Task.checkCancellation()
+            continuation.yield(update)
         }
 
         continuation.finish()
@@ -309,6 +419,97 @@ public actor MultiProvider: InferenceProvider {
 
         return providers[prefix] ?? defaultProvider
     }
+
+    private func refreshCapabilitySnapshot() {
+        capabilitySnapshot.store(Self.capabilities(for: resolveProvider(for: currentModel)))
+    }
+
+    private nonisolated static func capabilities(for provider: any InferenceProvider) -> InferenceProviderCapabilities {
+        var capabilities = InferenceProviderCapabilities.resolved(for: provider)
+        capabilities.insert(.conversationMessages)
+        return capabilities
+    }
+}
+
+extension MultiProvider: StreamingConversationInferenceProvider {
+    nonisolated public func stream(
+        messages: [InferenceMessage],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    try await self.performConversationStream(messages: messages, options: options, continuation: continuation)
+                } catch is CancellationError {
+                    continuation.finish(throwing: AgentError.cancelled)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
+}
+
+extension MultiProvider: ToolCallStreamingInferenceProvider {
+    nonisolated public func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    try await self.performToolCallStream(
+                        prompt: prompt,
+                        tools: tools,
+                        options: options,
+                        continuation: continuation
+                    )
+                } catch is CancellationError {
+                    continuation.finish(throwing: AgentError.cancelled)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
+}
+
+extension MultiProvider: ToolCallStreamingConversationInferenceProvider {
+    nonisolated public func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    try await self.performConversationToolCallStream(
+                        messages: messages,
+                        tools: tools,
+                        options: options,
+                        continuation: continuation
+                    )
+                } catch is CancellationError {
+                    continuation.finish(throwing: AgentError.cancelled)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
 }
 
 // MARK: CustomStringConvertible
@@ -319,3 +520,23 @@ extension MultiProvider: CustomStringConvertible {
     }
 }
 
+private final class CapabilitySnapshot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: InferenceProviderCapabilities
+
+    init(_ value: InferenceProviderCapabilities) {
+        self.value = value
+    }
+
+    func load() -> InferenceProviderCapabilities {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func store(_ newValue: InferenceProviderCapabilities) {
+        lock.lock()
+        value = newValue
+        lock.unlock()
+    }
+}

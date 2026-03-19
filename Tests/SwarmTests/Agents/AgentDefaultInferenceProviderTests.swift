@@ -29,8 +29,8 @@ struct AgentDefaultInferenceProviderTests {
         }
     }
 
-    @Test("Foundation Models provider fails fast when tool calls are requested")
-    func foundationModelsProviderRejectsToolCalls() async {
+    @Test("Foundation Models provider accepts tool-call requests without explicit rejection")
+    func foundationModelsProviderAcceptsToolCalls() async throws {
         guard let provider = DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() else {
             return
         }
@@ -39,26 +39,19 @@ struct AgentDefaultInferenceProviderTests {
             ToolSchema(
                 name: "weather",
                 description: "weather lookup",
-                parameters: []
+                parameters: [
+                    ToolParameter(name: "city", description: "City name", type: .string),
+                ]
             ),
         ]
 
-        do {
-            _ = try await provider.generateWithToolCalls(
-                prompt: "Check weather",
-                tools: tools,
-                options: .default
-            )
-            Issue.record("Expected unsupported tool-call error for Foundation Models")
-        } catch let error as AgentError {
-            switch error {
-            case .toolCallingRequiresCloudProvider:
-                #expect(error.localizedDescription.contains("tool calling"))
-            default:
-                Issue.record("Unexpected AgentError: \(error)")
-            }
-        } catch {
-            Issue.record("Unexpected error: \(error)")
-        }
+        let response = try await provider.generateWithToolCalls(
+            prompt: "Check weather in Nairobi. If you call a tool, reply with JSON only.",
+            tools: tools,
+            options: .default
+        )
+
+        #expect(response.finishReason == .toolCall || response.finishReason == .completed)
+        #expect(!response.toolCalls.isEmpty || response.content != nil)
     }
 }

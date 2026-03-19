@@ -10,7 +10,7 @@ Add Swarm to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.3.4")
+    .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.4.0")
 ],
 targets: [
     .target(name: "YourApp", dependencies: ["Swarm"])
@@ -41,7 +41,7 @@ let agent = try Agent("Answer finance questions using real data.",
     configuration: .default.name("Analyst"),
     inferenceProvider: .anthropic(key: "sk-..."),
     memory: .conversation(limit: 50),
-    inputGuardrails: [.maxLength(5000), .notEmpty()]
+    inputGuardrails: [.maxInput(5000), .inputNotEmpty]
 ) {
     PriceTool()
     CalculatorTool()
@@ -205,7 +205,7 @@ let result = try await Workflow()
 
 ### Durable: checkpoint and resume
 
-For checkpoint/resume and other power features, use the namespaced durable API:
+For checkpoint/resume and other power features, use the `.durable` namespace:
 
 ```swift
 let result = try await Workflow()
@@ -258,7 +258,7 @@ Foundation Models require iOS 26 / macOS 26. Cloud providers (Anthropic, OpenAI,
 
 ## Next Steps
 
-- **[Agents](/agents)** -- Agent types, configuration, tool calling
-- **[Tools](/tools)** -- `@Tool` macro, `FunctionTool`, tool chains
-- **Workflow** -- Use `Workflow` for sequential, parallel, and routed execution
-- **[Memory](/memory)** -- Conversation, vector, summary, persistent
+- **[Agents](../reference/front-facing-api.md#3-agent-struct-primary-init)** -- Agent types, configuration, tool calling
+- **[Tools](../reference/front-facing-api.md#5-tool-and-functiontool)** -- `@Tool` macro, `FunctionTool`, tool chains
+- **[Workflow](../reference/front-facing-api.md#7-workflow)** -- Sequential, parallel, and routed execution
+- **[Memory](../reference/front-facing-api.md#10-memoryoption)** -- Conversation, vector, summary, persistent

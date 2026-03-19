@@ -8,6 +8,19 @@
 
 import Foundation
 
+// MARK: - LanguageModelSessionToolCallingContext
+
+/// Per-request metadata used to distinguish Swarm-owned tool-call envelopes from ordinary model text.
+struct LanguageModelSessionToolCallingContext: Sendable, Equatable {
+    static let envelopeKey = "swarm_tool_call"
+
+    let nonce: String
+
+    static func make() -> LanguageModelSessionToolCallingContext {
+        LanguageModelSessionToolCallingContext(nonce: UUID().uuidString)
+    }
+}
+
 // MARK: - LanguageModelSessionToolPromptBuilder
 
 /// Builds tool-aware prompts for use with Foundation Models' prompt-based tool calling.
@@ -16,9 +29,20 @@ enum LanguageModelSessionToolPromptBuilder {
     /// - Parameters:
     ///   - basePrompt: The original user prompt.
     ///   - tools: Available tool schemas to include in the prompt.
+    ///   - context: Per-request envelope metadata used to authenticate tool-call responses.
     /// - Returns: The base prompt if no tools, or an enhanced prompt with tool definitions.
-    static func buildToolPrompt(basePrompt: String, tools: [ToolSchema]) -> String {
-        guard !tools.isEmpty else { return basePrompt }
+    static func buildToolPrompt(
+        basePrompt: String,
+        tools: [ToolSchema],
+        context: LanguageModelSessionToolCallingContext,
+        structuredOutput: StructuredOutputRequest? = nil
+    ) -> String {
+        guard !tools.isEmpty else {
+            if let structuredOutput {
+                return StructuredOutputPromptBuilder.appendInstruction(to: basePrompt, request: structuredOutput)
+            }
+            return basePrompt
+        }
 
         var toolDefinitions: [String] = []
         for tool in tools {
@@ -39,16 +63,25 @@ enum LanguageModelSessionToolPromptBuilder {
             toolDefinitions.append(toolDef)
         }
 
-        return """
+        var prompt = """
             \(basePrompt)
 
             Available tools:
             \(toolDefinitions.joined(separator: "\n\n"))
 
-            To use a tool, respond with a JSON object in this exact format:
-            {"tool": "tool_name", "arguments": {"param1": "value1", "param2": "value2"}}
+            If you decide to use a tool, respond with only a single JSON object in this exact format and no surrounding text:
+            {"\(LanguageModelSessionToolCallingContext.envelopeKey)": {"nonce": "\(context.nonce)", "tool": "tool_name", "arguments": {"param1": "value1", "param2": "value2"}}}
 
+            Never emit that JSON envelope unless you are requesting a tool call.
             If no tool is needed, respond normally without JSON.
+            """
+
+        if let structuredOutput {
+            prompt = StructuredOutputPromptBuilder.appendInstruction(to: prompt, request: structuredOutput)
+        }
+
+        return """
+            \(prompt)
             """
     }
 
@@ -83,22 +116,57 @@ enum LanguageModelSessionToolParser {
     /// - Parameters:
     ///   - content: The model's response text.
     ///   - availableTools: The tools that were made available to the model.
+    ///   - context: The request-scoped envelope context expected in a valid tool call.
     /// - Returns: Parsed tool calls if a valid tool call is found, nil otherwise.
     static func parseToolCalls(
         from content: String,
-        availableTools: [ToolSchema]
+        availableTools: [ToolSchema],
+        context: LanguageModelSessionToolCallingContext
     ) -> [InferenceResponse.ParsedToolCall]? {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Look for JSON tool call format: {"tool": "name", "arguments": {...}}
-        guard let jsonStart = trimmed.firstIndex(of: "{"),
-              let jsonEnd = trimmed.lastIndex(of: "}") else {
+        // Fast path for the intended exact-JSON response shape.
+        if let toolCalls = parseToolCallsFromExactEnvelope(
+            trimmed,
+            availableTools: availableTools,
+            context: context
+        ) {
+            return toolCalls
+        }
+
+        // Recover a single valid Swarm envelope from common wrappers such as prose or markdown fences.
+        let candidates = extractJSONObjectCandidates(from: content)
+        var parsedCandidates: [[InferenceResponse.ParsedToolCall]] = []
+
+        for candidate in candidates {
+            guard let toolCalls = parseToolCallsFromExactEnvelope(
+                candidate,
+                availableTools: availableTools,
+                context: context
+            ) else {
+                continue
+            }
+            parsedCandidates.append(toolCalls)
+            guard parsedCandidates.count < 2 else {
+                return nil
+            }
+        }
+
+        return parsedCandidates.first
+    }
+
+    /// Parses an exact JSON object string into Swarm tool calls when it matches the expected envelope.
+    private static func parseToolCallsFromExactEnvelope(
+        _ candidate: String,
+        availableTools: [ToolSchema],
+        context: LanguageModelSessionToolCallingContext
+    ) -> [InferenceResponse.ParsedToolCall]? {
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.first == "{", trimmed.last == "}" else {
             return nil
         }
 
-        let jsonString = String(trimmed[jsonStart...jsonEnd])
-
-        guard let data = jsonString.data(using: .utf8) else {
+        guard let data = trimmed.data(using: .utf8) else {
             return nil
         }
 
@@ -107,27 +175,31 @@ enum LanguageModelSessionToolParser {
                 return nil
             }
 
-            // Extract tool name (support both "tool" and "name" keys)
-            let toolName = (jsonObject["tool"] as? String) ?? (jsonObject["name"] as? String)
+            guard let envelope = jsonObject[LanguageModelSessionToolCallingContext.envelopeKey] as? [String: Any] else {
+                return nil
+            }
+
+            guard let nonce = envelope["nonce"] as? String, nonce == context.nonce else {
+                return nil
+            }
+
+            let toolName = envelope["tool"] as? String
             guard let toolName = toolName?.trimmingCharacters(in: .whitespacesAndNewlines) else {
                 return nil
             }
 
-            // Verify the tool exists in available tools
             guard availableTools.contains(where: { $0.name == toolName }) else {
                 return nil
             }
 
-            // Extract arguments
             var arguments: [String: SendableValue] = [:]
-            if let argsObject = jsonObject["arguments"] as? [String: Any] {
+            if let argsObject = envelope["arguments"] as? [String: Any] {
                 for (key, value) in argsObject {
                     arguments[key] = SendableValue.fromJSONValue(value)
                 }
             }
 
-            // Extract optional call ID
-            let callId = jsonObject["id"] as? String
+            let callId = envelope["id"] as? String
 
             return [InferenceResponse.ParsedToolCall(
                 id: callId,
@@ -135,8 +207,111 @@ enum LanguageModelSessionToolParser {
                 arguments: arguments
             )]
         } catch {
-            // JSON parsing failed - not a valid tool call
             return nil
         }
+    }
+
+    /// Extracts top-level JSON object substrings while respecting JSON string escaping.
+    private static func extractJSONObjectCandidates(from content: String) -> [String] {
+        var candidates: [String] = []
+        var objectStart: String.Index?
+        var depth = 0
+        var inString = false
+        var isEscaped = false
+        var index = content.startIndex
+
+        while index < content.endIndex {
+            let character = content[index]
+
+            if inString {
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == "\"" {
+                    inString = false
+                }
+            } else {
+                switch character {
+                case "\"":
+                    inString = true
+                case "{":
+                    if depth == 0 {
+                        objectStart = index
+                    }
+                    depth += 1
+                case "}":
+                    guard depth > 0 else {
+                        break
+                    }
+                    depth -= 1
+                    if depth == 0, let objectStart {
+                        candidates.append(String(content[objectStart ... index]))
+                    }
+                default:
+                    break
+                }
+            }
+
+            index = content.index(after: index)
+        }
+
+        return candidates
+    }
+}
+
+// MARK: - LanguageModelSessionToolCallingEmulation
+
+/// Coordinates prompt-based tool calling for Foundation Models.
+enum LanguageModelSessionToolCallingEmulation {
+    /// Generates a tool-aware response using a text-generation closure.
+    static func generateResponse(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        generateText: @Sendable (String, InferenceOptions) async throws -> String
+    ) async throws -> InferenceResponse {
+        let context = LanguageModelSessionToolCallingContext.make()
+        let promptToGenerate = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
+            basePrompt: prompt,
+            tools: tools,
+            context: context,
+            structuredOutput: options.structuredOutput
+        )
+        let generatedText = try await generateText(promptToGenerate, options)
+        return makeInferenceResponse(from: generatedText, availableTools: tools, context: context)
+    }
+
+    /// Maps generated text into Swarm's structured inference response shape.
+    static func makeInferenceResponse(
+        from generatedText: String,
+        availableTools: [ToolSchema],
+        context: LanguageModelSessionToolCallingContext
+    ) -> InferenceResponse {
+        guard !availableTools.isEmpty else {
+            return InferenceResponse(
+                content: generatedText,
+                toolCalls: [],
+                finishReason: .completed
+            )
+        }
+
+        if let parsedToolCalls = LanguageModelSessionToolParser.parseToolCalls(
+            from: generatedText,
+            availableTools: availableTools,
+            context: context
+        ), !parsedToolCalls.isEmpty {
+            return InferenceResponse(
+                content: nil,
+                toolCalls: parsedToolCalls,
+                finishReason: .toolCall
+            )
+        }
+
+        return InferenceResponse(
+            content: generatedText,
+            toolCalls: [],
+            finishReason: .completed
+        )
     }
 }

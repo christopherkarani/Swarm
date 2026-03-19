@@ -70,6 +70,37 @@ struct AgentReliabilityTests {
         }
     }
 
+    @Test("Agent timeout terminates in-flight provider work promptly")
+    func timeoutTerminatesInflightProviderWork() async throws {
+        let provider = HangingInferenceProvider(delay: .seconds(2))
+        let agent = try Agent(
+            tools: [],
+            instructions: "Timeout test agent",
+            configuration: .default.timeout(.milliseconds(50)),
+            inferenceProvider: provider
+        )
+
+        let runTask = Task {
+            try await agent.run("time out")
+        }
+
+        let completion = await awaitTaskResult(runTask, timeout: .milliseconds(500))
+        guard let completion else {
+            runTask.cancel()
+            Issue.record("Agent run did not stop promptly after timing out")
+            return
+        }
+
+        switch completion {
+        case .success:
+            Issue.record("Expected timeout error but run succeeded")
+        case let .failure(error as AgentError):
+            #expect(error == .timeout(duration: .milliseconds(50)))
+        case let .failure(error):
+            Issue.record("Expected AgentError.timeout, got \(error)")
+        }
+    }
+
     @Test("Agent emits onIterationEnd for terminal no-tool return")
     func agentAlwaysEmitsIterationEndOnTerminalReturn() async throws {
         let provider = MockInferenceProvider(responses: ["terminal output"])

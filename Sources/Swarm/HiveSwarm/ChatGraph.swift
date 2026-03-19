@@ -326,6 +326,19 @@ struct GraphRunController: Sendable {
         await stateTracker.markAttemptStarted(threadID: threadID, runID: handle.runID)
         return decorate(handle: handle, threadID: threadID, eventBufferCapacity: options.eventBufferCapacity)
     }
+
+    func branch(
+        threadID: HiveThreadID,
+        options: HiveRunOptions? = nil
+    ) async throws -> HiveThreadID {
+        let branchedThreadID = HiveThreadID(UUID().uuidString)
+        _ = try await runtime.fork(
+            threadID: threadID,
+            to: branchedThreadID,
+            options: options
+        )
+        return branchedThreadID
+    }
 }
 
 extension ChatGraph {

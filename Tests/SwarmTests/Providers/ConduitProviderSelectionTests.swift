@@ -23,6 +23,19 @@ struct ConduitProviderSelectionTests {
         #expect(provider is ConduitInferenceProvider<OpenAIProvider>)
     }
 
+    @Test("Builds MiniMax Conduit provider")
+    func buildsMiniMaxProvider() {
+        let provider = ConduitProviderSelection
+            .minimax(apiKey: "test-key", model: "minimax-01")
+            .makeProvider()
+
+        #if CONDUIT_TRAIT_MINIMAX
+            #expect(provider is ConduitInferenceProvider<MiniMaxProvider>)
+        #else
+            #expect(provider is ConduitInferenceProvider<OpenAIProvider>)
+        #endif
+    }
+
     @Test("Builds Ollama Conduit provider")
     func buildsOllamaProvider() {
         let provider = ConduitProviderSelection

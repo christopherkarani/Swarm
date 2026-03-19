@@ -137,3 +137,11 @@ public actor InMemorySession: Session {
     /// Internal storage for messages.
     private var items: [MemoryMessage] = []
 }
+
+extension InMemorySession: ConversationBranchingSession {
+    package func branchConversationSession() async throws -> any Session {
+        let branched = InMemorySession()
+        try await branched.addItems(items)
+        return branched
+    }
+}

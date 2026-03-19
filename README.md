@@ -42,9 +42,9 @@ struct PriceTool {
     func execute() async throws -> String { "182.50" }
 }
 
-// Create an agent — instructions first, tools in trailing closure
+// Create an agent — unlabeled instructions first, tools in @ToolBuilder trailing closure
 let agent = try Agent("Answer finance questions using real data.",
-    configuration: .default.name("Analyst"),
+    configuration: .init(name: "Analyst"),
     inferenceProvider: .anthropic(key: "sk-...")) {
     PriceTool()
     CalculatorTool()
@@ -125,7 +125,7 @@ for try await event in agent.stream("Summarize the changelog.") {
 ```swift
 let agent = try Agent("You remember past conversations.",
     inferenceProvider: .anthropic(key: "sk-..."),
-    memory: VectorMemory(embeddingProvider: myEmbedder, threshold: 0.75)) {
+    memory: .vector(embeddingProvider: myEmbedder, threshold: 0.75)) {
     // tools
 }
 ```
@@ -134,8 +134,8 @@ let agent = try Agent("You remember past conversations.",
 
 ```swift
 let agent = try Agent("You are a helpful assistant.",
-    inputGuardrails: [MaxLengthGuardrail(limit: 5000), NotEmptyGuardrail()],
-    outputGuardrails: [MaxLengthGuardrail(limit: 2000)])
+    inputGuardrails: [GuardrailSpec.maxInput(5000), GuardrailSpec.inputNotEmpty],
+    outputGuardrails: [GuardrailSpec.maxOutput(2000)])
 ```
 
 #### Closure tools — no struct needed
@@ -174,7 +174,20 @@ let local = try Agent("Be helpful.", inferenceProvider: .foundationModels)
 let cloud = try Agent("Be helpful.", inferenceProvider: .anthropic(key: k))
 
 // Or swap at runtime via environment
-let modified = agent.environment(\.inferenceProvider, .ollama("mistral"))
+let modified = agent.environment(\.inferenceProvider, .ollama(model: "mistral"))
+```
+
+#### Conversation — stateful multi-turn
+
+```swift
+let conversation = Conversation(with: agent)
+
+let response1 = try await conversation.send("What's the weather?")
+let response2 = try await conversation.send("And tomorrow?") // Context preserved
+
+for message in await conversation.messages {
+    print("\(message.role): \(message.text)")
+}
 ```
 
 </details>
@@ -199,8 +212,9 @@ let modified = agent.environment(\.inferenceProvider, .ollama("mistral"))
 | **Agents** | `Agent` struct with `@ToolBuilder` trailing closure, `AgentRuntime` protocol |
 | **Workflows** | `Workflow`: `.step()`, `.parallel()`, `.route()`, `.repeatUntil()`, `.timeout()` |
 | **Tools** | `@Tool` macro, `FunctionTool`, `@ToolBuilder`, parallel execution |
-| **Memory** | `ConversationMemory`, `VectorMemory`, `SlidingWindowMemory`, `SummaryMemory` |
-| **Guardrails** | `InputGuardrail`, `OutputGuardrail`, `ToolInputGuardrail`, `ToolOutputGuardrail` |
+| **Memory** | `MemoryOption.conversation(limit:)`, `MemoryOption.vector(embeddingProvider:)`, `MemoryOption.slidingWindow(count:)`, `MemoryOption.summary(summarizer:)` |
+| **Guardrails** | `GuardrailSpec.maxInput()`, `GuardrailSpec.maxOutput()`, `GuardrailSpec.inputNotEmpty`, `GuardrailSpec.outputNotEmpty`, `GuardrailSpec.customInput()`, `GuardrailSpec.customOutput()` |
+| **Conversation** | `Conversation` actor for stateful multi-turn dialogue |
 | **Resilience** | 7 backoff strategies, circuit breaker, fallback chains, rate limiting |
 | **Observability** | `AgentObserver`, `Tracer`, `SwiftLogTracer`, per-agent token metrics |
 | **MCP** | Model Context Protocol — client and server |
@@ -214,14 +228,14 @@ let modified = agent.environment(\.inferenceProvider, .ollama("mistral"))
 │                      Your Application                       │
 │          iOS 26+  ·  macOS 26+  ·  Linux (Ubuntu 22.04+)   │
 ├─────────────────────────────────────────────────────────────┤
-│     Workflow  ·  .run()  ·  .stream()                       │
+│     Workflow  ·  Conversation  ·  .run()  ·  .stream()      │
 ├─────────────────────────────────────────────────────────────┤
 │  Agents              Memory              Tools              │
-│  Agent (struct)      ConversationMemory   @Tool macro        │
-│  AgentRuntime        VectorMemory         FunctionTool         │
-│                      SummaryMemory        @ToolBuilder       │
+│  Agent (struct)      MemoryOption        @Tool macro        │
+│  AgentRuntime        Conversation        FunctionTool       │
+│                      (dot-syntax)        @ToolBuilder       │
 ├─────────────────────────────────────────────────────────────┤
-│  Guardrails  ·  Resilience  ·  Observability  ·  MCP       │
+│  GuardrailSpec  ·  Resilience  ·  Observability  ·  MCP    │
 ├─────────────────────────────────────────────────────────────┤
 │                    Hive Runtime (optional)                   │
 │   Compiled DAG  ·  Checkpointing  ·  Deterministic retry   │

@@ -46,6 +46,24 @@ struct LLMPresetsTests {
         }
     }
 
+    @Test("MiniMax preset builds Conduit OpenAI-compatible provider")
+    func minimaxPresetBuildsProvider() throws {
+        let agent = try Agent(.minimax(key: "test-key", model: "minimax-01"))
+
+        let provider = agent.inferenceProvider
+        #expect(provider != nil)
+        if let provider {
+            #expect(provider is LLM)
+            if let preset = provider as? LLM {
+                #if CONDUIT_TRAIT_MINIMAX
+                    #expect(preset._makeProviderForTesting() is ConduitInferenceProvider<MiniMaxProvider>)
+                #else
+                    #expect(preset._makeProviderForTesting() is ConduitInferenceProvider<OpenAIProvider>)
+                #endif
+            }
+        }
+    }
+
     @Test("Ollama preset with custom settings builds Conduit provider")
     func ollamaPresetBuildsProviderWithSettings() throws {
         let agent = try Agent(LLM.ollama("llama3.2") { settings in
