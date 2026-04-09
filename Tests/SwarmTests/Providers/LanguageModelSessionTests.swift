@@ -48,11 +48,35 @@ struct LanguageModelSessionToolPromptTests {
         )
 
         #expect(prompt.contains(#""swarm_tool_call""#))
-        #expect(prompt.contains(#""nonce": "nonce-123""#))
-        #expect(prompt.contains(#""tool": "tool_name""#))
-        #expect(prompt.contains(#""arguments": {"param1": "value1"}"#))
+        #expect(prompt.contains(#""nonce":"nonce-123""#) || prompt.contains(#""nonce": "nonce-123""#))
+        #expect(prompt.contains(#""tool":"test""#) || prompt.contains(#""tool": "test""#))
+        #expect(!prompt.contains(#""tool": "tool_name""#))
+        #expect(prompt.contains("Never copy placeholder names"))
         #expect(prompt.contains("\"tool\":"))
         #expect(prompt.contains("only a single JSON object"))
+        #expect(prompt.contains("If tool results are already present in the prompt"))
+    }
+
+    @Test("Tool prompt uses concrete websearch example")
+    func toolPromptUsesConcreteWebsearchExample() {
+        let tool = ToolSchema(
+            name: "websearch",
+            description: "Search the web",
+            parameters: [
+                ToolParameter(name: "query", description: "Search query", type: .string),
+                ToolParameter(name: "maxResults", description: "Maximum hits", type: .int, isRequired: false),
+            ]
+        )
+
+        let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
+            basePrompt: "Research the topic",
+            tools: [tool],
+            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+        )
+
+        #expect(prompt.contains(#""tool":"websearch""#) || prompt.contains(#""tool": "websearch""#))
+        #expect(prompt.contains("latest official Foundation Models documentation"))
+        #expect(prompt.contains("Do not call the same tool again with weaker or emptier arguments"))
     }
     
     @Test("Tool prompt with multiple tools")
@@ -307,6 +331,52 @@ struct LanguageModelSessionToolParserTests {
         #expect(toolCalls?.count == 1)
         #expect(toolCalls?.first?.name == "lookup")
     }
+
+    @Test("Parse tool call with truncated tool name using unique prefix match")
+    func parseToolCallWithTruncatedToolName() {
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"websea","arguments":{"query":"Swift"}}}"#
+
+        let availableTools = [
+            ToolSchema(name: "websearch", description: "Search the web", parameters: [
+                ToolParameter(name: "query", description: "Search query", type: .string)
+            ])
+        ]
+
+        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+            from: response,
+            availableTools: availableTools,
+            context: context
+        )
+
+        #expect(toolCalls?.count == 1)
+        #expect(toolCalls?.first?.name == "websearch")
+        #expect(toolCalls?.first?.arguments["query"] == .string("Swift"))
+    }
+
+    @Test("Parse tool call coerces invalid argument types to schema-safe values")
+    func parseToolCallCoercesInvalidArgumentTypes() {
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"websearch","arguments":{"query":"Swift","maxResults":true,"detail":"standard"}}}"#
+
+        let availableTools = [
+            ToolSchema(name: "websearch", description: "Search the web", parameters: [
+                ToolParameter(name: "query", description: "Search query", type: .string),
+                ToolParameter(name: "maxResults", description: "Maximum results", type: .int, isRequired: false, defaultValue: .int(5)),
+                ToolParameter(name: "detail", description: "Detail mode", type: .oneOf(["compact", "standard", "deep"]), isRequired: false)
+            ])
+        ]
+
+        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+            from: response,
+            availableTools: availableTools,
+            context: context
+        )
+
+        #expect(toolCalls?.count == 1)
+        #expect(toolCalls?.first?.name == "websearch")
+        #expect(toolCalls?.first?.arguments["query"] == .string("Swift"))
+        #expect(toolCalls?.first?.arguments["maxResults"] == .int(1))
+        #expect(toolCalls?.first?.arguments["detail"] == .string("standard"))
+    }
     
     @Test("Parse tool call with various argument types")
     func parseToolCallWithVariousTypes() {
@@ -434,6 +504,21 @@ struct LanguageModelSessionToolParserTests {
         )
 
         #expect(toolCalls == nil)
+    }
+
+    @Test("Parse tool call when nonce is omitted")
+    func parseToolCallWithoutNonce() {
+        let response = #"{"swarm_tool_call":{"tool":"websearch","arguments":{"query":"Swift"}}}"#
+
+        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+            from: response,
+            availableTools: [ToolSchema(name: "websearch", description: "Search the web", parameters: [])],
+            context: context
+        )
+
+        #expect(toolCalls?.count == 1)
+        #expect(toolCalls?.first?.name == "websearch")
+        #expect(toolCalls?.first?.arguments["query"] == .string("Swift"))
     }
 
     @Test("Return nil for multiple wrapped tool envelopes")

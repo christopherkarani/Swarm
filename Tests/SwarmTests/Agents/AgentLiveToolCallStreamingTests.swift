@@ -254,4 +254,76 @@ struct AgentLiveToolCallStreamingTests {
             return false
         })
     }
+
+    @Test("Falls back to non-streaming tool calls when provider lacks tool-call streaming")
+    func fallsBackToNonStreamingToolCalls() async throws {
+        struct EchoTool: AnyJSONTool, Sendable {
+            let name = "echo"
+            let description = "Echoes the input text"
+            let parameters: [ToolParameter] = [
+                ToolParameter(name: "text", description: "Text to echo", type: .string)
+            ]
+
+            func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
+                .string(try requiredString("text", from: arguments))
+            }
+        }
+
+        final class NonStreamingToolProvider: InferenceProvider, @unchecked Sendable {
+            private var generateWithToolCallsCount = 0
+
+            func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+                throw AgentError.generationFailed(reason: "Unexpected generate() call")
+            }
+
+            func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
+                StreamHelper.makeTrackedStream { continuation in
+                    continuation.finish(throwing: AgentError.generationFailed(reason: "Unexpected stream() call"))
+                }
+            }
+
+            func generateWithToolCalls(
+                prompt _: String,
+                tools _: [ToolSchema],
+                options _: InferenceOptions
+            ) async throws -> InferenceResponse {
+                generateWithToolCallsCount += 1
+                if generateWithToolCallsCount == 1 {
+                    return InferenceResponse(
+                        toolCalls: [
+                            .init(id: "call_1", name: "echo", arguments: ["text": .string("hi")]),
+                        ],
+                        finishReason: .toolCall
+                    )
+                }
+
+                return InferenceResponse(content: "All done", finishReason: .completed)
+            }
+        }
+
+        let provider = NonStreamingToolProvider()
+        let agent = try Agent(
+            tools: [EchoTool()],
+            configuration: .default.maxIterations(3),
+            inferenceProvider: provider
+        )
+
+        var events: [AgentEvent] = []
+        for try await event in agent.stream("Hi") {
+            events.append(event)
+        }
+
+        #expect(events.contains { event in
+            if case .tool(.started) = event { return true }
+            return false
+        })
+        #expect(events.contains { event in
+            if case .tool(.completed) = event { return true }
+            return false
+        })
+        #expect(events.contains { event in
+            if case let .lifecycle(.completed(result)) = event { return result.output == "All done" }
+            return false
+        })
+    }
 }

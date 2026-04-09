@@ -71,4 +71,65 @@ struct ConduitInferenceProviderBridgeTests {
         #expect(parsed.arguments["query"]?.stringValue == "swift")
         #expect(parsed.arguments["limit"]?.intValue == 3)
     }
+
+    @Test("Fallback parser recovers wrapped conduit tool call from text output")
+    func fallbackParserRecoversWrappedToolCall() {
+        let tools = [
+            ToolSchema(
+                name: "websearch",
+                description: "Search the web",
+                parameters: [ToolParameter(name: "query", description: "Search query", type: .string)]
+            )
+        ]
+
+        let content = """
+        ```json
+        {
+          "conduit_tool_call": {
+            "arguments": {
+              "tool": "websearch",
+              "query": "Apple Foundation Models context window"
+            },
+            "nonce": "B70FD653-B81C-4181-A5BC-5668A51F2BB1"
+          }
+        }
+        ```
+        """
+
+        let parsed = ConduitPromptToolFallbackParser.parseToolCalls(
+            from: content,
+            availableTools: tools
+        )
+
+        #expect(parsed.count == 1)
+        #expect(parsed.first?.name == "websearch")
+        #expect(parsed.first?.arguments["query"] == .string("Apple Foundation Models context window"))
+    }
+
+    @Test("Fallback parser repairs truncated wrapped conduit tool call from text output")
+    func fallbackParserRepairsTruncatedWrappedToolCall() {
+        let tools = [
+            ToolSchema(
+                name: "websearch",
+                description: "Search the web",
+                parameters: [ToolParameter(name: "query", description: "Search query", type: .string)]
+            )
+        ]
+
+        let content = """
+        ```json
+        {"conduit_tool_call":{"arguments":{"query":"Apple Foundation Models context window","mode":"search"},"tool":"websearch"}
+        ```
+        """
+
+        let parsed = ConduitPromptToolFallbackParser.parseToolCalls(
+            from: content,
+            availableTools: tools
+        )
+
+        #expect(parsed.count == 1)
+        #expect(parsed.first?.name == "websearch")
+        #expect(parsed.first?.arguments["query"] == .string("Apple Foundation Models context window"))
+        #expect(parsed.first?.arguments["mode"] == .string("search"))
+    }
 }

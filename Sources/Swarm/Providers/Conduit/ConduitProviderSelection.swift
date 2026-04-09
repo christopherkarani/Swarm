@@ -6,6 +6,9 @@
 import Conduit
 import ConduitAdvanced
 import Foundation
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 /// Convenience selection for Conduit-backed inference providers.
 ///
@@ -36,6 +39,22 @@ public enum ConduitProviderSelection: Sendable, InferenceProvider {
         let bridge = ConduitInferenceProvider(provider: provider, model: modelID)
         return .provider(bridge)
     }
+
+    #if canImport(FoundationModels)
+    /// Creates a Conduit-backed Apple Foundation Models provider.
+    @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
+    public static func foundationModels(
+        configuration: FMConfiguration = .default
+    ) -> ConduitProviderSelection {
+        let provider = FoundationModelsProvider(configuration: configuration)
+        let bridge = ConduitInferenceProvider(
+            provider: provider,
+            model: .foundationModels,
+            supportsStreamingToolCalls: false
+        )
+        return .provider(bridge)
+    }
+    #endif
 
     /// Creates a Conduit-backed OpenRouter provider.
     public static func openRouter(
@@ -223,6 +242,16 @@ public enum ConduitProviderSelection: Sendable, InferenceProvider {
         let bridge = ConduitInferenceProvider(provider: provider, model: modelID)
         return .provider(bridge)
     }
+
+    #if canImport(FoundationModels)
+    @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
+    static func foundationModelsIfAvailable() -> ConduitProviderSelection? {
+        guard SystemLanguageModel.default.availability == .available else {
+            return nil
+        }
+        return foundationModels()
+    }
+    #endif
 }
 
 extension ConduitProviderSelection: CapabilityReportingInferenceProvider {

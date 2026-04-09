@@ -81,7 +81,8 @@ struct InferenceProviderCertificationTests {
         let prompts = await provider.recordedPrompts()
         #expect(prompts.count == 2)
         #expect(prompts[0].contains("\"swarm_tool_call\""))
-        #expect(prompts[1].contains("[Tool Result - string]: HELLO"))
+        #expect(prompts[1].contains("[Tool Result - string]:"))
+        #expect(prompts[1].contains("HELLO"))
     }
 
     @Test("MultiProvider selected route passes text-only tool emulation certification")
@@ -98,7 +99,8 @@ struct InferenceProviderCertificationTests {
         let prompts = await selectedProvider.recordedPrompts()
         #expect(prompts.count == 2)
         #expect(prompts[0].contains("\"swarm_tool_call\""))
-        #expect(prompts[1].contains("[Tool Result - string]: HELLO"))
+        #expect(prompts[1].contains("[Tool Result - string]:"))
+        #expect(prompts[1].contains("HELLO"))
     }
 
     @Test("ConduitProviderSelection forwards auto continuation through wrapped providers")

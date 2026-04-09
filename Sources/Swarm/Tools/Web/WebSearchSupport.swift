@@ -388,7 +388,12 @@ internal struct WebExecutionEngine: Sendable {
         } else {
             try await liveSearch(query: query, request: request)
         }
-        let merged = mergeHits(localHits: localHits, remoteHits: remoteHits, maxResults: request.maxResults)
+        let merged = mergeHits(
+            localHits: localHits,
+            remoteHits: remoteHits,
+            maxResults: request.maxResults,
+            query: query
+        )
         let answer = merged.isEmpty ? "No web results found." : "Found \(merged.count) ranked results for '\(query)'."
 
         return boundedEnvelope(
@@ -507,7 +512,12 @@ internal struct WebExecutionEngine: Sendable {
 
         if candidates.count < configuration.maxGroundedFetches || !preferLocalRecall {
             let live = try await liveSearch(query: query, request: request)
-            candidates = mergeHits(localHits: candidates, remoteHits: live, maxResults: configuration.maxGroundedFetches)
+            candidates = mergeHits(
+                localHits: candidates,
+                remoteHits: live,
+                maxResults: configuration.maxGroundedFetches,
+                query: query
+            )
         }
 
         var selectedArtifacts: [StoredWebArtifact] = []
@@ -583,12 +593,31 @@ internal struct WebExecutionEngine: Sendable {
             return []
         }
         Log.agents.info("[WebSearchTool] liveSearch: query='\(query)', maxResults=\(request.maxResults), domains=\(request.domains), recencyDays=\(request.recencyDays ?? -1)")
-        let hits = try await TavilySearchBackend(configuration: configuration).search(
+        let backend = TavilySearchBackend(configuration: configuration)
+        let hits = try await backend.search(
             query: query,
             maxResults: request.maxResults,
             domains: request.domains,
             recencyDays: request.recencyDays
         )
+        if shouldRefineDocsSearch(query: query, hits: hits, request: request) {
+            let refinementDomains = docsRefinementDomains(for: query)
+            Log.agents.info("[WebSearchTool] liveSearch refinement: query='\(query)', domains=\(refinementDomains)")
+            let refined = try await backend.search(
+                query: query,
+                maxResults: min(max(request.maxResults, 2), 3),
+                domains: refinementDomains,
+                recencyDays: request.recencyDays
+            )
+            let merged = mergeHits(
+                localHits: refined,
+                remoteHits: hits,
+                maxResults: max(request.maxResults, 2),
+                query: query
+            )
+            Log.agents.info("[WebSearchTool] liveSearch refinement returned \(merged.count) merged hits for query: '\(query)'")
+            return merged
+        }
         Log.agents.info("[WebSearchTool] liveSearch returned \(hits.count) hits for query: '\(query)'")
         return hits
     }
@@ -698,6 +727,26 @@ internal struct WebExecutionEngine: Sendable {
         query: String
     ) async -> Bool {
         guard let best = matches.max(by: { localRecallScore(for: $0, query: query) < localRecallScore(for: $1, query: query) }) else {
+            return false
+        }
+
+        let representativeHit = best.hit
+        let syntheticRequest = WebToolRequest(
+            mode: .search,
+            query: query,
+            url: nil,
+            goal: nil,
+            maxResults: 1,
+            domains: [],
+            recencyDays: nil,
+            detail: .compact,
+            preferCached: true,
+            persist: true,
+            artifactID: nil,
+            sectionIDs: [],
+            bundleID: nil
+        )
+        if localHitNeedsLiveRefresh(representativeHit, query: query, request: syntheticRequest) {
             return false
         }
 
@@ -1225,10 +1274,11 @@ internal struct TavilySearchBackend: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = configuration.fetchTimeout
+        request.timeoutInterval = min(configuration.fetchTimeout, 6)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let session = Self.makeSession(timeout: min(configuration.fetchTimeout, 6))
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw AgentError.toolExecutionFailed(toolName: "websearch", underlyingError: "Tavily returned a non-HTTP response")
         }
@@ -1254,6 +1304,14 @@ internal struct TavilySearchBackend: Sendable {
                 cached: false
             )
         }
+    }
+
+    private static func makeSession(timeout: TimeInterval) -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = timeout
+        configuration.timeoutIntervalForResource = timeout
+        return URLSession(configuration: configuration)
     }
 }
 
@@ -1829,17 +1887,268 @@ internal func deduplicateHits(_ hits: [WebSearchHit]) -> [WebSearchHit] {
 internal func mergeHits(
     localHits: [WebSearchHit],
     remoteHits: [WebSearchHit],
-    maxResults: Int
+    maxResults: Int,
+    query: String
 ) -> [WebSearchHit] {
-    deduplicateHits(localHits + remoteHits)
-        .sorted { lhs, rhs in
-            if lhs.cached != rhs.cached {
-                return lhs.cached && lhs.score >= rhs.score * 0.9
-            }
-            return lhs.score > rhs.score
+    let ranked = deduplicateHits(localHits + remoteHits)
+        .map { hit in
+            (
+                hit,
+                compositeHitScore(hit, query: query)
+            )
         }
-        .prefix(max(1, maxResults))
-        .map { $0 }
+        .sorted { lhs, rhs in
+            if lhs.1 == rhs.1 {
+                return lhs.0.score > rhs.0.score
+            }
+            return lhs.1 > rhs.1
+        }
+        .map(\.0)
+
+    return diversifyHits(ranked, query: query, maxResults: maxResults)
+}
+
+internal func compositeHitScore(_ hit: WebSearchHit, query: String) -> Double {
+    let base = hit.score * 0.45
+    let queryScore = hitQueryMatchScore(hit, query: query) * 0.45
+    let trust = hostTrustWeight(for: hit.url) * 0.1
+    let cacheBoost = hit.cached ? 0.05 : 0
+    let genericPenalty = genericHitPenalty(hit, query: query)
+    let intentBoost = queryIntentPreferenceScore(hit, query: query)
+    return base + queryScore + trust + cacheBoost + intentBoost - genericPenalty
+}
+
+internal func hitQueryMatchScore(_ hit: WebSearchHit, query: String) -> Double {
+    let tokens = query
+        .lowercased()
+        .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        .map(String.init)
+        .filter { $0.count >= 3 }
+
+    guard !tokens.isEmpty else {
+        return 0
+    }
+
+    let title = hit.title.lowercased()
+    let snippet = hit.snippet.lowercased()
+    let url = hit.url.lowercased()
+    var matches = 0.0
+    for token in tokens {
+        if title.contains(token) { matches += 0.55 }
+        if snippet.contains(token) { matches += 0.30 }
+        if url.contains(token) { matches += 0.15 }
+    }
+
+    let exactPhraseBonus = title.contains(query.lowercased())
+        || snippet.contains(query.lowercased())
+        || url.contains(query.lowercased()) ? 0.25 : 0
+    return min((matches / Double(tokens.count)) + exactPhraseBonus, 1.6)
+}
+
+internal func genericHitPenalty(_ hit: WebSearchHit, query: String) -> Double {
+    let loweredURL = hit.url.lowercased()
+    let loweredTitle = hit.title.lowercased()
+    let loweredQuery = query.lowercased()
+    let genericMarkers = [
+        "/whats-new",
+        "/news",
+        "/blog",
+        "what’s new",
+        "what's new",
+        "release notes",
+    ]
+
+    let isGeneric = genericMarkers.contains(where: { loweredURL.contains($0) || loweredTitle.contains($0) })
+    guard isGeneric else {
+        return 0
+    }
+    let queryTokens = loweredQuery
+        .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        .map(String.init)
+        .filter { $0.count >= 4 }
+    let distinctMatches = Set(queryTokens.filter { token in
+        loweredTitle.contains(token) || loweredURL.contains(token)
+    }).count
+
+    if distinctMatches >= min(3, queryTokens.count) {
+        return 0.08
+    }
+
+    if distinctMatches >= 1 {
+        return 0.22
+    }
+
+    return 0.38
+}
+
+internal func diversifyHits(_ hits: [WebSearchHit], query: String, maxResults: Int) -> [WebSearchHit] {
+    var selected: [WebSearchHit] = []
+    var seenDomains: [String: Int] = [:]
+
+    for hit in hits {
+        let domain = hit.urlDomain
+        let duplicateCount = seenDomains[domain, default: 0]
+        if duplicateCount > 0, selected.count >= 2 {
+            let currentMatch = hitQueryMatchScore(hit, query: query)
+            let bestForDomain = selected
+                .filter { $0.urlDomain == domain }
+                .map { hitQueryMatchScore($0, query: query) }
+                .max() ?? 0
+            if currentMatch <= bestForDomain + 0.18 {
+                continue
+            }
+        }
+        selected.append(hit)
+        seenDomains[domain, default: 0] += 1
+        if selected.count == max(1, maxResults) {
+            break
+        }
+    }
+
+    return selected
+}
+
+internal func hostTrustWeight(for urlString: String) -> Double {
+    guard let url = URL(string: urlString) else {
+        return 0.2
+    }
+    switch hostTrustProfile(for: url) {
+    case .officialDocs:
+        return 1.0
+    case .officialProduct:
+        return 0.9
+    case .reference:
+        return 0.75
+    case .community:
+        return 0.55
+    case .userGenerated:
+        return 0.35
+    case .unknown:
+        return 0.2
+    }
+}
+
+internal func shouldRefineDocsSearch(query: String, hits: [WebSearchHit], request: WebToolRequest) -> Bool {
+    guard request.domains.isEmpty else {
+        return false
+    }
+    guard let topHit = hits.first else {
+        return false
+    }
+
+    let loweredQuery = query.lowercased()
+    let docsSignals = [
+        "doc", "documentation", "developer", "framework", "foundationmodels",
+        "language model session", "session", "prompt", "context", "tool",
+        "api", "guide", "technote", "wwdc", "sample", "example", "limit"
+    ]
+    let queryLooksDocsHeavy = docsSignals.contains { loweredQuery.contains($0) }
+    guard queryLooksDocsHeavy else {
+        return false
+    }
+
+    guard request.maxResults <= 2 else {
+        return false
+    }
+
+    guard localHitNeedsLiveRefresh(topHit, query: query, request: request) else {
+        return false
+    }
+
+    let currentTopHits = hits.prefix(3)
+    let hasStrongSpecificHit = currentTopHits.contains { hit in
+        let trust = hostTrustWeight(for: hit.url)
+        let queryMatch = hitQueryMatchScore(hit, query: query)
+        let penalty = genericHitPenalty(hit, query: query)
+        return trust >= 0.75 && queryMatch >= 0.95 && penalty < 0.22
+    }
+    return hasStrongSpecificHit == false
+}
+
+internal func docsRefinementDomains(for query: String) -> [String] {
+    let loweredQuery = query.lowercased()
+    var domains = [
+        "developer.apple.com",
+        "machinelearning.apple.com",
+    ]
+    if loweredQuery.contains("wwdc") || loweredQuery.contains("video") {
+        domains.append("developer.apple.com")
+    }
+    return Array(Set(domains))
+}
+
+internal func queryIntentPreferenceScore(_ hit: WebSearchHit, query: String) -> Double {
+    let loweredQuery = query.lowercased()
+    let loweredTitle = hit.title.lowercased()
+    let loweredURL = hit.url.lowercased()
+    let isVideo = loweredURL.contains("/videos/play/") || loweredTitle.contains("wwdc")
+    let isTechnote = loweredURL.contains("/documentation/technotes/")
+    let isFoundationDocs = loweredURL.contains("/documentation/foundationmodels")
+    let isMachineLearningResearch = loweredURL.contains("machinelearning.apple.com/research/")
+
+    let wantsWWDC = loweredQuery.contains("wwdc") || loweredQuery.contains("video")
+    let wantsResearch = loweredQuery.contains("research") || loweredQuery.contains("introducing")
+    let wantsTechnote = loweredQuery.contains("technote")
+    let wantsDocs = [
+        "doc", "documentation", "guide", "guides", "api",
+        "languagemodelsession", "language model session", "generable",
+        "@guide", "structured generation", "context window", "availability",
+        "tool calling", "prompt engineering", "foundation models"
+    ].contains { loweredQuery.contains($0) }
+
+    var score = 0.0
+    if wantsWWDC {
+        if isVideo { score += 0.2 }
+        if isFoundationDocs { score -= 0.08 }
+        return score
+    }
+
+    if wantsResearch {
+        if isMachineLearningResearch { score += 0.2 }
+        if isVideo { score -= 0.05 }
+        return score
+    }
+
+    if wantsTechnote {
+        if isTechnote { score += 0.22 }
+        if isVideo { score -= 0.15 }
+        return score
+    }
+
+    if wantsDocs {
+        if isFoundationDocs { score += 0.18 }
+        if isTechnote { score += 0.12 }
+        if isMachineLearningResearch { score += 0.05 }
+        if isVideo { score -= 0.16 }
+    }
+
+    return score
+}
+
+internal func localHitNeedsLiveRefresh(
+    _ hit: WebSearchHit,
+    query: String,
+    request: WebToolRequest
+) -> Bool {
+    guard request.domains.isEmpty else {
+        return false
+    }
+
+    let queryMatch = hitQueryMatchScore(hit, query: query)
+    let penalty = genericHitPenalty(hit, query: query)
+    let trust = hostTrustWeight(for: hit.url)
+    let refinementDomains = Set(docsRefinementDomains(for: query))
+    let isAlreadyInPreferredDocsDomain = refinementDomains.contains(hit.urlDomain)
+
+    if penalty < 0.22 {
+        return false
+    }
+
+    if isAlreadyInPreferredDocsDomain, trust >= 0.9, queryMatch >= 1.0 {
+        return false
+    }
+
+    return queryMatch < 1.1 || isAlreadyInPreferredDocsDomain == false
 }
 
 internal func canonicalizeURL(_ urlString: String) throws -> URL {
@@ -1910,6 +2219,15 @@ internal func trimmedSnippet(_ text: String, limit: Int = 280) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines)
     guard collapsed.count > limit else { return collapsed }
     return String(collapsed.prefix(limit)).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+}
+
+private extension WebSearchHit {
+    var urlDomain: String {
+        if let url = URL(string: url), let host = url.host?.lowercased() {
+            return host
+        }
+        return "unknown"
+    }
 }
 
 internal func prettifyJSON(_ data: Data) -> String {

@@ -16,6 +16,7 @@ struct Strict4kPromptEnvelopeTests {
                 waxStoreURL: waxURL
             )
         )
+        await memory.add(.assistant("remembered-needle: retain this exact context marker"))
         await memory.add(.assistant(longBlock("remembered", lines: 20)))
         let session = try await makeLargeSession()
 
@@ -29,8 +30,8 @@ struct Strict4kPromptEnvelopeTests {
 
         _ = try await agent.run("needle-user-input", session: session)
 
-        guard let prompt = await provider.lastGenerateCall?.prompt else {
-            Issue.record("Expected Agent to call generate() when no tools are configured")
+        guard let prompt = await latestPrompt(from: provider) else {
+            Issue.record("Expected Agent to generate a strict4k prompt when no tools are configured")
             return
         }
 
@@ -38,7 +39,8 @@ struct Strict4kPromptEnvelopeTests {
         #expect(prompt.contains("[Current Conversation]"))
         #expect(prompt.contains("needle-user-input"))
         #expect(prompt.contains("instructions-0"))
-        #expect(prompt.contains("remembered-0"))
+        #expect(prompt.contains("remembered-needle"))
+        #expect(occurrenceCount(of: "remembered-needle", in: prompt) == 1)
     }
 
     @Test("Agent caps prompt to strict4k max input budget")
@@ -57,8 +59,8 @@ struct Strict4kPromptEnvelopeTests {
 
         _ = try await agent.run("needle-user-input", session: session)
 
-        guard let prompt = await provider.lastGenerateCall?.prompt else {
-            Issue.record("Expected Agent to call generate() when no tools are configured")
+        guard let prompt = await latestPrompt(from: provider) else {
+            Issue.record("Expected Agent to generate a strict4k prompt when no tools are configured")
             return
         }
 
@@ -85,8 +87,8 @@ struct Strict4kPromptEnvelopeTests {
 
         _ = try await agent.run("needle-user-input", session: session)
 
-        guard let prompt = await provider.lastGenerateCall?.prompt else {
-            Issue.record("Expected Agent to call generate() when no tools are configured")
+        guard let prompt = await latestPrompt(from: provider) else {
+            Issue.record("Expected Agent to generate a strict4k prompt when no tools are configured")
             return
         }
 
@@ -96,6 +98,73 @@ struct Strict4kPromptEnvelopeTests {
         #expect(prompt.contains("needle-user-input"))
         #expect(tokenCountCalls > 0)
     }
+
+    @Test("Strict4k prompt includes compact web evidence for follow-up recall")
+    func strict4kPromptIncludesCompactWebEvidence() async throws {
+        let provider = MockInferenceProvider(responses: ["agent-ok"])
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("strict4k-web-evidence-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let memory = try DefaultAgentMemory(
+            configuration: .init(
+                contextCoreConfiguration: .default,
+                waxStoreURL: root.appendingPathComponent("memory.mv2s"),
+                webEvidenceStoreURL: root.appendingPathComponent("web-evidence", isDirectory: true)
+            )
+        )
+        await memory.addWebSearchResult(
+            rawPayload: "raw-websearch-payload",
+            evidence: WebSearchEvidenceRecord(
+                query: "Apple Foundation Models prompt engineering",
+                mode: "search",
+                summary: "Apple's prompting guide covers on-device prompting constraints.",
+                semanticCore: "Prompting guidance for on-device foundation models.",
+                primaryHit: .init(
+                    title: "Prompting an on-device foundation model - Apple Developer",
+                    url: "https://developer.apple.com/documentation/foundationmodels/prompting-an-on-device-foundation-model",
+                    snippet: "Prompting techniques for on-device foundation models.",
+                    domain: "developer.apple.com",
+                    score: 0.88
+                )
+            )
+        )
+        let session = try await makeLargeSession()
+
+        let agent = try Agent(
+            tools: [],
+            instructions: longBlock("instructions", lines: 80),
+            configuration: strict4kConfig(),
+            memory: memory,
+            inferenceProvider: provider
+        )
+
+        _ = try await agent.run("What did the Apple Foundation Models prompting guide say?", session: session)
+
+        guard let prompt = await latestPrompt(from: provider) else {
+            Issue.record("Expected Agent to generate a strict4k prompt with web evidence")
+            return
+        }
+
+        #expect(prompt.contains("Web Search Evidence (curated)"))
+        #expect(prompt.contains("Prompting an on-device foundation model - Apple Developer"))
+        #expect(prompt.contains("developer.apple.com/documentation/foundationmodels/prompting-an-on-device-foundation-model"))
+    }
+}
+
+private func occurrenceCount(of needle: String, in haystack: String) -> Int {
+    guard !needle.isEmpty else { return 0 }
+    return haystack.components(separatedBy: needle).count - 1
+}
+
+private func latestPrompt(from provider: MockInferenceProvider) async -> String? {
+    if let prompt = await provider.lastGenerateCall?.prompt {
+        return prompt
+    }
+    if let messages = await provider.generateMessageCalls.last?.messages {
+        return InferenceMessage.flattenPrompt(messages)
+    }
+    return nil
 }
 
 private func strict4kConfig() -> AgentConfiguration {

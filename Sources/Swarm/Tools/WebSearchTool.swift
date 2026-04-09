@@ -108,6 +108,8 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
     public let description = """
     Searches the live web, fetches pages, grounds answers across sources, and reuses cached web evidence \
     without polluting small-context agent prompts.
+    For normal web research, call websearch with a non-empty query and optionally maxResults/detail.
+    Do not omit the query for search/ground/recall, and do not invent url, goal, or domains unless the task actually needs them.
     """
 
     public let parameters: [ToolParameter] = [
@@ -120,7 +122,7 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         ),
         ToolParameter(
             name: "query",
-            description: "Query for search, ground, or recall.",
+            description: "Required for search, ground, and recall. This should be the actual web query.",
             type: .string,
             isRequired: false
         ),
@@ -132,7 +134,7 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         ),
         ToolParameter(
             name: "goal",
-            description: "Task-specific extraction goal used for section ranking and grounding.",
+            description: "Optional extraction goal. Use only when you already have a real query or URL and need focused ranking.",
             type: .string,
             isRequired: false
         ),
@@ -145,7 +147,7 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         ),
         ToolParameter(
             name: "domains",
-            description: "Optional domain allowlist.",
+            description: "Optional domain allowlist. Use only when the user explicitly wants a site/domain restriction.",
             type: .array(elementType: .string),
             isRequired: false
         ),
@@ -367,7 +369,10 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
             }
         }
 
-        return lines.joined(separator: "\n")
+        return WebSearchEvidenceCompiler.embedEnvelope(
+            envelope,
+            in: lines.joined(separator: "\n")
+        )
     }
 }
 

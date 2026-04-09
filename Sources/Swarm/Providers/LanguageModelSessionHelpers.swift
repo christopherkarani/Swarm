@@ -85,10 +85,15 @@ enum LanguageModelSessionToolPromptBuilder {
             \(toolDefsText)
 
             If you decide to use a tool, respond with only a single JSON object in this exact format and no surrounding text:
-            {"\(LanguageModelSessionToolCallingContext.envelopeKey)": {"nonce": "\(context.nonce)", "tool": "tool_name", "arguments": {"param1": "value1"}}}
+            \(toolEnvelopeExample(tools: tools, context: context))
 
             Never emit that JSON envelope unless you are requesting a tool call.
+            Never copy placeholder names like "tool_name", "param1", or "value1".
+            The "tool" field must be one of the real tool names listed above.
             If no tool is needed, respond normally without JSON.
+            If tool results are already present in the prompt, use them directly to answer the user.
+            Never claim you cannot browse, search, or access external information when a tool result is already present.
+            Do not call the same tool again with weaker or emptier arguments after you already have a usable result.
             """
 
         if let structuredOutput {
@@ -117,6 +122,96 @@ enum LanguageModelSessionToolPromptBuilder {
             return "one of: \(options.joined(separator: ", "))"
         case .any:
             return "any type"
+        }
+    }
+
+    private static func toolEnvelopeExample(
+        tools: [ToolSchema],
+        context: LanguageModelSessionToolCallingContext
+    ) -> String {
+        guard let tool = tools.first else {
+            return #"{"swarm_tool_call":{"nonce":"\#(context.nonce)","tool":"tool_name","arguments":{"param1":"value1"}}}"#
+        }
+
+        let arguments = exampleArguments(for: tool)
+        guard let data = try? JSONSerialization.data(withJSONObject: arguments, options: [.sortedKeys]),
+              let argumentsJSON = String(data: data, encoding: .utf8)
+        else {
+            return #"{"swarm_tool_call":{"nonce":"\#(context.nonce)","tool":"\#(tool.name)","arguments":{}}}"#
+        }
+
+        return #"{"swarm_tool_call": {"nonce": "\#(context.nonce)", "tool": "\#(tool.name)", "arguments": \#(argumentsJSON)}}"#
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func exampleArguments(for tool: ToolSchema) -> [String: Any] {
+        if tool.name == "websearch" {
+            return [
+                "detail": "compact",
+                "maxResults": 3,
+                "query": "latest official Foundation Models documentation",
+            ]
+        }
+
+        var example: [String: Any] = [:]
+
+        for parameter in tool.parameters {
+            if !parameter.isRequired, !example.isEmpty {
+                continue
+            }
+
+            switch parameter.type {
+            case .string:
+                example[parameter.name] = exampleStringValue(for: parameter.name)
+            case .int:
+                example[parameter.name] = 1
+            case .double:
+                example[parameter.name] = 1.0
+            case .bool:
+                example[parameter.name] = true
+            case let .array(elementType):
+                switch elementType {
+                case .string:
+                    example[parameter.name] = ["example"]
+                case .int:
+                    example[parameter.name] = [1]
+                case .double:
+                    example[parameter.name] = [1.0]
+                case .bool:
+                    example[parameter.name] = [true]
+                default:
+                    example[parameter.name] = []
+                }
+            case let .oneOf(options):
+                if let first = options.first {
+                    example[parameter.name] = first
+                }
+            case .object:
+                example[parameter.name] = [:]
+            case .any:
+                example[parameter.name] = "example"
+            }
+
+            if parameter.isRequired, !example.isEmpty {
+                break
+            }
+        }
+
+        return example
+    }
+
+    private static func exampleStringValue(for parameterName: String) -> String {
+        switch parameterName.lowercased() {
+        case "query":
+            return "example query"
+        case "url":
+            return "https://example.com"
+        case "city":
+            return "San Francisco"
+        case "expression":
+            return "2+2"
+        default:
+            return "example"
         }
     }
 }
@@ -192,8 +287,11 @@ enum LanguageModelSessionToolParser {
         guard let envelope = jsonObject[LanguageModelSessionToolCallingContext.envelopeKey] as? [String: Any] else {
             return "missing envelope key '\(LanguageModelSessionToolCallingContext.envelopeKey)'; keys=\(jsonObject.keys.joined(separator: ", "))"
         }
-        guard let nonce = envelope["nonce"] as? String else {
+        if envelope["nonce"] == nil {
             return "missing nonce in envelope"
+        }
+        guard let nonce = envelope["nonce"] as? String else {
+            return "invalid nonce in envelope"
         }
         if nonce != context.nonce {
             return "nonce mismatch: got='\(nonce.prefix(8))...', expected='\(context.nonce.prefix(8))...'"
@@ -229,16 +327,19 @@ enum LanguageModelSessionToolParser {
                 return nil
             }
 
-            guard let nonce = envelope["nonce"] as? String, nonce == context.nonce else {
+            if let nonceValue = envelope["nonce"] {
+                guard let nonce = nonceValue as? String, nonce == context.nonce else {
+                    return nil
+                }
+            }
+
+            let rawToolName = envelope["tool"] as? String
+            guard let rawToolName = rawToolName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !rawToolName.isEmpty else {
                 return nil
             }
 
-            let toolName = envelope["tool"] as? String
-            guard let toolName = toolName?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-                return nil
-            }
-
-            guard availableTools.contains(where: { $0.name == toolName }) else {
+            guard let tool = resolveTool(named: rawToolName, availableTools: availableTools) else {
                 return nil
             }
 
@@ -248,12 +349,13 @@ enum LanguageModelSessionToolParser {
                     arguments[key] = SendableValue.fromJSONValue(value)
                 }
             }
+            arguments = sanitize(arguments: arguments, for: tool)
 
             let callId = envelope["id"] as? String
 
             return [InferenceResponse.ParsedToolCall(
                 id: callId,
-                name: toolName,
+                name: tool.name,
                 arguments: arguments
             )]
         } catch {
@@ -307,6 +409,139 @@ enum LanguageModelSessionToolParser {
         }
 
         return candidates
+    }
+
+    private static func resolveTool(
+        named rawToolName: String,
+        availableTools: [ToolSchema]
+    ) -> ToolSchema? {
+        if let exact = availableTools.first(where: { $0.name == rawToolName }) {
+            return exact
+        }
+
+        let prefixMatches = availableTools.filter {
+            $0.name.hasPrefix(rawToolName) || rawToolName.hasPrefix($0.name)
+        }
+        if prefixMatches.count == 1 {
+            return prefixMatches[0]
+        }
+
+        let normalizedRaw = normalizeToolName(rawToolName)
+        let normalizedMatches = availableTools.filter { normalizeToolName($0.name) == normalizedRaw }
+        if normalizedMatches.count == 1 {
+            return normalizedMatches[0]
+        }
+
+        return nil
+    }
+
+    private static func normalizeToolName(_ name: String) -> String {
+        name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "-", with: "")
+    }
+
+    private static func sanitize(
+        arguments: [String: SendableValue],
+        for tool: ToolSchema
+    ) -> [String: SendableValue] {
+        guard !tool.parameters.isEmpty else {
+            return arguments
+        }
+
+        var sanitized: [String: SendableValue] = [:]
+        sanitized.reserveCapacity(arguments.count)
+
+        let parameterMap = Dictionary(uniqueKeysWithValues: tool.parameters.map { ($0.name, $0) })
+        for (key, value) in arguments {
+            guard let parameter = parameterMap[key] else {
+                continue
+            }
+            if let normalized = normalize(value: value, for: parameter.type) {
+                sanitized[key] = normalized
+            }
+        }
+
+        return sanitized
+    }
+
+    private static func normalize(
+        value: SendableValue,
+        for type: ToolParameter.ParameterType
+    ) -> SendableValue? {
+        switch type {
+        case .string:
+            return switch value {
+            case let .string(text): .string(text)
+            case let .int(number): .string(String(number))
+            case let .double(number): .string(String(number))
+            case let .bool(flag): .string(flag ? "true" : "false")
+            default: nil
+            }
+        case .int:
+            return switch value {
+            case let .int(number): .int(number)
+            case let .double(number): .int(Int(number))
+            case let .string(text):
+                if let number = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    .int(number)
+                } else {
+                    nil
+                }
+            case let .bool(flag): .int(flag ? 1 : 0)
+            default: nil
+            }
+        case .double:
+            return switch value {
+            case let .double(number): .double(number)
+            case let .int(number): .double(Double(number))
+            case let .string(text):
+                if let number = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    .double(number)
+                } else {
+                    nil
+                }
+            default: nil
+            }
+        case .bool:
+            switch value {
+            case let .bool(flag):
+                return .bool(flag)
+            case let .string(text):
+                let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if ["true", "yes", "1"].contains(normalized) {
+                    return .bool(true)
+                }
+                if ["false", "no", "0"].contains(normalized) {
+                    return .bool(false)
+                }
+                return nil
+            case let .int(number):
+                return .bool(number != 0)
+            default:
+                return nil
+            }
+        case let .array(elementType):
+            guard case let .array(values) = value else {
+                return nil
+            }
+            let normalized = values.compactMap { normalize(value: $0, for: elementType) }
+            return normalized.count == values.count ? .array(normalized) : nil
+        case .object:
+            if case .dictionary = value {
+                return value
+            }
+            return nil
+        case let .oneOf(options):
+            guard let string = normalize(value: value, for: .string)?.stringValue else {
+                return nil
+            }
+            return options.contains(string) ? .string(string) : nil
+        case .any:
+            return value
+        }
     }
 }
 

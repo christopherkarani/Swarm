@@ -22,20 +22,36 @@ struct MyApp {
         Log.bootstrap()
         print("🚀 Starting Swarm Playground...")
 
+        let environment = ProcessInfo.processInfo.environment
+        let input = environment["SWARM_DEMO_PROMPT"] ?? """
+        Conduct deep research on Metal 4 and MLX for Apple Silicon. Cover:
+
+        1. Metal 4 — new compute pipeline (MTL4CommandBuffer, MTL4ComputeCommandEncoder, MTL4ArgumentTable), residency sets, barriers, Shader ML, GPU Neural Accelerators, MSL 4.0 features, and ray tracing improvements. Include a minimal compute shader example showing the new dispatch pattern.
+
+        2. MLX — array framework for Apple Silicon. Explain how it differs from PyTorch/Metal, its lazy evaluation model, automatic differentiation, and how to build/train a simple neural network in Swift or Python. Include a code example.
+
+        3. How Metal 4 and MLX complement each other — when to use raw Metal vs MLX for on-device inference, fine-tuning, and training.
+
+        4. Performance considerations — memory management, kernel dispatch overhead, quantization, and ANE vs GPU vs CPU routing.
+
+        Provide a comprehensive technical report with code examples for each section.
+        """
+        let maxIterations = environment["SWARM_DEMO_MAX_ITERATIONS"]
+            .flatMap(Int.init) ?? 50
+        let timeoutSeconds = environment["SWARM_DEMO_TIMEOUT_SECONDS"]
+            .flatMap(Double.init) ?? 60
+        let summaryOnly = environment["SWARM_DEMO_SUMMARY_ONLY"] == "1"
+        let tracer: any Tracer = summaryOnly ? NoOpTracer() : ConsoleTracer()
+
         // MARK: - Provider: Apple Foundation Models (on-device, macOS 26+)
-        let inferenceProvider: any InferenceProvider
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *), SystemLanguageModel.default.availability == .available {
-            let session = LanguageModelSession()
-            print("✅ Using Apple Foundation Models (on-device)")
-            inferenceProvider = session
+            print("✅ Using Apple Foundation Models (on-device via Swarm default provider)")
         } else {
             print("⚠️ Foundation Models not available, falling back to Ollama Cloud")
-            inferenceProvider = LLM.ollama("gpt-oss:120b-cloud")
         }
         #else
         print("⚠️ Foundation Models not supported on this platform, using Ollama Cloud")
-        inferenceProvider = LLM.ollama("gpt-oss:120b-cloud")
         #endif
 
         // MARK: - Tools: built-in only (no API keys required)
@@ -50,24 +66,34 @@ struct MyApp {
         ]
 
         // MARK: - Agent
-        let input = """
-        Conduct deep research on Metal 4 and MLX for Apple Silicon. Cover:
-
-        1. Metal 4 — new compute pipeline (MTL4CommandBuffer, MTL4ComputeCommandEncoder, MTL4ArgumentTable), residency sets, barriers, Shader ML, GPU Neural Accelerators, MSL 4.0 features, and ray tracing improvements. Include a minimal compute shader example showing the new dispatch pattern.
-
-        2. MLX — array framework for Apple Silicon. Explain how it differs from PyTorch/Metal, its lazy evaluation model, automatic differentiation, and how to build/train a simple neural network in Swift or Python. Include a code example.
-
-        3. How Metal 4 and MLX complement each other — when to use raw Metal vs MLX for on-device inference, fine-tuning, and training.
-
-        4. Performance considerations — memory management, kernel dispatch overhead, quantization, and ANE vs GPU vs CPU routing.
-
-        Provide a comprehensive technical report with code examples for each section.
-        """
+        if RonaldoResearchWorkflow.shouldRun(from: environment, input: input) {
+            do {
+                let result = try await RonaldoResearchWorkflow.run(
+                    environment: environment,
+                    tracer: tracer
+                )
+                if summaryOnly {
+                    print("=== SUMMARY ===")
+                    print("websearch_calls=\(result.totalWebsearchCalls)")
+                    print("section_count=\(result.sectionDrafts.count)")
+                    print("paper_words=\(result.finalPaper.split(whereSeparator: { $0.isWhitespace }).count)")
+                    print("final_output_begin")
+                    print(result.finalPaper)
+                    print("final_output_end")
+                } else {
+                    print(result.finalPaper)
+                }
+            } catch {
+                print("Error: \(error)")
+            }
+            return
+        }
 
         let agent: Agent
         do {
             var config = AgentConfiguration.default
-                .maxIterations(50)
+                .maxIterations(maxIterations)
+                .timeout(.seconds(timeoutSeconds))
 
             // For Foundation Models (4096 token window), enforce strict context management:
             // 1. strict4k activates PromptEnvelope truncation (keeps head + tail, cuts middle)
@@ -89,21 +115,25 @@ struct MyApp {
                 Structure your response with clear sections and subsections.
                 """,
                 configuration: config,
-                inferenceProvider: inferenceProvider,
-                tracer: ConsoleTracer()
+                tracer: tracer
             )
         } catch {
             fatalError("Failed to create agent: \(error)")
         }
 
         do {
+            var websearchCalls = 0
+            var finalOutput = ""
             for try await event in agent.stream(input) {
                 switch event {
                 // Lifecycle
                 case .lifecycle(.started(input: let input)):
                     print("Agent started with input: \(input.prefix(80))...")
                 case .lifecycle(.completed(result: let result)):
-                    print("🏁 Finished with reason: \(result.output)")
+                    finalOutput = result.output
+                    if !summaryOnly {
+                        print("🏁 Finished with reason: \(result.output)")
+                    }
                 case .lifecycle(.failed(error: let error)):
                     print("❌ Agent failed: \(error)")
                 case .lifecycle(.cancelled):
@@ -115,21 +145,32 @@ struct MyApp {
 
                 // Output
                 case .output(.thinking(thought: let text)):
-                    print(text, terminator: "")
+                    if !summaryOnly { print(text, terminator: "") }
                 case .output(.thinkingPartial(let text)):
-                    print(text, terminator: "")
+                    if !summaryOnly { print(text, terminator: "") }
                 case .output(.token):
                     break
                 case .output(.chunk(let chunk)):
-                    print(chunk, terminator: "")
+                    if !summaryOnly { print(chunk, terminator: "") }
 
                 // Tool calls
                 case .tool(.started(call: let call)):
-                    print("-> Calling \"\(call.toolName)\" with \(call.arguments)")
+                    if call.toolName == "websearch" {
+                        websearchCalls += 1
+                    }
+                    if summaryOnly {
+                        print("tool_started \(call.toolName) count=\(websearchCalls)")
+                    } else {
+                        print("-> Calling \"\(call.toolName)\" with \(call.arguments)")
+                    }
                 case .tool(.partial):
                     break
                 case .tool(.completed(call: let tool, result: let result)):
-                    print("✅ Tool \"\(tool.toolName)\" returned: \(result.output)")
+                    if summaryOnly {
+                        print("tool_completed \(tool.toolName)")
+                    } else {
+                        print("✅ Tool \"\(tool.toolName)\" returned: \(result.output)")
+                    }
                 case .tool(.failed(call: let tool, error: let error)):
                     print("❌ Tool \"\(tool.toolName)\" failed: \(error)")
 
@@ -161,6 +202,14 @@ struct MyApp {
                 case .observation(.llmStarted), .observation(.llmCompleted):
                     break
                 }
+            }
+
+            if summaryOnly {
+                print("=== SUMMARY ===")
+                print("websearch_calls=\(websearchCalls)")
+                print("final_output_begin")
+                print(finalOutput)
+                print("final_output_end")
             }
         } catch {
             print("Error: \(error)")

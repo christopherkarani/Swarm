@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Default Composite Memory")
 struct ContextCoreDefaultMemoryTests {
-    @Test("Agent uses ContextCore + Wax memory by default on subsequent turns")
+    @Test("Agent uses the default composite memory stack on subsequent turns")
     func agentUsesContextCoreMemoryByDefault() async throws {
         let session = InMemorySession()
         let provider = MockInferenceProvider(responses: [
@@ -29,7 +29,6 @@ struct ContextCoreDefaultMemoryTests {
 
         #expect(systemMessage != nil)
         #expect(systemMessage?.content.contains("ContextCore Memory Context (primary)") == true)
-        #expect(systemMessage?.content.contains("Wax Memory Context (secondary)") == true)
         #expect(systemMessage?.content.contains("Remember me") == true)
         #expect(systemMessage?.content.contains("First reply") == true)
     }
@@ -131,6 +130,35 @@ struct ContextCoreDefaultMemoryTests {
         #expect(context.isEmpty == false)
     }
 
+    @Test("DefaultAgentMemory honors item-aware retrieval limits")
+    func defaultCompositeMemoryHonorsItemAwareRetrievalLimits() async throws {
+        let url = try makeTemporaryWaxURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let memory = try DefaultAgentMemory(
+            configuration: .init(
+                waxStoreURL: url
+            )
+        )
+
+        for index in 0 ..< 6 {
+            let payload = String(repeating: "needle-\(index) ", count: 40)
+            await memory.add(.user("item-\(index): \(payload)"))
+        }
+
+        let context = await memory.context(
+            for: MemoryQuery(
+                text: "needle",
+                tokenLimit: 400,
+                maxItems: 2,
+                maxItemTokens: 60
+            )
+        )
+
+        let itemMentions = (0 ..< 6).filter { context.contains("item-\($0):") }
+        #expect(itemMentions.count <= 2)
+    }
+
     @Test("DefaultAgentMemory skips duplicate replay entries against an existing Wax store")
     func defaultCompositeMemorySkipsDuplicateReplayEntries() async throws {
         let url = try makeTemporaryWaxURL()
@@ -160,6 +188,54 @@ struct ContextCoreDefaultMemoryTests {
         #expect(await reopened.count == 2)
         #expect((await reopened.allMessages()).map(\.content) == ["gamma", "delta"])
         #expect((await reopened.durableMessages()).map(\.content) == ["gamma", "delta"])
+    }
+
+    @Test("DefaultAgentMemory recalls structured websearch evidence for follow-up queries")
+    func defaultCompositeMemoryRecallsWebEvidence() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "swarm-web-evidence-tests-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let memory = try DefaultAgentMemory(
+            configuration: .init(
+                waxStoreURL: root.appendingPathComponent("memory.mv2s"),
+                webEvidenceStoreURL: root.appendingPathComponent("web-evidence", isDirectory: true)
+            )
+        )
+
+        let record = WebSearchEvidenceRecord(
+            query: "Apple Foundation Models prompt engineering",
+            mode: "search",
+            summary: "Apple's prompting guide covers on-device prompting constraints.",
+            semanticCore: "Prompting guidance for on-device foundation models.",
+            primaryHit: .init(
+                title: "Prompting an on-device foundation model - Apple Developer",
+                url: "https://developer.apple.com/documentation/foundationmodels/prompting-an-on-device-foundation-model",
+                snippet: "Prompting techniques for on-device foundation models.",
+                domain: "developer.apple.com",
+                score: 0.88
+            )
+        )
+
+        await memory.addWebSearchResult(
+            rawPayload: "raw-websearch-payload",
+            evidence: record
+        )
+
+        let context = await memory.context(
+            for: MemoryQuery(
+                text: "What did the Apple Foundation Models prompting guide say?",
+                tokenLimit: 500,
+                maxItems: 3,
+                maxItemTokens: 120
+            )
+        )
+
+        #expect(context.contains("Web Search Evidence (curated)"))
+        #expect(context.contains("Prompting an on-device foundation model - Apple Developer"))
+        #expect(context.contains("developer.apple.com/documentation/foundationmodels/prompting-an-on-device-foundation-model"))
     }
 }
 

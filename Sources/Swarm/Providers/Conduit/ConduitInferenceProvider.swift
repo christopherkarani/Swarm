@@ -18,11 +18,13 @@ struct ConduitInferenceProvider<Provider: TextGenerator>: InferenceProvider,
     init(
         provider: Provider,
         model: Provider.ModelID,
-        baseConfig: GenerateConfig = .default
+        baseConfig: GenerateConfig = .default,
+        supportsStreamingToolCalls: Bool = true
     ) {
         self.provider = provider
         self.model = model
         self.baseConfig = baseConfig
+        self.supportsStreamingToolCalls = supportsStreamingToolCalls
     }
 
     func generate(prompt: String, options: InferenceOptions) async throws -> String {
@@ -31,12 +33,15 @@ struct ConduitInferenceProvider<Provider: TextGenerator>: InferenceProvider,
     }
 
     var capabilities: InferenceProviderCapabilities {
-        [
+        var capabilities: InferenceProviderCapabilities = [
             .conversationMessages,
             .nativeToolCalling,
-            .streamingToolCalls,
             .structuredOutputs,
         ]
+        if supportsStreamingToolCalls {
+            capabilities.insert(.streamingToolCalls)
+        }
+        return capabilities
     }
 
     func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
@@ -112,7 +117,7 @@ struct ConduitInferenceProvider<Provider: TextGenerator>: InferenceProvider,
             config: config
         )
 
-        let parsedToolCalls = try ConduitToolCallConverter.toParsedToolCalls(result.toolCalls)
+        let parsedToolCalls = try parsedToolCalls(from: result, tools: tools)
         let finishReason = mapFinishReason(result.finishReason, toolCalls: parsedToolCalls)
         let usage = result.usage.map { usage in
             TokenUsage(
@@ -159,7 +164,7 @@ struct ConduitInferenceProvider<Provider: TextGenerator>: InferenceProvider,
             config: config
         )
 
-        let parsedToolCalls = try ConduitToolCallConverter.toParsedToolCalls(result.toolCalls)
+        let parsedToolCalls = try parsedToolCalls(from: result, tools: tools)
         let finishReason = mapFinishReason(result.finishReason, toolCalls: parsedToolCalls)
         let usage = result.usage.map { usage in
             TokenUsage(
@@ -181,7 +186,22 @@ struct ConduitInferenceProvider<Provider: TextGenerator>: InferenceProvider,
         tools: [ToolSchema],
         options: InferenceOptions
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        guard supportsStreamingToolCalls else {
+            return StreamHelper.makeTrackedStream { continuation in
+                let response = try await self.generateWithToolCalls(prompt: prompt, tools: tools, options: options)
+                if let content = response.content, !content.isEmpty {
+                    continuation.yield(.outputChunk(content))
+                }
+                if !response.toolCalls.isEmpty {
+                    continuation.yield(.toolCallsCompleted(response.toolCalls))
+                }
+                if let usage = response.usage {
+                    continuation.yield(.usage(usage))
+                }
+                continuation.finish()
+            }
+        }
+        return StreamHelper.makeTrackedStream { continuation in
             var config = try apply(options: options, to: baseConfig)
             let toolDefinitions = try ConduitToolSchemaConverter.toolDefinitions(from: tools)
             config = config.tools(toolDefinitions)
@@ -271,7 +291,26 @@ struct ConduitInferenceProvider<Provider: TextGenerator>: InferenceProvider,
         tools: [ToolSchema],
         options: InferenceOptions
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        guard supportsStreamingToolCalls else {
+            return StreamHelper.makeTrackedStream { continuation in
+                let response = try await self.generateWithToolCalls(
+                    messages: messages,
+                    tools: tools,
+                    options: options
+                )
+                if let content = response.content, !content.isEmpty {
+                    continuation.yield(.outputChunk(content))
+                }
+                if !response.toolCalls.isEmpty {
+                    continuation.yield(.toolCallsCompleted(response.toolCalls))
+                }
+                if let usage = response.usage {
+                    continuation.yield(.usage(usage))
+                }
+                continuation.finish()
+            }
+        }
+        return StreamHelper.makeTrackedStream { continuation in
             var config = try apply(options: options, to: baseConfig)
             let toolDefinitions = try ConduitToolSchemaConverter.toolDefinitions(from: tools)
             config = config.tools(toolDefinitions)
@@ -341,6 +380,7 @@ struct ConduitInferenceProvider<Provider: TextGenerator>: InferenceProvider,
     private let provider: Provider
     private let model: Provider.ModelID
     private let baseConfig: GenerateConfig
+    private let supportsStreamingToolCalls: Bool
 
     private static func conduitMessages(from messages: [InferenceMessage]) throws -> [Message] {
         let toolNamesByCallID = Dictionary(
@@ -575,6 +615,25 @@ struct ConduitInferenceProvider<Provider: TextGenerator>: InferenceProvider,
             return .completed
         }
     }
+
+    private func parsedToolCalls(
+        from result: GenerationResult,
+        tools: [ToolSchema]
+    ) throws -> [InferenceResponse.ParsedToolCall] {
+        let direct = try ConduitToolCallConverter.toParsedToolCalls(result.toolCalls)
+        if !direct.isEmpty {
+            return direct
+        }
+
+        guard !result.text.isEmpty else {
+            return []
+        }
+
+        return ConduitPromptToolFallbackParser.parseToolCalls(
+            from: result.text,
+            availableTools: tools
+        )
+    }
 }
 
 // MARK: - Tool Schema Conversion
@@ -752,3 +811,184 @@ extension ConduitInferenceProvider: PromptTokenCounter where Provider: ConduitAd
 }
 
 extension ConduitInferenceProvider: PromptTokenCountingInferenceProvider where Provider: ConduitAdvanced.TokenCounter {}
+
+enum ConduitPromptToolFallbackParser {
+    private static let envelopeKey = "conduit_tool_call"
+
+    static func parseToolCalls(
+        from content: String,
+        availableTools: [ToolSchema]
+    ) -> [InferenceResponse.ParsedToolCall] {
+        for candidate in extractJSONObjectCandidates(from: content) {
+            if let parsed = parseToolCall(from: candidate, availableTools: availableTools) {
+                return [parsed]
+            }
+        }
+
+        if let parsed = parseToolCall(from: content, availableTools: availableTools) {
+            return [parsed]
+        }
+
+        return []
+    }
+
+    private static func parseToolCall(
+        from candidate: String,
+        availableTools: [ToolSchema]
+    ) -> InferenceResponse.ParsedToolCall? {
+        let trimmed = stripCodeFences(candidate).trimmingCharacters(in: .whitespacesAndNewlines)
+        let repaired = repairJSONObjectCandidate(trimmed)
+        guard repaired.first == "{", repaired.last == "}" else {
+            return nil
+        }
+
+        guard let data = repaired.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) as? [String: Any]
+        else {
+            return nil
+        }
+
+        let envelope: [String: Any]
+        if let wrapped = json[envelopeKey] as? [String: Any] {
+            envelope = wrapped
+        } else {
+            envelope = json
+        }
+
+        guard let resolvedToolName = resolveToolName(from: envelope, availableTools: availableTools) else {
+            return nil
+        }
+
+        var arguments = (envelope["arguments"] as? [String: Any]) ?? [:]
+        if arguments.isEmpty {
+            arguments = envelope.filter { key, _ in
+                key != "tool" && key != "tool_name" && key != "name" && key != "nonce"
+            }
+        }
+        arguments.removeValue(forKey: "tool")
+        arguments.removeValue(forKey: "tool_name")
+        arguments.removeValue(forKey: "name")
+        arguments.removeValue(forKey: "nonce")
+
+        return InferenceResponse.ParsedToolCall(
+            id: UUID().uuidString,
+            name: resolvedToolName,
+            arguments: arguments.reduce(into: [:]) { partial, item in
+                partial[item.key] = SendableValue.fromJSONValue(item.value)
+            }
+        )
+    }
+
+    private static func resolveToolName(
+        from envelope: [String: Any],
+        availableTools: [ToolSchema]
+    ) -> String? {
+        let candidates = [
+            envelope["tool_name"] as? String,
+            envelope["tool"] as? String,
+            envelope["name"] as? String,
+            (envelope["arguments"] as? [String: Any])?["tool"] as? String,
+            (envelope["arguments"] as? [String: Any])?["tool_name"] as? String,
+        ]
+
+        for candidate in candidates.compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) }) {
+            if availableTools.contains(where: { $0.name == candidate }) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private static func extractJSONObjectCandidates(from content: String) -> [String] {
+        let stripped = stripCodeFences(content)
+        guard let firstBrace = stripped.firstIndex(of: "{") else {
+            return []
+        }
+
+        var candidates: [String] = []
+        var depth = 0
+        var startIndex: String.Index?
+        var inString = false
+        var isEscaped = false
+
+        for index in stripped.indices {
+            let character = stripped[index]
+
+            if character == "\"" && !isEscaped {
+                inString.toggle()
+            }
+
+            if inString {
+                isEscaped = character == "\\" && !isEscaped
+                continue
+            }
+
+            if character == "{" {
+                if depth == 0 {
+                    startIndex = index
+                }
+                depth += 1
+            } else if character == "}", depth > 0 {
+                depth -= 1
+                if depth == 0, let candidateStart = startIndex {
+                    candidates.append(String(stripped[candidateStart...index]))
+                    startIndex = nil
+                }
+            }
+
+            isEscaped = character == "\\" && !isEscaped
+        }
+
+        if candidates.isEmpty {
+            candidates.append(String(stripped[firstBrace...]))
+        }
+
+        return candidates
+    }
+
+    private static func stripCodeFences(_ text: String) -> String {
+        var lines = text.components(separatedBy: .newlines)
+        if lines.first?.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("```") == true {
+            lines.removeFirst()
+        }
+        if lines.last?.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("```") == true {
+            lines.removeLast()
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func repairJSONObjectCandidate(_ text: String) -> String {
+        guard text.first == "{" else {
+            return text
+        }
+
+        var depth = 0
+        var inString = false
+        var isEscaped = false
+
+        for character in text {
+            if character == "\"" && !isEscaped {
+                inString.toggle()
+            }
+
+            if inString {
+                isEscaped = character == "\\" && !isEscaped
+                continue
+            }
+
+            if character == "{" {
+                depth += 1
+            } else if character == "}", depth > 0 {
+                depth -= 1
+            }
+
+            isEscaped = character == "\\" && !isEscaped
+        }
+
+        guard depth > 0 else {
+            return text
+        }
+
+        return text + String(repeating: "}", count: depth)
+    }
+}

@@ -4,6 +4,7 @@
 // Tool-calling agent that uses structured LLM tool calling APIs.
 
 import Foundation
+import MembraneCore
 
 // MARK: - Agent
 
@@ -587,7 +588,10 @@ public struct Agent: AgentRuntime, Sendable {
 
                 return "[Assistant]: \(content)\n[Assistant Tool Calls]: \(summary)"
             case let .toolResult(toolName, result, _):
-                return "[Tool Result - \(toolName)]: \(result)"
+                return """
+                [Tool Result - \(toolName)]: The following content is the real output from a tool that already ran successfully. Use it directly when answering; do not claim you cannot browse or access external information.
+                \(result)
+                """
             }
         }
 
@@ -943,7 +947,7 @@ public struct Agent: AgentRuntime, Sendable {
         )
     }
 
-    private func resolvedMembraneAdapter() -> (any MembraneAgentAdapter)? {
+    func resolvedMembraneAdapter(profile: ContextProfile) -> (any MembraneAgentAdapter)? {
         let membrane = AgentEnvironmentValues.current.membrane ?? .enabled
         guard membrane.isEnabled else {
             return nil
@@ -951,7 +955,70 @@ public struct Agent: AgentRuntime, Sendable {
         if let adapter = membrane.adapter {
             return adapter
         }
-        return DefaultMembraneAgentAdapter(configuration: membrane.configuration)
+        return Self.makeDefaultMembraneAdapter(
+            configuration: membrane.configuration,
+            profile: profile
+        )
+    }
+
+    static func makeDefaultMembraneAdapter(
+        configuration: MembraneFeatureConfiguration,
+        profile: ContextProfile
+    ) -> any MembraneAgentAdapter {
+        let environment = MembraneEnvironment.contextCoreSession(
+            configuration: membraneConfiguration(configuration, for: profile),
+            budget: membraneBudget(for: profile)
+        )
+        return environment.adapter ?? DefaultMembraneAgentAdapter(configuration: configuration)
+    }
+
+    static func membraneConfiguration(
+        _ configuration: MembraneFeatureConfiguration,
+        for profile: ContextProfile
+    ) -> MembraneFeatureConfiguration {
+        guard profile.preset == .strict4k else {
+            return configuration
+        }
+
+        return MembraneFeatureConfiguration(
+            jitMinToolCount: min(4, configuration.jitMinToolCount),
+            defaultJITLoadCount: min(2, configuration.defaultJITLoadCount),
+            pointerThresholdBytes: min(100, configuration.pointerThresholdBytes),
+            pointerSummaryMaxChars: min(120, configuration.pointerSummaryMaxChars),
+            runtimeFeatureFlags: configuration.runtimeFeatureFlags,
+            runtimeModelAllowlist: configuration.runtimeModelAllowlist
+        )
+    }
+
+    static func membraneBudget(for profile: ContextProfile) -> MembraneCore.ContextBudget {
+        if profile.preset == .strict4k, let caps = profile.bucketCaps {
+            return MembraneCore.ContextBudget(
+                totalTokens: profile.maxTotalContextTokens,
+                profile: .custom(buckets: [
+                    .system: caps.system,
+                    .history: caps.history,
+                    .memory: 0,
+                    .tools: caps.toolIO,
+                    .retrieval: caps.memory,
+                    .toolIO: 0,
+                    .outputReserve: profile.outputReserveTokens,
+                    .protocolOverhead: profile.protocolOverheadReserveTokens,
+                    .safetyMargin: profile.safetyMarginTokens,
+                ])
+            )
+        }
+
+        let totalTokens = profile.maxTotalContextTokens
+        let budgetProfile: MembraneCore.BudgetProfile =
+            if totalTokens <= 4096 {
+                .foundationModels4K
+            } else if totalTokens <= 8192 {
+                .openModel8K
+            } else {
+                .cloud200K
+            }
+
+        return MembraneCore.ContextBudget(totalTokens: totalTokens, profile: budgetProfile)
     }
 
     private func runtimeEnvironment(for provider: any InferenceProvider) -> AgentEnvironment {
@@ -1138,20 +1205,47 @@ public struct Agent: AgentRuntime, Sendable {
             }
         }
 
+        let profile = configuration.effectiveContextProfile
+        let inlineSystemMemoryContext = profile.preset == .strict4k ? "" : memoryContext
         var conversationHistory = try buildInitialConversationHistory(
             sessionHistory: sessionHistory,
             input: input,
             memory: activeMemory,
-            memoryContext: memoryContext
+            memoryContext: inlineSystemMemoryContext
         )
         var transcriptMessages: [MemoryMessage] = []
-        let systemMessage = buildSystemMessage(memory: activeMemory, memoryContext: memoryContext)
+        let systemMessage = buildSystemMessage(memory: activeMemory, memoryContext: inlineSystemMemoryContext)
 
         let enableStreaming = configuration.enableStreaming && observer != nil
         let structuredToolStreamingProvider = provider as? any ToolCallStreamingConversationInferenceProvider
         let promptToolStreamingProvider = provider as? any ToolCallStreamingInferenceProvider
-        let useToolStreaming = enableStreaming && (structuredToolStreamingProvider != nil || promptToolStreamingProvider != nil)
-        let membraneAdapter = resolvedMembraneAdapter()
+        let providerSupportsStreamingToolCalls = providerCapabilities(for: provider).contains(.streamingToolCalls)
+        let useToolStreaming = enableStreaming &&
+            providerSupportsStreamingToolCalls &&
+            (structuredToolStreamingProvider != nil || promptToolStreamingProvider != nil)
+        let membraneEnvironment = AgentEnvironmentValues.current.membrane ?? .enabled
+        let membraneAdapter = resolvedMembraneAdapter(profile: profile)
+        var duplicateToolLoopState = DuplicateToolLoopState()
+        var issuedToolResultRecoveryPrompt = false
+
+        if profile.preset == .strict4k,
+           let explicitPlanOutcome = try await executeExplicitWebsearchPlanIfNeeded(
+               input: input,
+               provider: provider,
+               toolRegistry: toolRegistry,
+               conversationHistory: &conversationHistory,
+               transcriptMessages: &transcriptMessages,
+               duplicateToolLoopState: &duplicateToolLoopState,
+               resultBuilder: resultBuilder,
+               observer: observer,
+               tracing: tracing,
+               membraneAdapter: membraneAdapter,
+               request: structuredOutputRequest,
+               startTime: startTime
+           )
+        {
+            return explicitPlanOutcome
+        }
 
         while iteration < configuration.maxIterations {
             iteration += 1
@@ -1162,28 +1256,35 @@ public struct Agent: AgentRuntime, Sendable {
                 try checkCancellationAndTimeout(startTime: startTime)
 
                 let rawPrompt: String
-                if configuration.effectiveContextProfile.preset == .strict4k {
+                if profile.preset == .strict4k {
                     // Use ContextCore's intelligent windowing if available.
                     // DefaultAgentMemory wraps ContextCoreMemory internally.
-                    let historyBudget = configuration.effectiveContextProfile.budget.workingTokens
-                    let lastMsg = conversationHistory.last
-                    let query: String
-                    switch lastMsg {
-                    case .assistant(let content, _):
-                        query = content
-                    case .toolResult(_, let output, _):
-                        query = String(output.prefix(200))
-                    default:
-                        query = input
-                    }
-                    var windowedContext = ""
-                    if let defaultMem = activeMemory as? DefaultAgentMemory {
-                        windowedContext = await defaultMem.context(for: query, tokenLimit: historyBudget)
-                    } else if let ccMemory = activeMemory as? ContextCoreMemory {
-                        windowedContext = await ccMemory.context(for: query, tokenLimit: historyBudget)
+                    let historyBudget = profile.budget.workingTokens
+                    var windowedContext = memoryContext
+                    if windowedContext.isEmpty {
+                        let lastMsg = conversationHistory.last
+                        let query: String
+                        switch lastMsg {
+                        case .assistant(let content, _):
+                            query = content
+                        case .toolResult(_, let output, _):
+                            query = String(output.prefix(200))
+                        default:
+                            query = input
+                        }
+                        if let defaultMem = activeMemory as? DefaultAgentMemory {
+                            windowedContext = await defaultMem.context(for: query, tokenLimit: historyBudget)
+                        } else if let ccMemory = activeMemory as? ContextCoreMemory {
+                            windowedContext = await ccMemory.context(for: query, tokenLimit: historyBudget)
+                        }
                     }
                     if !windowedContext.isEmpty {
-                        let livePrompt = buildPrompt(from: conversationHistory)
+                        let liveBudget = profile.bucketCaps.map { $0.system + $0.history } ?? historyBudget
+                        let livePrompt = await buildStrict4kLivePrompt(
+                            from: conversationHistory,
+                            maxTokens: liveBudget,
+                            systemTokenLimit: profile.bucketCaps?.system ?? max(128, liveBudget / 4)
+                        )
                         rawPrompt = """
                         [Retrieved Context]
                         \(windowedContext)
@@ -1240,13 +1341,30 @@ public struct Agent: AgentRuntime, Sendable {
                 var plannedPrompt = rawPrompt
                 var plannedSchemas = MembraneInternalTools.sortedSchemas(unplannedSchemas)
 
-                if let membraneAdapter {
+                if let membraneAdapter,
+                   (!unplannedSchemas.isEmpty || membraneEnvironment.adapter != nil)
+                {
                     do {
-                        let plan = try await membraneAdapter.plan(
-                            prompt: rawPrompt,
-                            toolSchemas: unplannedSchemas,
-                            profile: configuration.effectiveContextProfile
-                        )
+                        let plan: MembranePlannedBoundary
+                        if let structuredAdapter = membraneAdapter as? any StructuredMembranePlanningAdapter {
+                            plan = try await structuredAdapter.plan(
+                                request: makeMembranePlanningRequest(
+                                    rawPrompt: rawPrompt,
+                                    systemPrompt: systemMessage,
+                                    input: input,
+                                    conversationHistory: conversationHistory,
+                                    memoryContext: memoryContext
+                                ),
+                                toolSchemas: unplannedSchemas,
+                                profile: configuration.effectiveContextProfile
+                            )
+                        } else {
+                            plan = try await membraneAdapter.plan(
+                                prompt: rawPrompt,
+                                toolSchemas: unplannedSchemas,
+                                profile: configuration.effectiveContextProfile
+                            )
+                        }
                         plannedPrompt = plan.prompt
                         plannedSchemas = MembraneInternalTools.sortedSchemas(plan.toolSchemas)
                         _ = resultBuilder.setMetadata("membrane.mode", .string(plan.mode))
@@ -1265,14 +1383,18 @@ public struct Agent: AgentRuntime, Sendable {
                 let toolSchemas: [ToolSchema] = {
                     var schemas = MembraneInternalTools.sortedSchemas(plannedSchemas)
                     // For strict4k, strip tool descriptions to save ~120 tokens.
-                    if configuration.effectiveContextProfile.preset == .strict4k {
+                    if profile.preset == .strict4k {
                         schemas = schemas.map { ToolSchema(name: $0.name, description: $0.name, parameters: $0.parameters) }
                     }
                     return schemas
                 }()
-                let structuredMessages = prompt == rawPrompt
-                    ? conversationHistory.map(\.inferenceMessage)
-                    : nil
+                let structuredMessages: [InferenceMessage]? = if profile.preset == .strict4k {
+                    nil
+                } else if prompt == rawPrompt {
+                    conversationHistory.map(\.inferenceMessage)
+                } else {
+                    nil
+                }
 
                 // If no tools defined, generate without tool calling
                 if toolSchemas.isEmpty {
@@ -1334,11 +1456,50 @@ public struct Agent: AgentRuntime, Sendable {
                 }
 
                 if response.hasToolCalls {
+                    let executableToolCalls = sanitizeToolCallsIfNeeded(
+                        response.toolCalls,
+                        input: input,
+                        conversationHistory: conversationHistory
+                    )
+
+                    if executableToolCalls.isEmpty {
+                        let synthesizedResponse = try await finalizeFromSuppressedToolCalls(
+                            input: input,
+                            provider: provider,
+                            systemPrompt: systemMessage,
+                            inferenceOptions: loopInferenceOptions,
+                            observer: observer,
+                            request: structuredOutputRequest,
+                            conversationHistory: conversationHistory
+                        )
+                        transcriptMessages.append(
+                            SwarmTranscriptCodec.encodeMessage(
+                                role: .assistant,
+                                content: synthesizedResponse.content,
+                                toolCalls: [],
+                                structuredOutput: synthesizedResponse.structuredOutput
+                            )
+                        )
+                        await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                        return ToolLoopOutcome(
+                            output: synthesizedResponse.content,
+                            structuredOutput: synthesizedResponse.structuredOutput,
+                            transcriptMessages: transcriptMessages
+                        )
+                    }
+
+                    let sanitizedResponse = InferenceResponse(
+                        content: response.content,
+                        toolCalls: executableToolCalls,
+                        finishReason: .toolCall,
+                        usage: response.usage
+                    )
                     let handoffResult = try await processToolCallsWithHandoffs(
-                        response: response,
+                        response: sanitizedResponse,
                         toolRegistry: toolRegistry,
                         conversationHistory: &conversationHistory,
                         transcriptMessages: &transcriptMessages,
+                        duplicateToolLoopState: &duplicateToolLoopState,
                         resultBuilder: resultBuilder,
                         observer: observer,
                         tracing: tracing,
@@ -1355,11 +1516,110 @@ public struct Agent: AgentRuntime, Sendable {
                         )
                     }
                 } else {
+                    let fallbackPlannedCalls = plannedWebsearchFallbackCalls(
+                        input: input,
+                        conversationHistory: conversationHistory
+                    )
+                    if !fallbackPlannedCalls.isEmpty {
+                        let fallbackResponse = InferenceResponse(
+                            content: nil,
+                            toolCalls: fallbackPlannedCalls,
+                            finishReason: .toolCall,
+                            usage: response.usage
+                        )
+                        let handoffResult = try await processToolCallsWithHandoffs(
+                            response: fallbackResponse,
+                            toolRegistry: toolRegistry,
+                            conversationHistory: &conversationHistory,
+                            transcriptMessages: &transcriptMessages,
+                            duplicateToolLoopState: &duplicateToolLoopState,
+                            resultBuilder: resultBuilder,
+                            observer: observer,
+                            tracing: tracing,
+                            membraneAdapter: membraneAdapter,
+                            startTime: startTime
+                        )
+                        if let handoffOutput = handoffResult {
+                            await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                            return ToolLoopOutcome(
+                                output: handoffOutput.content,
+                                structuredOutput: handoffOutput.structuredOutput,
+                                transcriptMessages: transcriptMessages
+                            )
+                        }
+                        await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                        continue
+                    }
+
                     guard let content = response.content else {
                         throw AgentError.generationFailed(reason: "Model returned no content or tool calls")
                     }
-                    let finalResponse = try finalizeAssistantResponse(
+                    if hasCompletedExplicitWebsearchPlan(input: input, conversationHistory: conversationHistory) {
+                        let finalResponse = try finalizeAssistantResponse(
+                            content: deterministicWebsearchFallback(from: conversationHistory),
+                            request: structuredOutputRequest,
+                            provider: provider
+                        )
+                        transcriptMessages.append(
+                            SwarmTranscriptCodec.encodeMessage(
+                                role: .assistant,
+                                content: finalResponse.content,
+                                toolCalls: [],
+                                structuredOutput: finalResponse.structuredOutput
+                            )
+                        )
+                        await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                        return ToolLoopOutcome(
+                            output: finalResponse.content,
+                            structuredOutput: finalResponse.structuredOutput,
+                            transcriptMessages: transcriptMessages
+                        )
+                    }
+                    let ignoredToolResult = shouldRetryAfterIgnoringToolResult(
                         content: content,
+                        conversationHistory: conversationHistory,
+                        alreadyIssuedRecovery: issuedToolResultRecoveryPrompt
+                    )
+                    if ignoredToolResult {
+                        if issuedToolResultRecoveryPrompt,
+                           let fallback = fallbackAnswerFromToolResults(
+                               input: input,
+                               conversationHistory: conversationHistory
+                           )
+                        {
+                            let finalResponse = try finalizeAssistantResponse(
+                                content: fallback,
+                                request: structuredOutputRequest,
+                                provider: provider
+                            )
+                            transcriptMessages.append(
+                                SwarmTranscriptCodec.encodeMessage(
+                                    role: .assistant,
+                                    content: finalResponse.content,
+                                    toolCalls: [],
+                                    structuredOutput: finalResponse.structuredOutput
+                                )
+                            )
+                            await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                            return ToolLoopOutcome(
+                                output: finalResponse.content,
+                                structuredOutput: finalResponse.structuredOutput,
+                                transcriptMessages: transcriptMessages
+                            )
+                        }
+
+                        issuedToolResultRecoveryPrompt = true
+                        conversationHistory.append(.user("""
+                        System correction: a tool result is already present above. Use that tool result directly to answer the original request. Do not say you cannot browse, search, or access external information. Do not emit JSON unless you are making a real tool call, and do not call another tool unless you genuinely need a new query or URL.
+                        """))
+                        continue
+                    }
+                    let finalContent = substituteWeakWebsearchAnswerIfNeeded(
+                        content,
+                        conversationHistory: conversationHistory
+                    )
+                    let finalResponse = try finalizeAssistantResponse(
+                        content: finalContent,
                         request: structuredOutputRequest,
                         provider: provider
                     )
@@ -1387,6 +1647,68 @@ public struct Agent: AgentRuntime, Sendable {
         }
 
         throw AgentError.maxIterationsExceeded(iterations: iteration)
+    }
+
+    private func executeExplicitWebsearchPlanIfNeeded(
+        input: String,
+        provider: any InferenceProvider,
+        toolRegistry: ToolRegistry,
+        conversationHistory: inout [ConversationMessage],
+        transcriptMessages: inout [MemoryMessage],
+        duplicateToolLoopState: inout DuplicateToolLoopState,
+        resultBuilder: AgentResult.Builder,
+        observer: (any AgentObserver)?,
+        tracing: TracingHelper?,
+        membraneAdapter: (any MembraneAgentAdapter)?,
+        request: StructuredOutputRequest?,
+        startTime: ContinuousClock.Instant
+    ) async throws -> ToolLoopOutcome? {
+        let pendingCalls = pendingExplicitWebsearchCalls(
+            input: input,
+            conversationHistory: conversationHistory
+        )
+        guard pendingCalls.count > 1 else {
+            return nil
+        }
+
+        let response = InferenceResponse(
+            content: nil,
+            toolCalls: pendingCalls,
+            finishReason: .toolCall,
+            usage: nil
+        )
+        _ = try await processToolCallsWithHandoffs(
+            response: response,
+            toolRegistry: toolRegistry,
+            conversationHistory: &conversationHistory,
+            transcriptMessages: &transcriptMessages,
+            duplicateToolLoopState: &duplicateToolLoopState,
+            resultBuilder: resultBuilder,
+            observer: observer,
+            tracing: tracing,
+            membraneAdapter: membraneAdapter,
+            startTime: startTime
+        )
+
+        let finalResponse = try finalizeAssistantResponse(
+            content: deterministicWebsearchFallback(from: conversationHistory),
+            request: request,
+            provider: provider
+        )
+        transcriptMessages.append(
+            SwarmTranscriptCodec.encodeMessage(
+                role: .assistant,
+                content: finalResponse.content,
+                toolCalls: [],
+                structuredOutput: finalResponse.structuredOutput
+            )
+        )
+
+        return ToolLoopOutcome(
+            output: finalResponse.content,
+            structuredOutput: finalResponse.structuredOutput,
+            transcriptMessages: transcriptMessages
+        )
     }
 
     /// Builds the initial conversation history from session history and user input.
@@ -1584,6 +1906,7 @@ public struct Agent: AgentRuntime, Sendable {
         toolRegistry: ToolRegistry,
         conversationHistory: inout [ConversationMessage],
         transcriptMessages: inout [MemoryMessage],
+        duplicateToolLoopState: inout DuplicateToolLoopState,
         resultBuilder: AgentResult.Builder,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
@@ -1606,6 +1929,7 @@ public struct Agent: AgentRuntime, Sendable {
                 toolRegistry: toolRegistry,
                 conversationHistory: &conversationHistory,
                 transcriptMessages: &transcriptMessages,
+                duplicateToolLoopState: &duplicateToolLoopState,
                 resultBuilder: resultBuilder,
                 observer: observer,
                 tracing: tracing,
@@ -1621,6 +1945,7 @@ public struct Agent: AgentRuntime, Sendable {
         toolRegistry: ToolRegistry,
         conversationHistory: inout [ConversationMessage],
         transcriptMessages: inout [MemoryMessage],
+        duplicateToolLoopState: inout DuplicateToolLoopState,
         resultBuilder: AgentResult.Builder,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
@@ -1628,6 +1953,27 @@ public struct Agent: AgentRuntime, Sendable {
         startTime: ContinuousClock.Instant
     ) async throws {
         let activeMemory = resolvedMemory()
+        let callSignature = toolCallSignature(for: parsedCall)
+
+        if let duplicateMessage = duplicateToolLoopState.registerOrReject(signature: callSignature) {
+            conversationHistory.append(.toolResult(
+                toolName: parsedCall.name,
+                result: duplicateMessage,
+                toolCallID: parsedCall.id
+            ))
+            transcriptMessages.append(
+                SwarmTranscriptCodec.encodeMessage(
+                    role: .tool,
+                    content: duplicateMessage,
+                    toolName: parsedCall.name,
+                    toolCallID: parsedCall.id
+                )
+            )
+            if let activeMemory {
+                await activeMemory.add(.tool(duplicateMessage, toolName: parsedCall.name))
+            }
+            return
+        }
 
         if let membraneAdapter,
            MembraneInternalTools.isInternalTool(parsedCall.name) {
@@ -1726,10 +2072,20 @@ public struct Agent: AgentRuntime, Sendable {
         }
 
         if outcome.result.isSuccess {
-            var toolOutputText = outcome.result.output.stringValue ?? outcome.result.output.description
+            let rawToolOutputText = outcome.result.output.stringValue ?? outcome.result.output.description
+            var toolOutputText = rawToolOutputText
+            let compiledWebsearchEvidence: CompiledWebSearchEvidence? = if parsedCall.name == "websearch" {
+                WebSearchEvidenceCompiler.compile(
+                    rawPayload: rawToolOutputText,
+                    queryFallback: parsedCall.arguments["query"]?.stringValue
+                        ?? parsedCall.arguments["goal"]?.stringValue
+                )
+            } else {
+                nil
+            }
             if let membraneAdapter {
                 do {
-                    let currentToolOutput = toolOutputText
+                    let currentToolOutput = rawToolOutputText
                     let transformed = try await executeWithinRemainingTimeout(startTime: startTime) {
                         try await membraneAdapter.transformToolResult(
                             toolName: parsedCall.name,
@@ -1748,33 +2104,60 @@ public struct Agent: AgentRuntime, Sendable {
                 }
             }
 
+            let conversationToolOutput: String = {
+                if let compiledWebsearchEvidence {
+                    return compiledWebsearchEvidence.compactTranscript
+                }
+                if parsedCall.name == "websearch" {
+                    return compactWebsearchConversationResult(from: rawToolOutputText)
+                }
+                return toolOutputText
+            }()
+
             conversationHistory.append(.toolResult(
                 toolName: parsedCall.name,
-                result: toolOutputText,
+                result: conversationToolOutput,
                 toolCallID: parsedCall.id
             ))
             transcriptMessages.append(
                 SwarmTranscriptCodec.encodeMessage(
                     role: .tool,
-                    content: toolOutputText,
+                    content: conversationToolOutput,
                     toolName: parsedCall.name,
                     toolCallID: parsedCall.id
                 )
             )
             if let activeMemory {
-                await activeMemory.add(.tool(toolOutputText, toolName: parsedCall.name))
+                if parsedCall.name == "websearch",
+                   let compiledWebsearchEvidence,
+                   let websearchMemory = activeMemory as? any WebSearchEvidenceMemory
+                {
+                    await websearchMemory.addWebSearchResult(
+                        rawPayload: rawToolOutputText,
+                        evidence: compiledWebsearchEvidence.record
+                    )
+                } else {
+                    // Keep the compact Membrane rendering in the live transcript, but retain
+                    // the full tool payload in memory so retrieval can surface facts later.
+                    await activeMemory.add(.tool(rawToolOutputText, toolName: parsedCall.name))
+                }
             }
         } else {
             let errorMessage = outcome.result.errorMessage ?? "Unknown error"
+            let failureMessage = toolFailureConversationMessage(
+                toolName: parsedCall.name,
+                errorMessage: errorMessage,
+                conversationHistory: conversationHistory
+            )
             conversationHistory.append(.toolResult(
                 toolName: parsedCall.name,
-                result: "[TOOL ERROR] Execution failed: \(errorMessage). Please try a different approach or tool.",
+                result: failureMessage,
                 toolCallID: parsedCall.id
             ))
             transcriptMessages.append(
                 SwarmTranscriptCodec.encodeMessage(
                     role: .tool,
-                    content: "[TOOL ERROR] Execution failed: \(errorMessage). Please try a different approach or tool.",
+                    content: failureMessage,
                     toolName: parsedCall.name,
                     toolCallID: parsedCall.id
                 )
@@ -1827,6 +2210,7 @@ public struct Agent: AgentRuntime, Sendable {
         toolRegistry: ToolRegistry,
         conversationHistory: inout [ConversationMessage],
         transcriptMessages: inout [MemoryMessage],
+        duplicateToolLoopState: inout DuplicateToolLoopState,
         resultBuilder: AgentResult.Builder,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
@@ -1916,6 +2300,7 @@ public struct Agent: AgentRuntime, Sendable {
                 toolRegistry: toolRegistry,
                 conversationHistory: &conversationHistory,
                 transcriptMessages: &transcriptMessages,
+                duplicateToolLoopState: &duplicateToolLoopState,
                 resultBuilder: resultBuilder,
                 observer: observer,
                 tracing: tracing,
@@ -1925,6 +2310,721 @@ public struct Agent: AgentRuntime, Sendable {
         }
 
         return nil
+    }
+
+    private func toolCallSignature(for parsedCall: InferenceResponse.ParsedToolCall) -> String {
+        if parsedCall.name == "websearch" {
+            let mode = parsedCall.arguments["mode"]?.stringValue?.lowercased() ?? "search"
+            let query = parsedCall.arguments["query"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let url = parsedCall.arguments["url"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let artifactID = parsedCall.arguments["artifact_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let bundleID = parsedCall.arguments["bundle_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            switch mode {
+            case "fetch", "refresh":
+                if let url, !url.isEmpty {
+                    return "websearch|\(mode)|url=\(url)"
+                }
+                return "websearch|\(mode)|missing-url"
+            case "expand":
+                if let bundleID, !bundleID.isEmpty {
+                    return "websearch|expand|bundle=\(bundleID)"
+                }
+                if let artifactID, !artifactID.isEmpty {
+                    return "websearch|expand|artifact=\(artifactID)"
+                }
+                return "websearch|expand|missing-target"
+            default:
+                if let query, !query.isEmpty {
+                    return "websearch|\(mode)|query=\(query)"
+                }
+                return "websearch|\(mode)|missing-query"
+            }
+        }
+
+        let preferredKeys = [
+            "query",
+            "url",
+            "goal",
+            "artifact_id",
+            "bundle_id",
+            "section_ids",
+            "domains",
+            "recencyDays",
+            "mode",
+        ]
+
+        let keys = preferredKeys.filter { parsedCall.arguments[$0] != nil }
+        let selectedKeys = keys.isEmpty ? parsedCall.arguments.keys.sorted() : keys
+        let sortedArguments = selectedKeys.map { key in
+            "\(key)=\(parsedCall.arguments[key]?.description ?? "null")"
+        }.joined(separator: "&")
+        return "\(parsedCall.name)|\(sortedArguments)"
+    }
+
+    private func toolFailureConversationMessage(
+        toolName: String,
+        errorMessage: String,
+        conversationHistory: [ConversationMessage]
+    ) -> String {
+        let base = "[TOOL ERROR] Execution failed: \(errorMessage). Please try a different approach or tool."
+        guard toolName == "websearch" else {
+            return base
+        }
+
+        let hasUsablePriorWebsearchResult = conversationHistory.contains { message in
+            guard case let .toolResult(name, result, _) = message else {
+                return false
+            }
+            guard name == "websearch" else {
+                return false
+            }
+            return !result.hasPrefix("[TOOL ERROR]") && !result.hasPrefix("[TOOL REUSE NOTICE]")
+        }
+
+        let normalizedError = errorMessage.lowercased()
+        let isRecoverableWebsearchFailure = normalizedError.contains("requires non-empty query")
+            || normalizedError.contains("requires non-empty url")
+            || normalizedError.contains("requires bundle_id or artifact_id")
+            || normalizedError.contains("invalid url")
+
+        guard hasUsablePriorWebsearchResult, isRecoverableWebsearchFailure else {
+            return base
+        }
+
+        return """
+        [TOOL ERROR] Invalid websearch request: \(errorMessage).
+        A usable websearch result is already present in the conversation.
+        Do not call websearch again unless you have a genuinely new query or URL; answer using the existing result.
+        """
+    }
+
+    private func sanitizeToolCallsIfNeeded(
+        _ toolCalls: [InferenceResponse.ParsedToolCall],
+        input: String,
+        conversationHistory: [ConversationMessage]
+    ) -> [InferenceResponse.ParsedToolCall] {
+        guard !toolCalls.isEmpty else {
+            return toolCalls
+        }
+
+        return toolCalls.filter { parsedCall in
+            shouldSuppressWebsearchCall(
+                parsedCall,
+                input: input,
+                conversationHistory: conversationHistory
+            ) == false
+        }
+    }
+
+    private func shouldSuppressWebsearchCall(
+        _ parsedCall: InferenceResponse.ParsedToolCall,
+        input: String? = nil,
+        conversationHistory: [ConversationMessage]
+    ) -> Bool {
+        guard parsedCall.name == "websearch" else {
+            return false
+        }
+
+        let mode = parsedCall.arguments["mode"]?.stringValue?.lowercased() ?? "search"
+        guard mode == "search" else {
+            return false
+        }
+
+        let successfulSearchCount = successfulWebsearchCount(in: conversationHistory)
+        let maxAllowedSearches = explicitWebsearchPlan(from: input ?? "")?.count ?? 3
+        return successfulSearchCount >= maxAllowedSearches
+    }
+
+    private func shouldRetryAfterIgnoringToolResult(
+        content: String,
+        conversationHistory: [ConversationMessage],
+        alreadyIssuedRecovery _: Bool
+    ) -> Bool {
+        let hasUsableToolResult = conversationHistory.contains { message in
+            guard case let .toolResult(_, result, _) = message else {
+                return false
+            }
+            return !result.hasPrefix("[TOOL ERROR]") && !result.hasPrefix("[TOOL REUSE NOTICE]")
+        }
+
+        guard hasUsableToolResult else {
+            return false
+        }
+
+        let normalized = content.lowercased()
+        let refusalMarkers = [
+            "i cannot access external information",
+            "i can't access external information",
+            "i'm unable to access external information",
+            "i am unable to access external information",
+            "i'm unable to perform external searches",
+            "i am unable to perform external searches",
+            "i cannot perform web searches",
+            "i'm unable to perform web searches",
+            "i cannot browse the web",
+            "i'm unable to browse the web",
+            "i do not have browsing capability",
+            "i'm unable to perform external searches or browse the web",
+            "no tool call is needed",
+            "the information is directly available in the retrieved context",
+            "sorry, i can't assist with that",
+            "i'm sorry, but i can't assist with that request",
+            "i'm sorry, but i can't assist with that",
+            "resulted in an error",
+            "preventing retrieval",
+            "unable to retrieve",
+            "available tools:",
+            "[... truncated to fit fm context window ...]",
+        ]
+
+        if refusalMarkers.contains(where: { normalized.contains($0) }) {
+            return true
+        }
+
+        let copiedPlaceholderEnvelope = normalized.contains("\"swarm_tool_call\"")
+            && normalized.contains("\"tool\"")
+            && normalized.contains("tool_name")
+
+        if copiedPlaceholderEnvelope {
+            return true
+        }
+
+        return false
+    }
+
+    private func plannedWebsearchFallbackCalls(
+        input: String,
+        conversationHistory: [ConversationMessage]
+    ) -> [InferenceResponse.ParsedToolCall] {
+        Array(pendingExplicitWebsearchCalls(input: input, conversationHistory: conversationHistory).prefix(1))
+    }
+
+    private func pendingExplicitWebsearchCalls(
+        input: String,
+        conversationHistory: [ConversationMessage]
+    ) -> [InferenceResponse.ParsedToolCall] {
+        guard let plan = explicitWebsearchPlan(from: input), !plan.isEmpty else {
+            return []
+        }
+
+        let completedSearches = successfulWebsearchCount(in: conversationHistory)
+        guard completedSearches < plan.count else {
+            return []
+        }
+
+        return Array(plan.enumerated().dropFirst(completedSearches)).map { index, nextQuery in
+            let explicitDomains = plannedWebsearchDomains(for: nextQuery)
+            let maxResults = explicitDomains.isEmpty ? 1 : 2
+            return InferenceResponse.ParsedToolCall(
+                id: "planned_websearch_\(index + 1)",
+                name: "websearch",
+                arguments: [
+                    "query": .string(nextQuery),
+                    "mode": .string("search"),
+                    "maxResults": .int(maxResults),
+                    "detail": .string("compact"),
+                    "preferCached": .bool(true),
+                    "domains": .array(explicitDomains.map { .string($0) }),
+                ]
+            )
+        }
+    }
+
+    private func hasCompletedExplicitWebsearchPlan(
+        input: String,
+        conversationHistory: [ConversationMessage]
+    ) -> Bool {
+        guard let plan = explicitWebsearchPlan(from: input), !plan.isEmpty else {
+            return false
+        }
+        return successfulWebsearchCount(in: conversationHistory) >= plan.count
+    }
+
+    private func successfulWebsearchCount(in conversationHistory: [ConversationMessage]) -> Int {
+        conversationHistory.reduce(into: 0) { count, message in
+            guard case let .toolResult(toolName, result, _) = message,
+                  toolName == "websearch",
+                  result.hasPrefix("[TOOL ERROR]") == false
+            else {
+                return
+            }
+            count += 1
+        }
+    }
+
+    private func explicitWebsearchPlan(from input: String) -> [String]? {
+        let normalized = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.isEmpty == false else {
+            return nil
+        }
+
+        let lowercased = normalized.lowercased()
+        guard lowercased.contains("websearch") || lowercased.contains("search for") else {
+            return nil
+        }
+
+        let lines = normalized
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+
+        let numberedPlan = lines.compactMap { explicitWebsearchQuery(from: $0) }
+        if numberedPlan.isEmpty == false {
+            return numberedPlan
+        }
+
+        if let singleSearch = lines.compactMap(explicitSingleWebsearchQuery(from:)).first {
+            return [singleSearch]
+        }
+
+        return nil
+    }
+
+    private func explicitWebsearchQuery(from line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let regex = try? NSRegularExpression(pattern: #"^\d+\.\s*(.+)$"#) else {
+            return nil
+        }
+        let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+        guard let match = regex.firstMatch(in: trimmed, range: range),
+              let contentRange = Range(match.range(at: 1), in: trimmed)
+        else {
+            return nil
+        }
+        return explicitSingleWebsearchQuery(from: String(trimmed[contentRange]))
+    }
+
+    private func plannedWebsearchDomains(for query: String) -> [String] {
+        let lowered = query.lowercased()
+
+        let explicitHosts = [
+            "developer.apple.com",
+            "machinelearning.apple.com",
+            "matthewcassinelli.com",
+            "omni-automation.com",
+        ].filter { lowered.contains($0) }
+
+        if explicitHosts.isEmpty == false {
+            return explicitHosts
+        }
+
+        let docsHeavySignals = [
+            "foundation models",
+            "foundationmodels",
+            "language model session",
+            "context window",
+            "prompt engineering",
+            "tool calling",
+            "streaming tool",
+            "technote",
+            "developer",
+        ]
+
+        guard docsHeavySignals.contains(where: lowered.contains) else {
+            return []
+        }
+
+        return docsRefinementDomains(for: query)
+    }
+
+    private func explicitSingleWebsearchQuery(from line: String) -> String? {
+        var candidate = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefixes = [
+            "search for ",
+            "search ",
+            "find ",
+            "look up ",
+            "websearch for ",
+            "use the websearch tool to search for ",
+            "use websearch to search for ",
+        ]
+
+        let lowered = candidate.lowercased()
+        guard prefixes.contains(where: { lowered.hasPrefix($0) }) else {
+            return nil
+        }
+
+        if let matchedPrefix = prefixes.first(where: { lowered.hasPrefix($0) }) {
+            candidate.removeFirst(matchedPrefix.count)
+        }
+
+        candidate = candidate.trimmingCharacters(in: CharacterSet(charactersIn: " ."))
+        if candidate.hasSuffix(" then answer in 4 short bullets with the findings and cite the urls you used") {
+            candidate = candidate.replacingOccurrences(
+                of: " then answer in 4 short bullets with the findings and cite the urls you used",
+                with: "",
+                options: [.caseInsensitive]
+            )
+        }
+        return candidate.isEmpty ? nil : candidate
+    }
+
+    private struct DuplicateToolLoopState {
+        private(set) var lastSignature: String?
+        private(set) var consecutiveCount = 0
+        let maxConsecutiveDuplicates = 1
+
+        mutating func registerOrReject(signature: String) -> String? {
+            if lastSignature == signature {
+                consecutiveCount += 1
+            } else {
+                lastSignature = signature
+                consecutiveCount = 1
+            }
+
+            guard consecutiveCount > maxConsecutiveDuplicates else {
+                return nil
+            }
+
+            return """
+            [TOOL REUSE NOTICE] The same tool call was requested repeatedly. Reuse the earlier tool result already present in the conversation instead of issuing the identical request again.
+            """
+        }
+    }
+
+    private func fallbackAnswerFromToolResults(
+        input: String,
+        conversationHistory: [ConversationMessage]
+    ) -> String? {
+        let usableToolResults = conversationHistory.compactMap { message -> (toolName: String, result: String)? in
+            guard case let .toolResult(toolName, result, _) = message else {
+                return nil
+            }
+            guard !result.hasPrefix("[TOOL ERROR]"), !result.hasPrefix("[TOOL REUSE NOTICE]") else {
+                return nil
+            }
+            return (toolName, result)
+        }
+
+        guard !usableToolResults.isEmpty else {
+            return nil
+        }
+
+        if usableToolResults.contains(where: { $0.toolName == "websearch" }) {
+            let deterministic = deterministicWebsearchFallback(from: conversationHistory)
+            if deterministic.contains("http") {
+                return """
+                \(deterministic)
+
+                Some follow-up tool calls were invalid or inconclusive, so this answer is limited to the successfully retrieved evidence.
+                """
+            }
+        }
+
+        let primary = usableToolResults[0]
+        let excerpt = summarizeToolResult(primary.result)
+        let additionalFailures = conversationHistory.reduce(into: 0) { count, message in
+            if case let .toolResult(_, result, _) = message, result.hasPrefix("[TOOL ERROR]") {
+                count += 1
+            }
+        }
+
+        let limitation: String
+        if additionalFailures > 0 {
+            limitation = "Some follow-up tool calls were invalid or inconclusive, so this answer is limited to the successfully retrieved evidence."
+        } else {
+            limitation = "The answer is limited to the retrieved search snippet and may not fully resolve the original question."
+        }
+
+        return """
+        Based on the successfully retrieved tool result for "\(input)", the strongest available evidence is: \(excerpt)
+        \(limitation)
+        """
+    }
+
+    private func summarizeToolResult(_ result: String) -> String {
+        let normalized = normalizeWebsearchResultText(result)
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let titleStart = normalized.range(of: "["),
+           let titleEnd = normalized.range(of: "]", range: titleStart.upperBound..<normalized.endIndex),
+           let urlStart = normalized.range(of: "(", range: titleEnd.upperBound..<normalized.endIndex),
+           let urlEnd = normalized.range(of: ")", range: urlStart.upperBound..<normalized.endIndex)
+        {
+            let title = String(normalized[titleStart.upperBound..<titleEnd.lowerBound])
+            let url = String(normalized[urlStart.upperBound..<urlEnd.lowerBound])
+            let snippetStart = normalized[urlEnd.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            let snippet = String(snippetStart.prefix(220))
+            return "\(title) (\(url)) — \(snippet)"
+        }
+
+        return String(normalized.prefix(280))
+    }
+
+    private func finalizeFromSuppressedToolCalls(
+        input: String,
+        provider: any InferenceProvider,
+        systemPrompt: String,
+        inferenceOptions: InferenceOptions,
+        observer: (any AgentObserver)?,
+        request: StructuredOutputRequest?,
+        conversationHistory: [ConversationMessage]
+    ) async throws -> FinalAssistantResponse {
+        let evidence = compactWebsearchEvidence(from: conversationHistory)
+        let synthesisPrompt = """
+        The required websearch calls are already complete. Do not call any tools.
+        Use only the evidence below to answer the user's request directly.
+        If the evidence does not establish a fact, say that clearly.
+        Keep the answer concise and cite URLs inline when available.
+
+        [User Request]
+        \(input)
+
+        [Evidence]
+        \(evidence)
+        """
+
+        do {
+            let response = try await generateWithoutTools(
+                provider: provider,
+                prompt: synthesisPrompt,
+                messages: nil,
+                systemPrompt: systemPrompt,
+                inferenceOptions: inferenceOptions,
+                enableStreaming: false,
+                observer: observer
+            )
+            if shouldUseDeterministicWebsearchFallback(response.content, evidence: evidence) {
+                return FinalAssistantResponse(
+                    content: deterministicWebsearchFallback(from: conversationHistory),
+                    structuredOutput: nil
+                )
+            }
+            return try finalizeAssistantResponse(
+                content: response.content,
+                request: request,
+                provider: provider
+            )
+        } catch {
+            return FinalAssistantResponse(
+                content: deterministicWebsearchFallback(from: conversationHistory),
+                structuredOutput: nil
+            )
+        }
+    }
+
+    private func compactWebsearchConversationResult(from result: String) -> String {
+        if let compiled = WebSearchEvidenceCompiler.compile(rawPayload: result, queryFallback: nil) {
+            return compiled.compactTranscript
+        }
+        let lines = normalizeWebsearchResultText(result)
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard let firstLine = lines.first else {
+            return String(result.prefix(400))
+        }
+
+        let query = extractWebsearchQuery(from: firstLine) ?? "websearch"
+        let firstResult = extractFirstWebsearchResult(from: lines)
+        var compactLines = ["Found 1 ranked result for '\(query)'."]
+        if let firstResult {
+            compactLines.append("[\(firstResult.title)](\(firstResult.url))")
+            if let snippet = firstResult.snippet {
+                compactLines.append(snippet)
+            }
+        } else {
+            compactLines.append(String(firstLine.prefix(220)))
+        }
+        return compactLines.joined(separator: "\n")
+    }
+
+    private func compactWebsearchEvidence(from conversationHistory: [ConversationMessage]) -> String {
+        let entries = conversationHistory.compactMap { message -> String? in
+            guard case let .toolResult(toolName, result, _) = message,
+                  toolName == "websearch",
+                  result.hasPrefix("[TOOL ERROR]") == false
+            else {
+                return nil
+            }
+
+            let lines = normalizeWebsearchResultText(result)
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard !lines.isEmpty else {
+                return nil
+            }
+
+            let extracted = extractStructuredWebsearchEvidence(from: lines)
+            let query = extracted?.query ?? extractWebsearchQuery(from: lines[0]) ?? "websearch"
+            let summaryLine = extracted.map { "\($0.title) — \($0.url)" } ?? "No ranked result captured."
+            let snippetLine = extracted?.snippet.map { "Snippet: \($0)" }
+
+            return (["Query: \(query)", summaryLine, snippetLine].compactMap { $0 }).joined(separator: "\n")
+        }
+
+        if entries.isEmpty {
+            return "No successful websearch evidence is available."
+        }
+
+        return entries.enumerated().map { index, entry in
+            "[Search \(index + 1)]\n\(entry)"
+        }.joined(separator: "\n\n")
+    }
+
+    private func deterministicWebsearchFallback(from conversationHistory: [ConversationMessage]) -> String {
+        var seenDomains: [String: Int] = [:]
+        let entries = conversationHistory.compactMap { message -> String? in
+            guard case let .toolResult(toolName, result, _) = message,
+                  toolName == "websearch",
+                  result.hasPrefix("[TOOL ERROR]") == false
+            else {
+                return nil
+            }
+
+            let lines = normalizeWebsearchResultText(result)
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard let firstLine = lines.first else {
+                return nil
+            }
+
+            let query = extractStructuredWebsearchEvidence(from: lines)?.query
+                ?? extractWebsearchQuery(from: firstLine)
+                ?? "websearch"
+            if let chosen = selectStructuredWebsearchCandidate(from: lines, query: query, seenDomains: &seenDomains) {
+                let snippet = chosen.snippet.map { " — \($0)" } ?? ""
+                return "- \(query): \(chosen.title) (\(chosen.url))\(snippet)"
+            }
+            if let firstResult = extractFirstWebsearchResult(from: lines) {
+                let snippet = firstResult.snippet.map { " — \($0)" } ?? ""
+                return "- \(query): \(firstResult.title) (\(firstResult.url))\(snippet)"
+            }
+            return "- \(query): no ranked result captured."
+        }
+
+        if entries.isEmpty {
+            return "I completed the search loop, but no successful websearch results were available to summarize."
+        }
+
+        return entries.joined(separator: "\n")
+    }
+
+    private func shouldUseDeterministicWebsearchFallback(_ content: String, evidence: String) -> Bool {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return true
+        }
+        guard evidence.contains("http") else {
+            return false
+        }
+        if trimmed.contains("http") == false {
+            return true
+        }
+
+        let lowered = trimmed.lowercased()
+        let failureMarkers = [
+            "no information is available",
+            "no ranked results",
+            "no results captured",
+            "unable to answer",
+            "don't have enough information",
+            "cannot determine from the provided evidence",
+            "i'm unable to assist with that request",
+            "i am unable to assist with that request",
+            "i apologize",
+            "i cannot assist with that request",
+        ]
+        return failureMarkers.contains(where: lowered.contains)
+    }
+
+    private func substituteWeakWebsearchAnswerIfNeeded(
+        _ content: String,
+        conversationHistory: [ConversationMessage]
+    ) -> String {
+        let successfulWebsearches = conversationHistory.contains { message in
+            guard case let .toolResult(toolName, result, _) = message else {
+                return false
+            }
+            return toolName == "websearch" && result.hasPrefix("[TOOL ERROR]") == false
+        }
+
+        guard successfulWebsearches else {
+            return content
+        }
+
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = deterministicWebsearchFallback(from: conversationHistory)
+        guard fallback.contains("http") else {
+            return content
+        }
+        let lowered = trimmed.lowercased()
+        let usesPlaceholderSearchLinks = lowered.contains("search.apple.com/search") || lowered.contains("no results available")
+        let weakAnswerMarkers = [
+            "i apologize",
+            "i'm unable to assist",
+            "i am unable to assist",
+            "i cannot assist with that request",
+            "however, i can still help guide you",
+            "the previous interactions led to errors",
+        ]
+        guard trimmed.contains("http") == false
+            || usesPlaceholderSearchLinks
+            || weakAnswerMarkers.contains(where: lowered.contains)
+        else {
+            return content
+        }
+
+        return fallback
+    }
+
+    private func normalizeWebsearchResultText(_ result: String) -> String {
+        let withoutEnvelope = WebSearchEvidenceCompiler.stripEnvelopeMarker(from: result)
+        let trimmed = withoutEnvelope.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let data = trimmed.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode(String.self, from: data)
+        {
+            return decoded
+        }
+
+        if trimmed.hasPrefix("\""), trimmed.hasSuffix("\"") {
+            let unquoted = String(trimmed.dropFirst().dropLast())
+            return unquoted
+                .replacingOccurrences(of: "\\n", with: "\n")
+                .replacingOccurrences(of: "\\\"", with: "\"")
+                .replacingOccurrences(of: "\\t", with: "\t")
+        }
+
+        return trimmed
+    }
+
+    private func extractWebsearchQuery(from firstLine: String) -> String? {
+        guard let range = firstLine.range(of: "for '") else {
+            return nil
+        }
+        let afterStart = firstLine[range.upperBound...]
+        guard let end = afterStart.firstIndex(of: "'") else {
+            return nil
+        }
+        return String(afterStart[..<end])
+    }
+
+    private func extractFirstWebsearchResult(from lines: [String]) -> (title: String, url: String, snippet: String?)? {
+        guard let resultLine = lines.first(where: { $0.contains("](") && $0.contains("http") }) else {
+            return nil
+        }
+
+        let pattern = #"\[(.+?)\]\((https?://[^)]+)\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return nil
+        }
+        let nsRange = NSRange(resultLine.startIndex..<resultLine.endIndex, in: resultLine)
+        guard let match = regex.firstMatch(in: resultLine, range: nsRange),
+              let titleRange = Range(match.range(at: 1), in: resultLine),
+              let urlRange = Range(match.range(at: 2), in: resultLine)
+        else {
+            return nil
+        }
+
+        let title = String(resultLine[titleRange])
+        let url = String(resultLine[urlRange])
+        let lineIndex = lines.firstIndex(of: resultLine) ?? lines.startIndex
+        let snippet = lines.indices.contains(lineIndex + 1) ? lines[lineIndex + 1] : nil
+        return (title, url, snippet)
     }
 
     // MARK: - Prompt Building
@@ -1972,6 +3072,274 @@ public struct Agent: AgentRuntime, Sendable {
 
     private func buildPrompt(from history: [ConversationMessage]) -> String {
         history.map(\.formatted).joined(separator: "\n\n")
+    }
+
+    private func makeMembranePlanningRequest(
+        rawPrompt: String,
+        systemPrompt: String,
+        input: String,
+        conversationHistory: [ConversationMessage],
+        memoryContext: String
+    ) -> MembranePlanningRequest {
+        let historySlices = conversationHistory.compactMap { message -> MembranePlanningSlice? in
+            switch message {
+            case .system:
+                return nil
+            case let .user(content):
+                return MembranePlanningSlice(
+                    content: "[User]: \(content)",
+                    source: .history,
+                    tokenCount: estimatedTokenCount(for: content),
+                    importance: 1.0
+                )
+            case let .assistant(content, toolCalls):
+                let rendered = ConversationMessage.assistant(content, toolCalls: toolCalls).formatted
+                return MembranePlanningSlice(
+                    content: rendered,
+                    source: .history,
+                    tokenCount: estimatedTokenCount(for: rendered),
+                    importance: toolCalls.isEmpty ? 0.85 : 0.95
+                )
+            case let .toolResult(toolName, result, _):
+                let rendered = compactConversationToolEvidence(toolName: toolName, result: result)
+                return MembranePlanningSlice(
+                    content: rendered,
+                    source: .history,
+                    tokenCount: estimatedTokenCount(for: rendered),
+                    importance: toolName == "websearch" ? 1.1 : 0.95
+                )
+            }
+        }
+        _ = memoryContext
+        let retrievalSlices = memoryPlanningSlices(from: memoryContext)
+
+        return MembranePlanningRequest(
+            prompt: rawPrompt,
+            systemPrompt: systemPrompt,
+            basePrompt: input,
+            userInput: input,
+            history: historySlices,
+            memories: [],
+            retrieval: retrievalSlices,
+            recallQuery: input
+        )
+    }
+
+    private func memoryPlanningSlices(from memoryContext: String) -> [MembranePlanningSlice] {
+        let trimmed = memoryContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return []
+        }
+
+        let rawBlocks = trimmed
+            .components(separatedBy: "\n\n[")
+            .enumerated()
+            .map { index, block in
+                index == 0 ? block : "[\(block)"
+            }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return rawBlocks.map { block in
+            let importance = block.contains("Web Search Evidence") ? 1.15 : 1.0
+            return MembranePlanningSlice(
+                content: block,
+                source: .retrieval,
+                tokenCount: estimatedTokenCount(for: block),
+                importance: importance
+            )
+        }
+    }
+
+    private func extractStructuredWebsearchEvidence(
+        from lines: [String]
+    ) -> (query: String, title: String, url: String, snippet: String?)? {
+        guard lines.contains("[Websearch Evidence]") else {
+            return nil
+        }
+
+        let query = lines.first(where: { $0.hasPrefix("Query: ") })
+            .map { String($0.dropFirst("Query: ".count)) }
+            ?? "websearch"
+        guard let bestLine = lines.first(where: { $0.hasPrefix("Best: ") }) else {
+            return nil
+        }
+        let bestPayload = String(bestLine.dropFirst("Best: ".count))
+        guard let best = extractFirstWebsearchResult(from: [bestPayload]) else {
+            return nil
+        }
+        let snippet = lines.first(where: { $0.hasPrefix("Snippet: ") })
+            .map { String($0.dropFirst("Snippet: ".count)) }
+        return (query, best.title, best.url, snippet)
+    }
+
+    private func selectStructuredWebsearchCandidate(
+        from lines: [String],
+        query: String,
+        seenDomains: inout [String: Int]
+    ) -> (title: String, url: String, snippet: String?)? {
+        guard lines.contains("[Websearch Evidence]") else {
+            return nil
+        }
+
+        var candidates: [(title: String, url: String, snippet: String?)] = []
+        if let best = extractStructuredWebsearchEvidence(from: lines) {
+            candidates.append((best.title, best.url, best.snippet))
+        }
+
+        let summarySnippet = lines.first(where: { $0.hasPrefix("Summary: ") })
+            .map { String($0.dropFirst("Summary: ".count)) }
+        for line in lines where line.hasPrefix("Support ") {
+            guard let separator = line.range(of: ": ") else {
+                continue
+            }
+            let payload = String(line[separator.upperBound...])
+            if let support = extractFirstWebsearchResult(from: [payload]) {
+                candidates.append((support.title, support.url, summarySnippet))
+            }
+        }
+
+        let ranked: [(candidate: (title: String, url: String, snippet: String?), score: Double)] = candidates.enumerated().map { index, candidate in
+            let score = structuredWebsearchCandidateScore(
+                title: candidate.title,
+                url: candidate.url,
+                snippet: candidate.snippet,
+                query: query,
+                priorSelectionsForDomain: seenDomains[URL(string: candidate.url)?.host?.lowercased() ?? "", default: 0],
+                position: index
+            )
+            return (candidate, score)
+        }
+        .sorted { lhs, rhs in
+            if lhs.score == rhs.score {
+                return lhs.candidate.url < rhs.candidate.url
+            }
+            return lhs.score > rhs.score
+        }
+
+        guard let selected = ranked.first?.candidate else {
+            return nil
+        }
+
+        if let host = URL(string: selected.url)?.host?.lowercased() {
+            seenDomains[host, default: 0] += 1
+        }
+        return selected
+    }
+
+    private func structuredWebsearchCandidateScore(
+        title: String,
+        url: String,
+        snippet: String?,
+        query: String,
+        priorSelectionsForDomain: Int,
+        position: Int
+    ) -> Double {
+        let loweredQuery = query.lowercased()
+        let tokens = loweredQuery
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { $0.count >= 4 }
+        let titleLower = title.lowercased()
+        let urlLower = url.lowercased()
+        let snippetLower = snippet?.lowercased() ?? ""
+
+        let tokenCoverage = Double(Set(tokens.filter { token in
+            titleLower.contains(token) || urlLower.contains(token) || snippetLower.contains(token)
+        }).count) / Double(max(1, tokens.count))
+        let exactPhraseBonus = (titleLower.contains(loweredQuery) || urlLower.contains(loweredQuery) || snippetLower.contains(loweredQuery)) ? 0.3 : 0
+        let genericPenalty: Double = {
+            let markers = ["/whats-new", "/news", "/blog", "what’s new", "what's new", "release notes"]
+            let isGeneric = markers.contains { urlLower.contains($0) || titleLower.contains($0) }
+            guard isGeneric else { return 0 }
+            if tokenCoverage >= 0.75 { return 0.1 }
+            if tokenCoverage >= 0.4 { return 0.25 }
+            return 0.45
+        }()
+        let domainReusePenalty = Double(priorSelectionsForDomain) * 0.2
+        let positionPenalty = Double(position) * 0.04
+        return tokenCoverage + exactPhraseBonus - genericPenalty - domainReusePenalty - positionPenalty
+    }
+
+    private func estimatedTokenCount(for text: String) -> Int {
+        max(1, text.count / 4)
+    }
+
+    private func compactConversationToolEvidence(toolName: String, result: String) -> String {
+        guard toolName == "websearch" else {
+            return ConversationMessage.toolResult(toolName: toolName, result: result).formatted
+        }
+        return compactWebsearchConversationResult(from: result)
+    }
+
+    private func buildStrict4kLivePrompt(
+        from history: [ConversationMessage],
+        maxTokens: Int,
+        systemTokenLimit: Int
+    ) async -> String {
+        guard maxTokens > 0 else {
+            return ""
+        }
+
+        let counter = PromptTokenBudgeting.counter()
+        let fullPrompt = buildPrompt(from: history)
+        if await PromptTokenBudgeting.countTokens(in: fullPrompt, using: counter) <= maxTokens {
+            return fullPrompt
+        }
+
+        let systemMessage = history.first.flatMap { message -> ConversationMessage? in
+            if case .system = message {
+                return message
+            }
+            return nil
+        }
+        let systemText = if let systemMessage {
+            await PromptTokenBudgeting.prefix(
+                systemMessage.formatted,
+                maxTokens: min(systemTokenLimit, maxTokens),
+                using: counter
+            )
+        } else {
+            ""
+        }
+
+        let separator = systemText.isEmpty ? "" : "\n\n"
+        let systemAndSeparatorTokens = await PromptTokenBudgeting.countTokens(
+            in: systemText + separator,
+            using: counter
+        )
+        let tailBudget = max(maxTokens - systemAndSeparatorTokens, 0)
+        let tailSource = systemMessage == nil ? history : Array(history.dropFirst())
+        var selectedTail: [ConversationMessage] = []
+
+        for message in tailSource.reversed() {
+            let candidateTail = [message] + selectedTail
+            let candidatePrompt = buildPrompt(from: candidateTail)
+            if await PromptTokenBudgeting.countTokens(in: candidatePrompt, using: counter) <= tailBudget {
+                selectedTail = candidateTail
+            }
+        }
+
+        var tailPrompt = buildPrompt(from: selectedTail)
+        let omittedCount = max(tailSource.count - selectedTail.count, 0)
+        if omittedCount > 0 {
+            let summaryMessage = ConversationMessage.assistant(
+                "[summary: \(omittedCount) earlier messages omitted; rely on retrieved context for older details.]",
+                toolCalls: []
+            )
+            let candidatePrompt = buildPrompt(from: [summaryMessage] + selectedTail)
+            if await PromptTokenBudgeting.countTokens(in: candidatePrompt, using: counter) <= tailBudget {
+                tailPrompt = candidatePrompt
+            }
+        }
+
+        if systemText.isEmpty {
+            return tailPrompt
+        }
+        if tailPrompt.isEmpty {
+            return systemText
+        }
+        return systemText + separator + tailPrompt
     }
 
     // MARK: - Response Generation

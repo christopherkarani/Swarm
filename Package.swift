@@ -102,6 +102,15 @@ var packageTargets: [Target] = [
         ],
         swiftSettings: swarmSwiftSettings
     ),
+    .target(
+        name: "ContextBenchmarkSupport",
+        dependencies: [
+            "Swarm",
+        ],
+        swiftSettings: [
+            .enableExperimentalFeature("StrictConcurrency")
+        ]
+    ),
     .executableTarget(
         name: "SwarmCapabilityShowcase",
         dependencies: [
@@ -158,6 +167,15 @@ var packageTargets: [Target] = [
         swiftSettings: [
             .enableExperimentalFeature("StrictConcurrency")
         ]
+    ),
+    .testTarget(
+        name: "ContextBenchmarkSupportTests",
+        dependencies: [
+            "ContextBenchmarkSupport",
+        ],
+        swiftSettings: [
+            .enableExperimentalFeature("StrictConcurrency")
+        ]
     )
 ]
 
@@ -175,7 +193,7 @@ if includeDemo {
     packageTargets.append(
         .executableTarget(
             name: "ContextBenchmark",
-            dependencies: ["Swarm"],
+            dependencies: ["ContextBenchmarkSupport"],
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency")
             ]

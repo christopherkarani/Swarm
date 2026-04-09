@@ -10,7 +10,7 @@ import Foundation
 ///
 /// ContextCore remains the primary working-memory layer for multi-turn coding
 /// context. Wax is used as the durable long-term layer for persisted recall.
-public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, MemorySessionImportPolicy, MemorySessionReplayAware, MemoryRetrievalPolicyAware {
+public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, MemorySessionImportPolicy, MemorySessionReplayAware, MemoryRetrievalPolicyAware, WebSearchEvidenceMemory {
     public struct Configuration: Sendable {
         public static var `default`: Self {
             Configuration()
@@ -18,11 +18,13 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
 
         public var contextCoreConfiguration: ContextCoreMemoryConfiguration
         public var waxStoreURL: URL
+        public var webEvidenceStoreURL: URL
         public var waxConfiguration: WaxMemory.Configuration
 
         public init(
             contextCoreConfiguration: ContextCoreMemoryConfiguration = .default,
             waxStoreURL: URL = WaxMemory.defaultStoreURL,
+            webEvidenceStoreURL: URL = Configuration.defaultWebEvidenceStoreURL,
             waxConfiguration: WaxMemory.Configuration = WaxMemory.Configuration(
                 promptTitle: "Wax Memory Context (secondary)",
                 promptGuidance: "Use Wax memory as durable long-term context. Prefer current-session context first."
@@ -30,7 +32,18 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
         ) {
             self.contextCoreConfiguration = contextCoreConfiguration
             self.waxStoreURL = waxStoreURL
+            self.webEvidenceStoreURL = webEvidenceStoreURL
             self.waxConfiguration = waxConfiguration
+        }
+
+        public static var defaultWebEvidenceStoreURL: URL {
+            FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first?
+            .appendingPathComponent("Swarm", isDirectory: true)
+            .appendingPathComponent("WebSearchEvidence", isDirectory: true)
+            ?? FileManager.default.temporaryDirectory.appendingPathComponent("SwarmWebSearchEvidence", isDirectory: true)
         }
     }
 
@@ -69,19 +82,63 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
             return ""
         }
 
-        async let primaryContext = contextMemory.context(
-            for: query,
-            tokenLimit: max(1, Int(Double(tokenLimit) * 0.7))
+        return await context(
+            for: MemoryQuery(
+                text: query,
+                tokenLimit: tokenLimit,
+                maxItems: 6,
+                maxItemTokens: max(80, tokenLimit / 3)
+            )
         )
-        async let secondaryContext = waxContext(for: query, tokenLimit: max(1, tokenLimit / 3))
-
-        let primary = (await primaryContext).trimmingCharacters(in: .whitespacesAndNewlines)
-        let secondary = (await secondaryContext).trimmingCharacters(in: .whitespacesAndNewlines)
-        return await formatContext(primary: primary, secondary: secondary, tokenLimit: tokenLimit)
     }
 
     public func context(for query: MemoryQuery) async -> String {
-        await context(for: query.text, tokenLimit: query.tokenLimit)
+        guard query.tokenLimit > 0 else {
+            return ""
+        }
+
+        let overfetchBudget = max(query.tokenLimit, query.tokenLimit * 2)
+        async let primaryContext = contextMemory.context(for: query.text, tokenLimit: overfetchBudget)
+        async let secondaryContext = waxContext(for: query.text, tokenLimit: overfetchBudget)
+        async let evidenceContext = webEvidenceContext(for: query)
+
+        let boundedPrimary = await boundContextItems(
+            in: (await primaryContext).trimmingCharacters(in: .whitespacesAndNewlines),
+            maxItems: max(1, query.maxItems),
+            maxItemTokens: query.maxItemTokens
+        )
+        let boundedSecondary = await boundContextItems(
+            in: (await secondaryContext).trimmingCharacters(in: .whitespacesAndNewlines),
+            maxItems: max(1, query.maxItems),
+            maxItemTokens: query.maxItemTokens
+        )
+        let boundedEvidence = await boundContextItems(
+            in: (await evidenceContext).trimmingCharacters(in: .whitespacesAndNewlines),
+            maxItems: max(1, query.maxItems),
+            maxItemTokens: query.maxItemTokens
+        )
+
+        return await formatContext(
+            query: query.text,
+            sources: [
+                ContextSourceSlice(
+                    title: contextMemory.memoryPromptTitle,
+                    body: boundedPrimary,
+                    kind: .working
+                ),
+                ContextSourceSlice(
+                    title: "Web Search Evidence (curated)",
+                    body: boundedEvidence,
+                    kind: .evidence
+                ),
+                ContextSourceSlice(
+                    title: configuration.waxConfiguration.promptTitle,
+                    body: boundedSecondary,
+                    kind: .durable
+                ),
+            ],
+            tokenLimit: query.tokenLimit
+        )
     }
 
     public func allMessages() async -> [MemoryMessage] {
@@ -120,6 +177,11 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
         } else {
             try? FileManager.default.removeItem(at: configuration.waxStoreURL)
         }
+        if let webEvidenceStore {
+            try? await webEvidenceStore.clear()
+        } else {
+            try? FileManager.default.removeItem(at: configuration.webEvidenceStoreURL)
+        }
     }
 
     public func beginMemorySession() async {
@@ -147,6 +209,19 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
     private let configuration: Configuration
     private let contextMemory: ContextCoreMemory
     private var waxMemory: WaxMemory?
+    private var webEvidenceStore: WebSearchEvidenceStore?
+
+    private enum ContextSourceKind {
+        case working
+        case evidence
+        case durable
+    }
+
+    private struct ContextSourceSlice {
+        let title: String
+        let body: String
+        let kind: ContextSourceKind
+    }
 
     private func ensureWaxMemory() async throws -> WaxMemory {
         if let waxMemory {
@@ -175,40 +250,176 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
         }
     }
 
-    private func formatContext(primary: String, secondary: String, tokenLimit: Int) async -> String {
-        let primarySection = makeSection(
-            title: contextMemory.memoryPromptTitle,
-            body: primary
-        )
-        let trimmedPrimary = await trimSection(primarySection, tokenLimit: tokenLimit)
-        let primaryTokens = await tokenCount(for: trimmedPrimary)
+    public func addWebSearchResult(rawPayload: String, evidence: WebSearchEvidenceRecord) async {
+        do {
+            let store = try await ensureWebEvidenceStore()
+            try await store.save(
+                rawPayload: rawPayload,
+                record: evidence,
+                searchableText: WebSearchEvidenceCompiler.searchableText(for: evidence)
+            )
+        } catch {
+            Log.memory.warning("DefaultAgentMemory: Failed to persist websearch evidence: \(error.localizedDescription)")
+        }
+    }
+
+    private func ensureWebEvidenceStore() async throws -> WebSearchEvidenceStore {
+        if let webEvidenceStore {
+            return webEvidenceStore
+        }
+
+        let store = try await WebSearchEvidenceStore(rootURL: configuration.webEvidenceStoreURL)
+        webEvidenceStore = store
+        return store
+    }
+
+    private func webEvidenceContext(for query: MemoryQuery) async -> String {
+        guard query.tokenLimit > 0 else {
+            return ""
+        }
+
+        do {
+            let store = try await ensureWebEvidenceStore()
+            let records = try await store.search(
+                query: query.text,
+                topK: max(1, min(query.maxItems, 6))
+            )
+            guard !records.isEmpty else {
+                return ""
+            }
+
+            let rendered = records.prefix(query.maxItems).map { record in
+                WebSearchEvidenceCompiler.compactTranscript(for: record)
+            }
+            return rendered.joined(separator: "\n\n")
+        } catch {
+            Log.memory.warning("DefaultAgentMemory: Failed to retrieve web evidence context: \(error.localizedDescription)")
+            return ""
+        }
+    }
+
+    private func formatContext(
+        query: String,
+        sources: [ContextSourceSlice],
+        tokenLimit: Int
+    ) async -> String {
+        let nonEmptySources = sources.filter { !$0.body.isEmpty }
+        guard !nonEmptySources.isEmpty else {
+            return ""
+        }
+
+        let orderedSources = nonEmptySources.sorted { lhs, rhs in
+            sourcePriority(for: lhs, query: query) > sourcePriority(for: rhs, query: query)
+        }
+
+        let allocations = await allocateBudgets(for: orderedSources, query: query, tokenLimit: tokenLimit)
         let separator = "\n\n"
         let separatorTokens = await tokenCount(for: separator)
 
-        guard !secondary.isEmpty else {
-            return trimmedPrimary
+        var renderedSections: [String] = []
+        var previousBody = ""
+        var remaining = tokenLimit
+
+        for source in orderedSources {
+            let allocated = allocations[source.title, default: 0]
+            guard allocated > 0, remaining > 0 else {
+                continue
+            }
+
+            let deduplicatedBody = removeOverlap(primary: previousBody, secondary: source.body)
+            guard !deduplicatedBody.isEmpty else {
+                continue
+            }
+
+            let section = makeSection(title: source.title, body: deduplicatedBody)
+            let trimmed = await trimSection(section, tokenLimit: min(allocated, remaining))
+            guard !trimmed.isEmpty else {
+                continue
+            }
+
+            let tokens = await tokenCount(for: trimmed)
+            let cost = renderedSections.isEmpty ? tokens : tokens + separatorTokens
+            guard cost <= remaining else {
+                continue
+            }
+
+            renderedSections.append(trimmed)
+            previousBody = previousBody.isEmpty ? deduplicatedBody : previousBody + "\n" + deduplicatedBody
+            remaining -= cost
         }
 
-        let remainingForSecondary = tokenLimit - primaryTokens - separatorTokens
-        guard remainingForSecondary > 0 else {
-            return trimmedPrimary
-        }
-
-        let secondarySection = makeSection(
-            title: configuration.waxConfiguration.promptTitle,
-            body: secondary
-        )
-        let trimmedSecondary = await trimSection(secondarySection, tokenLimit: remainingForSecondary)
-        guard !trimmedSecondary.isEmpty else {
-            return trimmedPrimary
-        }
-
-        let combined = [trimmedPrimary, trimmedSecondary].joined(separator: separator)
-        if await tokenCount(for: combined) <= tokenLimit {
+        let combined = renderedSections.joined(separator: separator)
+        guard await tokenCount(for: combined) > tokenLimit else {
             return combined
         }
-
         return await trimToTokenLimit(combined, tokenLimit: tokenLimit)
+    }
+
+    private func sourcePriority(for source: ContextSourceSlice, query: String) -> Double {
+        let lexical = lexicalScore(for: source.body, query: query)
+        let base: Double = switch source.kind {
+        case .working:
+            1.0
+        case .evidence:
+            0.95
+        case .durable:
+            0.65
+        }
+        let urlBoost = source.body.contains("http") ? 0.15 : 0
+        return base + lexical + urlBoost
+    }
+
+    private func allocateBudgets(
+        for sources: [ContextSourceSlice],
+        query: String,
+        tokenLimit: Int
+    ) async -> [String: Int] {
+        guard !sources.isEmpty else {
+            return [:]
+        }
+
+        let separatorTokens = await tokenCount(for: "\n\n")
+        let usableBudget = max(1, tokenLimit - (separatorTokens * max(0, sources.count - 1)))
+        let weighted = sources.map { source in
+            (
+                source.title,
+                max(0.1, sourcePriority(for: source, query: query))
+            )
+        }
+        let totalWeight = weighted.reduce(0) { $0 + $1.1 }
+        let minimumFloor = min(120, max(40, usableBudget / max(1, sources.count * 2)))
+        var allocations: [String: Int] = [:]
+        var remaining = usableBudget
+
+        for (index, entry) in weighted.enumerated() {
+            let isLast = index == weighted.count - 1
+            let proportional = Int((entry.1 / totalWeight) * Double(usableBudget))
+            let floor = min(minimumFloor, remaining)
+            let allocation = isLast ? remaining : max(floor, proportional)
+            allocations[entry.0] = allocation
+            remaining = max(0, remaining - allocation)
+        }
+
+        return allocations
+    }
+
+    private func lexicalScore(for text: String, query: String) -> Double {
+        let haystack = text.lowercased()
+        let tokens = query
+            .lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { $0.count >= 3 }
+        guard !tokens.isEmpty else {
+            return 0
+        }
+
+        let hits = tokens.reduce(into: 0) { partial, token in
+            if haystack.contains(token) {
+                partial += 1
+            }
+        }
+        return Double(hits) / Double(tokens.count)
     }
 
     private func makeSection(title: String, body: String) -> String {
@@ -217,6 +428,50 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
         [\(title)]
         \(body)
         """
+    }
+
+    private func removeOverlap(primary: String, secondary: String) -> String {
+        guard !primary.isEmpty, !secondary.isEmpty else {
+            return secondary
+        }
+
+        let primaryLineKeys = Set(
+            primary
+                .split(separator: "\n", omittingEmptySubsequences: false)
+                .map { normalizeOverlapLine(String($0)) }
+                .filter { !$0.isEmpty }
+        )
+
+        guard !primaryLineKeys.isEmpty else {
+            return secondary
+        }
+
+        let filteredLines = secondary
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { line in
+                let normalized = normalizeOverlapLine(String(line))
+                return normalized.isEmpty || !primaryLineKeys.contains(normalized)
+            }
+
+        return filteredLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func normalizeOverlapLine(_ line: String) -> String {
+        var normalized = line
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        if normalized.hasPrefix("["),
+           let closingBracket = normalized.firstIndex(of: "]") {
+            let afterBracket = normalized.index(after: closingBracket)
+            normalized = normalized[afterBracket...].trimmingCharacters(in: .whitespacesAndNewlines)
+            if normalized.hasPrefix(":") {
+                normalized.removeFirst()
+                normalized = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        return normalized
     }
 
     private func trimSection(_ text: String, tokenLimit: Int) async -> String {
@@ -250,6 +505,38 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
         }
 
         return rendered.joined(separator: "\n")
+    }
+
+    private func boundContextItems(
+        in text: String,
+        maxItems: Int,
+        maxItemTokens: Int
+    ) async -> String {
+        guard !text.isEmpty, maxItems > 0, maxItemTokens > 0 else {
+            return ""
+        }
+
+        let blocks = text
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !blocks.isEmpty else {
+            return ""
+        }
+
+        var kept: [String] = []
+        kept.reserveCapacity(min(maxItems, blocks.count))
+
+        for block in blocks.prefix(maxItems) {
+            let trimmed = await trimToTokenLimit(block, tokenLimit: maxItemTokens)
+            guard !trimmed.isEmpty else {
+                continue
+            }
+            kept.append(trimmed)
+        }
+
+        return kept.joined(separator: "\n\n")
     }
 
     private func trimToTokenLimit(_ text: String, tokenLimit: Int) async -> String {

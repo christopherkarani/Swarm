@@ -66,6 +66,62 @@ public struct MembranePlannedBoundary: Sendable {
     }
 }
 
+public enum MembranePlanningSliceSource: String, Sendable, Equatable {
+    case history
+    case memory
+    case retrieval
+}
+
+public struct MembranePlanningSlice: Sendable, Equatable {
+    public let content: String
+    public let source: MembranePlanningSliceSource
+    public let tokenCount: Int
+    public let importance: Double
+
+    public init(
+        content: String,
+        source: MembranePlanningSliceSource,
+        tokenCount: Int,
+        importance: Double = 1.0
+    ) {
+        self.content = content
+        self.source = source
+        self.tokenCount = max(1, tokenCount)
+        self.importance = importance
+    }
+}
+
+public struct MembranePlanningRequest: Sendable, Equatable {
+    public let prompt: String
+    public let systemPrompt: String
+    public let basePrompt: String
+    public let userInput: String
+    public let history: [MembranePlanningSlice]
+    public let memories: [MembranePlanningSlice]
+    public let retrieval: [MembranePlanningSlice]
+    public let recallQuery: String?
+
+    public init(
+        prompt: String,
+        systemPrompt: String = "",
+        basePrompt: String = "",
+        userInput: String,
+        history: [MembranePlanningSlice] = [],
+        memories: [MembranePlanningSlice] = [],
+        retrieval: [MembranePlanningSlice] = [],
+        recallQuery: String? = nil
+    ) {
+        self.prompt = prompt
+        self.systemPrompt = systemPrompt
+        self.basePrompt = basePrompt
+        self.userInput = userInput
+        self.history = history
+        self.memories = memories
+        self.retrieval = retrieval
+        self.recallQuery = recallQuery
+    }
+}
+
 public struct MembraneToolResultBoundary: Sendable {
     public let textForConversation: String
     public let pointerID: String?
@@ -101,6 +157,14 @@ public protocol MembraneAgentAdapter: Sendable {
 
     func restore(checkpointData: Data?) async throws
     func snapshotCheckpointData() async throws -> Data?
+}
+
+public protocol StructuredMembranePlanningAdapter: MembraneAgentAdapter {
+    func plan(
+        request: MembranePlanningRequest,
+        toolSchemas: [ToolSchema],
+        profile: ContextProfile
+    ) async throws -> MembranePlannedBoundary
 }
 
 public actor DefaultMembraneAgentAdapter: MembraneAgentAdapter {

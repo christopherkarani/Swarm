@@ -56,6 +56,7 @@ struct TextOnlyConversationInferenceProviderAdapterTests {
         let prompts = await provider.recordedPrompts()
         #expect(prompts.count == 2)
         #expect(prompts[0].contains("\"swarm_tool_call\""))
-        #expect(prompts[1].contains("[Tool Result - string]: HELLO"))
+        #expect(prompts[1].contains("[Tool Result - string]:"))
+        #expect(prompts[1].contains("HELLO"))
     }
 }

@@ -105,10 +105,249 @@ struct WebSearchSupportTests {
             cached: false
         )
 
-        let merged = mergeHits(localHits: [cached], remoteHits: [remote], maxResults: 2)
+        let merged = mergeHits(
+            localHits: [cached],
+            remoteHits: [remote],
+            maxResults: 2,
+            query: "example docs"
+        )
 
         #expect(merged.first?.cached == true)
         #expect(merged.first?.artifactID == "artifact-1")
+    }
+
+    @Test("Merged hits prefer query-specific and more diverse sources over generic pages")
+    func mergeHitsPrefersQuerySpecificResults() {
+        let genericApple = WebSearchHit(
+            id: "remote-1",
+            title: "What’s New - Machine Learning - Apple Developer",
+            url: "https://developer.apple.com/machine-learning/whats-new/",
+            snippet: "Generic machine learning updates.",
+            score: 0.94,
+            source: "tavily",
+            cached: false
+        )
+        let promptingDoc = WebSearchHit(
+            id: "remote-2",
+            title: "Prompting an on-device foundation model - Apple Developer",
+            url: "https://developer.apple.com/documentation/foundationmodels/prompting-an-on-device-foundation-model",
+            snippet: "Prompting techniques for on-device foundation models.",
+            score: 0.82,
+            source: "tavily",
+            cached: false
+        )
+        let thirdParty = WebSearchHit(
+            id: "remote-3",
+            title: "Foundation Models Prompting Notes",
+            url: "https://example.dev/foundation-models-prompting",
+            snippet: "A focused write-up on prompting guidance.",
+            score: 0.76,
+            source: "tavily",
+            cached: false
+        )
+
+        let merged = mergeHits(
+            localHits: [],
+            remoteHits: [genericApple, promptingDoc, thirdParty],
+            maxResults: 3,
+            query: "Apple Foundation Models prompt engineering"
+        )
+
+        #expect(merged.first?.url == promptingDoc.url)
+        #expect(merged.prefix(2).contains(where: { $0.url == thirdParty.url }))
+    }
+
+    @Test("Broad docs queries prefer canonical docs over WWDC videos")
+    func mergeHitsPrefersCanonicalDocsForBroadQueries() {
+        let docs = WebSearchHit(
+            id: "remote-docs",
+            title: "Foundation Models | Apple Developer Documentation",
+            url: "https://developer.apple.com/documentation/FoundationModels",
+            snippet: "Overview of Apple's Foundation Models framework.",
+            score: 0.78,
+            source: "tavily",
+            cached: false
+        )
+        let video = WebSearchHit(
+            id: "remote-video",
+            title: "Meet the Foundation Models framework - WWDC25 - Apple Developer",
+            url: "https://developer.apple.com/videos/play/wwdc2025/286/",
+            snippet: "WWDC session introducing the Foundation Models framework.",
+            score: 0.83,
+            source: "tavily",
+            cached: false
+        )
+        let merged = mergeHits(
+            localHits: [],
+            remoteHits: [video, docs],
+            maxResults: 2,
+            query: "Apple Foundation Models guides"
+        )
+
+        #expect(merged.first?.url == docs.url)
+    }
+
+    @Test("Generic Apple landing pages trigger targeted docs refinement")
+    func docsRefinementTriggersForGenericTopHit() {
+        let genericApple = WebSearchHit(
+            id: "remote-1",
+            title: "What’s New - Machine Learning - Apple Developer",
+            url: "https://developer.apple.com/machine-learning/whats-new/",
+            snippet: "Generic machine learning updates.",
+            score: 0.94,
+            source: "tavily",
+            cached: false
+        )
+        let request = WebToolRequest(
+            mode: .search,
+            query: "Apple Foundation Models prompt engineering",
+            url: nil,
+            goal: nil,
+            maxResults: 1,
+            domains: [],
+            recencyDays: nil,
+            detail: .compact,
+            preferCached: true,
+            persist: true,
+            artifactID: nil,
+            sectionIDs: [],
+            bundleID: nil
+        )
+
+        #expect(shouldRefineDocsSearch(query: "Apple Foundation Models prompt engineering", hits: [genericApple], request: request))
+        #expect(docsRefinementDomains(for: "Apple Foundation Models prompt engineering").contains("developer.apple.com"))
+        #expect(docsRefinementDomains(for: "Apple Foundation Models prompt engineering").contains("machinelearning.apple.com"))
+    }
+
+    @Test("Specific official docs hit does not trigger refinement")
+    func docsRefinementSkipsWhenTopHitIsAlreadySpecific() {
+        let specificDoc = WebSearchHit(
+            id: "remote-1",
+            title: "Managing the on-device foundation model's context window - Apple Developer",
+            url: "https://developer.apple.com/documentation/technotes/tn3193-managing-the-on-device-foundation-model-s-context-window",
+            snippet: "Guidance for managing Foundation Models context windows on device.",
+            score: 0.86,
+            source: "tavily",
+            cached: false
+        )
+        let request = WebToolRequest(
+            mode: .search,
+            query: "Apple Foundation Models context window",
+            url: nil,
+            goal: nil,
+            maxResults: 1,
+            domains: [],
+            recencyDays: nil,
+            detail: .compact,
+            preferCached: true,
+            persist: true,
+            artifactID: nil,
+            sectionIDs: [],
+            bundleID: nil
+        )
+
+        #expect(shouldRefineDocsSearch(query: "Apple Foundation Models context window", hits: [specificDoc], request: request) == false)
+        #expect(localHitNeedsLiveRefresh(specificDoc, query: "Apple Foundation Models context window", request: request) == false)
+    }
+
+    @Test("WebSearch evidence compiler preserves compact transcript and embedded envelope")
+    func evidenceCompilerBuildsStructuredRecord() throws {
+        let envelope = WebSearchEnvelope(
+            mode: "search",
+            summary: "Found 2 ranked results for 'Apple Foundation Models prompt engineering'.",
+            final4KAnswer: "Prompting docs are available from Apple.",
+            semanticCore: "Prompting docs for on-device foundation models.",
+            hits: [
+                WebSearchHit(
+                    id: "hit-1",
+                    title: "Prompting an on-device foundation model - Apple Developer",
+                    url: "https://developer.apple.com/documentation/foundationmodels/prompting-an-on-device-foundation-model",
+                    snippet: "Prompting techniques for on-device foundation models.",
+                    score: 0.88,
+                    source: "tavily",
+                    cached: false
+                ),
+                WebSearchHit(
+                    id: "hit-2",
+                    title: "What’s New - Machine Learning - Apple Developer",
+                    url: "https://developer.apple.com/machine-learning/whats-new/",
+                    snippet: "Generic machine learning updates.",
+                    score: 0.93,
+                    source: "tavily",
+                    cached: false
+                ),
+            ],
+            citations: [
+                CitationRecord(
+                    artifactID: "artifact-1",
+                    sectionID: "section-1",
+                    url: "https://developer.apple.com/documentation/foundationmodels/prompting-an-on-device-foundation-model",
+                    title: "Prompting an on-device foundation model - Apple Developer",
+                    snippet: "Prompting techniques for on-device foundation models."
+                )
+            ]
+        )
+
+        let legacy = """
+        Found 2 ranked results for 'Apple Foundation Models prompt engineering'.
+
+        1. [Prompting an on-device foundation model - Apple Developer](https://developer.apple.com/documentation/foundationmodels/prompting-an-on-device-foundation-model)
+           Prompting techniques for on-device foundation models.
+        """
+
+        let payload = WebSearchEvidenceCompiler.embedEnvelope(envelope, in: legacy)
+        let compiled = try #require(
+            WebSearchEvidenceCompiler.compile(
+                rawPayload: payload,
+                queryFallback: "Apple Foundation Models prompt engineering"
+            )
+        )
+
+        #expect(compiled.record.query == "Apple Foundation Models prompt engineering")
+        #expect(compiled.record.primaryHit?.url == "https://developer.apple.com/documentation/foundationmodels/prompting-an-on-device-foundation-model")
+        #expect(compiled.compactTranscript.contains("[Websearch Evidence]"))
+        #expect(compiled.compactTranscript.contains("Best: [Prompting an on-device foundation model - Apple Developer]"))
+    }
+
+    @Test("Evidence compiler prefers canonical docs over WWDC videos for broad docs queries")
+    func evidenceCompilerPrefersCanonicalDocsForBroadQueries() throws {
+        let envelope = WebSearchEnvelope(
+            mode: "search",
+            summary: "Found 2 ranked results for 'Apple Foundation Models guides'.",
+            final4KAnswer: "Foundation Models guides are available from Apple.",
+            semanticCore: "Foundation Models guides and overview docs.",
+            hits: [
+                WebSearchHit(
+                    id: "video",
+                    title: "Meet the Foundation Models framework - WWDC25 - Apple Developer",
+                    url: "https://developer.apple.com/videos/play/wwdc2025/286/",
+                    snippet: "WWDC session introducing the Foundation Models framework.",
+                    score: 0.84,
+                    source: "tavily",
+                    cached: false
+                ),
+                WebSearchHit(
+                    id: "docs",
+                    title: "Foundation Models | Apple Developer Documentation",
+                    url: "https://developer.apple.com/documentation/FoundationModels",
+                    snippet: "Overview of Apple's Foundation Models framework.",
+                    score: 0.79,
+                    source: "tavily",
+                    cached: false
+                ),
+            ],
+            citations: []
+        )
+
+        let payload = WebSearchEvidenceCompiler.embedEnvelope(envelope, in: "Found 2 ranked results.")
+        let compiled = try #require(
+            WebSearchEvidenceCompiler.compile(
+                rawPayload: payload,
+                queryFallback: "Apple Foundation Models guides"
+            )
+        )
+
+        #expect(compiled.record.primaryHit?.url == "https://developer.apple.com/documentation/FoundationModels")
     }
 
     @Test("Saving a fetched artifact replaces old indexed sections")

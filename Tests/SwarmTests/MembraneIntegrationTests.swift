@@ -4,6 +4,16 @@ import Testing
 
 @Suite("Membrane Integration")
 struct MembraneIntegrationTests {
+    @Test("default membrane adapter uses the session-backed path")
+    func defaultMembraneAdapterUsesSessionAdapter() {
+        let adapter = Agent.makeDefaultMembraneAdapter(
+            configuration: .default,
+            profile: .strict4k
+        )
+
+        #expect(adapter is SessionMembraneAgentAdapter)
+    }
+
     @Test("strict4k_jitAvoidsPromptEnvelopeTruncation")
     func strict4k_jitAvoidsPromptEnvelopeTruncation() async throws {
         let provider = MockInferenceProvider()

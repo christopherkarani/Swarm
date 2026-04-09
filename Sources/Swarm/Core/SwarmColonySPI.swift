@@ -232,4 +232,6 @@ import Foundation
     case invalidMessagesUpdate
     case resumeInterruptMismatch(expected: String, found: String)
     case noInterruptToResume
+    case executionChannelMissing(String)
+    case executionChannelTypeMismatch(String)
 }
