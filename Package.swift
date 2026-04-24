@@ -34,7 +34,7 @@ var packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.11.0"),
     .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.13.2"),
     // Production graph must resolve to the published tag set that is known to build together.
-    .package(url: "https://github.com/christopherkarani/Wax.git", exact: "0.1.19"),
+    .package(url: "https://github.com/gungorbasa/Wax.git", exact: "0.1.22"),
     .package(
         url: "https://github.com/christopherkarani/Conduit",
         exact: "0.3.14",
