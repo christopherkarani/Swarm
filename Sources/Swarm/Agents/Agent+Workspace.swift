@@ -6,10 +6,25 @@ public extension Agent {
         _ instructions: String,
         workspace: AgentWorkspace? = nil,
         configuration: AgentConfiguration = .onDeviceDefault,
-        inferenceProvider: (any InferenceProvider)? = nil,
-        @ToolBuilder tools: () -> ToolCollection = { .empty }
+        inferenceProvider: (any InferenceProvider)? = nil
     ) throws -> Agent {
-        let builtTools = tools().storage
+        try onDevice(
+            instructions,
+            workspace: workspace,
+            configuration: configuration,
+            inferenceProvider: inferenceProvider,
+            tools: [any AnyJSONTool]()
+        )
+    }
+
+    /// Creates an on-device agent with workspace-backed memory and explicit JSON tools.
+    static func onDevice(
+        _ instructions: String,
+        workspace: AgentWorkspace? = nil,
+        configuration: AgentConfiguration = .onDeviceDefault,
+        inferenceProvider: (any InferenceProvider)? = nil,
+        tools: [any AnyJSONTool]
+    ) throws -> Agent {
         let globalInstructions = try workspace?.loadAgentInstructions() ?? ""
         let combinedInstructions = [globalInstructions, instructions]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -17,7 +32,7 @@ public extension Agent {
             .joined(separator: "\n\n")
         let workspaceMemory = workspace.map { WorkspaceMemory(workspace: $0, activatedSkills: []) }
         return try Agent(
-            tools: builtTools,
+            tools: tools,
             instructions: combinedInstructions,
             configuration: configuration,
             memory: workspaceMemory,
@@ -25,18 +40,50 @@ public extension Agent {
         )
     }
 
-    /// Creates an on-device agent from an AgentWorkspace spec file.
+    /// Creates an on-device agent with workspace-backed memory and typed tools.
+    static func onDevice(
+        _ instructions: String,
+        workspace: AgentWorkspace? = nil,
+        configuration: AgentConfiguration = .onDeviceDefault,
+        inferenceProvider: (any InferenceProvider)? = nil,
+        @ToolBuilder tools: () -> ToolCollection
+    ) throws -> Agent {
+        try onDevice(
+            instructions,
+            workspace: workspace,
+            configuration: configuration,
+            inferenceProvider: inferenceProvider,
+            tools: tools().storage
+        )
+    }
+
+    /// Creates an on-device agent from an AgentWorkspace spec file with no tools.
+    static func spec(
+        _ id: String,
+        in workspace: AgentWorkspace,
+        configuration: AgentConfiguration = .onDeviceDefault,
+        inferenceProvider: (any InferenceProvider)? = nil
+    ) throws -> Agent {
+        try spec(
+            id,
+            in: workspace,
+            configuration: configuration,
+            inferenceProvider: inferenceProvider,
+            tools: [any AnyJSONTool]()
+        )
+    }
+
+    /// Creates an on-device agent from an AgentWorkspace spec file with explicit JSON tools.
     static func spec(
         _ id: String,
         in workspace: AgentWorkspace,
         configuration: AgentConfiguration = .onDeviceDefault,
         inferenceProvider: (any InferenceProvider)? = nil,
-        @ToolBuilder tools: () -> ToolCollection = { .empty }
+        tools: [any AnyJSONTool]
     ) throws -> Agent {
         let spec = try workspace.loadAgentSpec(id: id)
         let skills = try workspace.loadSkills(named: spec.skills)
         let globalInstructions = try workspace.loadAgentInstructions()
-        let builtTools = tools().storage
 
         let combinedInstructions = [globalInstructions, spec.body]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -44,11 +91,28 @@ public extension Agent {
             .joined(separator: "\n\n")
 
         return try Agent(
-            tools: filterTools(builtTools, using: skills),
+            tools: filterTools(tools, using: skills),
             instructions: combinedInstructions,
             configuration: configuration.name(spec.title),
             memory: WorkspaceMemory(workspace: workspace, activatedSkills: skills),
             inferenceProvider: inferenceProvider
+        )
+    }
+
+    /// Creates an on-device agent from an AgentWorkspace spec file with typed tools.
+    static func spec(
+        _ id: String,
+        in workspace: AgentWorkspace,
+        configuration: AgentConfiguration = .onDeviceDefault,
+        inferenceProvider: (any InferenceProvider)? = nil,
+        @ToolBuilder tools: () -> ToolCollection
+    ) throws -> Agent {
+        try spec(
+            id,
+            in: workspace,
+            configuration: configuration,
+            inferenceProvider: inferenceProvider,
+            tools: tools().storage
         )
     }
 }

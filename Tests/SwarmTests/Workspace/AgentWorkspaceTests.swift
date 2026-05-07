@@ -106,6 +106,26 @@ struct AgentWorkspaceTests {
         #expect(prompt?.contains("Local agent instructions.") == true)
     }
 
+    @Test("Agent.onDevice accepts explicit JSON tools without ToolBuilder")
+    func agentOnDeviceAcceptsExplicitJSONTools() async throws {
+        let workspaceRoot = try makeWorkspaceRoot()
+        defer { try? FileManager.default.removeItem(at: workspaceRoot) }
+
+        let workspace = try AgentWorkspace(
+            bundleRoot: workspaceRoot,
+            writableRoot: workspaceRoot.appendingPathComponent("Writable", isDirectory: true),
+            indexCacheRoot: workspaceRoot.appendingPathComponent("Cache", isDirectory: true)
+        )
+
+        let agent = try Agent.onDevice(
+            "Local agent instructions.",
+            workspace: workspace,
+            tools: [WorkspaceProbeTool()]
+        )
+
+        #expect(agent.tools.map(\.name) == ["workspace_probe"])
+    }
+
     @Test("Agent.spec uses listed SKILL.md content as retrieved context")
     func agentSpecUsesSkillContentAsRetrievedContext() async throws {
         let workspaceRoot = try makeWorkspaceRoot()
@@ -153,6 +173,40 @@ struct AgentWorkspaceTests {
 
         let prompt = await capturedPromptText(from: provider)
         #expect(prompt?.contains("refund window") == true)
+    }
+
+    @Test("Agent.spec accepts explicit JSON tools without ToolBuilder")
+    func agentSpecAcceptsExplicitJSONTools() async throws {
+        let workspaceRoot = try makeWorkspaceRoot()
+        defer { try? FileManager.default.removeItem(at: workspaceRoot) }
+        try writeFile(
+            at: workspaceRoot.appendingPathComponent(".swarm/agents/support.md"),
+            contents: """
+            ---
+            schema_version: 1
+            id: support
+            title: Support
+            skills: []
+            revision: 1
+            updated_at: 2026-03-20T00:00:00Z
+            ---
+            You are the support agent.
+            """
+        )
+
+        let workspace = try AgentWorkspace(
+            bundleRoot: workspaceRoot,
+            writableRoot: workspaceRoot.appendingPathComponent("Writable", isDirectory: true),
+            indexCacheRoot: workspaceRoot.appendingPathComponent("Cache", isDirectory: true)
+        )
+
+        let agent = try Agent.spec(
+            "support",
+            in: workspace,
+            tools: [WorkspaceProbeTool()]
+        )
+
+        #expect(agent.tools.map(\.name) == ["workspace_probe"])
     }
 
     @Test("Workspace validation reports malformed SKILL.md")
@@ -204,6 +258,16 @@ struct AgentWorkspaceTests {
         let secondContents = try String(contentsOf: secondURL, encoding: .utf8)
         #expect(firstContents.contains("First fact"))
         #expect(secondContents.contains("Second fact"))
+    }
+}
+
+private struct WorkspaceProbeTool: AnyJSONTool {
+    let name = "workspace_probe"
+    let description = "A tiny probe tool for workspace API tests."
+    let parameters: [ToolParameter] = []
+
+    func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
+        .string("ok")
     }
 }
 
