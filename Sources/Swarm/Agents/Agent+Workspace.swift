@@ -63,9 +63,7 @@ private extension Agent {
             return tools
         }
 
-        let allowedToolNames = constrainedSkillLists.dropFirst().reduce(into: Set(constrainedSkillLists[0])) { partialResult, next in
-            partialResult.formIntersection(next)
-        }
+        let allowedToolNames = Set(constrainedSkillLists.flatMap(\.self))
 
         return tools.filter { allowedToolNames.contains($0.name) }
     }

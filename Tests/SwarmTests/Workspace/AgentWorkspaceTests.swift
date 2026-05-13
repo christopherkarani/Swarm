@@ -155,6 +155,68 @@ struct AgentWorkspaceTests {
         #expect(prompt?.contains("refund window") == true)
     }
 
+    @Test("Agent.spec unions constrained tool allowlists across skills")
+    func agentSpecUnionsConstrainedToolAllowlists() throws {
+        let workspaceRoot = try makeWorkspaceRoot()
+        defer { try? FileManager.default.removeItem(at: workspaceRoot) }
+
+        try writeFile(
+            at: workspaceRoot.appendingPathComponent(".swarm/agents/support.md"),
+            contents: """
+            ---
+            schema_version: 1
+            id: support
+            title: Support
+            skills:
+              - refunds
+              - tickets
+            revision: 1
+            updated_at: 2026-05-13T00:00:00Z
+            ---
+            You are the support agent.
+            """
+        )
+        try writeFile(
+            at: workspaceRoot.appendingPathComponent(".swarm/skills/refunds/SKILL.md"),
+            contents: """
+            ---
+            name: refunds
+            description: Refund support
+            allowed-tools:
+              - refund_lookup
+            ---
+            Use refund_lookup for refund status.
+            """
+        )
+        try writeFile(
+            at: workspaceRoot.appendingPathComponent(".swarm/skills/tickets/SKILL.md"),
+            contents: """
+            ---
+            name: tickets
+            description: Ticket support
+            allowed-tools:
+              - ticket_create
+            ---
+            Use ticket_create for support tickets.
+            """
+        )
+
+        let workspace = try AgentWorkspace(
+            bundleRoot: workspaceRoot,
+            writableRoot: workspaceRoot.appendingPathComponent("Writable", isDirectory: true),
+            indexCacheRoot: workspaceRoot.appendingPathComponent("Cache", isDirectory: true)
+        )
+        let agent = try Agent.spec("support", in: workspace) {
+            [
+                MockTool(name: "refund_lookup"),
+                MockTool(name: "ticket_create"),
+                MockTool(name: "unlisted")
+            ]
+        }
+
+        #expect(Set(agent.tools.map(\.name)) == ["refund_lookup", "ticket_create"])
+    }
+
     @Test("Workspace validation reports malformed SKILL.md")
     func workspaceValidationReportsMalformedSkill() async throws {
         let workspaceRoot = try makeWorkspaceRoot()
