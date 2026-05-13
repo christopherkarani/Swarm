@@ -214,6 +214,8 @@ public extension MemoryMessage {
         tokenLimit: Int,
         tokenEstimator: any TokenEstimator = CharacterBasedTokenEstimator.shared
     ) -> String {
+        guard tokenLimit > 0 else { return "" }
+
         var result: [String] = []
         var currentTokens = 0
 
@@ -221,6 +223,10 @@ public extension MemoryMessage {
         for message in messages.reversed() {
             let formatted = message.formattedContent
             let messageTokens = tokenEstimator.estimateTokens(for: formatted)
+
+            if messageTokens > tokenLimit {
+                continue
+            }
 
             if currentTokens + messageTokens <= tokenLimit {
                 result.append(formatted)
@@ -251,6 +257,8 @@ public extension MemoryMessage {
         separator: String,
         tokenEstimator: any TokenEstimator = CharacterBasedTokenEstimator.shared
     ) -> String {
+        guard tokenLimit > 0 else { return "" }
+
         var result: [String] = []
         var currentTokens = 0
         let separatorTokens = tokenEstimator.estimateTokens(for: separator)
@@ -259,6 +267,10 @@ public extension MemoryMessage {
             let formatted = message.formattedContent
             let messageTokens = tokenEstimator.estimateTokens(for: formatted)
             let totalNeeded = messageTokens + (result.isEmpty ? 0 : separatorTokens)
+
+            if messageTokens > tokenLimit {
+                continue
+            }
 
             if currentTokens + totalNeeded <= tokenLimit {
                 result.append(formatted)

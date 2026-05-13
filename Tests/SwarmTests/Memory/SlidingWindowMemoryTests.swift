@@ -126,6 +126,60 @@ struct SlidingWindowMemoryTests {
         #expect(!context.isEmpty)
     }
 
+    @Test("Context skips oversized newest message and keeps older context")
+    func contextSkipsOversizedNewestMessage() async {
+        let memory = SlidingWindowMemory(
+            maxTokens: 200,
+            tokenEstimator: CharacterBasedTokenEstimator(charactersPerToken: 1)
+        )
+
+        await memory.add(.user("older-fit"))
+        await memory.add(.assistant("still-fits"))
+        await memory.add(.user(String(repeating: "x", count: 120)))
+
+        let context = await memory.context(for: "test", tokenLimit: 64)
+
+        #expect(context.contains("[user]: older-fit"))
+        #expect(context.contains("[assistant]: still-fits"))
+        #expect(!context.contains(String(repeating: "x", count: 120)))
+    }
+
+    @Test("Context skips oversized middle message and keeps surrounding context")
+    func contextSkipsOversizedMiddleMessage() async {
+        let memory = SlidingWindowMemory(
+            maxTokens: 300,
+            tokenEstimator: CharacterBasedTokenEstimator(charactersPerToken: 1)
+        )
+        let oversized = String(repeating: "x", count: 120)
+
+        await memory.add(.user("older-fit"))
+        await memory.add(.user(oversized))
+        await memory.add(.assistant("newer-fit"))
+
+        let context = await memory.context(for: "test", tokenLimit: 64)
+
+        #expect(context.contains("[user]: older-fit"))
+        #expect(context.contains("[assistant]: newer-fit"))
+        #expect(!context.contains(oversized))
+    }
+
+    @Test("Context stops at non-oversized message that exhausts remaining budget")
+    func contextStopsAtNonOversizedBudgetExhaustion() async {
+        let memory = SlidingWindowMemory(
+            maxTokens: 300,
+            tokenEstimator: CharacterBasedTokenEstimator(charactersPerToken: 1)
+        )
+        let fittingButTooLargeAfterNewest = String(repeating: "m", count: 40)
+
+        await memory.add(.user("older-fit"))
+        await memory.add(.user(fittingButTooLargeAfterNewest))
+        await memory.add(.assistant("new"))
+
+        let context = await memory.context(for: "test", tokenLimit: 48)
+
+        #expect(context == "[assistant]: new")
+    }
+
     // MARK: - Clear Tests
 
     @Test("Clear resets both messages and token count")

@@ -78,6 +78,49 @@ struct WaxMemoryTests {
         #expect(await reopened.count == 1)
         #expect((await reopened.allMessages()).map(\.id) == [message.id])
     }
+
+    @Test("context skips oversized ranked item and keeps fitting RAG context")
+    func contextSkipsOversizedRankedItem() async throws {
+        let url = try makeTemporaryWaxURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let key = "waxbudget\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        let memory = try await WaxMemory(
+            url: url,
+            configuration: .init(tokenEstimator: CharacterBasedTokenEstimator(charactersPerToken: 4))
+        )
+
+        await memory.add(.user("\(key) concise-fit"))
+        await memory.add(.user(String(repeating: "\(key) oversized ", count: 160)))
+        await memory.add(.assistant("unrelated-recent-fits"))
+
+        let context = await memory.context(for: key, tokenLimit: 800)
+
+        #expect(context.contains("concise-fit"))
+        #expect(!context.contains("oversized"))
+        #expect(!context.contains("unrelated-recent-fits"))
+    }
+
+    @Test("context stops at non-oversized ranked item that exhausts remaining budget")
+    func contextStopsAtNonOversizedRankedBudgetExhaustion() async throws {
+        let url = try makeTemporaryWaxURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let key = "waxcutoff\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        let memory = try await WaxMemory(
+            url: url,
+            configuration: .init(tokenEstimator: CharacterBasedTokenEstimator(charactersPerToken: 1))
+        )
+
+        await memory.add(.user("\(Array(repeating: key, count: 10).joined(separator: " ")) first-fit"))
+        await memory.add(.user("\(Array(repeating: key, count: 8).joined(separator: " ")) \(String(repeating: "m", count: 200)) second-wide"))
+        await memory.add(.user("\(key) third-fit"))
+
+        let context = await memory.context(for: key, tokenLimit: 700)
+
+        #expect(context.contains("first-fit"))
+        #expect(!context.contains("third-fit"))
+    }
 }
 
 private func makeTemporaryWaxURL() throws -> URL {

@@ -222,6 +222,10 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle {
         var usedTokens = 0
 
         for item in rag.items {
+            if isStoredMessageOverBudget(for: item, tokenLimit: tokenLimit) {
+                continue
+            }
+
             let kind = switch item.kind {
             case .expanded: "expanded"
             case .surrogate: "surrogate"
@@ -242,12 +246,58 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle {
             let candidate = "\(prefix) \(item.text)"
             let tokens = configuration.tokenEstimator.estimateTokens(for: candidate)
 
+            if tokens > tokenLimit { continue }
             if usedTokens + tokens > tokenLimit { break }
             usedTokens += tokens
             lines.append(candidate)
         }
 
+        if lines.isEmpty, rag.items.isEmpty == false {
+            return MemoryMessage.formatContext(
+                persistedMessagesMatchingQueryText(query: rag.query),
+                tokenLimit: tokenLimit,
+                tokenEstimator: configuration.tokenEstimator
+            )
+        }
+
         return lines.joined(separator: "\n")
+    }
+
+    private func isStoredMessageOverBudget(for item: RAGContext.Item, tokenLimit: Int) -> Bool {
+        guard let messageIDString = item.metadata["message_id"],
+              let messageID = UUID(uuidString: messageIDString),
+              let message = persistedMessages.first(where: { $0.id == messageID }) else {
+            return false
+        }
+
+        return configuration.tokenEstimator.estimateTokens(for: message.formattedContent) > tokenLimit
+    }
+
+    private func persistedMessagesMatchingQueryText(query: String) -> [MemoryMessage] {
+        let terms = Self.distinctiveSearchTerms(in: query)
+        guard terms.isEmpty == false else { return [] }
+
+        return persistedMessages.filter { message in
+            let content = message.content.lowercased()
+            return terms.allSatisfy { content.contains($0) }
+        }
+    }
+
+    private static func distinctiveSearchTerms(in text: String) -> [String] {
+        let stopWords: Set<String> = [
+            "about", "after", "again", "agent", "answer", "before", "context", "memory",
+            "message", "messages", "please", "question", "status", "their", "there",
+            "these", "those", "through", "using", "where", "which", "would"
+        ]
+
+        return Array(
+            Set(
+                text
+                    .lowercased()
+                    .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                    .filter { $0.count >= 8 && stopWords.contains($0) == false }
+            )
+        ).sorted()
     }
 }
 

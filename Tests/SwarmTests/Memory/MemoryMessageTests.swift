@@ -185,4 +185,105 @@ struct MemoryMessageTests {
         #expect(description.contains("..."))
         #expect(description.count < 100)
     }
+
+    // MARK: - Context Formatting Tests
+
+    @Test("Context formatting skips oversized newest message")
+    func contextFormattingSkipsOversizedNewestMessage() {
+        let estimator = CharacterBasedTokenEstimator(charactersPerToken: 1)
+        let messages = [
+            MemoryMessage.user("first-fit"),
+            MemoryMessage.assistant("second-fit"),
+            MemoryMessage.user(String(repeating: "x", count: 120))
+        ]
+
+        let context = MemoryMessage.formatContext(
+            messages,
+            tokenLimit: 60,
+            tokenEstimator: estimator
+        )
+
+        #expect(context.contains("[user]: first-fit"))
+        #expect(context.contains("[assistant]: second-fit"))
+        #expect(!context.contains(String(repeating: "x", count: 120)))
+    }
+
+    @Test("Context formatting with custom separator skips oversized newest message")
+    func contextFormattingWithCustomSeparatorSkipsOversizedNewestMessage() {
+        let estimator = CharacterBasedTokenEstimator(charactersPerToken: 1)
+        let messages = [
+            MemoryMessage.user("first-fit"),
+            MemoryMessage.assistant("second-fit"),
+            MemoryMessage.user(String(repeating: "x", count: 120))
+        ]
+
+        let context = MemoryMessage.formatContext(
+            messages,
+            tokenLimit: 64,
+            separator: "\n---\n",
+            tokenEstimator: estimator
+        )
+
+        #expect(context == "[user]: first-fit\n---\n[assistant]: second-fit")
+    }
+
+    @Test("Context formatting skips oversized middle message")
+    func contextFormattingSkipsOversizedMiddleMessage() {
+        let estimator = CharacterBasedTokenEstimator(charactersPerToken: 1)
+        let oversized = String(repeating: "x", count: 120)
+        let messages = [
+            MemoryMessage.user("older-fit"),
+            MemoryMessage.user(oversized),
+            MemoryMessage.assistant("newer-fit")
+        ]
+
+        let context = MemoryMessage.formatContext(
+            messages,
+            tokenLimit: 64,
+            tokenEstimator: estimator
+        )
+
+        #expect(context.contains("[user]: older-fit"))
+        #expect(context.contains("[assistant]: newer-fit"))
+        #expect(!context.contains(oversized))
+    }
+
+    @Test("Context formatting stops at non-oversized message that exhausts remaining budget")
+    func contextFormattingStopsAtNonOversizedBudgetExhaustion() {
+        let estimator = CharacterBasedTokenEstimator(charactersPerToken: 1)
+        let fittingButTooLargeAfterNewest = String(repeating: "m", count: 40)
+        let messages = [
+            MemoryMessage.user("older-fit"),
+            MemoryMessage.user(fittingButTooLargeAfterNewest),
+            MemoryMessage.assistant("new")
+        ]
+
+        let context = MemoryMessage.formatContext(
+            messages,
+            tokenLimit: 48,
+            tokenEstimator: estimator
+        )
+
+        #expect(context == "[assistant]: new")
+    }
+
+    @Test("Context formatting with custom separator stops at non-oversized budget exhaustion")
+    func contextFormattingWithCustomSeparatorStopsAtNonOversizedBudgetExhaustion() {
+        let estimator = CharacterBasedTokenEstimator(charactersPerToken: 1)
+        let fittingButTooLargeAfterNewest = String(repeating: "m", count: 40)
+        let messages = [
+            MemoryMessage.user("older-fit"),
+            MemoryMessage.user(fittingButTooLargeAfterNewest),
+            MemoryMessage.assistant("new")
+        ]
+
+        let context = MemoryMessage.formatContext(
+            messages,
+            tokenLimit: 48,
+            separator: "\n---\n",
+            tokenEstimator: estimator
+        )
+
+        #expect(context == "[assistant]: new")
+    }
 }
