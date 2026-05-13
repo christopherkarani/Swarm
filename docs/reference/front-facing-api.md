@@ -258,9 +258,39 @@ public struct Workflow: Sendable {
 
     // Composition
     public func step(_ agent: some AgentRuntime) -> Workflow
-    public func parallel(_ agents: [any AgentRuntime], merge: MergeStrategy = .structured) -> Workflow
-    public func route(_ condition: @escaping @Sendable (String) -> (any AgentRuntime)?) -> Workflow
-    public func repeatUntil(maxIterations: Int = 100, _ condition: @escaping @Sendable (AgentResult) -> Bool) -> Workflow
+    public func parallel(
+        _ agents: [any AgentRuntime],
+        merge: MergeStrategy = .structured,
+        customMergeSignature: String? = nil,
+        fileID: StaticString = #fileID,
+        line: UInt = #line
+    ) -> Workflow
+    public func route(
+        _ condition: @escaping @Sendable (String) -> (any AgentRuntime)?,
+        signature: String? = nil,
+        fileID: StaticString = #fileID,
+        line: UInt = #line
+    ) -> Workflow
+    public func route(
+        signature: String,
+        fileID: StaticString = #fileID,
+        line: UInt = #line,
+        _ condition: @escaping @Sendable (String) -> (any AgentRuntime)?
+    ) -> Workflow
+    public func repeatUntil(
+        maxIterations: Int = 100,
+        _ condition: @escaping @Sendable (AgentResult) -> Bool,
+        signature: String? = nil,
+        fileID: StaticString = #fileID,
+        line: UInt = #line
+    ) -> Workflow
+    public func repeatUntil(
+        maxIterations: Int = 100,
+        signature: String,
+        fileID: StaticString = #fileID,
+        line: UInt = #line,
+        _ condition: @escaping @Sendable (AgentResult) -> Bool
+    ) -> Workflow
     public func timeout(_ duration: Duration) -> Workflow
     public func observed(by observer: some AgentObserver) -> Workflow
 

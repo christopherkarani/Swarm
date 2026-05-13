@@ -2494,21 +2494,23 @@ Generated from `Sources/Swarm/` on 2026-04-30.
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 4 | struct | public | Workflow | `public struct Workflow` |
-| 12 | enum | public | Workflow.MergeStrategy | `public enum MergeStrategy` |
-| 15 | case | public | Workflow.MergeStrategy.structured | `public case structured` |
-| 18 | case | public | Workflow.MergeStrategy.indexed | `public case indexed` |
-| 20 | case | public | Workflow.MergeStrategy.first | `public case first` |
-| 22 | case | public | Workflow.MergeStrategy.custom(_:) | `public case custom(([AgentResult]) -> String)` |
-| 25 | func | public | Workflow.init() | `public init()` |
-| 27 | func | public | Workflow.step(_:) | `public func step(_ agent: some AgentRuntime) -> Workflow` |
-| 33 | func | public | Workflow.parallel(_:merge:) | `public func parallel(_ agents: [any AgentRuntime], merge: Workflow.MergeStrategy = .structured) -> Workflow` |
-| 39 | func | public | Workflow.route(_:) | `public func route(_ condition: @escaping (String) -> (any AgentRuntime)?) -> Workflow` |
-| 45 | func | public | Workflow.repeatUntil(maxIterations:_:) | `public func repeatUntil(maxIterations: Int = 100, _ condition: @escaping (AgentResult) -> Bool) -> Workflow` |
-| 55 | func | public | Workflow.timeout(_:) | `public func timeout(_ duration: Duration) -> Workflow` |
-| 61 | func | public | Workflow.observed(by:) | `public func observed(by observer: some AgentObserver) -> Workflow` |
-| 67 | func | public | Workflow.run(_:) | `public func run(_ input: String) async throws -> AgentResult` |
-| 418 | func | public | Workflow.stream(_:) | `public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, any Error>` |
+| 89 | struct | public | Workflow | `public struct Workflow` |
+| 125 | enum | public | Workflow.MergeStrategy | `public enum MergeStrategy` |
+| 140 | case | public | Workflow.MergeStrategy.structured | `public case structured` |
+| 157 | case | public | Workflow.MergeStrategy.indexed | `public case indexed` |
+| 173 | case | public | Workflow.MergeStrategy.first | `public case first` |
+| 193 | case | public | Workflow.MergeStrategy.custom(_:) | `public case custom(@Sendable ([AgentResult]) -> String)` |
+| 209 | func | public | Workflow.init() | `public init()` |
+| 229 | func | public | Workflow.step(_:) | `public func step(_ agent: some AgentRuntime) -> Workflow` |
+| 259 | func | public | Workflow.parallel(_:merge:customMergeSignature:fileID:line:) | `public func parallel(_ agents: [any AgentRuntime], merge: Workflow.MergeStrategy = .structured, customMergeSignature: String? = nil, fileID: StaticString = #fileID, line: UInt = #line) -> Workflow` |
+| 311 | func | public | Workflow.route(_:signature:fileID:line:) | `public func route(_ condition: @escaping @Sendable (String) -> (any AgentRuntime)?, signature: String? = nil, fileID: StaticString = #fileID, line: UInt = #line) -> Workflow` |
+| 326 | func | public | Workflow.route(signature:fileID:line:_:) | `public func route(signature: String, fileID: StaticString = #fileID, line: UInt = #line, _ condition: @escaping @Sendable (String) -> (any AgentRuntime)?) -> Workflow` |
+| 361 | func | public | Workflow.repeatUntil(maxIterations:_:signature:fileID:line:) | `public func repeatUntil(maxIterations: Int = 100, _ condition: @escaping @Sendable (AgentResult) -> Bool, signature: String? = nil, fileID: StaticString = #fileID, line: UInt = #line) -> Workflow` |
+| 381 | func | public | Workflow.repeatUntil(maxIterations:signature:fileID:line:_:) | `public func repeatUntil(maxIterations: Int = 100, signature: String, fileID: StaticString = #fileID, line: UInt = #line, _ condition: @escaping @Sendable (AgentResult) -> Bool) -> Workflow` |
+| 407 | func | public | Workflow.timeout(_:) | `public func timeout(_ duration: Duration) -> Workflow` |
+| 433 | func | public | Workflow.observed(by:) | `public func observed(by observer: some AgentObserver) -> Workflow` |
+| 459 | func | public | Workflow.run(_:) | `public func run(_ input: String) async throws -> AgentResult` |
+| 494 | func | public | Workflow.stream(_:) | `public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>` |
 
 ### Workflow/WorkflowCheckpointing.swift
 
