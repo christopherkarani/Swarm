@@ -286,4 +286,74 @@ struct MemoryMessageTests {
 
         #expect(context == "[assistant]: new")
     }
+
+    @Test("Context formatting returns empty when token limit is zero")
+    func contextFormattingReturnsEmptyWhenTokenLimitIsZero() {
+        let estimator = CharacterBasedTokenEstimator(charactersPerToken: 1)
+        let messages = [
+            MemoryMessage.user("first"),
+            MemoryMessage.assistant("second")
+        ]
+
+        let context = MemoryMessage.formatContext(
+            messages,
+            tokenLimit: 0,
+            tokenEstimator: estimator
+        )
+
+        #expect(context.isEmpty)
+    }
+
+    @Test("Context formatting returns empty when all messages are oversized")
+    func contextFormattingReturnsEmptyWhenAllMessagesAreOversized() {
+        let estimator = CharacterBasedTokenEstimator(charactersPerToken: 1)
+        let messages = [
+            MemoryMessage.user(String(repeating: "x", count: 120)),
+            MemoryMessage.assistant(String(repeating: "y", count: 200))
+        ]
+
+        let context = MemoryMessage.formatContext(
+            messages,
+            tokenLimit: 60,
+            tokenEstimator: estimator
+        )
+
+        #expect(context.isEmpty)
+    }
+
+    @Test("Context formatting with custom separator returns empty when token limit is zero")
+    func contextFormattingWithSeparatorReturnsEmptyWhenTokenLimitIsZero() {
+        let estimator = CharacterBasedTokenEstimator(charactersPerToken: 1)
+        let messages = [
+            MemoryMessage.user("first"),
+            MemoryMessage.assistant("second")
+        ]
+
+        let context = MemoryMessage.formatContext(
+            messages,
+            tokenLimit: 0,
+            separator: "\n---\n",
+            tokenEstimator: estimator
+        )
+
+        #expect(context.isEmpty)
+    }
+
+    @Test("Context formatting with custom separator returns empty when all messages are oversized")
+    func contextFormattingWithSeparatorReturnsEmptyWhenAllMessagesAreOversized() {
+        let estimator = CharacterBasedTokenEstimator(charactersPerToken: 1)
+        let messages = [
+            MemoryMessage.user(String(repeating: "x", count: 120)),
+            MemoryMessage.assistant(String(repeating: "y", count: 200))
+        ]
+
+        let context = MemoryMessage.formatContext(
+            messages,
+            tokenLimit: 60,
+            separator: "\n---\n",
+            tokenEstimator: estimator
+        )
+
+        #expect(context.isEmpty)
+    }
 }
