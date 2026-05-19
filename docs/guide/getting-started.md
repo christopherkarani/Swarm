@@ -39,18 +39,19 @@ struct PriceTool {
 // 2. Create an agent with tools
 let agent = try Agent("Answer finance questions using real data.",
     configuration: .default.name("Analyst"),
-    inferenceProvider: .anthropic(key: "sk-..."),
+    inferenceProvider: .anthropic(key: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]!),
     memory: .conversation(maxMessages: 50),
     inputGuardrails: [InputGuard.maxLength(5000), InputGuard.notEmpty()]
 ) {
     PriceTool()
-    CalculatorTool()
 }
 
 // 3. Run it
 let result = try await agent.run("What is AAPL trading at?")
 print(result.output) // "Apple (AAPL) is currently trading at $182.50."
 ```
+
+> **No API key?** Use `.ollama(model: "llama3.2")` to run locally with [Ollama](https://ollama.com), or `.foundationModels()` on macOS 26+ / iOS 26+ for on-device inference with no key at all.
 
 ## Creating Tools
 
@@ -228,10 +229,10 @@ Swarm supports multiple inference providers. Pass via the `inferenceProvider:` i
 let agent = try Agent("You are helpful.", inferenceProvider: .foundationModels())
 
 // Anthropic
-let agent = try Agent("You are helpful.", inferenceProvider: .anthropic(key: "sk-..."))
+let agent = try Agent("You are helpful.", inferenceProvider: .anthropic(key: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]!))
 
 // OpenAI
-let agent = try Agent("You are helpful.", inferenceProvider: .openAI(key: "sk-..."))
+let agent = try Agent("You are helpful.", inferenceProvider: .openAI(key: ProcessInfo.processInfo.environment["OPENAI_API_KEY"]!))
 
 // Ollama (local)
 let agent = try Agent("You are helpful.", inferenceProvider: .ollama(model: "llama3.2"))
@@ -240,7 +241,7 @@ let agent = try Agent("You are helpful.", inferenceProvider: .ollama(model: "lla
 Or using the `.environment()` modifier on any `AgentRuntime`:
 
 ```swift
-agent.environment(\.inferenceProvider, .anthropic(key: "sk-..."))
+agent.environment(\.inferenceProvider, .anthropic(key: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]!))
 ```
 
 ## Requirements
@@ -254,6 +255,8 @@ agent.environment(\.inferenceProvider, .anthropic(key: "sk-..."))
 
 ::: tip
 The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; cloud providers and Ollama use the shared `InferenceProvider` surface.
+
+If you don't have macOS 26 or iOS 26 yet, you can develop on Linux or use cloud providers (Anthropic, OpenAI, etc.) on any supported platform.
 :::
 
 ## Next Steps

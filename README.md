@@ -12,6 +12,8 @@
   </p>
 </div>
 
+**Swarm gives your Swift code a brain.** Define AI agents in native Swift, equip them with type-safe tools, and wire them together into pipelines that run locally or in the cloud. The framework handles LLM calls, conversation memory, streaming output, and crash recovery — all with compile-time data-race safety.
+
 ```swift
 let result = try await Workflow()
     .step(researchAgent)
@@ -27,40 +29,73 @@ Two agents, one pipeline, compiled to a DAG with crash recovery and Swift concur
 
 ## Install
 
+### Swift Package Manager
+
+Add Swarm to your `Package.swift` dependencies:
+
 ```swift
-.package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.5.1")
+// swift-tools-version:6.2
+import PackageDescription
+
+let package = Package(
+    name: "MyAgentApp",
+    platforms: [.macOS(.v26), .iOS(.v26)],
+    dependencies: [
+        .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.5.1")
+    ],
+    targets: [
+        .executableTarget(
+            name: "MyAgentApp",
+            dependencies: ["Swarm"]
+        )
+    ]
+)
 ```
 
+### Xcode
 
-## Quick Start
+**File → Add Package Dependencies →** `https://github.com/christopherkarani/Swarm.git`
+
+## Hello World (copy-paste ready)
+
+This complete example creates an agent, gives it a simple tool, and runs it. No undefined types, no missing imports.
 
 ```swift
 import Swarm
 
-// The @Tool macro generates the JSON schema at compile time
+// 1. Define a tool — the @Tool macro generates the JSON schema at compile time
 @Tool("Looks up the current stock price")
 struct PriceTool {
     @Parameter("Ticker symbol") var ticker: String
     func execute() async throws -> String { "182.50" }
 }
 
-// Create an agent with unlabeled instructions first and tools in the trailing @ToolBuilder closure
+// 2. Create an agent with instructions and tools
 let agent = try Agent("Answer finance questions using real data.",
-    configuration: .init(name: "Analyst"),
-    inferenceProvider: .anthropic(key: "sk-...")) {
+    configuration: .default.name("Analyst"),
+    inferenceProvider: .anthropic(key: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]!)
+) {
     PriceTool()
-    CalculatorTool()
 }
 
+// 3. Run it
 let result = try await agent.run("What is AAPL trading at?")
-print(result.output) // "Apple (AAPL) is currently trading at $182.50."
+print(result.output)
+// → "Apple (AAPL) is currently trading at $182.50."
 ```
 
-That is a working agent with type-safe tool calling. The rest of this README covers workflows, memory, guardrails, and the surrounding runtime pieces.
+**What just happened?**
+- `@Tool` turned a Swift struct into a JSON-schema tool the LLM can call.
+- The agent parsed your question, decided it needed live data, called `PriceTool`, and composed the answer.
+- Everything is type-safe at compile time — no runtime schema generation.
 
-## On-Device Workspace
+> **No API key yet?** Swap `.anthropic(key:)` for `.ollama(model: "llama3.2")` to run entirely offline with a local Ollama instance, or use `.foundationModels()` on macOS 26+ / iOS 26+ for on-device inference with no key at all.
 
-Swarm now supports a file-backed on-device workspace with:
+**→ Next:** Follow the [Getting Started guide](docs/guide/getting-started.md) for workflows, memory, guardrails, and more.
+
+## On-Device Workspace *(Advanced)*
+
+Swarm supports a file-backed on-device workspace for managing agent specs, reusable skills, and durable memory:
 
 - `AGENTS.md` for workspace-wide instructions
 - `.swarm/agents/<id>.md` for per-agent specs
@@ -355,7 +390,7 @@ for message in await conversation.messages {
 | tvOS     | 26.0+   |
 | Linux    | Ubuntu 22.04+ with Swift 6.2 |
 
-The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; cloud providers and Ollama use the shared `InferenceProvider` surface.
+**Don't have macOS 26?** Swarm runs great on Linux with Swift 6.2, and every cloud provider (Anthropic, OpenAI, Ollama, etc.) works identically across platforms. The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; cloud providers and Ollama use the shared `InferenceProvider` surface.
 
 ## Documentation
 
