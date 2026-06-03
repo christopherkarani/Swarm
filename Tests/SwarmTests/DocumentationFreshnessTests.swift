@@ -25,7 +25,7 @@ struct DocumentationFreshnessTests {
         #expect(catalog.contains("- Source files scanned: \(scannedSourceCount)"))
         #expect(catalog.contains("| \(workflowStreamLine) | func | public | Workflow.stream(_:)"))
         #expect(catalog.contains("| 42 | enum | public | Swarm | `public enum Swarm` |"))
-        #expect(catalog.contains("| 13 | struct | public | LLM | `public struct LLM` |"))
+        #expect(catalog.contains("| 12 | struct | public | LLM | `public struct LLM` |"))
         #expect(catalog.contains("LLM.ollama(_:configure:)"))
         #expect(!catalog.contains("| 12 | enum | public | LLM | `public enum LLM` |"))
         #expect(!catalog.contains("public case openAI(LLM.OpenAIConfig)"))

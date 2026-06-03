@@ -1,8 +1,4 @@
-#if canImport(ConduitAdvanced)
-import ConduitAdvanced
-#else
 import Conduit
-#endif
 import Testing
 @testable import Swarm
 

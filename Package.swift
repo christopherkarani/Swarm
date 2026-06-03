@@ -45,7 +45,7 @@ if !coreOnly {
         .package(url: "https://github.com/christopherkarani/Wax.git", exact: "0.1.23"),
         .package(
             url: "https://github.com/christopherkarani/Conduit",
-            exact: "0.3.16",
+            exact: "0.3.17",
             traits: [
                 .trait(name: "OpenAI"),
                 .trait(name: "OpenRouter"),
@@ -54,7 +54,7 @@ if !coreOnly {
             ]
         ),
         .package(url: "https://github.com/christopherkarani/ContextCore.git", exact: "1.0.0"),
-        .package(url: "https://github.com/christopherkarani/Membrane", exact: "0.1.3"),
+        .package(url: "https://github.com/christopherkarani/Membrane", exact: "0.1.4"),
         .package(url: "https://github.com/christopherkarani/Hive", exact: "0.2.1"),
     ]
 }
@@ -73,12 +73,12 @@ if !coreOnly {
     swarmDependencies += [
         .product(name: "Wax", package: "Wax", condition: .when(traits: [integrationTrait])),
         .product(name: "Conduit", package: "Conduit", condition: .when(traits: [integrationTrait])),
-        .product(name: "ConduitAdvanced", package: "Conduit", condition: .when(traits: [integrationTrait])),
+
         .product(name: "ContextCore", package: "ContextCore", condition: .when(traits: [integrationTrait])),
         .product(name: "HiveCore", package: "Hive", condition: .when(traits: [integrationTrait])),
         .product(name: "Membrane", package: "Membrane", condition: .when(traits: [integrationTrait])),
         .product(name: "MembraneCore", package: "Membrane", condition: .when(traits: [integrationTrait])),
-        .product(name: "MembraneHive", package: "Membrane", condition: .when(traits: [integrationTrait])),
+
     ]
     swarmSwiftSettings.append(.define("SWARM_INTEGRATIONS", .when(traits: [integrationTrait])))
 }
@@ -172,7 +172,7 @@ var packageTargets: [Target] = [
             if !coreOnly {
                 dependencies += [
                     .product(name: "Conduit", package: "Conduit"),
-                    .product(name: "ConduitAdvanced", package: "Conduit"),
+
                     .product(name: "Membrane", package: "Membrane"),
                     .product(name: "MembraneCore", package: "Membrane"),
                 ]

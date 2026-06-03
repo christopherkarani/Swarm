@@ -3,7 +3,7 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-05-18.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 156
+- Source files scanned: 157
 - Public/open symbols cataloged: 2423
 
 ## 1. Swarm (entry point)
@@ -2631,7 +2631,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 13 | struct | public | LLM | `public struct LLM` |
+| 12 | struct | public | LLM | `public struct LLM` |
 | 50 | func | public | LLM.openAI(apiKey:model:) | `public static func openAI(apiKey: String, model: String = "gpt-4o-mini") -> LLM` |
 | 57 | func | public | LLM.openAI(key:model:) | `public static func openAI(key: String, model: String = "gpt-4o-mini") -> LLM` |
 | 64 | func | public | LLM.anthropic(apiKey:model:) | `public static func anthropic(apiKey: String, model: String = "claude-3-5-sonnet-20241022") -> LLM` |

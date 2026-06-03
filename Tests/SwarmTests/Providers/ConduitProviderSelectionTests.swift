@@ -1,8 +1,4 @@
-#if canImport(ConduitAdvanced)
-import ConduitAdvanced
-#else
 import Conduit
-#endif
 import Foundation
 #if canImport(FoundationModels)
 import FoundationModels

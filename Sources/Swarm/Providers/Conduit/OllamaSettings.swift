@@ -3,7 +3,7 @@
 //
 // Lightweight Ollama settings without exposing Conduit types.
 
-import ConduitAdvanced
+import Conduit
 
 /// Configuration for Ollama local inference.
 ///
