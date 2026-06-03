@@ -1,5 +1,5 @@
-import ConduitAdvanced
-private typealias ConduitToolChoice = ConduitAdvanced.ToolChoice
+import Conduit
+private typealias ConduitToolChoice = ConduitTypes.ToolChoice
 import Foundation
 
 /// Bridges a Conduit TextGenerator into Swarm' InferenceProvider.
@@ -513,9 +513,9 @@ struct ConduitInferenceProvider<Provider: TextGenerator>: InferenceProvider,
     ///
     /// Swarm keeps its own mirror so consumers don't import Conduit directly;
     /// the translation lives here at the provider boundary.
-    private static func conduitReasoning(from reasoning: ReasoningConfig) -> ConduitAdvanced.ReasoningConfig {
-        ConduitAdvanced.ReasoningConfig(
-            effort: reasoning.effort.flatMap { ConduitAdvanced.ReasoningEffort(rawValue: $0.rawValue) },
+    private static func conduitReasoning(from reasoning: ReasoningConfig) -> ConduitTypes.ReasoningConfig {
+        ConduitTypes.ReasoningConfig(
+            effort: reasoning.effort.flatMap { ConduitTypes.ReasoningEffort(rawValue: $0.rawValue) },
             maxTokens: reasoning.maxTokens,
             exclude: reasoning.exclude,
             enabled: reasoning.enabled
@@ -798,10 +798,10 @@ enum ConduitToolCallConverter {
     }
 }
 
-extension ConduitInferenceProvider: PromptTokenCounter where Provider: ConduitAdvanced.TokenCounter {
+extension ConduitInferenceProvider: PromptTokenCounter where Provider: ConduitTypes.TokenCounter {
     func countTokens(in text: String) async throws -> Int {
         try await provider.countTokens(in: text, for: model).count
     }
 }
 
-extension ConduitInferenceProvider: PromptTokenCountingInferenceProvider where Provider: ConduitAdvanced.TokenCounter {}
+extension ConduitInferenceProvider: PromptTokenCountingInferenceProvider where Provider: ConduitTypes.TokenCounter {}

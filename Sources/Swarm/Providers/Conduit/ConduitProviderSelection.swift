@@ -4,7 +4,6 @@
 // Minimal Conduit-backed provider selection for Swarm.
 
 import Conduit
-import ConduitAdvanced
 import Foundation
 #if canImport(FoundationModels)
 import FoundationModels

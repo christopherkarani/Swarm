@@ -1,5 +1,4 @@
 import Conduit
-import ConduitAdvanced
 import Foundation
 
 /// Opinionated, beginner-friendly inference presets backed by Conduit.
@@ -248,7 +247,7 @@ public struct LLM: Sendable, InferenceProvider {
             return ConduitInferenceProvider(provider: provider, model: modelID)
 #if canImport(MLX)
         case let .mlx(config):
-            let model: Conduit.Model = switch config {
+            let model: Model = switch config {
             case let .mlx(model):
                 .mlx(model)
             case let .mlxLocal(path):

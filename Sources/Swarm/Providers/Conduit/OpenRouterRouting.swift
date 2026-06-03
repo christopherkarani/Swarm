@@ -3,9 +3,9 @@
 //
 // Lightweight OpenRouter routing configuration without exposing Conduit types.
 
-import ConduitAdvanced
-typealias ConduitOpenRouterProvider = ConduitAdvanced.OpenRouterProvider
-typealias ConduitOpenRouterDataCollection = ConduitAdvanced.OpenRouterDataCollection
+import Conduit
+typealias ConduitOpenRouterProvider = ConduitTypes.OpenRouterProvider
+typealias ConduitOpenRouterDataCollection = ConduitTypes.OpenRouterDataCollection
 import Foundation
 
 /// OpenRouter routing preferences.
