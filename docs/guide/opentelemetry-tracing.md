@@ -38,7 +38,7 @@ URLSession instrumentation modules:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.5.1"),
+    .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.0"),
     .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.3.0"),
     .package(url: "https://github.com/open-telemetry/opentelemetry-swift.git", from: "2.3.0"),
 ],

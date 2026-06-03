@@ -1,6 +1,6 @@
 # API Reference
 
-The current API reference covers the supported public surface for Swarm 0.5.1. Prefer the front-facing API page for user-facing examples and the API catalog for source-derived symbol lookup.
+The current API reference covers the supported public surface for Swarm 0.6.0. Prefer the front-facing API page for user-facing examples and the API catalog for source-derived symbol lookup.
 
 ## By Topic
 

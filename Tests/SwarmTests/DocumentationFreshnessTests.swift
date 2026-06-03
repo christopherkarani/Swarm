@@ -150,7 +150,7 @@ struct DocumentationFreshnessTests {
         for file in checkedFiles {
             let text = try readRepoFile(file)
             #expect(text.contains(expectedVersion), "\(file) should mention \(expectedVersion)")
-            #expect(!text.contains("0.5.2"), "\(file) should not advertise unreleased 0.5.2")
+            #expect(!text.contains("0.6.1"), "\(file) should not advertise unreleased 0.6.1")
         }
     }
 
