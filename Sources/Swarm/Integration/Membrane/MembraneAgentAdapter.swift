@@ -1,7 +1,6 @@
 import Foundation
 #if SWARM_INTEGRATIONS
 import Membrane
-import MembraneHive
 #endif
 
 public struct MembraneFeatureConfiguration: Sendable, Equatable {
