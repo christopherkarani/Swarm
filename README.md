@@ -47,7 +47,7 @@ struct PriceTool {
 // Create an agent with unlabeled instructions first and tools in the trailing @ToolBuilder closure
 let agent = try Agent("Answer finance questions using real data.",
     configuration: .init(name: "Analyst"),
-    inferenceProvider: .anthropic(key: "sk-...")) {
+    inferenceProvider: .anthropic(key: "{ENV")) {
     PriceTool()
     CalculatorTool()
 }
