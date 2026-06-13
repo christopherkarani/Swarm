@@ -530,12 +530,13 @@ public struct Workflow: Sendable {
     ) async throws -> AgentResult {
         if let timeoutDuration {
             let coordinator = WorkflowTimedOperationCoordinator<AgentResult>()
+            let priority = Task.currentPriority
             return try await withTaskCancellationHandler(
                 operation: {
                     try await withCheckedThrowingContinuation { continuation in
                         coordinator.install(continuation: continuation)
 
-                        let operationTask = Task {
+                        let operationTask = Task.detached(priority: priority) {
                             do {
                                 coordinator.finish(returning: try await operation())
                             } catch {
@@ -544,7 +545,7 @@ public struct Workflow: Sendable {
                         }
                         coordinator.setOperationTask(operationTask)
 
-                        let timeoutTask = Task {
+                        let timeoutTask = Task.detached(priority: priority) {
                             do {
                                 try await Task.sleep(for: timeoutDuration)
                                 operationTask.cancel()
