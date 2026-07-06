@@ -1,4 +1,5 @@
 <div align="center">
+  <a href="https://trendshift.io/repositories/21798?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-21798" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/21798/daily?language=Swift" alt="christopherkarani%2FSwarm | Trendshift" width="250" height="55"/></a>
   <img alt="Swarm Swift Agent Framework" src="docs/public/banner.svg" />
 
   <p><strong>A Swift framework for building agents and multi-agent workflows.</strong></p>
