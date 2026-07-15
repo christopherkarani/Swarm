@@ -9,10 +9,6 @@ import Foundation
 import FoundationModels
 #endif
 
-#if canImport(FoundationModels)
-import FoundationModels
-#endif
-
 /// Convenience selection for Conduit-backed inference providers.
 ///
 /// This hides Conduit types while keeping a lightweight call-site API.
@@ -52,7 +48,13 @@ public enum ConduitProviderSelection: Sendable, InferenceProvider {
     }
 
     /// Creates a Conduit-backed Apple Foundation Models provider.
-    public static func foundationModels(
+    ///
+    /// Prefer ``FoundationModelsInferenceProvider`` / `.foundationModels()` for
+    /// first-class on-device tool calling. This Conduit path still uses
+    /// prompt-emulated tool calls and exists for migration / multi-provider
+    /// routing only.
+    @available(*, deprecated, message: "Use FoundationModelsInferenceProvider via InferenceProvider.foundationModels() for native Foundation Models tool calling without Conduit.")
+    public static func conduitFoundationModels(
         configuration: FMConfiguration = .default
     ) -> ConduitProviderSelection {
         let provider = FoundationModelsProvider(configuration: configuration)
@@ -63,6 +65,14 @@ public enum ConduitProviderSelection: Sendable, InferenceProvider {
             metadata: .init(providerName: "foundationmodels", modelName: "foundationModels")
         )
         return .provider(bridge)
+    }
+
+    /// Legacy alias — routes Foundation Models through Conduit prompt emulation.
+    @available(*, deprecated, renamed: "conduitFoundationModels(configuration:)")
+    public static func foundationModels(
+        configuration: FMConfiguration = .default
+    ) -> ConduitProviderSelection {
+        conduitFoundationModels(configuration: configuration)
     }
 
     /// Creates a Conduit-backed OpenRouter provider.
@@ -202,17 +212,13 @@ public enum ConduitProviderSelection: Sendable, InferenceProvider {
 #endif
 
 #if canImport(FoundationModels)
-    /// Creates a Conduit-backed Apple Foundation Models provider.
-    @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
+    /// Creates a Conduit-backed Apple Foundation Models provider (prompt-emulated tools).
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    @available(tvOS, unavailable)
+    @available(watchOS, unavailable)
+    @available(*, deprecated, message: "Use InferenceProvider.foundationModels() for native tool calling without Conduit.")
     public static func foundationModels() -> ConduitProviderSelection {
-        let provider = FoundationModelsProvider()
-        let bridge = ConduitInferenceProvider(
-            provider: provider,
-            model: .foundationModels,
-            supportsStreamingToolCalls: false,
-            metadata: .init(providerName: "foundationmodels", modelName: "foundationModels")
-        )
-        return .provider(bridge)
+        conduitFoundationModels()
     }
 #endif
 
@@ -284,12 +290,15 @@ public enum ConduitProviderSelection: Sendable, InferenceProvider {
     }
 
 #if canImport(FoundationModels)
-    @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    @available(tvOS, unavailable)
+    @available(watchOS, unavailable)
+    @available(*, deprecated, message: "Use FoundationModelsInferenceProvider.ifAvailable() instead.")
     static func foundationModelsIfAvailable() -> ConduitProviderSelection? {
         guard SystemLanguageModel.default.availability == .available else {
             return nil
         }
-        return foundationModels()
+        return conduitFoundationModels()
     }
 #endif
 }
@@ -413,12 +422,6 @@ public extension InferenceProvider where Self == ConduitProviderSelection {
         ConduitProviderSelection.openAI(apiKey: apiKey, model: model)
     }
 
-    static func foundationModels(
-        configuration: FMConfiguration = .default
-    ) -> ConduitProviderSelection {
-        ConduitProviderSelection.foundationModels(configuration: configuration)
-    }
-
     static func openRouter(
         apiKey: String,
         model: String = "anthropic/claude-3.5-sonnet"
@@ -465,11 +468,4 @@ public extension InferenceProvider where Self == ConduitProviderSelection {
     ) -> ConduitProviderSelection {
         ConduitProviderSelection.minimax(apiKey: apiKey, model: model)
     }
-
-#if canImport(FoundationModels)
-    @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
-    static func foundationModels() -> ConduitProviderSelection {
-        ConduitProviderSelection.foundationModels()
-    }
-#endif
 }

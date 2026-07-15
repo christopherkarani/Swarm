@@ -224,8 +224,34 @@ let result = try await Workflow()
 Swarm supports multiple inference providers. Pass via the `inferenceProvider:` init parameter:
 
 ```swift
-// On-device (private, no network)
+// On-device Apple Foundation Models (private, native tool calling, no Conduit)
 let agent = try Agent("You are helpful.", inferenceProvider: .foundationModels())
+
+// Dynamic profiles (WWDC 2026–aligned): switch instructions/tools/history per phase
+enum Phase { case brainstorm, review }
+let mode = ProfileMode(Phase.brainstorm)
+let profile = ModeSwitchingDynamicProfile(mode: mode) { phase in
+    switch phase {
+    case .brainstorm:
+        Profile(
+            id: "brainstorm",
+            instructions: "Ideate freely.",
+            generation: .init(temperature: 1.0)
+        )
+    case .review:
+        Profile(
+            id: "review",
+            instructions: "Be precise and concise.",
+            history: .dropToolTranscriptAndKeepLast(count: 12),
+            generation: .init(temperature: 0.2)
+        )
+    }
+}
+let profiled = try Agent(
+    "You are helpful.",
+    inferenceProvider: .foundationModels(profile: profile)
+)
+// Later, from a handoff tool or UI: mode.current = .review
 
 // Anthropic
 let agent = try Agent("You are helpful.", inferenceProvider: .anthropic(key: "sk-..."))

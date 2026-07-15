@@ -3,19 +3,20 @@
 //
 // Opinionated default inference provider selection.
 //
-// LegacyAgent (the default tool-calling runtime) uses this factory to attempt
-// Apple Foundation Models when no explicit inference provider is configured.
+// Prefers first-class Apple Foundation Models (no Conduit) when available.
 
 import Foundation
 
 enum DefaultInferenceProviderFactory {
+    /// Returns an on-device Foundation Models provider when the system model is available.
+    ///
+    /// This path is intentionally independent of the Integrations/Conduit trait so
+    /// Apple-platform apps get a working default without pulling cloud provider stacks.
     static func makeFoundationModelsProviderIfAvailable() -> (any InferenceProvider)? {
-        #if SWARM_INTEGRATIONS
         #if canImport(FoundationModels)
-        if #available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *) {
-            return ConduitProviderSelection.foundationModelsIfAvailable()?.makeProvider()
+        if #available(macOS 26.0, iOS 26.0, visionOS 26.0, *) {
+            return FoundationModelsInferenceProvider.ifAvailable()
         }
-        #endif
         #endif
         return nil
     }

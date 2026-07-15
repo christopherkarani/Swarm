@@ -83,6 +83,9 @@ docs/.vitepress/cache/
 # Swift tooling config
 .swift-version
 
+# Generated analysis documents
+package-analysis.html
+
 # SPM resolved file (library — consumers resolve their own deps)
 Package.resolved
 marketing/
