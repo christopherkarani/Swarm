@@ -246,6 +246,82 @@ final class InlineToolMacroTests: XCTestCase {
         #endif
     }
 
+    // MARK: - Rewrite safety (AST-guided, not naive string replace)
+
+    /// Param identifiers inside string *literals* must stay untouched; only
+    /// DeclReferenceExpr occurrences (including interpolations) rewrite to `input.`.
+    func testParamNameInStringLiteralIsNotRewritten() throws {
+        #if canImport(SwarmMacros)
+            assertMacroExpansion(
+                """
+                #Tool("echo", "Echo") { (name: String) in
+                    "literal name and \\(name)"
+                }
+                """,
+                expandedSource: """
+                {
+                    struct _EchoInput: Codable, Sendable {
+                        let name: String
+                    }
+                    struct _InlineTool_echo: Tool, Sendable {
+                        typealias Input = _EchoInput
+                        typealias Output = String
+                        let name = "echo"
+                        let description = "Echo"
+                        let parameters: [ToolParameter] = [
+                            ToolParameter(name: "name", description: "name", type: .string, isRequired: true)
+                        ]
+                        func execute(_ input: _EchoInput) async throws -> String {
+                            "literal name and \\(input.name)"
+                        }
+                    }
+                    return _InlineTool_echo()
+                }()
+                """,
+                macros: inlineToolMacros()
+            )
+        #else
+            throw XCTSkip("macros are only supported when running tests for the host platform")
+        #endif
+    }
+
+    /// Member access like `values.count` must not rewrite the member name when
+    /// a parameter is also named `count`.
+    func testMemberAccessNameIsNotRewritten() throws {
+        #if canImport(SwarmMacros)
+            assertMacroExpansion(
+                """
+                #Tool("compare", "Compare counts") { (count: Int) in
+                    "\\(values.count) vs \\(count)"
+                }
+                """,
+                expandedSource: """
+                {
+                    struct _CompareInput: Codable, Sendable {
+                        let count: Int
+                    }
+                    struct _InlineTool_compare: Tool, Sendable {
+                        typealias Input = _CompareInput
+                        typealias Output = String
+                        let name = "compare"
+                        let description = "Compare counts"
+                        let parameters: [ToolParameter] = [
+                            ToolParameter(name: "count", description: "count", type: .int, isRequired: true)
+                        ]
+                        func execute(_ input: _CompareInput) async throws -> String {
+                            "\\(values.count) vs \\(input.count)"
+                        }
+                    }
+                    return _InlineTool_compare()
+                }()
+                """,
+                macros: inlineToolMacros()
+            )
+        #else
+            throw XCTSkip("macros are only supported when running tests for the host platform")
+        #endif
+    }
+
     // MARK: - Error Cases
 
     func testMissingNameArgument() throws {

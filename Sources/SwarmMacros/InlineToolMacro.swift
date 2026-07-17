@@ -3,7 +3,6 @@
 //
 // Implementation of the #Tool freestanding expression macro for inline tool creation.
 
-import Foundation
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
@@ -63,11 +62,12 @@ public struct InlineToolMacro: ExpressionMacro {
         let toolStructName = "_InlineTool_\(toolName)"
 
         // ---- Rewrite closure body: bare param refs → input.paramName ----
-        // Avoid SyntaxRewriter subclasses: Swift 6.2 + swift-syntax 602 can fail to
-        // link visitationFunc depending on parallel job count (swiftlang/swift-package-manager#9495).
+        // Prefer AST-position rewrites over naive regex and avoid SyntaxRewriter
+        // subclasses: Swift 6.2 + swift-syntax 602 can fail to link
+        // visitationFunc under high parallel job counts (swiftlang/swift-package-manager#9495).
         let paramNames = Set(closureParams.map(\.name))
         let rewrittenBodyText = rewriteBareParamReferences(
-            in: trailingClosure.statements.description,
+            in: trailingClosure.statements,
             paramNames: paramNames
         )
 
@@ -192,26 +192,94 @@ public struct InlineToolMacro: ExpressionMacro {
 /// Rewrites bare parameter references like `name` to `input.name` in a closure body
 /// so the generated `execute` method reads fields from the input struct.
 ///
-/// Uses string rewriting rather than `SyntaxRewriter` to avoid a known Swift 6.2
-/// linker failure on private `SyntaxRewriter.visitationFunc` (swift-package-manager#9495).
-private func rewriteBareParamReferences(in source: String, paramNames: Set<String>) -> String {
-    guard !paramNames.isEmpty else { return source }
+/// Walks the SwiftSyntax tree and rewrites only `DeclReferenceExprSyntax` nodes
+/// (not string-literal text, not member names after `.`). The replacement is then
+/// applied to the original source by UTF-8 absolute positions so we never depend
+/// on `SyntaxRewriter` subclasses (linker flakiness under parallel builds —
+/// swiftlang/swift-package-manager#9495).
+private func rewriteBareParamReferences(
+    in statements: CodeBlockItemListSyntax,
+    paramNames: Set<String>
+) -> String {
+    guard !paramNames.isEmpty else { return statements.description }
 
-    // Longest names first so shorter params do not partially rewrite longer ones.
-    let ordered = paramNames.sorted { $0.count > $1.count || ($0.count == $1.count && $0 < $1) }
+    let source = statements.description
+    let baseUTF8Offset = statements.position.utf8Offset
+
+    var replacements: [(utf8Offset: Int, utf8Length: Int, replacement: String)] = []
+    collectBareParamReplacements(
+        Syntax(statements),
+        paramNames: paramNames,
+        baseUTF8Offset: baseUTF8Offset,
+        into: &replacements
+    )
+
+    guard !replacements.isEmpty else { return source }
+
+    // Apply from the end so earlier offsets stay valid.
     var result = source
-    for name in ordered {
-        let pattern = #"(?<![.\w])"# + NSRegularExpression.escapedPattern(for: name) + #"(?!\w)"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
-        let range = NSRange(result.startIndex..<result.endIndex, in: result)
-        result = regex.stringByReplacingMatches(
-            in: result,
-            options: [],
-            range: range,
-            withTemplate: "input.\(name)"
-        )
+    for entry in replacements.sorted(by: { $0.utf8Offset > $1.utf8Offset }) {
+        guard
+            let start = utf8Index(in: result, offset: entry.utf8Offset),
+            let end = utf8Index(in: result, offset: entry.utf8Offset + entry.utf8Length)
+        else {
+            continue
+        }
+        result.replaceSubrange(start..<end, with: entry.replacement)
     }
     return result
+}
+
+private func collectBareParamReplacements(
+    _ node: Syntax,
+    paramNames: Set<String>,
+    baseUTF8Offset: Int,
+    into replacements: inout [(utf8Offset: Int, utf8Length: Int, replacement: String)]
+) {
+    if let decl = node.as(DeclReferenceExprSyntax.self),
+       paramNames.contains(decl.baseName.text),
+       !isMemberAccessName(decl)
+    {
+        let token = decl.baseName
+        let relative = token.positionAfterSkippingLeadingTrivia.utf8Offset - baseUTF8Offset
+        let length = token.text.utf8.count
+        if relative >= 0, length > 0 {
+            replacements.append(
+                (
+                    utf8Offset: relative,
+                    utf8Length: length,
+                    replacement: "input.\(token.text)"
+                )
+            )
+        }
+    }
+
+    for child in node.children(viewMode: .sourceAccurate) {
+        collectBareParamReplacements(
+            child,
+            paramNames: paramNames,
+            baseUTF8Offset: baseUTF8Offset,
+            into: &replacements
+        )
+    }
+}
+
+/// True when `node` is the member name of `base.member` (must not become `base.input.member`).
+private func isMemberAccessName(_ node: DeclReferenceExprSyntax) -> Bool {
+    guard let parent = node.parent else { return false }
+    if let member = parent.as(MemberAccessExprSyntax.self) {
+        return member.declName.position == node.position
+    }
+    if parent.is(KeyPathPropertyComponentSyntax.self) {
+        return true
+    }
+    return false
+}
+
+private func utf8Index(in string: String, offset: Int) -> String.Index? {
+    guard offset >= 0, offset <= string.utf8.count else { return nil }
+    let utf8Index = string.utf8.index(string.utf8.startIndex, offsetBy: offset)
+    return String.Index(utf8Index, within: string)
 }
 
 // MARK: - InlineToolMacroError
