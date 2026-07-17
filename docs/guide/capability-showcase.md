@@ -36,6 +36,7 @@ swift run SwarmCapabilityShowcase smoke
 | `observability` | a custom tracer receives agent trace events |
 | `mcp` | MCP tool discovery and MCP tool bridging both execute locally |
 | `providers` | global provider config, per-agent override, and `MultiProvider` routing work |
+| `foundation-models` | First-class `.foundationModels()` factories, capability reporting, availability/degrade semantics, and Agent multi-turn/tool wiring used by on-device apps |
 
 Each scenario writes evidence into a temporary artifact directory under the system temp folder, rooted at `swarm-capability-showcase/`.
 
@@ -43,19 +44,23 @@ Each scenario writes evidence into a temporary artifact directory under the syst
 
 Smoke mode is for live integrations that should not gate CI.
 
-Current smoke scenario:
+Current smoke scenarios:
 
 | Scenario | Environment |
 | --- | --- |
 | `live-provider-smoke` | `SWARM_SHOWCASE_OLLAMA_MODEL` |
+| `live-foundation-models-smoke` | `SWARM_SHOWCASE_FOUNDATION_MODELS=1` (or `SWARM_RUN_LIVE_FOUNDATION_MODELS_TESTS=1`) |
 
 Example:
 
 ```bash
 SWARM_SHOWCASE_OLLAMA_MODEL=llama3.2 swift run SwarmCapabilityShowcase smoke
+SWARM_SHOWCASE_FOUNDATION_MODELS=1 swift run SwarmCapabilityShowcase smoke
 ```
 
 If the required environment variable is missing, the smoke scenario reports `skipped` instead of failing.
+
+The `foundation-models` **deterministic** scenario always runs in the matrix (including on Linux, where it documents graceful compile-time gating). Live on-device generation is only exercised by the opt-in smoke scenario.
 
 ## Tests
 

@@ -15,6 +15,7 @@ public enum CapabilityFamily: String, CaseIterable, Sendable, Hashable {
     case observability = "observability"
     case mcp = "mcp"
     case providers = "providers"
+    case foundationModels = "foundation-models"
 }
 
 public enum CapabilityScenarioKind: String, Sendable {
@@ -292,6 +293,13 @@ private extension CapabilityShowcase {
                 kind: .deterministic,
                 runHandler: runProvidersScenario
             ),
+            .init(
+                id: "foundation-models",
+                name: "Foundation Models Path",
+                families: [.foundationModels, .providers],
+                kind: .deterministic,
+                runHandler: runFoundationModelsScenario
+            ),
         ]
 
         let smoke: [CapabilityScenario] = [
@@ -302,6 +310,14 @@ private extension CapabilityShowcase {
                 kind: .smoke
             ) { context in
                 try await runLiveProviderSmokeScenario(context: context, environment: environment)
+            },
+            .init(
+                id: "live-foundation-models-smoke",
+                name: "Live Foundation Models Smoke",
+                families: [.foundationModels, .providers],
+                kind: .smoke
+            ) { context in
+                try await runLiveFoundationModelsSmokeScenario(context: context, environment: environment)
             },
         ]
 
@@ -947,10 +963,11 @@ private func runLiveProviderSmokeScenario(
     #endif
 }
 
+
 // MARK: - Fixtures
 
 @Tool("Adds two integers together.")
-private struct ShowcaseAdditionTool {
+struct ShowcaseAdditionTool {
     @Parameter("Left-hand value") var lhs: Int = 0
     @Parameter("Right-hand value") var rhs: Int = 0
 
@@ -984,7 +1001,7 @@ private struct GuardedEchoTool: AnyJSONTool {
     }
 }
 
-private actor ScriptedInferenceProvider: InferenceProvider {
+actor ScriptedInferenceProvider: InferenceProvider {
     private var responses: [String]
     private var toolCallResponses: [InferenceResponse]
     private var responseIndex = 0
@@ -1137,7 +1154,7 @@ private func makeTextAgent(output: String) -> Agent {
     return try! Agent("Return deterministic output.", memory: makeScenarioMemory(), inferenceProvider: provider)
 }
 
-private func makeScenarioMemory() -> any Memory {
+func makeScenarioMemory() -> any Memory {
     ConversationMemory(maxMessages: 32)
 }
 
@@ -1186,7 +1203,7 @@ private func writeWorkspaceFixture(at root: URL) throws {
     )
 }
 
-private func ensure(_ condition: Bool, _ message: String) throws {
+func ensure(_ condition: Bool, _ message: String) throws {
     guard condition else {
         throw CapabilityShowcaseError.expectationFailed(message)
     }

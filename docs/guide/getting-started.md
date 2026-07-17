@@ -23,12 +23,51 @@ targets: [
 
 ## Your First Agent
 
-The primary way to create an agent is with the `Agent` struct initializer. The canonical init takes an unlabeled instructions string and a `@ToolBuilder` trailing closure for tools:
+The primary way to create an agent is with the `Agent` struct initializer. The canonical init takes an unlabeled instructions string and a `@ToolBuilder` trailing closure for tools.
+
+### On-device (recommended on Apple platforms)
 
 ```swift
 import Swarm
 
-// 1. Define a tool — the @Tool macro generates the JSON schema
+@Tool("Looks up a canned stock price")
+struct PriceTool {
+    @Parameter("Ticker symbol") var ticker: String
+
+    func execute() async throws -> String { "182.50" }
+}
+
+// No API key. Requires macOS/iOS 26+ with Apple Intelligence available.
+// Parameter order: configuration → memory → inferenceProvider → guardrails → tools
+let agent = try Agent(
+    "Answer finance questions using tools when needed.",
+    configuration: .default.name("Analyst"),
+    memory: .conversation(maxMessages: 50),
+    inferenceProvider: .foundationModels(),
+    inputGuardrails: [InputGuard.maxLength(5000), InputGuard.notEmpty()]
+) {
+    PriceTool()
+}
+
+let result = try await agent.run("What is AAPL trading at?")
+print(result.output)
+```
+
+If the system model might be missing (Simulator, Linux CI, older OS), prefer the safe factory:
+
+```swift
+guard let provider = FoundationModelsInferenceProvider.ifAvailable() else {
+    // Fall back to .ollama / cloud, or fail with a clear user message.
+    throw AgentError.inferenceProviderUnavailable
+}
+let agent = try Agent("You are helpful.", inferenceProvider: provider)
+```
+
+### Cloud (Anthropic example)
+
+```swift
+import Swarm
+
 @Tool("Looks up the current stock price")
 struct PriceTool {
     @Parameter("Ticker symbol") var ticker: String
@@ -36,20 +75,25 @@ struct PriceTool {
     func execute() async throws -> String { "182.50" }
 }
 
-// 2. Create an agent with tools
 let agent = try Agent("Answer finance questions using real data.",
     configuration: .default.name("Analyst"),
-    inferenceProvider: .anthropic(key: "sk-..."),
     memory: .conversation(maxMessages: 50),
+    inferenceProvider: .anthropic(apiKey: "sk-..."),
     inputGuardrails: [InputGuard.maxLength(5000), InputGuard.notEmpty()]
 ) {
     PriceTool()
     CalculatorTool()
 }
 
-// 3. Run it
 let result = try await agent.run("What is AAPL trading at?")
 print(result.output) // "Apple (AAPL) is currently trading at $182.50."
+```
+
+### Working example apps
+
+```bash
+cd Examples/OnDeviceChat && swift run OnDeviceChat --demo
+cd Examples/MultiAgentPipeline && swift run MultiAgentPipeline --demo
 ```
 
 ## Creating Tools
@@ -92,7 +136,7 @@ Use `FunctionTool` inside a `@ToolBuilder` closure:
 
 ```swift
 let agent = try Agent("You are a helpful text utility.",
-    inferenceProvider: .anthropic(key: "sk-...")
+    inferenceProvider: .anthropic(apiKey: "sk-...")
 ) {
     FunctionTool(
         name: "reverse",
@@ -254,10 +298,10 @@ let profiled = try Agent(
 // Later, from a handoff tool or UI: mode.current = .review
 
 // Anthropic
-let agent = try Agent("You are helpful.", inferenceProvider: .anthropic(key: "sk-..."))
+let agent = try Agent("You are helpful.", inferenceProvider: .anthropic(apiKey: "sk-..."))
 
 // OpenAI
-let agent = try Agent("You are helpful.", inferenceProvider: .openAI(key: "sk-..."))
+let agent = try Agent("You are helpful.", inferenceProvider: .openAI(apiKey: "sk-..."))
 
 // Ollama (local)
 let agent = try Agent("You are helpful.", inferenceProvider: .ollama(model: "llama3.2"))
@@ -266,7 +310,7 @@ let agent = try Agent("You are helpful.", inferenceProvider: .ollama(model: "lla
 Or using the `.environment()` modifier on any `AgentRuntime`:
 
 ```swift
-agent.environment(\.inferenceProvider, .anthropic(key: "sk-..."))
+agent.environment(\.inferenceProvider, .anthropic(apiKey: "sk-..."))
 ```
 
 ## Requirements
