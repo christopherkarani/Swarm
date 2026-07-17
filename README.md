@@ -46,9 +46,11 @@ struct PriceTool {
 }
 
 // Create an agent with unlabeled instructions first and tools in the trailing @ToolBuilder closure
+// Prefer on-device Foundation Models when you can (no API key):
+//   inferenceProvider: .foundationModels()
 let agent = try Agent("Answer finance questions using real data.",
-    configuration: .init(name: "Analyst"),
-    inferenceProvider: .anthropic(key: "{ENV")) {
+    configuration: .default.name("Analyst"),
+    inferenceProvider: .anthropic(apiKey: "sk-...")) {
     PriceTool()
     CalculatorTool()
 }
@@ -98,9 +100,24 @@ swift run SwarmCapabilityShowcase smoke
 
 The deterministic matrix is CI-safe. Live-provider smoke coverage is opt-in through environment variables. See [docs/guide/capability-showcase.md](docs/guide/capability-showcase.md) for the scenario catalog and smoke-mode details.
 
+### End-to-end example apps
+
+Two minimal, buildable apps under `Examples/` stress the public API:
+
+| Example | What it proves |
+| --- | --- |
+| [`Examples/OnDeviceChat`](Examples/OnDeviceChat) | Foundation Models chat with `@Tool`, streaming, and multi-turn `Conversation` (zero API keys; `--demo` for CI) |
+| [`Examples/MultiAgentPipeline`](Examples/MultiAgentPipeline) | Sequential + parallel workflows and durable checkpoint/resume (`--demo` for CI) |
+| [`Examples/CodeReviewer`](Examples/CodeReviewer) | Lightweight CLI that links Swarm and prints a deterministic review plan |
+
+```bash
+cd Examples/OnDeviceChat && swift run OnDeviceChat --demo
+cd Examples/MultiAgentPipeline && swift run MultiAgentPipeline --demo
+```
+
 ### Optional demos
 
-Demo executables are opt-in so the default library graph stays focused on the framework products:
+Package-root demo executables are opt-in so the default library graph stays focused on the framework products:
 
 ```bash
 SWARM_INCLUDE_DEMO=1 swift build
@@ -108,16 +125,42 @@ SWARM_INCLUDE_DEMO=1 swift run SwarmDemo
 SWARM_INCLUDE_DEMO=1 swift run SwarmMCPServerDemo
 ```
 
+## Foundation Models First
+
+For Apple platforms, prefer the first-class on-device path — no Conduit, no API keys:
+
+```swift
+import Swarm
+
+// Requires macOS/iOS 26+ and Apple Intelligence available on the device.
+let agent = try Agent(
+    "You are a private on-device assistant.",
+    inferenceProvider: .foundationModels()
+) {
+    // @Tool structs or FunctionTool values
+}
+
+let result = try await agent.run("Summarize my notes.")
+```
+
+Notes that matter in production:
+
+- **Availability**: use `FoundationModelsInferenceProvider.ifAvailable()` or check `FoundationModelsInferenceProvider.isAvailable` before assuming the system model is ready.
+- **Tool calling**: Swarm bridges `@Tool` / `ToolSchema` to Apple's `FoundationModels.Tool` and executes tools in the agent loop with guardrails intact.
+- **Streaming tool calls**: not advertised; streaming is text deltas, tools complete as capture-then-execute turns.
+- **Dynamic profiles**: `.foundationModels(profile:)` re-resolves instructions/tools/history every turn (WWDC 2026–aligned Swarm API).
+- **Linux / CI**: Foundation Models is compile-time gated; use Ollama/cloud providers or the deterministic `--demo` modes in `Examples/`.
+
 ### Multi-agent pipeline
 
 ```swift
 let researcher = try Agent("Research the topic and extract key facts.",
-    inferenceProvider: .anthropic(key: "sk-...")) {
+    inferenceProvider: .anthropic(apiKey: "sk-...")) {
     WebSearchTool()
 }
 
 let writer = try Agent("Write a concise summary from the research.",
-    inferenceProvider: .anthropic(key: "sk-..."))
+    inferenceProvider: .anthropic(apiKey: "sk-..."))
 
 let result = try await Workflow()
     .step(researcher)
@@ -169,8 +212,8 @@ for try await event in agent.stream("Summarize the changelog.") {
 
 ```swift
 let agent = try Agent("You remember past conversations.",
-    inferenceProvider: .anthropic(key: "sk-..."),
-    memory: .vector(embeddingProvider: myEmbedder, similarityThreshold: 0.75)) {
+    memory: .vector(embeddingProvider: myEmbedder, similarityThreshold: 0.75),
+    inferenceProvider: .anthropic(apiKey: "sk-...")) {
     // tools
 }
 ```
@@ -216,7 +259,7 @@ let resumed = try await workflow.durable.execute("watch", resumeFrom: "monitor-v
 let local = try Agent("Be helpful.", inferenceProvider: .foundationModels())
 
 // Cloud
-let cloud = try Agent("Be helpful.", inferenceProvider: .anthropic(key: k))
+let cloud = try Agent("Be helpful.", inferenceProvider: .anthropic(apiKey: k))
 
 // Or swap at runtime via environment
 let modified = agent.environment(\.inferenceProvider, .ollama(model: "mistral"))

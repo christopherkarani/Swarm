@@ -458,33 +458,25 @@ extension LLM: ToolCallStreamingConversationInferenceProvider {
 
 // MARK: - Dot-syntax Entry Points
 
+/// Beginner-friendly `key:` aliases on `LLM`.
+///
+/// Prefer ``ConduitProviderSelection`` factories via `.anthropic(apiKey:)` /
+/// `.openAI(apiKey:)` when assigning to `inferenceProvider:` — those are the
+/// unambiguous, canonical spellings. The `apiKey:` overloads that previously
+/// lived here were removed because they collided with
+/// `InferenceProvider where Self == ConduitProviderSelection` and made
+/// `Agent(..., inferenceProvider: .anthropic(apiKey:))` fail to type-check.
 public extension InferenceProvider where Self == LLM {
-    static func openAI(apiKey: String, model: String = "gpt-4o-mini") -> LLM {
-        LLM.openAI(apiKey: apiKey, model: model)
-    }
-
     static func openAI(key: String, model: String = "gpt-4o-mini") -> LLM {
         LLM.openAI(key: key, model: model)
-    }
-
-    static func anthropic(apiKey: String, model: String = "claude-3-5-sonnet-20241022") -> LLM {
-        LLM.anthropic(apiKey: apiKey, model: model)
     }
 
     static func anthropic(key: String, model: String = "claude-3-5-sonnet-20241022") -> LLM {
         LLM.anthropic(key: key, model: model)
     }
 
-    static func openRouter(apiKey: String, model: String = "anthropic/claude-3.5-sonnet") -> LLM {
-        LLM.openRouter(apiKey: apiKey, model: model)
-    }
-
     static func openRouter(key: String, model: String = "anthropic/claude-3.5-sonnet") -> LLM {
         LLM.openRouter(key: key, model: model)
-    }
-
-    static func minimax(apiKey: String, model: String = "minimax-01") -> LLM {
-        LLM.minimax(apiKey: apiKey, model: model)
     }
 
     static func minimax(key: String, model: String = "minimax-01") -> LLM {

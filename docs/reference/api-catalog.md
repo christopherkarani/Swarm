@@ -3,7 +3,7 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-05-18.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 157
+- Source files scanned: 161
 - Public/open symbols cataloged: 2423
 
 ## 1. Swarm (entry point)
@@ -2602,6 +2602,38 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 69 | func | public | MCPToolBridge.bridgeTools() | `public func bridgeTools() async throws -> [any AnyJSONTool]` |
 
 ## 11. Providers
+
+### Providers/FoundationModels/FoundationModelsInferenceProvider.swift
+
+First-class on-device Apple Foundation Models path (no Conduit). Gated by `#if canImport(FoundationModels)` and `@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)`.
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 16 | struct | public | FoundationModelsProviderConfiguration | `public struct FoundationModelsProviderConfiguration` |
+| 24 | func | public | FoundationModelsProviderConfiguration.init(instructions:prewarmOnInit:) | `public init(instructions: String? = nil, prewarmOnInit: Bool = false)` |
+| 30 | var | public | FoundationModelsProviderConfiguration.default | `public static let default: FoundationModelsProviderConfiguration` |
+| 82 | struct | public | FoundationModelsInferenceProvider | `public struct FoundationModelsInferenceProvider` |
+| 94 | var | public | FoundationModelsInferenceProvider.isAvailable | `public static var isAvailable: Bool { get }` |
+| 99 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider?` |
+| 112 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil)` |
+| 487 | func | public | InferenceProvider.foundationModels(configuration:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
+| 493 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
+| 509 | func | public | InferenceProvider.foundationModels(profile:configuration:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
+
+### Providers/FoundationModels/DynamicProfile.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 30 | struct | public | Profile | `public struct Profile` |
+| 84 | enum | public | ProfileToolFilter | `public enum ProfileToolFilter` |
+| 106 | struct | public | ProfileGenerationOverrides | `public struct ProfileGenerationOverrides` |
+| 148 | enum | public | ProfileHistoryPolicy | `public enum ProfileHistoryPolicy` |
+| 198 | struct | public | DynamicInstructions | `public struct DynamicInstructions` |
+| 247 | protocol | public | DynamicProfile | `public protocol DynamicProfile` |
+| 253 | struct | public | StaticDynamicProfile | `public struct StaticDynamicProfile` |
+| 264 | struct | public | ClosureDynamicProfile | `public struct ClosureDynamicProfile` |
+| 291 | class | public | ProfileMode | `public final class ProfileMode<Mode>` |
+| 314 | struct | public | ModeSwitchingDynamicProfile | `public struct ModeSwitchingDynamicProfile<Mode>` |
 
 ### Providers/Conduit/ConduitProviderSelection.swift
 

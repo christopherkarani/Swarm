@@ -3,6 +3,7 @@
 //
 // Implementation of the #Tool freestanding expression macro for inline tool creation.
 
+import Foundation
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
@@ -62,15 +63,19 @@ public struct InlineToolMacro: ExpressionMacro {
         let toolStructName = "_InlineTool_\(toolName)"
 
         // ---- Rewrite closure body: bare param refs → input.paramName ----
+        // Avoid SyntaxRewriter subclasses: Swift 6.2 + swift-syntax 602 can fail to
+        // link visitationFunc depending on parallel job count (swiftlang/swift-package-manager#9495).
         let paramNames = Set(closureParams.map(\.name))
-        let rewriter = InputParamRewriter(paramNames: paramNames)
-        let rewrittenStatements = rewriter.visit(trailingClosure.statements)
+        let rewrittenBodyText = rewriteBareParamReferences(
+            in: trailingClosure.statements.description,
+            paramNames: paramNames
+        )
 
         // Normalise statement indentation to 12 spaces (3 levels × 4 spaces) so
         // the execute body sits cleanly inside `func execute(...) { }`.
-        let executeLines = rewrittenStatements
-            .children(viewMode: .sourceAccurate)
-            .map { $0.description.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let executeLines = rewrittenBodyText
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
         let executeBody = executeLines
@@ -182,30 +187,31 @@ public struct InlineToolMacro: ExpressionMacro {
     }
 }
 
-// MARK: - InputParamRewriter
+// MARK: - Parameter rewriting
 
-/// A SyntaxRewriter that rewrites bare parameter references like `name` to `input.name`
-/// inside a closure body, so the generated execute method accesses `input.paramName`.
-private final class InputParamRewriter: SyntaxRewriter {
-    let paramNames: Set<String>
+/// Rewrites bare parameter references like `name` to `input.name` in a closure body
+/// so the generated `execute` method reads fields from the input struct.
+///
+/// Uses string rewriting rather than `SyntaxRewriter` to avoid a known Swift 6.2
+/// linker failure on private `SyntaxRewriter.visitationFunc` (swift-package-manager#9495).
+private func rewriteBareParamReferences(in source: String, paramNames: Set<String>) -> String {
+    guard !paramNames.isEmpty else { return source }
 
-    init(paramNames: Set<String>) {
-        self.paramNames = paramNames
-    }
-
-    override func visit(_ node: DeclReferenceExprSyntax) -> ExprSyntax {
-        let identifier = node.baseName.text
-        guard paramNames.contains(identifier) else {
-            return ExprSyntax(node)
-        }
-        // Replace `name` with `input.name`
-        let memberAccess = MemberAccessExprSyntax(
-            base: DeclReferenceExprSyntax(baseName: .identifier("input")),
-            period: .periodToken(),
-            declName: DeclReferenceExprSyntax(baseName: .identifier(identifier))
+    // Longest names first so shorter params do not partially rewrite longer ones.
+    let ordered = paramNames.sorted { $0.count > $1.count || ($0.count == $1.count && $0 < $1) }
+    var result = source
+    for name in ordered {
+        let pattern = #"(?<![.\w])"# + NSRegularExpression.escapedPattern(for: name) + #"(?!\w)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+        let range = NSRange(result.startIndex..<result.endIndex, in: result)
+        result = regex.stringByReplacingMatches(
+            in: result,
+            options: [],
+            range: range,
+            withTemplate: "input.\(name)"
         )
-        return ExprSyntax(memberAccess)
     }
+    return result
 }
 
 // MARK: - InlineToolMacroError
