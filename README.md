@@ -263,7 +263,7 @@ for message in await conversation.messages {
 | **Resilience** | 7 backoff strategies, circuit breaker, fallback chains, rate limiting |
 | **Observability** | `AgentObserver`, `Tracer`, `SwiftLogTracer`, per-agent token metrics |
 | **MCP** | Model Context Protocol client and server support |
-| **Providers** | Foundation Models, Anthropic, OpenAI, Ollama, Gemini, MiniMax, OpenRouter, MLX via [Conduit](https://github.com/christopherkarani/Conduit) |
+| **Providers** | First-class Foundation Models (on-device, no Conduit); Anthropic, OpenAI, Ollama, Gemini, MiniMax, OpenRouter, MLX via [Conduit](https://github.com/christopherkarani/Conduit) |
 | **Macros** | `@Tool`, `@Parameter`, `@Traceable`, `#Prompt` |
 
 ## Architecture

@@ -449,13 +449,16 @@ public protocol ConversationInferenceProvider: InferenceProvider {
 .gemini(apiKey: "sk-...", model: "gemini-2.0-flash")  // Routed through OpenRouter
 .minimax(apiKey: "sk-...", model: "minimax-01")        // Routed through OpenRouter unless native MiniMax is compiled in
 .ollama(model: "llama3")
-.foundationModels()     // On-device, iOS 26 / macOS 26 when FoundationModels is available
+.foundationModels()     // On-device first-class provider (no Conduit)
 ```
 
-The `apiKey:` factories return `ConduitProviderSelection`, Swarm's thin
-Conduit-backed provider facade. The `key:` aliases on `LLM` are still public and
-Conduit-backed, but new docs should prefer `apiKey:` so provider selection reads
-the same across Anthropic, OpenAI, OpenRouter, Gemini, and MiniMax.
+Cloud `apiKey:` factories return `ConduitProviderSelection`, Swarm's thin
+Conduit-backed provider facade. `.foundationModels()` is first-class and does
+**not** route through Conduit — it uses Apple's `LanguageModelSession` with
+native `FoundationModels.Tool` bridging. The `key:` aliases on `LLM` are still
+public and Conduit-backed, but new docs should prefer `apiKey:` for cloud
+providers so selection reads the same across Anthropic, OpenAI, OpenRouter,
+Gemini, and MiniMax.
 
 | Factory family | Return type | Notes |
 |----------------|-------------|-------|
@@ -465,7 +468,8 @@ the same across Anthropic, OpenAI, OpenRouter, Gemini, and MiniMax.
 | `.gemini(apiKey:model:)` | `ConduitProviderSelection` | Routes through OpenRouter with `google/` model prefix when needed |
 | `.minimax(apiKey:model:)` | `ConduitProviderSelection` | Uses native MiniMax only when compiled in; otherwise routes through OpenRouter |
 | `.ollama(model:)` | `ConduitProviderSelection` | Supports settings closure or `baseURL:` overload |
-| `.foundationModels()` | `ConduitProviderSelection` | Apple-platform only when FoundationModels is available |
+| `.foundationModels()` | `FoundationModelsInferenceProvider` | First-class on-device path; native tool calling via Apple's Tool protocol |
+| `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Same, driven by Swarm ``DynamicProfile`` (WWDC 2026–aligned; re-resolves each turn) |
 | `LLM.*(key:model:)` | `LLM` | Public compatibility/beginner aliases; still valid but not the canonical spelling |
 | `LLM.ollama(_:)` | `LLM` | Beginner-friendly local Ollama alias with optional settings closure |
 | `LLM.mlx(_:)`, `LLM.mlxLocal(_:)` | `LLM` | Available only when MLX can be imported |

@@ -27,13 +27,18 @@ struct ConduitProviderSelectionTests {
     }
 
 #if canImport(FoundationModels)
-    @Test("Builds Foundation Models Conduit provider without streaming tool-call capability")
+    @Test("Builds legacy Conduit Foundation Models provider without streaming tool-call capability")
     func buildsFoundationModelsProvider() {
-        guard #available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *) else {
+        guard #available(macOS 26.0, iOS 26.0, visionOS 26.0, *) else {
             return
         }
 
-        let selection = ConduitProviderSelection.foundationModels()
+        // Legacy Conduit path (prompt-emulated tools) — first-class path is
+        // FoundationModelsInferenceProvider via InferenceProvider.foundationModels().
+        let selection: ConduitProviderSelection = {
+            // Intentionally exercise the deprecated Conduit bridge.
+            ConduitProviderSelection.conduitFoundationModels()
+        }()
         let provider = selection.makeProvider()
         let capabilities = InferenceProviderCapabilities.resolved(for: selection)
 

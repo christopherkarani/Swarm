@@ -149,9 +149,6 @@ enum LanguageModelSessionToolParser {
 
         // Recover a single valid Swarm envelope from common wrappers such as prose or markdown fences.
         let candidates = extractJSONObjectCandidates(from: content)
-        if !candidates.isEmpty {
-            print("[FM ToolParser] extracted \(candidates.count) JSON candidates from response")
-        }
         var parsedCandidates: [[InferenceResponse.ParsedToolCall]] = []
 
         for candidate in candidates {
@@ -160,8 +157,6 @@ enum LanguageModelSessionToolParser {
                 availableTools: availableTools,
                 context: context
             ) else {
-                let reason = debugParseFailure(candidate, availableTools: availableTools, context: context)
-                print("[FM ToolParser] candidate rejected: \(reason)")
                 continue
             }
             parsedCandidates.append(toolCalls)

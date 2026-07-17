@@ -323,6 +323,11 @@ public extension AnyJSONTool {
 /// with dynamic tools in `ToolRegistry` and `Agent`.
 ///
 /// - SeeAlso: ``AnyJSONTool``, ``ToolParameter``, ``@Tool``
+/// - Important: Apple's FoundationModels framework also declares a public
+///   `Tool` protocol. When both modules are imported in the same file, qualify
+///   the type (`Swarm.Tool` vs `FoundationModels.Tool`) or prefer Swarm's
+///   `@Tool` macro / ``AnyJSONTool`` surface. Swarm bridges to Apple's
+///   protocol internally via ``FoundationModelsInferenceProvider``.
 public protocol Tool: Sendable {
     /// The input type for this tool.
     ///

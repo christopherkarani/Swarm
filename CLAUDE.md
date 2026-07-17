@@ -203,8 +203,13 @@ swift package plugin --allow-writing-to-package-directory swiftformat
   [Conduit](https://github.com/christopherkarani/Conduit) (pinned to `0.3.14`
   in `Package.swift`) with traits enabled for OpenAI, OpenRouter, Anthropic,
   and MLX.
-- Foundation Models are now also routed through Conduit (see commits
-  `89d7ffa` and `6ae1df6`).
+- Foundation Models are first-class via `FoundationModelsInferenceProvider`
+  (no Conduit). Cloud providers still route through Conduit. Native tool
+  calling bridges Swarm `ToolSchema` to Apple's `FoundationModels.Tool`.
+- Swarm `DynamicProfile` / `Profile` / `DynamicInstructions` / `ProfileMode`
+  mirror WWDC 2026 Foundation Models Dynamic Profiles. The Apple native API
+  is not in macOS 26.2 SDK yet; Swarm profiles work today and re-resolve each
+  turn via `.foundationModels(profile:)`.
 
 ### Mocks & Test Helpers
 
