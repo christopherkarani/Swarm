@@ -12,15 +12,6 @@ struct SwarmConfigTests {
         }
     }
 
-    @Test func configureCloudProvider() async {
-        await withSwarmConfigurationIsolation {
-            let mock = MockInferenceProvider(responses: [])
-            await Swarm.configure(cloudProvider: mock)
-            let provider = await Swarm.cloudProvider
-            #expect(provider != nil)
-        }
-    }
-
     @Test func resetClearsProviders() async {
         await withSwarmConfigurationIsolation {
             let mock = MockInferenceProvider(responses: [])

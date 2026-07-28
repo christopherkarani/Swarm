@@ -29,25 +29,16 @@ struct InferenceProviderCapabilityContractTests {
         #expect(adapter.capabilities.contains(.nativeToolCalling) == false)
     }
 
-    @Test("ConduitProviderSelection reports wrapper conversation support and forwarded continuation capability")
-    func conduitProviderSelectionReportsWrappedCapabilities() {
+    @Test("MockInferenceProvider reports conversation support and explicit capabilities")
+    func mockProviderReportsConversationAndExplicitCapabilities() {
         let provider = MockInferenceProvider(
             responses: ["ok"],
             capabilities: [.responseContinuation]
         )
-        let wrapper = ConduitProviderSelection.provider(provider)
 
-        #expect(wrapper.capabilities == [.conversationMessages, .responseContinuation])
-    }
-
-    @Test("LLM reports Conduit-backed conversation, native tools, and streaming tool capabilities")
-    func llmReportsConduitBridgeCapabilities() {
-        let provider = LLM.openAI(key: "test-key", model: "gpt-4o-mini")
-
-        #expect(provider.capabilities.contains(.conversationMessages))
-        #expect(provider.capabilities.contains(.nativeToolCalling))
-        #expect(provider.capabilities.contains(.streamingToolCalls))
-        #expect(provider.capabilities.contains(.responseContinuation) == false)
+        let capabilities = InferenceProviderCapabilities.resolved(for: provider)
+        #expect(capabilities.contains(.conversationMessages))
+        #expect(capabilities.contains(.responseContinuation))
     }
 
     @Test("MultiProvider capabilities follow the selected route while preserving wrapper conversation support")
@@ -71,12 +62,11 @@ struct InferenceProviderCapabilityContractTests {
 
 @Suite("Inference Provider Certification")
 struct InferenceProviderCertificationTests {
-    @Test("ConduitProviderSelection passes text-only tool emulation certification")
-    func conduitProviderSelectionCertifiesTextOnlyToolEmulation() async throws {
+    @Test("Mock provider passes text-only tool emulation certification")
+    func mockProviderCertifiesTextOnlyToolEmulation() async throws {
         let provider = CertifiedTextOnlyProvider(mode: .toolThenAnswer)
-        let wrapper = ConduitProviderSelection.provider(provider)
 
-        _ = try await ProviderCertificationHarness.certifyTextOnlyToolLoop(using: wrapper)
+        _ = try await ProviderCertificationHarness.certifyTextOnlyToolLoop(using: provider)
 
         let prompts = await provider.recordedPrompts()
         #expect(prompts.count == 2)
@@ -101,15 +91,14 @@ struct InferenceProviderCertificationTests {
         #expect(prompts[1].contains("[Tool Result - string]: HELLO"))
     }
 
-    @Test("ConduitProviderSelection forwards auto continuation through wrapped providers")
-    func conduitProviderSelectionForwardsAutoContinuation() async throws {
+    @Test("MockInferenceProvider forwards auto continuation")
+    func mockProviderForwardsAutoContinuation() async throws {
         let provider = MockInferenceProvider(
             responses: ["first reply", "second reply"],
             capabilities: [.responseContinuation]
         )
-        let wrapper = ConduitProviderSelection.provider(provider)
 
-        let (first, _) = try await ProviderCertificationHarness.runTwoTurnsWithAutoContinuation(using: wrapper)
+        let (first, _) = try await ProviderCertificationHarness.runTwoTurnsWithAutoContinuation(using: provider)
         let calls = await provider.generateMessageCalls
 
         #expect(calls.count == 2)
@@ -140,8 +129,8 @@ struct InferenceProviderCertificationTests {
         }
     }
 
-    @Test("Wrapped providers fail malformed native tool arguments safely")
-    func wrappedProvidersFailMalformedToolArgumentsSafely() async throws {
+    @Test("Mock providers fail malformed native tool arguments safely")
+    func mockProvidersFailMalformedToolArgumentsSafely() async throws {
         let provider = MockInferenceProvider()
         await provider.setToolCallResponses([
             InferenceResponse(
@@ -152,9 +141,8 @@ struct InferenceProviderCertificationTests {
                 finishReason: .toolCall
             )
         ])
-        let wrapper = ConduitProviderSelection.provider(provider)
 
-        let error = try await ProviderCertificationHarness.certifyMalformedToolArguments(using: wrapper)
+        let error = try await ProviderCertificationHarness.certifyMalformedToolArguments(using: provider)
 
         if case let .toolExecutionFailed(toolName, underlyingError) = error {
             #expect(toolName == "string")
@@ -202,13 +190,12 @@ struct InferenceProviderCertificationTests {
         })
     }
 
-    @Test("ConduitProviderSelection preserves transcript replay compatibility")
-    func conduitProviderSelectionCertifiesTranscriptReplay() async throws {
+    @Test("MockInferenceProvider preserves transcript replay compatibility")
+    func mockProviderCertifiesTranscriptReplay() async throws {
         let provider = MockInferenceProvider()
-        let wrapper = ConduitProviderSelection.provider(provider)
 
         let outcome = try await ProviderCertificationHarness.certifyTranscriptReplay(
-            using: wrapper,
+            using: provider,
             backing: provider
         )
 
@@ -250,13 +237,12 @@ struct InferenceProviderCertificationTests {
         })
     }
 
-    @Test("ConduitProviderSelection fails with timeout when wrapped provider exceeds contract timeout")
-    func conduitProviderSelectionTimesOutSafely() async throws {
+    @Test("MockInferenceProvider fails with timeout when provider exceeds contract timeout")
+    func mockProviderTimesOutSafely() async throws {
         let provider = MockInferenceProvider(responses: ["slow reply"])
         await provider.setDelay(.milliseconds(200))
-        let wrapper = ConduitProviderSelection.provider(provider)
 
-        let error = try await ProviderCertificationHarness.certifyTimeout(using: wrapper)
+        let error = try await ProviderCertificationHarness.certifyTimeout(using: provider)
 
         if case let .timeout(duration) = error {
             #expect(duration == .milliseconds(50))

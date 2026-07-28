@@ -927,18 +927,17 @@ private func runLiveProviderSmokeScenario(
     context: CapabilityScenarioContext,
     environment: [String: String]
 ) async throws -> CapabilityScenarioResult {
-    guard let model = environment["SWARM_SHOWCASE_OLLAMA_MODEL"], !model.isEmpty else {
-        return .init(
-            id: "live-provider-smoke",
-            name: "Live Provider Smoke",
-            families: [.providers],
-            status: .skipped,
-            summary: "Set SWARM_SHOWCASE_OLLAMA_MODEL to run the live provider smoke check."
-        )
-    }
-
-    #if SWARM_INTEGRATIONS
-        let provider = LLM.ollama(model)
+    #if canImport(FoundationModels)
+    if #available(macOS 26.0, iOS 26.0, visionOS 26.0, *) {
+        guard let provider = FoundationModelsInferenceProvider.ifAvailable() else {
+            return .init(
+                id: "live-provider-smoke",
+                name: "Live Provider Smoke",
+                families: [.providers],
+                status: .skipped,
+                summary: "Apple Foundation Models are not available on this host."
+            )
+        }
         let agent = try Agent("Reply with the single word ok.", memory: makeScenarioMemory(), inferenceProvider: provider)
         let result = try await agent.run("Say ok.")
         let artifact = try context.writeArtifact(named: "live-provider-smoke.txt", contents: result.output)
@@ -947,20 +946,21 @@ private func runLiveProviderSmokeScenario(
             name: "Live Provider Smoke",
             families: [.providers],
             status: .passed,
-            summary: "Ran a live Ollama-backed smoke check.",
+            summary: "Ran a live Foundation Models smoke check.",
             evidence: [
                 .init(label: "live-output", detail: result.output, artifactPath: context.relativeArtifactPath(for: artifact)),
             ]
         )
-    #else
-        return .init(
-            id: "live-provider-smoke",
-            name: "Live Provider Smoke",
-            families: [.providers],
-            status: .skipped,
-            summary: "Live provider smoke requires the Integrations trait."
-        )
+    }
     #endif
+
+    return .init(
+        id: "live-provider-smoke",
+        name: "Live Provider Smoke",
+        families: [.providers],
+        status: .skipped,
+        summary: "Live provider smoke requires Apple Foundation Models on a supported platform."
+    )
 }
 
 

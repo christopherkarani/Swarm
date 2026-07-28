@@ -3,9 +3,8 @@
 //
 // First-class Apple Foundation Models inference provider.
 //
-// This provider talks to FoundationModels directly — it does not route through
-// Conduit. Tool calling uses Apple's native `FoundationModels.Tool` protocol
-// and guided generation, not prompt-based JSON envelopes.
+// This is Swarm's only built-in inference backend. Tool calling uses Apple's
+// native `FoundationModels.Tool` protocol and guided generation.
 
 import Foundation
 
@@ -481,8 +480,8 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
 public extension InferenceProvider where Self == FoundationModelsInferenceProvider {
     /// Creates an on-device Apple Foundation Models provider.
     ///
-    /// This path does **not** depend on Conduit. Prefer it for macOS/iOS apps
-    /// that want first-class Apple Intelligence integration.
+    /// Prefer this for macOS/iOS apps that want first-class Apple Intelligence
+    /// integration. For custom backends, inject any ``InferenceProvider``.
     static func foundationModels(
         configuration: FoundationModelsProviderConfiguration = .default
     ) -> FoundationModelsInferenceProvider {

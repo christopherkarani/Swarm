@@ -1,9 +1,9 @@
 # Swarm Public API Catalog
 
-Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-05-18.
+Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6).
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 161
+- Source files scanned: 154
 - Public/open symbols cataloged: 2423
 
 ## 1. Swarm (entry point)
@@ -1039,12 +1039,11 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 26 | class | public | Swarm.Configuration | `public actor Configuration` |
-| 47 | var | public | Swarm.defaultProvider | `public static var defaultProvider: (any InferenceProvider)? { get async }` |
-| 52 | var | public | Swarm.cloudProvider | `public static var cloudProvider: (any InferenceProvider)? { get async }` |
-| 67 | func | public | Swarm.configure(provider:) | `public static func configure(provider: some InferenceProvider) async` |
-| 76 | func | public | Swarm.configure(cloudProvider:) | `public static func configure(cloudProvider: some InferenceProvider) async` |
-| 81 | func | public | Swarm.reset() | `public static func reset() async` |
+| 44 | var | public | Swarm.defaultProvider | `public static var defaultProvider: (any InferenceProvider)? { get async }` |
+| 49 | var | public | Swarm.webConfiguration | `public static var webConfiguration: WebSearchTool.Configuration? { get async }` |
+| 63 | func | public | Swarm.configure(provider:) | `public static func configure(provider: some InferenceProvider) async` |
+| 74 | func | public | Swarm.configure(web:) | `public static func configure(web configuration: WebSearchTool.Configuration) async` |
+| 79 | func | public | Swarm.reset() | `public static func reset() async` |
 
 ### Core/TokenUsage.swift
 
@@ -2605,7 +2604,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 ### Providers/FoundationModels/FoundationModelsInferenceProvider.swift
 
-First-class on-device Apple Foundation Models path (no Conduit). Gated by `#if canImport(FoundationModels)` and `@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)`.
+First-class on-device Apple Foundation Models path. Gated by `#if canImport(FoundationModels)` and `@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)`.
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
@@ -2634,117 +2633,6 @@ First-class on-device Apple Foundation Models path (no Conduit). Gated by `#if c
 | 264 | struct | public | ClosureDynamicProfile | `public struct ClosureDynamicProfile` |
 | 291 | class | public | ProfileMode | `public final class ProfileMode<Mode>` |
 | 314 | struct | public | ModeSwitchingDynamicProfile | `public struct ModeSwitchingDynamicProfile<Mode>` |
-
-### Providers/Conduit/ConduitProviderSelection.swift
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 12 | enum | public | ConduitProviderSelection | `public enum ConduitProviderSelection` |
-| 13 | case | public | ConduitProviderSelection.provider(_:) | `public case provider(any InferenceProvider)` |
-| 16 | func | public | ConduitProviderSelection.anthropic(apiKey:model:) | `public static func anthropic(apiKey: String, model: String) -> ConduitProviderSelection` |
-| 24 | func | public | ConduitProviderSelection.openAI(apiKey:model:) | `public static func openAI(apiKey: String, model: String) -> ConduitProviderSelection` |
-| 35 | func | public | ConduitProviderSelection.openRouter(apiKey:model:routing:) | `public static func openRouter(apiKey: String, model: String, routing: OpenRouterRouting? = nil) -> ConduitProviderSelection` |
-| 51 | func | public | ConduitProviderSelection.ollama(model:settings:) | `public static func ollama(model: String, settings: OllamaSettings = .default) -> ConduitProviderSelection` |
-| 69 | func | public | ConduitProviderSelection.ollama(model:baseURL:) | `public static func ollama(model: String, baseURL: String) -> ConduitProviderSelection` |
-| 92 | func | public | ConduitProviderSelection.gemini(apiKey:model:) | `public static func gemini(apiKey: String, model: String = "gemini-2.0-flash") -> ConduitProviderSelection` |
-| 101 | func | public | ConduitProviderSelection.makeProvider() | `public func makeProvider() -> any InferenceProvider` |
-| 108 | func | public | ConduitProviderSelection.generate(prompt:options:) | `public func generate(prompt: String, options: InferenceOptions) async throws -> String` |
-| 112 | func | public | ConduitProviderSelection.stream(prompt:options:) | `public func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
-| 116 | func | public | ConduitProviderSelection.generateWithToolCalls(prompt:tools:options:) | `public func generateWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
-| 132 | func | public | InferenceProvider.anthropic(apiKey:model:) | `public static func anthropic(apiKey: String, model: String = "claude-sonnet-4-5") -> ConduitProviderSelection` |
-| 136 | func | public | InferenceProvider.openAI(apiKey:model:) | `public static func openAI(apiKey: String, model: String = "gpt-4o") -> ConduitProviderSelection` |
-| 140 | func | public | InferenceProvider.openRouter(apiKey:model:routing:) | `public static func openRouter(apiKey: String, model: String, routing: OpenRouterRouting? = nil) -> ConduitProviderSelection` |
-| 148 | func | public | InferenceProvider.ollama(model:settings:) | `public static func ollama(model: String, settings: OllamaSettings = .default) -> ConduitProviderSelection` |
-| 155 | func | public | InferenceProvider.ollama(model:baseURL:) | `public static func ollama(model: String, baseURL: String) -> ConduitProviderSelection` |
-| 162 | func | public | InferenceProvider.gemini(apiKey:model:) | `public static func gemini(apiKey: String, model: String = "gemini-2.0-flash") -> ConduitProviderSelection` |
-| 173 | func | public | ConduitProviderSelection.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
-
-### Providers/Conduit/LLM.swift
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 12 | struct | public | LLM | `public struct LLM` |
-| 50 | func | public | LLM.openAI(apiKey:model:) | `public static func openAI(apiKey: String, model: String = "gpt-4o-mini") -> LLM` |
-| 57 | func | public | LLM.openAI(key:model:) | `public static func openAI(key: String, model: String = "gpt-4o-mini") -> LLM` |
-| 64 | func | public | LLM.anthropic(apiKey:model:) | `public static func anthropic(apiKey: String, model: String = "claude-3-5-sonnet-20241022") -> LLM` |
-| 71 | func | public | LLM.anthropic(key:model:) | `public static func anthropic(key: String, model: String = "claude-3-5-sonnet-20241022") -> LLM` |
-| 78 | func | public | LLM.openRouter(apiKey:model:) | `public static func openRouter(apiKey: String, model: String = "anthropic/claude-3.5-sonnet") -> LLM` |
-| 85 | func | public | LLM.openRouter(key:model:) | `public static func openRouter(key: String, model: String = "anthropic/claude-3.5-sonnet") -> LLM` |
-| 101 | func | public | LLM.minimax(apiKey:model:) | `public static func minimax(apiKey: String, model: String = "minimax-01") -> LLM` |
-| 108 | func | public | LLM.minimax(key:model:) | `public static func minimax(key: String, model: String = "minimax-01") -> LLM` |
-| 131 | func | public | LLM.ollama(_:configure:) | `public static func ollama(_ model: String, configure: ((inout OllamaSettings) -> Void)? = nil) -> LLM` |
-| 152 | func | public | LLM.openRouter(apiKey:model:configure:) | `public static func openRouter(apiKey: String, model: String = "anthropic/claude-3.5-sonnet", configure: (inout OpenRouterRouting) -> Void) -> LLM` |
-| 168 | func | public | LLM.mlx(_:) | `public static func mlx(_ model: String) -> LLM` |
-| 175 | func | public | LLM.mlxLocal(_:) | `public static func mlxLocal(_ path: String) -> LLM` |
-| 182 | func | public | LLM.generate(prompt:options:) | `public func generate(prompt: String, options: InferenceOptions) async throws -> String` |
-| 186 | func | public | LLM.stream(prompt:options:) | `public func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
-| 190 | func | public | LLM.generateWithToolCalls(prompt:tools:options:) | `public func generateWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
-| 296 | var | public | LLM.providerName | `public var providerName: String? { get }` |
-| 315 | var | public | LLM.modelName | `public var modelName: String? { get }` |
-| 339 | var | public | LLM.endpointURL | `public var endpointURL: URL? { get }` |
-| 368 | func | public | LLM.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
-| 384 | var | public | LLM.capabilities | `public var capabilities: InferenceProviderCapabilities { get }` |
-| 395 | func | public | LLM.generate(messages:options:) | `public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String` |
-| 403 | func | public | LLM.generateWithToolCalls(messages:tools:options:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
-| 425 | func | public | LLM.stream(messages:options:) | `public func stream(messages: [InferenceMessage], options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
-| 438 | func | public | LLM.streamWithToolCalls(messages:tools:options:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
-| 463 | func | public | InferenceProvider.openAI(apiKey:model:) | `public static func openAI(apiKey: String, model: String = "gpt-4o-mini") -> LLM` |
-| 467 | func | public | InferenceProvider.openAI(key:model:) | `public static func openAI(key: String, model: String = "gpt-4o-mini") -> LLM` |
-| 471 | func | public | InferenceProvider.anthropic(apiKey:model:) | `public static func anthropic(apiKey: String, model: String = "claude-3-5-sonnet-20241022") -> LLM` |
-| 475 | func | public | InferenceProvider.anthropic(key:model:) | `public static func anthropic(key: String, model: String = "claude-3-5-sonnet-20241022") -> LLM` |
-| 479 | func | public | InferenceProvider.openRouter(apiKey:model:) | `public static func openRouter(apiKey: String, model: String = "anthropic/claude-3.5-sonnet") -> LLM` |
-| 483 | func | public | InferenceProvider.openRouter(key:model:) | `public static func openRouter(key: String, model: String = "anthropic/claude-3.5-sonnet") -> LLM` |
-| 487 | func | public | InferenceProvider.minimax(apiKey:model:) | `public static func minimax(apiKey: String, model: String = "minimax-01") -> LLM` |
-| 491 | func | public | InferenceProvider.minimax(key:model:) | `public static func minimax(key: String, model: String = "minimax-01") -> LLM` |
-| 511 | func | public | InferenceProvider.ollama(_:configure:) | `public static func ollama(_ model: String, configure: ((inout OllamaSettings) -> Void)? = nil) -> LLM` |
-| 530 | func | public | InferenceProvider.openRouter(apiKey:model:configure:) | `public static func openRouter(apiKey: String, model: String = "anthropic/claude-3.5-sonnet", configure: (inout OpenRouterRouting) -> Void) -> LLM` |
-
-### Providers/Conduit/OllamaSettings.swift
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 9 | struct | public | OllamaSettings | `public struct OllamaSettings` |
-| 10 | var | public | OllamaSettings.host | `public var host: String` |
-| 11 | var | public | OllamaSettings.port | `public var port: Int` |
-| 12 | var | public | OllamaSettings.keepAlive | `public var keepAlive: String?` |
-| 13 | var | public | OllamaSettings.pullOnMissing | `public var pullOnMissing: Bool` |
-| 14 | var | public | OllamaSettings.numGPU | `public var numGPU: Int?` |
-| 15 | var | public | OllamaSettings.lowVRAM | `public var lowVRAM: Bool` |
-| 16 | var | public | OllamaSettings.numCtx | `public var numCtx: Int?` |
-| 17 | var | public | OllamaSettings.healthCheck | `public var healthCheck: Bool` |
-| 19 | func | public | OllamaSettings.init(host:port:keepAlive:pullOnMissing:numGPU:lowVRAM:numCtx:healthCheck:) | `public init(host: String = "localhost", port: Int = 11434, keepAlive: String? = nil, pullOnMissing: Bool = false, numGPU: Int? = nil, lowVRAM: Bool = false, numCtx: Int? = nil, healthCheck: Bool = true)` |
-| 39 | var | public | OllamaSettings.default | `public static let `default`: OllamaSettings` |
-
-### Providers/Conduit/OpenRouterRouting.swift
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 10 | struct | public | OpenRouterRouting | `public struct OpenRouterRouting` |
-| 11 | enum | public | OpenRouterRouting.Provider | `public enum Provider` |
-| 12 | case | public | OpenRouterRouting.Provider.openai | `public case openai` |
-| 13 | case | public | OpenRouterRouting.Provider.anthropic | `public case anthropic` |
-| 14 | case | public | OpenRouterRouting.Provider.google | `public case google` |
-| 15 | case | public | OpenRouterRouting.Provider.googleAIStudio | `public case googleAIStudio` |
-| 16 | case | public | OpenRouterRouting.Provider.together | `public case together` |
-| 17 | case | public | OpenRouterRouting.Provider.fireworks | `public case fireworks` |
-| 18 | case | public | OpenRouterRouting.Provider.perplexity | `public case perplexity` |
-| 19 | case | public | OpenRouterRouting.Provider.mistral | `public case mistral` |
-| 20 | case | public | OpenRouterRouting.Provider.groq | `public case groq` |
-| 21 | case | public | OpenRouterRouting.Provider.deepseek | `public case deepseek` |
-| 22 | case | public | OpenRouterRouting.Provider.cohere | `public case cohere` |
-| 23 | case | public | OpenRouterRouting.Provider.ai21 | `public case ai21` |
-| 24 | case | public | OpenRouterRouting.Provider.bedrock | `public case bedrock` |
-| 25 | case | public | OpenRouterRouting.Provider.azure | `public case azure` |
-| 28 | enum | public | OpenRouterRouting.DataCollection | `public enum DataCollection` |
-| 29 | case | public | OpenRouterRouting.DataCollection.allow | `public case allow` |
-| 30 | case | public | OpenRouterRouting.DataCollection.deny | `public case deny` |
-| 33 | var | public | OpenRouterRouting.providers | `public var providers: [OpenRouterRouting.Provider]?` |
-| 34 | var | public | OpenRouterRouting.fallbacks | `public var fallbacks: Bool` |
-| 35 | var | public | OpenRouterRouting.routeByLatency | `public var routeByLatency: Bool` |
-| 36 | var | public | OpenRouterRouting.siteURL | `public var siteURL: URL?` |
-| 37 | var | public | OpenRouterRouting.appName | `public var appName: String?` |
-| 38 | var | public | OpenRouterRouting.dataCollection | `public var dataCollection: OpenRouterRouting.DataCollection?` |
-| 40 | func | public | OpenRouterRouting.init(providers:fallbacks:routeByLatency:siteURL:appName:dataCollection:) | `public init(providers: [OpenRouterRouting.Provider]? = nil, fallbacks: Bool = true, routeByLatency: Bool = false, siteURL: URL? = nil, appName: String? = nil, dataCollection: OpenRouterRouting.DataCollection? = nil)` |
 
 ### Providers/LanguageModelSession.swift
 

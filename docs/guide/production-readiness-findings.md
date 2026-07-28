@@ -41,9 +41,9 @@ Audit and hardening pass focused on making Swarm easy to use in real apps — es
    Several README/getting-started snippets put `inferenceProvider:` before `memory:`, which does not type-check against the canonical initializer.  
    **Fix:** reorder all major snippets to `configuration → memory → inferenceProvider → guardrails`; add compile tests in `ReadmeProviderCompileTests`.
 
-7. **Ambiguous `.anthropic(apiKey:)` / `.openAI(apiKey:)` on `InferenceProvider`**  
-   Both `LLM` and `ConduitProviderSelection` exposed `apiKey:` dot-syntax factories, so `Agent(..., inferenceProvider: .anthropic(apiKey:))` failed to type-check.  
-   **Fix:** keep `apiKey:` only on `ConduitProviderSelection` (canonical); keep `key:` on `LLM` as the beginner alias. Docs keep `apiKey:`.
+7. **Ambiguous cloud factory overloads on `InferenceProvider`** *(historical; resolved by 0.6 hard break)*  
+   Pre-0.6, dual `LLM` / Conduit-backed factory families made `apiKey:` / `key:` selection ambiguous.  
+   **Fix (0.6):** Conduit and `LLM.*` were hard-removed. Built-in inference is Foundation Models only; custom backends inject `InferenceProvider`.
 
 ### Documented (fundamental / deferred)
 

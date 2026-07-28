@@ -563,10 +563,11 @@ public enum AgentError: Error, Sendable, Equatable {
     ///
     /// ## Recovery
     ///
-    /// Configure a cloud provider with native tool support:
+    /// Configure a provider with native tool support, or enable prompt-based
+    /// tool emulation:
     ///
     /// ```swift
-    /// Swarm.configure(cloudProvider: openAIProvider)
+    /// await Swarm.configure(provider: myToolCapableProvider)
     ///
     /// // Or enable prompt-based tool emulation
     /// let config = AgentConfiguration(
@@ -646,9 +647,9 @@ extension AgentError: LocalizedError {
     public var recoverySuggestion: String? {
         switch self {
         case .toolCallingRequiresCloudProvider:
-            "Configure `Swarm.configure(cloudProvider:)` or pass a provider with native tool-calling support if this request cannot rely on prompt-based tool emulation."
+            "Pass a provider with native tool-calling support via `Agent(..., inferenceProvider:)` or `await Swarm.configure(provider:)`, or enable prompt-based tool emulation."
         case .inferenceProviderUnavailable:
-            "Check your network connection and API credentials, or try again later."
+            "Configure an inference provider via `await Swarm.configure(provider:)` or use Apple Foundation Models on a supported device."
         case .rateLimitExceeded(let retryAfter):
             if let seconds = retryAfter {
                 "Wait \(Int(seconds)) seconds before retrying the request."

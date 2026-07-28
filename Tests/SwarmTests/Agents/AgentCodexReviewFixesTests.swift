@@ -2,33 +2,28 @@ import Foundation
 @testable import Swarm
 import Testing
 
-/// Regression tests for the two issues flagged by the Codex review on PR #78:
-/// 1. `resolvedPrivateInferenceProvider()` skipped `Swarm.cloudProvider`,
-///    causing `inferenceProviderUnavailable` even when a privacy-capable cloud
-///    provider was configured.
-/// 2. `DefaultMemorySessionTracker.beginRun` did not honor cancellation while
-///    parked behind another session — a cancelled task could wake up later,
-///    claim the slot, and perform side effects (memory clearing, lifecycle
-///    hooks).
+/// Regression tests for Codex review fixes:
+/// 1. privacyRequired honors a privacy-capable `Swarm.defaultProvider` when FM is unavailable.
+/// 2. `DefaultMemorySessionTracker.beginRun` honors cancellation.
 @Suite("Codex Review Fixes")
 struct AgentCodexReviewFixesTests {
 
-    // MARK: - Fix #1: private resolver consults Swarm.cloudProvider
+    // MARK: - Fix #1: private resolver consults Swarm.defaultProvider
 
-    @Test("privacyRequired uses Swarm.cloudProvider when it is privacy-capable")
-    func privacyRequiredUsesPrivateCloudProvider() async throws {
+    @Test("privacyRequired uses Swarm.defaultProvider when it is privacy-capable")
+    func privacyRequiredUsesPrivateDefaultProvider() async throws {
         try await withSwarmConfigurationIsolation {
             // Skip when Foundation Models is available: the privacy resolver
-            // returns the on-device provider before consulting cloudProvider.
+            // returns the on-device provider before consulting defaultProvider.
             if DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() != nil {
                 return
             }
 
-            let privateCloud = MockInferenceProvider(
-                responses: ["private cloud response"],
+            let privateDefault = MockInferenceProvider(
+                responses: ["private default response"],
                 capabilities: [.privateInference]
             )
-            await Swarm.configure(cloudProvider: privateCloud)
+            await Swarm.configure(provider: privateDefault)
 
             let configuration = AgentConfiguration.default
                 .inferencePolicy(InferencePolicy(privacyRequired: true))
@@ -39,30 +34,30 @@ struct AgentCodexReviewFixesTests {
 
             do {
                 let result = try await agent.run("hello")
-                #expect(result.output == "private cloud response")
-                #expect(await privateCloud.generateMessageCalls.count == 1)
+                #expect(result.output == "private default response")
+                #expect(await privateDefault.generateMessageCalls.count == 1)
             } catch let error as AgentError {
                 if case .inferenceProviderUnavailable = error {
-                    Issue.record("Resolver should have used the privacy-capable cloud provider, not thrown unavailable.")
+                    Issue.record("Resolver should have used the privacy-capable default provider, not thrown unavailable.")
                 }
             }
         }
     }
 
-    @Test("privacyRequired ignores Swarm.cloudProvider when it lacks privateInference")
-    func privacyRequiredSkipsNonPrivateCloudProvider() async throws {
+    @Test("privacyRequired ignores Swarm.defaultProvider when it lacks privateInference")
+    func privacyRequiredSkipsNonPrivateDefaultProvider() async throws {
         await withSwarmConfigurationIsolation {
             // Skip when Foundation Models is available — the resolver returns FM
-            // first and never reaches the cloud-provider step.
+            // first and never reaches the default-provider step.
             if DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() != nil {
                 return
             }
 
-            let nonPrivateCloud = MockInferenceProvider(
+            let nonPrivate = MockInferenceProvider(
                 responses: ["leaked"],
                 capabilities: [] // no .privateInference
             )
-            await Swarm.configure(cloudProvider: nonPrivateCloud)
+            await Swarm.configure(provider: nonPrivate)
 
             let configuration = AgentConfiguration.default
                 .inferencePolicy(InferencePolicy(privacyRequired: true))
@@ -73,7 +68,7 @@ struct AgentCodexReviewFixesTests {
                     configuration: configuration
                 )
                 _ = try await agent.run("hello")
-                Issue.record("Expected inferenceProviderUnavailable when cloud provider is not privacy-capable")
+                Issue.record("Expected inferenceProviderUnavailable when default provider is not privacy-capable")
             } catch let error as AgentError {
                 if case .inferenceProviderUnavailable = error {
                     // expected
@@ -84,9 +79,9 @@ struct AgentCodexReviewFixesTests {
                 Issue.record("Unexpected error: \(error)")
             }
 
-            // The non-private cloud provider must never have been called.
-            #expect(await nonPrivateCloud.generateCallCount == 0)
-            #expect(await nonPrivateCloud.toolCallCalls.isEmpty)
+            // The non-private default provider must never have been called.
+            #expect(await nonPrivate.generateCallCount == 0)
+            #expect(await nonPrivate.toolCallCalls.isEmpty)
         }
     }
 

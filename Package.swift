@@ -29,8 +29,8 @@ var packageDependencies: [Package.Dependency] = [
     // IDESwiftPackageEnablePrebuilts=NO, SWIFTPM_DISABLE_PREBUILTS=1 and
     // -skipMacroValidation all fail to suppress it). Widening the range here lets
     // SwiftPM resolve to 601+ on Swift 6.2 toolchains, which does not ship the
-    // broken prebuilt. Keep the upper bound below 603 while Conduit 0.3.x is
-    // the latest compatible release line used by Swarm and Membrane.
+    // broken prebuilt. Keep the upper bound below 603 for package-graph stability
+    // with the current Membrane/Hive integration pin set.
     .package(url: "https://github.com/swiftlang/swift-syntax.git", "600.0.0"..<"603.0.0"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.12.0"),
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
@@ -43,16 +43,6 @@ if !coreOnly {
     packageDependencies += [
         // Production graph must resolve to the published tag set that is known to build together.
         .package(url: "https://github.com/christopherkarani/Wax.git", exact: "0.1.23"),
-        .package(
-            url: "https://github.com/christopherkarani/Conduit",
-            exact: "0.3.17",
-            traits: [
-                .trait(name: "OpenAI"),
-                .trait(name: "OpenRouter"),
-                .trait(name: "Anthropic"),
-                .trait(name: "MLX"),
-            ]
-        ),
         .package(url: "https://github.com/christopherkarani/ContextCore.git", exact: "1.0.0"),
         .package(url: "https://github.com/christopherkarani/Membrane", exact: "0.1.4"),
         .package(url: "https://github.com/christopherkarani/Hive", exact: "0.2.1"),
@@ -72,13 +62,10 @@ var swarmSwiftSettings: [SwiftSetting] = [
 if !coreOnly {
     swarmDependencies += [
         .product(name: "Wax", package: "Wax", condition: .when(traits: [integrationTrait])),
-        .product(name: "Conduit", package: "Conduit", condition: .when(traits: [integrationTrait])),
-
         .product(name: "ContextCore", package: "ContextCore", condition: .when(traits: [integrationTrait])),
         .product(name: "HiveCore", package: "Hive", condition: .when(traits: [integrationTrait])),
         .product(name: "Membrane", package: "Membrane", condition: .when(traits: [integrationTrait])),
         .product(name: "MembraneCore", package: "Membrane", condition: .when(traits: [integrationTrait])),
-
     ]
     swarmSwiftSettings.append(.define("SWARM_INTEGRATIONS", .when(traits: [integrationTrait])))
 }
@@ -90,7 +77,6 @@ let swarmCoreOnlyExcludes = [
     "Internal/GraphRuntime",
     "Memory/ContextCoreMemory.swift",
     "Memory/DefaultAgentMemory.swift",
-    "Providers/Conduit",
     "Tools/Web",
     "Workflow/WorkflowCheckpointCodec.swift",
     "Workflow/WorkflowCheckpointStore.swift",
@@ -171,8 +157,6 @@ var packageTargets: [Target] = [
             ]
             if !coreOnly {
                 dependencies += [
-                    .product(name: "Conduit", package: "Conduit"),
-
                     .product(name: "Membrane", package: "Membrane"),
                     .product(name: "MembraneCore", package: "Membrane"),
                 ]
@@ -263,7 +247,7 @@ let package = Package(
         .default(enabledTraits: [integrationTrait]),
         .trait(
             name: integrationTrait,
-            description: "Enable provider, memory, graph runtime, Wax, Membrane, ContextCore, Conduit, and Hive integrations."
+            description: "Enable provider, memory, graph runtime, Wax, Membrane, ContextCore, and Hive integrations."
         ),
     ],
     dependencies: packageDependencies,

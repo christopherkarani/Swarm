@@ -48,13 +48,13 @@ Current smoke scenarios:
 
 | Scenario | Environment |
 | --- | --- |
-| `live-provider-smoke` | `SWARM_SHOWCASE_OLLAMA_MODEL` |
+| `live-provider-smoke` | Apple Foundation Models available on host |
 | `live-foundation-models-smoke` | `SWARM_SHOWCASE_FOUNDATION_MODELS=1` (or `SWARM_RUN_LIVE_FOUNDATION_MODELS_TESTS=1`) |
 
 Example:
 
 ```bash
-SWARM_SHOWCASE_OLLAMA_MODEL=llama3.2 swift run SwarmCapabilityShowcase smoke
+swift run SwarmCapabilityShowcase smoke  # requires Foundation Models on host
 SWARM_SHOWCASE_FOUNDATION_MODELS=1 swift run SwarmCapabilityShowcase smoke
 ```
 

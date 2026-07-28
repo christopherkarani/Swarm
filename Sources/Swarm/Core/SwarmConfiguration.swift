@@ -11,15 +11,12 @@ import Foundation
 /// inference provider for all agents:
 ///
 /// ```swift
-/// await Swarm.configure(provider: AnthropicProvider(apiKey: key))
+/// await Swarm.configure(provider: myCustomProvider)
 /// ```
 ///
-/// For hybrid setups where a cloud provider should take priority for tool
-/// calling while Foundation Models remain available as a fallback:
-///
-/// ```swift
-/// await Swarm.configure(cloudProvider: AnthropicProvider(apiKey: key))
-/// ```
+/// When no provider is configured, Swarm uses Apple Foundation Models when
+/// available. For custom backends, inject any type that conforms to
+/// ``InferenceProvider``.
 public extension Swarm {
     // MARK: - Internal Storage
 
@@ -27,15 +24,10 @@ public extension Swarm {
         static let shared = Configuration()
 
         private(set) var provider: (any InferenceProvider)?
-        private(set) var cloud: (any InferenceProvider)?
         private(set) var web: WebSearchTool.Configuration?
 
         func setProvider(_ provider: some InferenceProvider) {
             self.provider = provider
-        }
-
-        func setCloudProvider(_ cloudProvider: some InferenceProvider) {
-            cloud = cloudProvider
         }
 
         func setWebConfiguration(_ configuration: WebSearchTool.Configuration) {
@@ -44,7 +36,6 @@ public extension Swarm {
 
         func reset() {
             provider = nil
-            cloud = nil
             web = nil
         }
     }
@@ -52,11 +43,6 @@ public extension Swarm {
     /// The currently configured default provider, if any.
     static var defaultProvider: (any InferenceProvider)? {
         get async { await Configuration.shared.provider }
-    }
-
-    /// The currently configured higher-priority provider for tool-calling flows, if any.
-    static var cloudProvider: (any InferenceProvider)? {
-        get async { await Configuration.shared.cloud }
     }
 
     /// The currently configured default web-search configuration, if any.
@@ -72,22 +58,10 @@ public extension Swarm {
     /// 1. Explicit provider on the agent
     /// 2. TaskLocal via `.environment(\.inferenceProvider, ...)`
     /// 3. `Swarm.defaultProvider` (set here)
-    /// 4. `Swarm.cloudProvider` (when tool calling is required and a cloud provider is configured)
-    /// 5. Foundation Models (on Apple platform, including prompt-based tool emulation when selected)
-    /// 6. Throw `AgentError.inferenceProviderUnavailable`
+    /// 4. Foundation Models (on Apple platforms when the system model is available)
+    /// 5. Throw `AgentError.inferenceProviderUnavailable`
     static func configure(provider: some InferenceProvider) async {
         await Configuration.shared.setProvider(provider)
-    }
-
-    /// Sets a cloud provider for tool-calling agents.
-    ///
-    /// Use this to configure a higher-priority provider (Anthropic, OpenAI,
-    /// Ollama) for agents that use tools when you want native/provider-managed
-    /// tool calling. If no cloud provider is configured, Apple Foundation
-    /// Models can still service tool requests through Swarm's prompt-based
-    /// emulation path when available.
-    static func configure(cloudProvider: some InferenceProvider) async {
-        await Configuration.shared.setCloudProvider(cloudProvider)
     }
 
     /// Sets the default web-search configuration for all agents.

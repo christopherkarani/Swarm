@@ -23,7 +23,7 @@
 /// // Create an agent with instructions, a provider, and a trailing
 /// // @ToolBuilder closure listing the agent's tools.
 /// let agent = try Agent("You are a helpful assistant that can perform calculations.",
-///     inferenceProvider: .anthropic(key: "sk-...")) {
+///     inferenceProvider: .foundationModels()) {
 ///     CalculatorTool()
 ///     DateTimeTool()
 /// }

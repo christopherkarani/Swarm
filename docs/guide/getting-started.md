@@ -57,36 +57,28 @@ If the system model might be missing (Simulator, Linux CI, older OS), prefer the
 
 ```swift
 guard let provider = FoundationModelsInferenceProvider.ifAvailable() else {
-    // Fall back to .ollama / cloud, or fail with a clear user message.
-    throw AgentError.inferenceProviderUnavailable
+    // Inject a custom InferenceProvider, or fail with a clear user message.
+    throw AgentError.inferenceProviderUnavailable(reason: "Foundation Models unavailable")
 }
 let agent = try Agent("You are helpful.", inferenceProvider: provider)
 ```
 
-### Cloud (Anthropic example)
+### Custom `InferenceProvider`
+
+For non–Foundation Models backends, implement or inject any type that conforms to
+`InferenceProvider` and pass it explicitly (or via `await Swarm.configure(provider:)`):
 
 ```swift
-import Swarm
-
-@Tool("Looks up the current stock price")
-struct PriceTool {
-    @Parameter("Ticker symbol") var ticker: String
-
-    func execute() async throws -> String { "182.50" }
-}
-
-let agent = try Agent("Answer finance questions using real data.",
+let agent = try Agent(
+    "Answer finance questions using real data.",
     configuration: .default.name("Analyst"),
     memory: .conversation(maxMessages: 50),
-    inferenceProvider: .anthropic(apiKey: "sk-..."),
+    inferenceProvider: myCustomProvider,
     inputGuardrails: [InputGuard.maxLength(5000), InputGuard.notEmpty()]
 ) {
     PriceTool()
     CalculatorTool()
 }
-
-let result = try await agent.run("What is AAPL trading at?")
-print(result.output) // "Apple (AAPL) is currently trading at $182.50."
 ```
 
 ### Working example apps
@@ -136,7 +128,7 @@ Use `FunctionTool` inside a `@ToolBuilder` closure:
 
 ```swift
 let agent = try Agent("You are a helpful text utility.",
-    inferenceProvider: .anthropic(apiKey: "sk-...")
+    inferenceProvider: .foundationModels()
 ) {
     FunctionTool(
         name: "reverse",
@@ -265,10 +257,12 @@ let result = try await Workflow()
 
 ## Choosing a Provider
 
-Swarm supports multiple inference providers. Pass via the `inferenceProvider:` init parameter:
+Built-in inference is **Apple Foundation Models only**. Pass a provider via the
+`inferenceProvider:` init parameter, or implement ``InferenceProvider`` for a
+custom backend:
 
 ```swift
-// On-device Apple Foundation Models (private, native tool calling, no Conduit)
+// On-device Apple Foundation Models (private, native tool calling)
 let agent = try Agent("You are helpful.", inferenceProvider: .foundationModels())
 
 // Dynamic profiles (WWDC 2026–aligned): switch instructions/tools/history per phase
@@ -297,21 +291,23 @@ let profiled = try Agent(
 )
 // Later, from a handoff tool or UI: mode.current = .review
 
-// Anthropic
-let agent = try Agent("You are helpful.", inferenceProvider: .anthropic(apiKey: "sk-..."))
-
-// OpenAI
-let agent = try Agent("You are helpful.", inferenceProvider: .openAI(apiKey: "sk-..."))
-
-// Ollama (local)
-let agent = try Agent("You are helpful.", inferenceProvider: .ollama(model: "llama3.2"))
+// Custom backend
+let agent = try Agent("You are helpful.", inferenceProvider: myCustomProvider)
 ```
 
 Or using the `.environment()` modifier on any `AgentRuntime`:
 
 ```swift
-agent.environment(\.inferenceProvider, .anthropic(apiKey: "sk-..."))
+agent.environment(\.inferenceProvider, myCustomProvider)
 ```
+
+### Provider resolution order
+
+1. Explicit provider on the agent  
+2. Task-local / environment override  
+3. `Swarm.defaultProvider` from `await Swarm.configure(provider:)`  
+4. Foundation Models when the system model is available  
+5. Else `AgentError.inferenceProviderUnavailable`
 
 ## Requirements
 
@@ -323,7 +319,7 @@ agent.environment(\.inferenceProvider, .anthropic(apiKey: "sk-..."))
 | Linux | Ubuntu 22.04+ with Swift 6.2 |
 
 ::: tip
-The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; cloud providers and Ollama use the shared `InferenceProvider` surface.
+The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; inject a mock or custom `InferenceProvider` there.
 :::
 
 ## Next Steps

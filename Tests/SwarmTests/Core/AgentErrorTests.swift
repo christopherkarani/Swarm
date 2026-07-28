@@ -14,8 +14,9 @@ struct ToolCallingErrorTests {
     func recoverySuggestion() {
         let error = AgentError.toolCallingRequiresCloudProvider
         #expect(error.recoverySuggestion != nil)
-        #expect(error.recoverySuggestion?.contains("Swarm.configure") == true)
+        #expect(error.recoverySuggestion?.contains("Swarm.configure(provider:") == true)
         #expect(error.recoverySuggestion?.contains("prompt-based tool emulation") == true)
+        #expect(error.recoverySuggestion?.localizedCaseInsensitiveContains("cloudProvider") != true)
     }
 
     @Test("toolCallingRequiresCloudProvider has debug description")

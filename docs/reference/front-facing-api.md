@@ -14,11 +14,9 @@ public enum Swarm {
 }
 
 await Swarm.configure(provider: some InferenceProvider)
-await Swarm.configure(cloudProvider: some InferenceProvider)
 await Swarm.reset()
 
 let defaultProvider = await Swarm.defaultProvider
-let cloudProvider = await Swarm.cloudProvider
 ```
 
 ## 2) Core runtime protocol
@@ -146,7 +144,7 @@ let agent = try Agent(
     "You are a helpful assistant.",
     configuration: .init(name: "Assistant"),
     memory: .conversation(maxMessages: 50),
-    inferenceProvider: .anthropic(key: "sk-..."),
+    inferenceProvider: .foundationModels(),
     inputGuardrails: [MaxInputLengthGuardrail(maxLength: 5000)],
     handoffs: [AnyHandoffConfiguration(targetAgent: supportAgent)]
 ) {
@@ -442,37 +440,21 @@ public protocol ConversationInferenceProvider: InferenceProvider {
 
 ### Provider factories (dot-syntax)
 
-```swift
-.anthropic(apiKey: "sk-...")
-.openAI(apiKey: "sk-...")
-.openRouter(apiKey: "sk-...", model: "anthropic/claude-3.5-sonnet")
-.gemini(apiKey: "sk-...", model: "gemini-2.0-flash")  // Routed through OpenRouter
-.minimax(apiKey: "sk-...", model: "minimax-01")        // Routed through OpenRouter unless native MiniMax is compiled in
-.ollama(model: "llama3")
-.foundationModels()     // On-device first-class provider (no Conduit)
-```
+Built-in inference is Apple Foundation Models only. Custom backends implement
+``InferenceProvider`` and are passed explicitly (or via
+`await Swarm.configure(provider:)`).
 
-Cloud `apiKey:` factories return `ConduitProviderSelection`, Swarm's thin
-Conduit-backed provider facade. `.foundationModels()` is first-class and does
-**not** route through Conduit — it uses Apple's `LanguageModelSession` with
-native `FoundationModels.Tool` bridging. The `key:` aliases on `LLM` are still
-public and Conduit-backed, but new docs should prefer `apiKey:` for cloud
-providers so selection reads the same across Anthropic, OpenAI, OpenRouter,
-Gemini, and MiniMax.
+```swift
+.foundationModels()                 // On-device first-class provider
+.foundationModels(profile: profile) // Dynamic profile re-resolved each turn
+// Custom: pass any InferenceProvider value
+```
 
 | Factory family | Return type | Notes |
 |----------------|-------------|-------|
-| `.anthropic(apiKey:model:)` | `ConduitProviderSelection` | Preferred Conduit-backed Anthropic selection |
-| `.openAI(apiKey:model:)` | `ConduitProviderSelection` | Preferred Conduit-backed OpenAI selection |
-| `.openRouter(apiKey:model:)` | `ConduitProviderSelection` | Also supports a routing configuration closure |
-| `.gemini(apiKey:model:)` | `ConduitProviderSelection` | Routes through OpenRouter with `google/` model prefix when needed |
-| `.minimax(apiKey:model:)` | `ConduitProviderSelection` | Uses native MiniMax only when compiled in; otherwise routes through OpenRouter |
-| `.ollama(model:)` | `ConduitProviderSelection` | Supports settings closure or `baseURL:` overload |
-| `.foundationModels()` | `FoundationModelsInferenceProvider` | First-class on-device path; native tool calling via Apple's Tool protocol |
+| `.foundationModels()` | `FoundationModelsInferenceProvider` | Built-in on-device path; native tool calling via Apple's Tool protocol |
 | `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Same, driven by Swarm ``DynamicProfile`` (WWDC 2026–aligned; re-resolves each turn) |
-| `LLM.*(key:model:)` | `LLM` | Public compatibility/beginner aliases; still valid but not the canonical spelling |
-| `LLM.ollama(_:)` | `LLM` | Beginner-friendly local Ollama alias with optional settings closure |
-| `LLM.mlx(_:)`, `LLM.mlxLocal(_:)` | `LLM` | Available only when MLX can be imported |
+| Custom `InferenceProvider` | your type | Implement the protocol for non-FM backends |
 
 ## 12) Events and results
 
@@ -576,10 +558,10 @@ import SwarmOpenTelemetry
 
 let tracedAgent = try Agent(
     "Answer briefly.",
-    inferenceProvider: .openAI(apiKey: "sk-...")
+    inferenceProvider: .foundationModels()
 ).instrumentedWithOpenTelemetry()
 
-let tracedProvider = LLM.ollama("llama3.2").instrumentedWithOpenTelemetry()
+let tracedProvider = myCustomProvider.instrumentedWithOpenTelemetry()
 ```
 
 See [OpenTelemetry Tracing](../guide/opentelemetry-tracing.md) for SDK setup and

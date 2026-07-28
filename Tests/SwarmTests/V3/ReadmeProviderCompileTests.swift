@@ -1,4 +1,4 @@
-import Swarm
+@testable import Swarm
 import Testing
 
 private struct PublicCompileTool: Tool {
@@ -24,19 +24,16 @@ private struct DocSnippetPriceTool {
 struct ReadmeProviderCompileTests {
     @Test("README-style provider factories compile through public import")
     func readmeProviderFactoriesCompile() throws {
-        _ = try Agent("Use Anthropic.", inferenceProvider: .anthropic(key: "test-key")) {
-            PublicCompileTool()
-        }
-
-        _ = try Agent("Use OpenAI.", provider: .openAI(key: "test-key")) {
-            PublicCompileTool()
-        }
-
-        let ollamaAgent = try Agent("Use local models.")
-        let _: any AgentRuntime = ollamaAgent.environment(\.inferenceProvider, .ollama(model: "mistral"))
-
         if #available(macOS 26.0, iOS 26.0, tvOS 26.0, watchOS 26.0, visionOS 26.0, *) {
+            #if canImport(FoundationModels)
             _ = try Agent("Use Foundation Models.", inferenceProvider: .foundationModels())
+            #endif
+        }
+
+        // Custom InferenceProvider injection remains the extension path.
+        let mock = MockInferenceProvider(responses: ["ok"])
+        _ = try Agent("Use a custom backend.", inferenceProvider: mock) {
+            PublicCompileTool()
         }
     }
 
@@ -60,6 +57,7 @@ struct ReadmeProviderCompileTests {
     func majorPublicDocAgentSnippetsCompile() throws {
         // getting-started: on-device first agent
         if #available(macOS 26.0, iOS 26.0, visionOS 26.0, *) {
+            #if canImport(FoundationModels)
             _ = try Agent(
                 "Answer finance questions using tools when needed.",
                 configuration: .default.name("Analyst"),
@@ -69,47 +67,28 @@ struct ReadmeProviderCompileTests {
             ) {
                 DocSnippetPriceTool()
             }
-        }
-
-        // getting-started: cloud Anthropic first agent
-        _ = try Agent(
-            "Answer finance questions using real data.",
-            configuration: .default.name("Analyst"),
-            memory: .conversation(maxMessages: 50),
-            inferenceProvider: .anthropic(apiKey: "test-key"),
-            inputGuardrails: [InputGuard.maxLength(5000), InputGuard.notEmpty()]
-        ) {
-            DocSnippetPriceTool()
-            #if canImport(Darwin)
-                CalculatorTool()
             #endif
-        }
-
-        // README: Quick Start (configuration + provider only)
-        _ = try Agent(
-            "Answer finance questions using real data.",
-            configuration: .default.name("Analyst"),
-            inferenceProvider: .anthropic(apiKey: "test-key")
-        ) {
-            DocSnippetPriceTool()
         }
 
         // README: Foundation Models First
         if #available(macOS 26.0, iOS 26.0, visionOS 26.0, *) {
+            #if canImport(FoundationModels)
             _ = try Agent(
                 "You are a private on-device assistant.",
                 inferenceProvider: .foundationModels()
             ) {
                 DocSnippetPriceTool()
             }
+            #endif
         }
 
-        // README: semantic memory (memory before inferenceProvider)
+        // README: custom InferenceProvider (mock stands in for any custom backend)
         let embedder = MockEmbeddingProvider()
+        let mock = MockInferenceProvider(responses: ["ok"])
         _ = try Agent(
             "You remember past conversations.",
             memory: .vector(embeddingProvider: embedder, similarityThreshold: 0.75),
-            inferenceProvider: .anthropic(apiKey: "test-key")
+            inferenceProvider: mock
         ) {
             DocSnippetPriceTool()
         }
