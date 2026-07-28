@@ -30,7 +30,7 @@ Two agents, one pipeline, compiled to a DAG with crash recovery and Swift concur
 
 Default **link** is **lean**: core Swarm + on-device Foundation Models. Graph/memory/web/Hive **products** are trait-gated (off by default) and are not linked into Swarm unless you enable Integrations.
 
-SwiftPM may still **resolve** temporary remote packages (Hive/Membrane/ContextCore/Wax) listed in `Package.swift` until those libraries are vendored as in-tree targets. Enabling Integrations links them; omitting the trait does not link them into Swarm.
+SwiftPM may still **resolve** temporary remote packages (Hive/Membrane/ContextCore/Wax, and SwiftSoup for web HTML parsing) listed in `Package.swift` until those libraries are vendored as in-tree targets. Enabling Integrations **links** them (including SwiftSoup); omitting the trait does not link them into Swarm.
 
 ```swift
 // Lean default link (recommended for most apps)

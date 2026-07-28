@@ -57,7 +57,8 @@ if !coreOnly {
 var swarmDependencies: [Target.Dependency] = [
     "SwarmMacros",
     .product(name: "Logging", package: "swift-log"),
-    .product(name: "SwiftSoup", package: "SwiftSoup"),
+    // HTML parsing for web helpers; only linked when Integrations is enabled.
+    .product(name: "SwiftSoup", package: "SwiftSoup", condition: .when(traits: [integrationTrait])),
 ]
 
 var swarmSwiftSettings: [SwiftSetting] = [

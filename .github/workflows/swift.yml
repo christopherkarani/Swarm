@@ -55,9 +55,6 @@ jobs:
       - name: Run tests with Integrations trait
         run: swift test --no-parallel --traits Integrations
 
-      - name: Run Hive integration tests
-        run: swift test --no-parallel --traits Integrations --filter HiveSwarmTests
-
       - name: Run capability showcase matrix
         run: swift run --traits Integrations SwarmCapabilityShowcase matrix
 
@@ -108,9 +105,6 @@ jobs:
 
       - name: Run tests with Integrations trait
         run: swift test --no-parallel --traits Integrations
-
-      - name: Run Hive integration tests
-        run: swift test --no-parallel --traits Integrations --filter HiveSwarmTests
 
   # Code Quality (macOS only - SwiftLint/SwiftFormat)
   code-quality:
