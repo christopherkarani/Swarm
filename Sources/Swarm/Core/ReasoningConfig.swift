@@ -1,17 +1,14 @@
 // ReasoningConfig.swift
 // Swarm Framework
 //
-// Swarm-level mirror of Conduit's ReasoningConfig. Lives at the Swarm boundary
-// so consumers don't need to depend on Conduit types directly. Translated to
-// Conduit's ReasoningConfig at the ConduitInferenceProvider boundary.
+// Optional reasoning / extended-thinking configuration for InferenceOptions.
 
 import Foundation
 
 /// Reasoning effort level for models that support extended thinking / chain-of-
-/// thought reasoning (e.g. OpenAI o-series, OpenRouter `:thinking` variants).
+/// thought reasoning.
 ///
-/// Maps directly to Conduit's `ReasoningEffort`. Anthropic uses a separate
-/// `ThinkingConfig` mechanism not covered by this enum.
+/// Providers that do not support reasoning ignore this value.
 public enum ReasoningEffort: String, Sendable, Hashable, Codable, CaseIterable {
     /// Maximum reasoning time.
     case xhigh
@@ -26,20 +23,19 @@ public enum ReasoningEffort: String, Sendable, Hashable, Codable, CaseIterable {
     /// No reasoning — standard generation. Use this to explicitly
     /// disable reasoning when the base/provider config has it enabled;
     /// `nil` means "preserve base config", which can't override an
-    /// inherited reasoning setting. Mirrors Conduit's `ReasoningEffort.none`,
-    /// which serializes as `effort: "none"` on the wire.
+    /// inherited reasoning setting.
     case none
 }
 
 /// Configuration for extended thinking / reasoning mode.
 ///
-/// Use `effort` for providers that accept a qualitative level (OpenAI o1,
-/// OpenRouter `:thinking`). Use `maxTokens` to allocate a token budget
-/// directly. Use `enabled` for simple on/off providers (e.g. some o1 endpoints).
+/// Use `effort` for providers that accept a qualitative level.
+/// Use `maxTokens` to allocate a token budget directly.
+/// Use `enabled` for simple on/off providers.
 /// Use `exclude` to suppress reasoning details from the response payload.
 ///
-/// Mirrors Conduit's `ReasoningConfig` (Vendor/Conduit/Sources/Conduit/Core/Types/GenerateConfig.swift)
-/// so Swarm consumers don't import Conduit directly.
+/// Built-in Foundation Models may ignore fields they do not support.
+/// Custom ``InferenceProvider`` implementations decide how to map these values.
 public struct ReasoningConfig: Sendable, Hashable, Codable {
     /// Reasoning effort level (qualitative).
     public var effort: ReasoningEffort?

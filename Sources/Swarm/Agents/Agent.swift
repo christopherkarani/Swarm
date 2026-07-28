@@ -21,10 +21,9 @@ import Foundation
 /// 1. Apple Foundation Models when `inferencePolicy.privacyRequired` is true
 /// 2. An explicit provider passed to `Agent(...)` (including `Agent(_:)`)
 /// 3. A provider set via `.environment(\.inferenceProvider, ...)`
-/// 4. `Swarm.cloudProvider` (set via `Swarm.configure(cloudProvider:)`, when tool calling is required)
-/// 5. `Swarm.defaultProvider` (set via `Swarm.configure(provider:)`)
-/// 6. Apple Foundation Models (on-device), if available, including prompt-based tool emulation
-/// 7. Otherwise, throw `AgentError.inferenceProviderUnavailable`
+/// 4. `Swarm.defaultProvider` (set via `Swarm.configure(provider:)`)
+/// 5. Apple Foundation Models (on-device), if available
+/// 6. Otherwise, throw `AgentError.inferenceProviderUnavailable`
 ///
 /// The agent follows a loop-based execution pattern:
 /// 1. Build prompt with system instructions + conversation history
@@ -131,14 +130,14 @@ public struct Agent: AgentRuntime, Sendable {
     /// 1. Apple Foundation Models when `configuration.inferencePolicy.privacyRequired` is true
     /// 2. Explicit provider passed to ``Agent`` initialization
     /// 3. Provider set via `.environment(\.inferenceProvider, ...)`
-    /// 4. ``Swarm/cloudProvider`` (configured via `Swarm.configure(cloudProvider:)`, when tool calling is required)
-    /// 5. ``Swarm/defaultProvider`` (configured via `Swarm.configure(provider:)`)
-    /// 6. Apple Foundation Models (on-device), if available
-    /// 7. Throws ``AgentError/inferenceProviderUnavailable``
+    /// 4. ``Swarm/defaultProvider`` (configured via `Swarm.configure(provider:)`)
+    /// 5. Apple Foundation Models (on-device), if available
+    /// 6. Throws ``AgentError/inferenceProviderUnavailable``
     ///
     /// ## Usage
-    /// Set a specific provider when you want this agent to use a different LLM than
-    /// the globally configured one.
+    /// Set a specific provider when you want this agent to use a different backend than
+    /// the globally configured one. Built-in inference is Apple Foundation Models;
+    /// inject any ``InferenceProvider`` for custom backends.
     public private(set) var inferenceProvider: (any InferenceProvider)?
 
     /// The input validation guardrails for this agent.
@@ -270,7 +269,7 @@ public struct Agent: AgentRuntime, Sendable {
     ///
     /// This enables an opinionated, easy setup:
     /// ```swift
-    /// let agent = Agent(.anthropic(key: "..."))
+    /// let agent = try Agent(.foundationModels())
     /// ```
     public init(
         _ inferenceProvider: any InferenceProvider,
@@ -890,7 +889,7 @@ public struct Agent: AgentRuntime, Sendable {
             let userMessage = SwarmTranscriptCodec.encodeMessage(role: .user, content: input)
 
             // Execute the tool calling loop with session context
-            let provider = try await resolvedInferenceProvider(toolRegistry: runtimeToolRegistry)
+            let provider = try await resolvedInferenceProvider()
             let runtimeEnvironment = runtimeEnvironment(for: provider)
             let toolLoopOutcome = try await AgentEnvironmentValues.$current.withValue(runtimeEnvironment) {
                 try await executeToolCallingLoop(
@@ -977,7 +976,7 @@ public struct Agent: AgentRuntime, Sendable {
 
     // MARK: - Inference Provider Resolution
 
-    private func resolvedInferenceProvider(toolRegistry: ToolRegistry) async throws -> any InferenceProvider {
+    private func resolvedInferenceProvider() async throws -> any InferenceProvider {
         if configuration.inferencePolicy?.privacyRequired == true {
             return try await resolvedPrivateInferenceProvider()
         }
@@ -992,24 +991,17 @@ public struct Agent: AgentRuntime, Sendable {
             return transformedInferenceProvider(environmentProvider)
         }
 
-        // 3. Swarm.cloudProvider (if tool calling is required)
-        let hasEnabledTools = await !toolRegistry.schemas.isEmpty
-        let needsToolCallingProvider = hasEnabledTools || !_handoffs.isEmpty
-        if needsToolCallingProvider, let cloudProvider = await Swarm.cloudProvider {
-            return transformedInferenceProvider(cloudProvider)
-        }
-
-        // 4. Swarm.defaultProvider (global)
+        // 3. Swarm.defaultProvider (global)
         if let globalProvider = await Swarm.defaultProvider {
             return transformedInferenceProvider(globalProvider)
         }
 
-        // 5. Foundation Models (if available, on Apple platform)
+        // 4. Foundation Models (if available, on Apple platform)
         if let foundationModelsProvider = DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() {
             return transformedInferenceProvider(foundationModelsProvider)
         }
 
-        // 6. No provider available
+        // 5. No provider available
         throw AgentError.inferenceProviderUnavailable(
             reason: """
             No inference provider configured and Apple Foundation Models are unavailable.
@@ -1039,23 +1031,12 @@ public struct Agent: AgentRuntime, Sendable {
             return transformedInferenceProvider(provider)
         }
 
-        // Mirror the non-private resolver's cloud-provider fallback: if the operator
-        // configured a privacy-capable provider via `Swarm.configure(cloudProvider: ...)`
-        // (common for tool/handoff flows), honor it. The capability filter in
-        // `privateInferenceProvider(_:)` ensures we only return it if it actually
-        // reports `.privateInference`.
-        if let cloudProvider = await Swarm.cloudProvider,
-           let provider = privateInferenceProvider(cloudProvider)
-        {
-            return transformedInferenceProvider(provider)
-        }
-
         throw AgentError.inferenceProviderUnavailable(
             reason: """
             AgentConfiguration.inferencePolicy.privacyRequired is true, but no private inference provider is available.
 
             Use Apple Foundation Models on a supported device, or configure a provider that reports \
-            InferenceProviderCapabilities.privateInference.
+            InferenceProviderCapabilities.privateInference via `await Swarm.configure(provider: ...)`.
             """
         )
     }
@@ -2984,7 +2965,7 @@ public extension Agent {
     ///
     /// This overload avoids the optional wrapping when a provider is always known:
     /// ```swift
-    /// let agent = try Agent("You are helpful.", provider: .anthropic(key: apiKey)) {
+    /// let agent = try Agent("You are helpful.", provider: .foundationModels()) {
     ///     WeatherTool()
     /// }
     /// ```

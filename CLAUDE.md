@@ -20,8 +20,8 @@ built around:
   persistent backends.
 - **Guardrails / Resilience / Observability** — first-class concerns, not
   bolt-ons.
-- **Providers** — Foundation Models, Anthropic, OpenAI, Ollama, Gemini,
-  MiniMax, OpenRouter, MLX, all routed through [Conduit](https://github.com/christopherkarani/Conduit).
+- **Providers** — Built-in Apple Foundation Models; custom backends inject
+  `InferenceProvider`. No Conduit / cloud façade ships with Swarm.
 - **MCP** — Model Context Protocol client and server support.
 
 The package uses Swift 6.2 with `StrictConcurrency` enabled across all targets.
@@ -43,7 +43,7 @@ Swarm/
 │   │   │                          #   built-ins, web tools, schema bridging
 │   │   ├── Memory/                # Conversation, sliding window, summary, vector,
 │   │   │                          #   SwiftData, ContextCore, hybrid backends
-│   │   ├── Providers/             # Conduit adapters, multi-provider, sessions
+│   │   ├── Providers/             # Foundation Models, multi-provider, sessions
 │   │   ├── Guardrails/            # Input/Output/Tool guardrail specs + runner
 │   │   ├── Resilience/            # Retry, circuit breaker, fallback, rate limit
 │   │   ├── Observability/         # AgentTracer, SwiftLog/OSLog tracers, metrics
@@ -153,12 +153,11 @@ swift package plugin --allow-writing-to-package-directory swiftformat
   unlabeled instructions string and a trailing `@ToolBuilder` closure for
   tools. See `Sources/Swarm/Agents/Agent.swift`.
 - Provider resolution order is documented at the top of `Agent.swift`:
-  1. explicit provider passed in,
+  1. explicit provider passed in (or privacy-required FM-first path),
   2. `.environment(\.inferenceProvider, ...)`,
-  3. `Swarm.defaultProvider`,
-  4. `Swarm.cloudProvider`,
-  5. Foundation Models (on-device),
-  6. else throw `AgentError.inferenceProviderUnavailable`.
+  3. `Swarm.defaultProvider` via `Swarm.configure(provider:)`,
+  4. Foundation Models (on-device) when available,
+  5. else throw `AgentError.inferenceProviderUnavailable`.
 - The `Agent` struct is `Sendable`; tools are stored as `[any AnyJSONTool]`.
 
 ### Tools
@@ -198,14 +197,13 @@ swift package plugin --allow-writing-to-package-directory swiftformat
 
 ### Providers
 
-- All inference goes through `InferenceProvider` adapters in
-  `Sources/Swarm/Providers/`. Production providers are routed through
-  [Conduit](https://github.com/christopherkarani/Conduit) (pinned to `0.3.14`
-  in `Package.swift`) with traits enabled for OpenAI, OpenRouter, Anthropic,
-  and MLX.
-- Foundation Models are first-class via `FoundationModelsInferenceProvider`
-  (no Conduit). Cloud providers still route through Conduit. Native tool
-  calling bridges Swarm `ToolSchema` to Apple's `FoundationModels.Tool`.
+- Built-in inference is **Apple Foundation Models only** via
+  `FoundationModelsInferenceProvider` under `Sources/Swarm/Providers/`.
+- Custom backends implement `InferenceProvider` and are injected on the agent
+  or via `await Swarm.configure(provider:)`. There is no Conduit package
+  dependency and no `LLM.*` / `cloudProvider` façade.
+- Native tool calling bridges Swarm `ToolSchema` to Apple's
+  `FoundationModels.Tool`.
 - Swarm `DynamicProfile` / `Profile` / `DynamicInstructions` / `ProfileMode`
   mirror WWDC 2026 Foundation Models Dynamic Profiles. The Apple native API
   is not in macOS 26.2 SDK yet; Swarm profiles work today and re-resolve each
@@ -285,8 +283,8 @@ surface as semi-stable. The supported public reference documents are
   `docs/reference/api-catalog.md`.
 - For workflow examples, read `Sources/SwarmCapabilityShowcaseSupport/CapabilityShowcase.swift`
   — it touches every stable subsystem.
-- For provider behaviour, look at `Sources/Swarm/Providers/Conduit/` and the
-  `LanguageModelSession*` files.
+- For provider behaviour, look at `Sources/Swarm/Providers/FoundationModels/`
+  and the `LanguageModelSession*` files.
 - The `README.md` quick-start, the `docs/guide/getting-started.md` tutorial,
   and `docs/guide/agent-workspace.md` are the user-facing canonical docs —
   keep code samples consistent with them when changing surface area.

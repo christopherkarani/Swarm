@@ -216,7 +216,7 @@ public extension AgentRuntime {
 ///
 /// Inference providers abstract the underlying language model, allowing
 /// agents to work with different model backends (Foundation Models,
-/// AnyLanguageModel, Conduit SDK, etc.).
+/// custom backends, or third-party SDKs).
 ///
 public protocol InferenceProvider: Sendable {
     /// Generates a response for the given prompt.

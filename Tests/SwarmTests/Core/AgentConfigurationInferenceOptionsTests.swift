@@ -80,18 +80,17 @@ struct AgentConfigurationInferenceOptionsTests {
         #expect(config.inferenceOptions.reasoning == nil)
     }
 
-    @Test("ReasoningEffort.none mirrors Conduit and is distinct from nil")
+    @Test("ReasoningEffort.none is distinct from nil")
     func reasoningEffortNoneIsExpressible() {
-        // Regression for PR #83 Codex feedback: callers need a way to
-        // explicitly disable reasoning when the base/provider config has
-        // it on. `nil` means "preserve base"; `.none` means "off".
+        // Callers need a way to explicitly disable reasoning when the
+        // base/provider config has it on. `nil` means "preserve base";
+        // `.none` means "off".
         let reasoning = ReasoningConfig(effort: ReasoningEffort.none)
         let settings = ModelSettings().reasoning(reasoning)
         let config = AgentConfiguration.default.modelSettings(settings)
 
         #expect(config.inferenceOptions.reasoning?.effort == ReasoningEffort.none)
-        #expect(ReasoningEffort.none.rawValue == "none",
-                "raw value must match Conduit's ReasoningEffort.none for the bridge to round-trip")
+        #expect(ReasoningEffort.none.rawValue == "none")
     }
 
     @Test("Context mode strict4k overrides adaptive profile")

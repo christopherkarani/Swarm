@@ -117,7 +117,7 @@ configureTracing()
 let agent = try Agent(
     "Answer briefly and use tools when useful.",
     configuration: .default.name("support-agent"),
-    inferenceProvider: LLM.openAI(apiKey: "sk-...", model: "gpt-4.1-mini")
+    inferenceProvider: .foundationModels()
 ) {
     CalculatorTool()
 }.instrumentedWithOpenTelemetry()
@@ -129,13 +129,13 @@ print(result.output)
 This creates:
 
 - An agent parent span named like `swarm.agent.run support-agent`.
-- LLM child spans named like `chat gpt-4.1-mini`.
-- URLSession HTTP spans for provider network requests, if your app installed URLSession instrumentation.
+- Inference child spans for provider calls.
+- URLSession HTTP spans for provider network requests, if your app installed URLSession instrumentation and the provider uses URLSession.
 - `traceparent` and `baggage` headers on instrumented URLSession requests, if your app enabled header injection.
 
-If one agent run makes multiple LLM calls, all of those LLM spans share the same
+If one agent run makes multiple inference calls, those spans share the same
 trace as the agent span. With URLSession instrumentation enabled, provider HTTP
-requests made inside those LLM spans inherit that same current trace context.
+requests made inside those spans inherit that same current trace context.
 
 ## Control Header Injection
 
@@ -171,7 +171,7 @@ If your deployment policy allows content capture, opt in on the agent wrapper:
 ```swift
 let agent = try Agent(
     "Answer briefly.",
-    inferenceProvider: LLM.anthropic(apiKey: "sk-...", model: "claude-3-5-sonnet-latest")
+    inferenceProvider: .foundationModels()
 ) {}.instrumentedWithOpenTelemetry(captureContent: true)
 ```
 

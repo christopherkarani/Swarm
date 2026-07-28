@@ -72,11 +72,12 @@ SWARM_INCLUDE_DEMO=1 swift run SwarmMCPServerDemo
 ## Live Smoke Requirements
 
 `swift run SwarmCapabilityShowcase smoke` may exit successfully when live smoke
-scenarios are skipped. For a release smoke pass, provide an Ollama model and
-confirm the summary row says `passed live-provider-smoke`:
+scenarios are skipped. For a release smoke pass, run on a host where Apple
+Foundation Models are available and confirm the summary row says
+`passed live-provider-smoke`:
 
 ```bash
-SWARM_SHOWCASE_OLLAMA_MODEL=llama3.2 swift run SwarmCapabilityShowcase smoke
+swift run SwarmCapabilityShowcase smoke  # requires Foundation Models on host
 ```
 
 ## Environment Variables
@@ -84,12 +85,11 @@ SWARM_SHOWCASE_OLLAMA_MODEL=llama3.2 swift run SwarmCapabilityShowcase smoke
 | Variable | Used By | Required For | Notes |
 |---|---|---|---|
 | `SWARM_INCLUDE_DEMO=1` | `Package.swift` | Demo executable build/run | Enables `SwarmDemo` and `SwarmMCPServerDemo`. |
-| `SWARM_SHOWCASE_OLLAMA_MODEL` | Capability showcase | Live provider smoke | Missing value skips the smoke scenario. |
+| Foundation Models availability | Capability showcase | Live provider smoke | Skips when system model is unavailable. |
 | `SWARM_RUN_LIVE_FOUNDATION_MODELS_TESTS=1` | Live Foundation Models tests | Apple on-device live tests | Live-only; not required for default CI. |
 | `SWARM_RUN_SWIFTDATA_TESTS=1` | SwiftData memory/session tests | SwiftData-backed persistence checks | Apple-platform focused; default tests may skip based on environment. |
 | `TAVILY_API_KEY` | Built-in web search tool | Live Tavily search | Not required for deterministic tests. |
 | `AISTACK_USE_LOCAL_DEPS=0` | Release verification script | Remote dependency graph proof | Ensures sibling checkouts are not required. |
-| `CONDUIT_SKIP_MLX_DEPS=1` | Release verification script | Remote release verification | Keeps optional MLX dependency resolution out of the release gate. |
 
 ## Tagging Sequence
 

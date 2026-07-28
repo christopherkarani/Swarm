@@ -52,7 +52,7 @@ let result = try await Workflow()
 
 ## On-Device and Cloud — Same API
 
-Foundation Models, Anthropic, OpenAI, Ollama, Gemini, MLX. Swap providers with one line. Your agent code doesn't change.
+Apple Foundation Models built in. Custom backends implement `InferenceProvider` and drop in without changing the agent loop.
 
 ## Built for Apple Platforms
 

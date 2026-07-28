@@ -46,11 +46,10 @@ struct PriceTool {
 }
 
 // Create an agent with unlabeled instructions first and tools in the trailing @ToolBuilder closure
-// Prefer on-device Foundation Models when you can (no API key):
-//   inferenceProvider: .foundationModels()
+// Built-in backend: Apple Foundation Models (no API key on supported devices)
 let agent = try Agent("Answer finance questions using real data.",
     configuration: .default.name("Analyst"),
-    inferenceProvider: .anthropic(apiKey: "sk-...")) {
+    inferenceProvider: .foundationModels()) {
     PriceTool()
     CalculatorTool()
 }
@@ -66,7 +65,7 @@ That is a working agent with type-safe tool calling. Swarm also supports **AGENT
 - **Swift concurrency is part of the surface.** Swift 6.2 `StrictConcurrency` is enabled across the package.
 - **Tools stay type-safe.** The `@Tool` macro generates JSON schemas from Swift structs.
 - **Workflows can survive crashes.** Durable workflow checkpointing lets you resume from an explicit checkpoint ID.
-- **Cloud and on-device models use the same abstractions.** Foundation Models, Anthropic, OpenAI, Ollama, Gemini, MiniMax, OpenRouter, and MLX all fit the same shape.
+- **Built-in inference is on-device Foundation Models.** Inject any `InferenceProvider` for custom backends; the agent loop stays the same.
 - **It is written in Swift all the way down.** `AsyncThrowingStream`, actors, result builders, and macros are first-class here.
 
 ## Examples
@@ -127,7 +126,7 @@ SWARM_INCLUDE_DEMO=1 swift run SwarmMCPServerDemo
 
 ## Foundation Models First
 
-For Apple platforms, prefer the first-class on-device path — no Conduit, no API keys:
+For Apple platforms, use the built-in on-device path — no API keys:
 
 ```swift
 import Swarm
@@ -149,18 +148,18 @@ Notes that matter in production:
 - **Tool calling**: Swarm bridges `@Tool` / `ToolSchema` to Apple's `FoundationModels.Tool` and executes tools in the agent loop with guardrails intact.
 - **Streaming tool calls**: not advertised; streaming is text deltas, tools complete as capture-then-execute turns.
 - **Dynamic profiles**: `.foundationModels(profile:)` re-resolves instructions/tools/history every turn (WWDC 2026–aligned Swarm API).
-- **Linux / CI**: Foundation Models is compile-time gated; use Ollama/cloud providers or the deterministic `--demo` modes in `Examples/`.
+- **Linux / CI**: Foundation Models is compile-time gated; inject a mock or custom `InferenceProvider`, or use the deterministic `--demo` modes in `Examples/`.
 
 ### Multi-agent pipeline
 
 ```swift
 let researcher = try Agent("Research the topic and extract key facts.",
-    inferenceProvider: .anthropic(apiKey: "sk-...")) {
+    inferenceProvider: .foundationModels()) {
     WebSearchTool()
 }
 
 let writer = try Agent("Write a concise summary from the research.",
-    inferenceProvider: .anthropic(apiKey: "sk-..."))
+    inferenceProvider: .foundationModels())
 
 let result = try await Workflow()
     .step(researcher)
@@ -168,7 +167,7 @@ let result = try await Workflow()
     .run("Latest advances in on-device ML")
 ```
 
-Each agent resolves its own provider. Pass `inferenceProvider:` per agent (as above), or call `await Swarm.configure(provider: .anthropic(apiKey: "..."))` once at app startup to share a default across every agent that doesn't specify one.
+Each agent resolves its own provider. Pass `inferenceProvider:` per agent (as above), or call `await Swarm.configure(provider: myProvider)` once at app startup to share a default across every agent that doesn't specify one.
 
 ### Parallel fan-out
 
@@ -213,7 +212,7 @@ for try await event in agent.stream("Summarize the changelog.") {
 ```swift
 let agent = try Agent("You remember past conversations.",
     memory: .vector(embeddingProvider: myEmbedder, similarityThreshold: 0.75),
-    inferenceProvider: .anthropic(apiKey: "sk-...")) {
+    inferenceProvider: .foundationModels()) {
     // tools
 }
 ```
@@ -252,17 +251,17 @@ let workflow = Workflow()
 let resumed = try await workflow.durable.execute("watch", resumeFrom: "monitor-v1")
 ```
 
-#### Provider switching
+#### Provider selection
 
 ```swift
-// On-device, private, no API key needed
+// Built-in: on-device Foundation Models (no API key)
 let local = try Agent("Be helpful.", inferenceProvider: .foundationModels())
 
-// Cloud
-let cloud = try Agent("Be helpful.", inferenceProvider: .anthropic(apiKey: k))
+// Custom backend: any type conforming to InferenceProvider
+let custom = try Agent("Be helpful.", inferenceProvider: myCustomProvider)
 
 // Or swap at runtime via environment
-let modified = agent.environment(\.inferenceProvider, .ollama(model: "mistral"))
+let modified = agent.environment(\.inferenceProvider, myCustomProvider)
 ```
 
 #### Conversation
@@ -306,7 +305,7 @@ for message in await conversation.messages {
 | **Resilience** | 7 backoff strategies, circuit breaker, fallback chains, rate limiting |
 | **Observability** | `AgentObserver`, `Tracer`, `SwiftLogTracer`, per-agent token metrics |
 | **MCP** | Model Context Protocol client and server support |
-| **Providers** | First-class Foundation Models (on-device, no Conduit); Anthropic, OpenAI, Ollama, Gemini, MiniMax, OpenRouter, MLX via [Conduit](https://github.com/christopherkarani/Conduit) |
+| **Providers** | Built-in Apple Foundation Models (on-device); inject any `InferenceProvider` for custom backends |
 | **Macros** | `@Tool`, `@Parameter`, `@Traceable`, `#Prompt` |
 
 ## Architecture
@@ -329,7 +328,7 @@ for message in await conversation.messages {
 │   Workflow Graph  ·  Checkpointing  ·  Deterministic retry │
 ├─────────────────────────────────────────────────────────────┤
 │              InferenceProvider (pluggable)                   │
-│ Foundation Models · Anthropic · OpenAI · Ollama · OpenRouter│
+│ Foundation Models (built-in) · custom InferenceProvider     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -343,7 +342,7 @@ for message in await conversation.messages {
 | tvOS     | 26.0+   |
 | Linux    | Ubuntu 22.04+ with Swift 6.2 |
 
-The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; cloud providers and Ollama use the shared `InferenceProvider` surface.
+The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; inject a mock or custom `InferenceProvider` there.
 
 ## Documentation
 

@@ -80,7 +80,7 @@ import Foundation
 /// ### Internal Errors
 /// - ``agentNotFound(name:)``
 /// - ``internalError(reason:)``
-/// - ``toolCallingRequiresCloudProvider``
+/// - ``toolCallingUnsupported``
 ///
 /// ## See Also
 /// - ``GuardrailError``
@@ -554,29 +554,26 @@ public enum AgentError: Error, Sendable, Equatable {
     /// - Parameter reason: A description of the internal error
     case internalError(reason: String)
 
-    /// Tool calling was requested but the selected provider path could not satisfy it.
+    /// Tool calling was requested but the selected provider could not satisfy it.
     ///
     /// This error is thrown when:
-    /// - A local provider is configured but the request requires cloud-based tool calling
-    /// - The provider doesn't support native tool calling and prompt-based emulation is disabled
+    /// - The provider does not support native tool calling
     /// - The tool calling schema is incompatible with the provider
     ///
     /// ## Recovery
     ///
-    /// Configure a cloud provider with native tool support:
+    /// Pass a tool-capable `InferenceProvider` (for example Apple Foundation Models
+    /// with native tools) via the agent or global configuration:
     ///
     /// ```swift
-    /// Swarm.configure(cloudProvider: openAIProvider)
-    ///
-    /// // Or enable prompt-based tool emulation
-    /// let config = AgentConfiguration(
-    ///     allowPromptBasedTools: true
-    /// )
+    /// await Swarm.configure(provider: myToolCapableProvider)
+    /// // or
+    /// let agent = try Agent("…", inferenceProvider: myToolCapableProvider)
     /// ```
     ///
     /// ## Note
     /// See ``recoverySuggestion`` for the default recovery suggestion.
-    case toolCallingRequiresCloudProvider
+    case toolCallingUnsupported
 }
 
 // MARK: - LocalizedError
@@ -631,7 +628,7 @@ extension AgentError: LocalizedError {
             "Agent not found: '\(name)'"
         case let .internalError(reason):
             "Internal error: \(reason)"
-        case .toolCallingRequiresCloudProvider:
+        case .toolCallingUnsupported:
             "The selected provider could not satisfy this tool calling request."
         }
     }
@@ -642,13 +639,13 @@ extension AgentError: LocalizedError {
     /// specific error cases. Not all errors include recovery suggestions.
     ///
     /// ## See Also
-    /// - ``AgentError/toolCallingRequiresCloudProvider``
+    /// - ``AgentError/toolCallingUnsupported``
     public var recoverySuggestion: String? {
         switch self {
-        case .toolCallingRequiresCloudProvider:
-            "Configure `Swarm.configure(cloudProvider:)` or pass a provider with native tool-calling support if this request cannot rely on prompt-based tool emulation."
+        case .toolCallingUnsupported:
+            "Pass a provider with native tool-calling support via `Agent(..., inferenceProvider:)` or `await Swarm.configure(provider:)`, or use Apple Foundation Models on a supported device."
         case .inferenceProviderUnavailable:
-            "Check your network connection and API credentials, or try again later."
+            "Configure an inference provider via `await Swarm.configure(provider:)` or use Apple Foundation Models on a supported device."
         case .rateLimitExceeded(let retryAfter):
             if let seconds = retryAfter {
                 "Wait \(Int(seconds)) seconds before retrying the request."
@@ -721,8 +718,8 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.agentNotFound(name: \(name))"
         case let .internalError(reason):
             "AgentError.internalError(reason: \(reason))"
-        case .toolCallingRequiresCloudProvider:
-            "AgentError.toolCallingRequiresCloudProvider"
+        case .toolCallingUnsupported:
+            "AgentError.toolCallingUnsupported"
         }
     }
 }

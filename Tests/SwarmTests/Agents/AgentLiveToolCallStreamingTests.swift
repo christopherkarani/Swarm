@@ -153,8 +153,8 @@ struct AgentLiveToolCallStreamingTests {
         #expect(count == 2)
     }
 
-    @Test("Uses tool-call streaming when inferenceProvider is wrapped in ConduitProviderSelection")
-    func usesToolCallStreamingThroughConduitProviderSelectionWrapper() async throws {
+    @Test("Uses tool-call streaming when inferenceProvider conforms to ToolCallStreamingInferenceProvider")
+    func usesToolCallStreamingThroughStreamingProvider() async throws {
         struct EchoTool: AnyJSONTool, Sendable {
             let name = "echo"
             let description = "Echoes the input text"
@@ -241,7 +241,7 @@ struct AgentLiveToolCallStreamingTests {
         let agent = try Agent(
             tools: [EchoTool()],
             configuration: .default.maxIterations(3),
-            inferenceProvider: ConduitProviderSelection.provider(provider)
+            inferenceProvider: provider
         )
 
         var events: [AgentEvent] = []

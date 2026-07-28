@@ -159,7 +159,7 @@ func runFoundationModelsScenario(context: CapabilityScenarioContext) async throw
             name: "Foundation Models Path",
             families: [.foundationModels, .providers],
             status: .passed,
-            summary: "FoundationModels framework is not importable on this platform (expected on Linux). On-device path is compile-time gated; use cloud/Ollama providers instead.",
+            summary: "FoundationModels framework is not importable on this platform (expected on Linux). On-device path is compile-time gated; inject a custom InferenceProvider instead.",
             evidence: [
                 .init(label: "foundation-models", detail: body, artifactPath: context.relativeArtifactPath(for: artifact)),
             ]

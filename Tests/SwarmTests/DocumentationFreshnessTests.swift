@@ -21,15 +21,15 @@ struct DocumentationFreshnessTests {
         let workflowStreamLine = try lineNumber(containing: "public func stream(_ input", in: workflowSource)
         let scannedSourceCount = try countPublicCatalogSourceFiles()
 
-        #expect(catalog.contains("Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-05-18."))
+        #expect(catalog.contains("Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28"))
         #expect(catalog.contains("- Source files scanned: \(scannedSourceCount)"))
         #expect(catalog.contains("| \(workflowStreamLine) | func | public | Workflow.stream(_:)"))
         #expect(catalog.contains("| 42 | enum | public | Swarm | `public enum Swarm` |"))
-        #expect(catalog.contains("| 12 | struct | public | LLM | `public struct LLM` |"))
-        #expect(catalog.contains("LLM.ollama(_:configure:)"))
-        #expect(!catalog.contains("| 12 | enum | public | LLM | `public enum LLM` |"))
-        #expect(!catalog.contains("public case openAI(LLM.OpenAIConfig)"))
-        #expect(!catalog.contains("LLM.OpenAIConfig"))
+        #expect(!catalog.contains("| 12 | struct | public | LLM | `public struct LLM` |"))
+        #expect(!catalog.contains("LLM.ollama"))
+        #expect(!catalog.contains("ConduitProviderSelection"))
+        #expect(!catalog.contains("Swarm.cloudProvider"))
+        #expect(!catalog.contains("configure(cloudProvider:"))
     }
 
     @Test("public docs do not link stale complete reference")
@@ -152,6 +152,16 @@ struct DocumentationFreshnessTests {
             #expect(text.contains(expectedVersion), "\(file) should mention \(expectedVersion)")
             #expect(!text.contains("0.6.1"), "\(file) should not advertise unreleased 0.6.1")
         }
+    }
+
+    @Test("Package.swift does not depend on Conduit")
+    func packageDoesNotDependOnConduit() throws {
+        let package = try readRepoFile("Package.swift")
+
+        #expect(!package.contains("christopherkarani/Conduit"), "Package.swift must not declare the Conduit package URL")
+        #expect(!package.contains("package: \"Conduit\""), "Package.swift must not link the Conduit product")
+        #expect(!package.contains("\"Conduit\""), "Package.swift must not reference the Conduit package identity")
+        #expect(!package.contains("Conduit"), "Package.swift must not mention Conduit after the 0.6 hard break")
     }
 
     @Test("front-facing docs cover exported companion products")

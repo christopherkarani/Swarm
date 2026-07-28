@@ -7,13 +7,13 @@ struct AgentDefaultInferenceProviderTests {
     @Test("privacyRequired does not route through an explicit non-private provider")
     func privacyRequiredSkipsExplicitNonPrivateProvider() async throws {
         try await withSwarmConfigurationIsolation {
-            let cloudProvider = MockInferenceProvider(responses: ["cloud response"])
+            let nonPrivateProvider = MockInferenceProvider(responses: ["non-private response"])
             let configuration = AgentConfiguration.default
                 .inferencePolicy(InferencePolicy(privacyRequired: true))
             let agent = try Agent(
                 instructions: "Keep this private.",
                 configuration: configuration,
-                inferenceProvider: cloudProvider
+                inferenceProvider: nonPrivateProvider
             )
 
             do {
@@ -23,10 +23,10 @@ struct AgentDefaultInferenceProviderTests {
                 // The privacy invariant is that the explicit non-private provider is not called.
             }
 
-            #expect(await cloudProvider.generateCallCount == 0)
-            #expect(await cloudProvider.toolCallCalls.isEmpty)
-            #expect(await cloudProvider.generateMessageCalls.isEmpty)
-            #expect(await cloudProvider.toolCallMessageCalls.isEmpty)
+            #expect(await nonPrivateProvider.generateCallCount == 0)
+            #expect(await nonPrivateProvider.toolCallCalls.isEmpty)
+            #expect(await nonPrivateProvider.generateMessageCalls.isEmpty)
+            #expect(await nonPrivateProvider.toolCallMessageCalls.isEmpty)
         }
     }
 

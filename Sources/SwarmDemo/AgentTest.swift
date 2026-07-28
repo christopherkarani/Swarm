@@ -30,12 +30,14 @@ struct MyApp {
             print("✅ Using Apple Foundation Models (on-device)")
             inferenceProvider = session
         } else {
-            print("⚠️ Foundation Models not available, falling back to Ollama Cloud")
-            inferenceProvider = LLM.ollama("gpt-oss:120b-cloud")
+            print("❌ Apple Foundation Models are unavailable. Swarm's only built-in backend is Foundation Models.")
+            print("   Inject a custom InferenceProvider for other backends.")
+            return
         }
         #else
-        print("⚠️ Foundation Models not supported on this platform, using Ollama Cloud")
-        inferenceProvider = LLM.ollama("gpt-oss:120b-cloud")
+        print("❌ Foundation Models not supported on this platform.")
+        print("   Inject a custom InferenceProvider for other backends.")
+        return
         #endif
 
         // MARK: - Tools: built-in only (no API keys required)
