@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 @testable import Swarm
 import Testing
@@ -438,3 +439,4 @@ private final class CancellationState: @unchecked Sendable {
         }
     }
 }
+#endif

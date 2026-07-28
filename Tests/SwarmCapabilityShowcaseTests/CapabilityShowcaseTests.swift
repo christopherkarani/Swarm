@@ -97,7 +97,12 @@ struct CapabilityShowcaseTests {
                 }
         )
 
-        #expect(documentedIDs == deterministicIDs.union(smokeIDs))
+        let registryIDs = deterministicIDs.union(smokeIDs)
+        // Guide always documents durable; the lean default registry omits it when
+        // Integrations is off. Compare against the runtime registry, not #if.
+        #expect(documentedIDs.isSuperset(of: registryIDs))
+        let guideOnly = documentedIDs.subtracting(registryIDs)
+        #expect(guideOnly.isSubset(of: ["durable"]))
     }
 
     private var repoRoot: URL {

@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 @testable import Swarm
 import Testing
 
@@ -10,3 +11,4 @@ struct SwarmRuntimeEnvironmentTests {
         #expect(WaxMembraneStorage.defaultStoreURL.path.contains("MembraneTests"))
     }
 }
+#endif

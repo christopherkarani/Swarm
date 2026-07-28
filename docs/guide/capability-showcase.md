@@ -10,16 +10,19 @@ It lives entirely in-package:
 
 ## Commands
 
+The full matrix (including durable Hive checkpointing) requires the
+`Integrations` SwiftPM trait. Lean default builds omit `durable`.
+
 ```bash
-swift run SwarmCapabilityShowcase list
-swift run SwarmCapabilityShowcase matrix
-swift run SwarmCapabilityShowcase run <scenario-id>
-swift run SwarmCapabilityShowcase smoke
+swift run --traits Integrations SwarmCapabilityShowcase list
+swift run --traits Integrations SwarmCapabilityShowcase matrix
+swift run --traits Integrations SwarmCapabilityShowcase run <scenario-id>
+swift run --traits Integrations SwarmCapabilityShowcase smoke
 ```
 
 ## Deterministic matrix
 
-`swift run SwarmCapabilityShowcase matrix` runs these scenarios without live network dependencies:
+`swift run --traits Integrations SwarmCapabilityShowcase matrix` runs these scenarios without live network dependencies:
 
 | Scenario | What it proves |
 | --- | --- |
@@ -32,7 +35,7 @@ swift run SwarmCapabilityShowcase smoke
 | `workspace` | `AgentWorkspace`, `Agent.onDevice`, `Agent.spec`, and `WorkspaceWriter` load and write correctly |
 | `guardrails` | input, output, and tool guardrails can pass and trip deterministically |
 | `resilience` | retry, fallback, rate limiting, and circuit breaker helpers behave correctly |
-| `durable` | durable workflow checkpoint and resume works with in-memory checkpointing |
+| `durable` | durable workflow checkpoint and resume (requires `Integrations` trait) |
 | `observability` | a custom tracer receives agent trace events |
 | `mcp` | MCP tool discovery and MCP tool bridging both execute locally |
 | `providers` | global provider config, per-agent override, and `MultiProvider` routing work |

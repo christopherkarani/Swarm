@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 // GraphAgent.swift
 // HiveSwarm
 //
@@ -692,3 +693,4 @@ private actor CancellationController {
 
 // HiveChatRole typed constants are defined in ChatGraph.swift (internal)
 // and shared across the HiveSwarm module.
+#endif

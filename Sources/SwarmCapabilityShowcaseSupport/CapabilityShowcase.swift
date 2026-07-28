@@ -117,7 +117,15 @@ public struct CapabilityScenarioContext: Sendable {
 }
 
 public struct CapabilityShowcase: Sendable {
-    public static let requiredFamilies = Set(CapabilityFamily.allCases)
+    /// Families the matrix must cover in the current build configuration.
+    /// Durable Hive checkpointing requires the Integrations trait.
+    public static var requiredFamilies: Set<CapabilityFamily> {
+        #if SWARM_INTEGRATIONS
+        Set(CapabilityFamily.allCases)
+        #else
+        Set(CapabilityFamily.allCases).subtracting([.durable])
+        #endif
+    }
 
     public let scenarios: [CapabilityScenario]
 
@@ -201,7 +209,7 @@ private extension CapabilityShowcase {
     }
 
     static func makeScenarios(environment: [String: String]) -> [CapabilityScenario] {
-        let deterministic: [CapabilityScenario] = [
+        var deterministic: [CapabilityScenario] = [
             .init(
                 id: "agent-tools",
                 name: "Agent Tools",
@@ -266,13 +274,6 @@ private extension CapabilityShowcase {
                 runHandler: runResilienceScenario
             ),
             .init(
-                id: "durable",
-                name: "Durable Execution",
-                families: [.durable],
-                kind: .deterministic,
-                runHandler: runDurableScenario
-            ),
-            .init(
                 id: "observability",
                 name: "Observability",
                 families: [.observability],
@@ -301,6 +302,18 @@ private extension CapabilityShowcase {
                 runHandler: runFoundationModelsScenario
             ),
         ]
+
+        #if SWARM_INTEGRATIONS
+        deterministic.append(
+            .init(
+                id: "durable",
+                name: "Durable Execution",
+                families: [.durable],
+                kind: .deterministic,
+                runHandler: runDurableScenario
+            )
+        )
+        #endif
 
         let smoke: [CapabilityScenario] = [
             .init(
@@ -785,6 +798,7 @@ private func runResilienceScenario(context: CapabilityScenarioContext) async thr
     )
 }
 
+#if SWARM_INTEGRATIONS
 private func runDurableScenario(context: CapabilityScenarioContext) async throws -> CapabilityScenarioResult {
     let provider = ScriptedInferenceProvider(responses: ["running", "done"])
     let agent = try Agent("Checkpoint progress.", memory: makeScenarioMemory(), inferenceProvider: provider)
@@ -815,6 +829,7 @@ private func runDurableScenario(context: CapabilityScenarioContext) async throws
         ]
     )
 }
+#endif
 
 private func runObservabilityScenario(context: CapabilityScenarioContext) async throws -> CapabilityScenarioResult {
     let tracer = RecordingTracer()

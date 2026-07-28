@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import HiveCore
 
@@ -134,3 +135,4 @@ actor WorkflowFileCheckpointStore: WorkflowDurableCheckpointStore, HiveCheckpoin
         }
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 @testable import Swarm
 import Testing
@@ -183,3 +184,4 @@ private func makeTemporaryWaxURL() throws -> URL {
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root.appendingPathComponent("wax-memory-\(UUID().uuidString).mv2s")
 }
+#endif

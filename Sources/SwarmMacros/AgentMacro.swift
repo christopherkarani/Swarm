@@ -88,7 +88,7 @@ public struct AgentMacro: MemberMacro, ExtensionMacro {
                 }
 
                 private static func makeDefaultMemory() -> (any Memory)? {
-                    try? DefaultAgentMemory()
+                    try? Agent.makeDefaultMemory()
                 }
                 """)
         }

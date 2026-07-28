@@ -177,6 +177,7 @@ struct AgentWorkspaceTests {
         #expect(context.contains("violet-signal marker"))
     }
 
+    #if SWARM_INTEGRATIONS
     @Test("Workspace agents isolate default memory when switching sessions")
     func workspaceAgentsIsolateDefaultMemoryWhenSwitchingSessions() async throws {
         let workspaceRoot = try makeWorkspaceRoot()
@@ -222,6 +223,7 @@ struct AgentWorkspaceTests {
         #expect(context.contains("cobalt-session marker"))
         #expect(!context.contains("amber-session marker"))
     }
+    #endif
 
     @Test("Agent.spec uses listed SKILL.md content as retrieved context")
     func agentSpecUsesSkillContentAsRetrievedContext() async throws {
@@ -272,6 +274,7 @@ struct AgentWorkspaceTests {
         #expect(prompt?.contains("refund window") == true)
     }
 
+    #if SWARM_INTEGRATIONS
     @Test("Workspace agents keep isolated default memory inside the workspace cache")
     func workspaceAgentsKeepIsolatedDefaultMemoryInsideWorkspaceCache() async throws {
         let workspaceRoot = try makeWorkspaceRoot()
@@ -323,6 +326,7 @@ struct AgentWorkspaceTests {
         #expect(FileManager.default.fileExists(atPath: onDeviceWaxStore.path))
         #expect(FileManager.default.fileExists(atPath: specWaxStore.path))
     }
+    #endif
 
     @Test("Agent.spec unions constrained tool allowlists across skills")
     func agentSpecUnionsConstrainedToolAllowlists() throws {

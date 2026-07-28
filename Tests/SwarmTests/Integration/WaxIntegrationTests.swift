@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 // WaxIntegrationTests.swift
 // SwarmTests
 //
@@ -53,3 +54,4 @@ private struct FixedEmbeddingProvider: EmbeddingProvider {
         vector
     }
 }
+#endif

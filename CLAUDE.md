@@ -82,18 +82,37 @@ from the repo root.
 
 ```bash
 swift package resolve         # Resolve dependencies
-swift build                   # Build the library targets
-swift test                    # Run all tests
-swift test --no-parallel      # Match CI ordering (recommended)
+swift build                   # Lean default (Integrations trait off)
+swift test --no-parallel      # Core tests under default traits
+swift build --traits Integrations
+swift test --no-parallel --traits Integrations
+swift test --no-parallel --traits Integrations --filter HiveSwarmTests
 swift test --filter SwarmTests.WorkflowTests   # Run a single suite
 ```
 
-CI (`.github/workflows/swift.yml`) runs on macOS 15 and Ubuntu with Swift 6.2.
-The default Swarm graph includes Hive, so Linux CI explicitly builds and runs
-the `HiveSwarmTests` target without opt-in traits or environment flags.
+### Integrations trait (off by default)
 
-The Hive integration tests live in the `HiveSwarmTests` target and are asserted
-explicitly in CI on both macOS and Linux.
+Default consumers get lean Swarm (core + Foundation Models). Enable the
+`Integrations` trait for durable Hive workflows, ContextCore+Wax default
+memory, Membrane adapters, and web helpers:
+
+```bash
+swift build --traits Integrations
+swift test --no-parallel --traits Integrations
+```
+
+Consumer `Package.swift`:
+
+```swift
+.package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.0", traits: ["Integrations"])
+```
+
+CI (`.github/workflows/swift.yml`) runs on macOS 15 and Ubuntu with Swift 6.2.
+It exercises a lean default build plus a full `--traits Integrations` lane
+(including `HiveSwarmTests` and the capability showcase matrix).
+
+The Hive integration tests live in the `HiveSwarmTests` target and require
+`--traits Integrations`.
 
 ### Demo / benchmark executables
 
@@ -111,10 +130,10 @@ SWARM_INCLUDE_DEMO=1 swift run SwarmDemo
 in a deterministic matrix that is CI-safe:
 
 ```bash
-swift run SwarmCapabilityShowcase list      # Enumerate scenarios
-swift run SwarmCapabilityShowcase matrix    # Run the deterministic matrix
-swift run SwarmCapabilityShowcase run handoff
-swift run SwarmCapabilityShowcase smoke     # Live-provider, opt-in via env vars
+swift run --traits Integrations SwarmCapabilityShowcase list
+swift run --traits Integrations SwarmCapabilityShowcase matrix
+swift run --traits Integrations SwarmCapabilityShowcase run handoff
+swift run --traits Integrations SwarmCapabilityShowcase smoke
 ```
 
 See `docs/guide/capability-showcase.md` for the full scenario catalog and

@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Wax
 
 /// Lightweight helpers for the Wax embedding adapter.
@@ -12,3 +13,4 @@ public extension WaxIntegration {
     /// Returns a debug string that demonstrates the adapter is compiled.
     static var debugDescription: String { "Wax integration is enabled" }
 }
+#endif

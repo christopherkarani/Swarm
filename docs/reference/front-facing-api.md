@@ -2,6 +2,29 @@
 
 This document describes the V3 public API surface of Swarm.
 
+## Integrations trait
+
+Default package consumption is **lean** (Integrations off): core Swarm + Apple
+Foundation Models. Opt in for durable Hive workflows, ContextCore+Wax default
+memory, Membrane adapters, and web helpers:
+
+```swift
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.0",
+    traits: ["Integrations"]
+)
+```
+
+| Surface | Lean default | With Integrations |
+|---------|--------------|-------------------|
+| `Agent.makeDefaultMemory()` | `SlidingWindowMemory` | `DefaultAgentMemory` (ContextCore + Wax) |
+| Durable execute with checkpoint / `resumeFrom` | Throws | Full Hive durable engine |
+| Membrane / web helpers | Unavailable or no-op | Linked and active |
+
+SwiftPM may still resolve temporary remotes listed in `Package.swift`; the trait
+controls **link**, not always package resolution. See README Install.
+
 ## 1) Entry point and global configuration
 
 ```swift
@@ -316,6 +339,16 @@ public struct Workflow: Sendable {
 
 ### Durable namespace
 
+Requires the **`Integrations`** SwiftPM trait (`traits: ["Integrations"]` or
+`--traits Integrations`) for real checkpoint/resume at **execute** time.
+
+With checkpoint/resume configured (or `resumeFrom` set), lean builds throw that
+durable execution requires Integrations. Without that configuration, bare
+execute still runs as a non-durable workflow. Checkpoint factories and
+`.durable.checkpoint` / `.checkpointing` remain type-checkable in lean mode
+(configuration-only); the trait gate is enforced when execute needs the durable
+engine.
+
 ```swift
 public extension Workflow {
     struct Durable: Sendable {
@@ -328,6 +361,7 @@ public extension Workflow {
     }
 }
 
+// Configuration-only in lean builds; durable engine requires Integrations at execute
 WorkflowCheckpointing.inMemory()
 WorkflowCheckpointing.fileSystem(directory: URL)
 ```
@@ -367,6 +401,20 @@ Dot-syntax memory factories are contextual. Use them where Swift can infer a
 specific memory type, such as the `memory:` init parameter, or assign to the
 concrete memory actor type. Do not call these as static members on the
 `Memory` protocol.
+
+### Package default (`Agent.makeDefaultMemory()`)
+
+When an agent is created without an explicit `memory:` argument, Swarm uses
+`Agent.makeDefaultMemory()`:
+
+```swift
+// Trait-aware package default (prefer over constructing integration types yourself)
+public static func makeDefaultMemory() throws -> any Memory
+// Integrations on  → DefaultAgentMemory (ContextCore + Wax)
+// Integrations off → SlidingWindowMemory
+```
+
+Pass an explicit factory when you want a fixed backend regardless of traits:
 
 ```swift
 let agent = try Agent(

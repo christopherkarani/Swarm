@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import CryptoKit
 import Foundation
 import MembraneCore
@@ -277,3 +278,4 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
         return Data(base64Encoded: storedText)
     }
 }
+#endif

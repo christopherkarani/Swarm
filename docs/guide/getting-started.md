@@ -9,6 +9,7 @@ Get a working Swarm agent in under a minute.
 Add Swarm to your `Package.swift`:
 
 ```swift
+// Lean default (core + Foundation Models). No Integrations trait.
 dependencies: [
     .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.0")
 ],
@@ -16,6 +17,32 @@ targets: [
     .target(name: "YourApp", dependencies: ["Swarm"])
 ]
 ```
+
+### Upgrading / Integrations trait
+
+The **`Integrations`** SwiftPM trait is **off by default**. A trait-free
+`.package(...)` is the lean link: core Swarm + on-device Foundation Models.
+
+Enable Integrations when you need any of:
+
+| Capability | Without Integrations (lean) | With `traits: ["Integrations"]` |
+|------------|----------------------------|----------------------------------|
+| Default agent memory | `SlidingWindowMemory` | ContextCore + Wax `DefaultAgentMemory` |
+| Durable Hive checkpoint/resume | Configuration type-checks; execute with checkpoint/resume configured throws | Full durable engine |
+| Membrane adapters | No-op / unavailable backends | Real Membrane session adapters |
+| Web helpers (`websearch`, page fetch/HTML parse) | Not injected / gated | Full web tool support |
+
+```swift
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.0",
+    traits: ["Integrations"]
+)
+```
+
+SwiftPM may still **resolve** temporary remote packages (Hive/Membrane/ContextCore/Wax)
+listed in Swarm’s manifest until they are vendored in-tree; omitting the trait does
+**not** link those products into your app.
 
 ### Xcode
 
@@ -241,9 +268,20 @@ let result = try await Workflow()
 
 ### Durable: checkpoint and resume
 
-For checkpoint/resume and other power features, use the `.durable` namespace:
+Durable Hive checkpoint/resume requires the **`Integrations`** SwiftPM trait
+(`--traits Integrations` or `.package(..., traits: ["Integrations"])`).
+
+Without Integrations:
+
+- `.durable.checkpoint` / `.checkpointing` and `WorkflowCheckpointing.*` still
+  type-check (configuration-only APIs).
+- `execute` / `.durable.execute` **throws** when checkpointing is configured or
+  `resumeFrom` is non-nil.
+- Bare workflow `run` / `execute` **without** durable configuration still runs as
+  a non-durable workflow.
 
 ```swift
+// Requires Integrations trait for checkpoint/resume at execute time
 let result = try await Workflow()
     .step(fetchAgent)
     .step(analyzeAgent)

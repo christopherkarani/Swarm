@@ -11,6 +11,16 @@ import Testing
 
 @Suite("Agent Tests")
 struct ReActAgentTests {
+    @Test("makeDefaultMemory matches Integrations trait")
+    func makeDefaultMemoryMatchesIntegrationsTrait() throws {
+        let memory = try Agent.makeDefaultMemory()
+        #if SWARM_INTEGRATIONS
+        #expect(memory is DefaultAgentMemory)
+        #else
+        #expect(memory is SlidingWindowMemory)
+        #endif
+    }
+
     @Test("Simple query returns final answer")
     func simpleQuery() async throws {
         // Create a mock provider that immediately returns a response

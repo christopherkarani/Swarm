@@ -38,10 +38,15 @@ var packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.13.5"),
 ]
 
+// Integrations trait: opt-in graph/memory/web/Hive paths (off by default).
+// Roadmap: Hive, Membrane, and ContextCore become in-tree Sources/ targets
+// (local folders linked only when Integrations is on). Wax stays remote for now.
+// Remotes below are temporary until that vendor lands.
 let integrationTrait = "Integrations"
 if !coreOnly {
     packageDependencies += [
-        // Production graph must resolve to the published tag set that is known to build together.
+        // Temporary remotes until Hive/Membrane/ContextCore are vendored under Sources/.
+        // Wax remains an external package + trait-gated product dependency.
         .package(url: "https://github.com/christopherkarani/Wax.git", exact: "0.1.23"),
         .package(url: "https://github.com/christopherkarani/ContextCore.git", exact: "1.0.0"),
         .package(url: "https://github.com/christopherkarani/Membrane", exact: "0.1.4"),
@@ -52,7 +57,8 @@ if !coreOnly {
 var swarmDependencies: [Target.Dependency] = [
     "SwarmMacros",
     .product(name: "Logging", package: "swift-log"),
-    .product(name: "SwiftSoup", package: "SwiftSoup"),
+    // HTML parsing for web helpers; only linked when Integrations is enabled.
+    .product(name: "SwiftSoup", package: "SwiftSoup", condition: .when(traits: [integrationTrait])),
 ]
 
 var swarmSwiftSettings: [SwiftSetting] = [
@@ -157,8 +163,8 @@ var packageTargets: [Target] = [
             ]
             if !coreOnly {
                 dependencies += [
-                    .product(name: "Membrane", package: "Membrane"),
-                    .product(name: "MembraneCore", package: "Membrane"),
+                    .product(name: "Membrane", package: "Membrane", condition: .when(traits: [integrationTrait])),
+                    .product(name: "MembraneCore", package: "Membrane", condition: .when(traits: [integrationTrait])),
                 ]
             }
             return dependencies
@@ -182,9 +188,8 @@ var packageTargets: [Target] = [
         dependencies: [
             "SwarmCapabilityShowcaseSupport",
         ],
-        swiftSettings: [
-            .enableExperimentalFeature("StrictConcurrency")
-        ]
+        // Inherit SWARM_INTEGRATIONS so requiredFamilies/durable match the support target.
+        swiftSettings: swarmSwiftSettings
     ),
     .testTarget(
         name: "SwarmOpenTelemetryTests",
@@ -203,7 +208,7 @@ if !coreOnly {
             name: "HiveSwarmTests",
             dependencies: [
                 "Swarm",
-                .product(name: "HiveCore", package: "Hive")
+                .product(name: "HiveCore", package: "Hive", condition: .when(traits: [integrationTrait])),
             ],
             swiftSettings: swarmSwiftSettings
         )
@@ -244,10 +249,15 @@ let package = Package(
     ],
     products: packageProducts,
     traits: [
-        .default(enabledTraits: [integrationTrait]),
+        // Lean default: core Swarm + Foundation Models only. Opt in for full graph.
+        .default(enabledTraits: []),
         .trait(
             name: integrationTrait,
-            description: "Enable provider, memory, graph runtime, Wax, Membrane, ContextCore, and Hive integrations."
+            description: """
+            Enable SWARM_INTEGRATIONS: durable Hive workflows, ContextCore+Wax default memory, \
+            Membrane adapters, and web helpers. Off by default. Hive/Membrane/ContextCore are \
+            planned as in-tree Sources/ targets; Wax remains an external package for now.
+            """
         ),
     ],
     dependencies: packageDependencies,

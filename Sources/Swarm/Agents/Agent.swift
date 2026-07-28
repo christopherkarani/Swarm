@@ -110,8 +110,9 @@ public struct Agent: AgentRuntime, Sendable {
     /// - **Memory**: Provides additional context (RAG, summaries) - not for conversation storage
     /// - **Session**: Stores the actual conversation history and is the source of truth for transcripts
     ///
-    /// If no explicit memory is set, Swarm still uses a composite default memory
-    /// internally: ContextCore for working context and Wax for durable recall.
+    /// If no explicit memory is set, Swarm uses ``makeDefaultMemory()``
+    /// internally: ContextCore + Wax ``DefaultAgentMemory`` when the Integrations
+    /// trait is enabled, otherwise ``SlidingWindowMemory``.
     /// This property only reflects an explicit override.
     ///
     /// ## Setting Memory
@@ -230,7 +231,7 @@ public struct Agent: AgentRuntime, Sendable {
     ///   - tools: Tools available to the agent. Default: []
     ///   - instructions: System instructions defining agent behavior. Default: ""
     ///   - configuration: Agent configuration settings. Default: .default
-    ///   - memory: Optional explicit memory override. Default: composite ContextCore + Wax memory
+    ///   - memory: Optional explicit memory override. Default: ContextCore+Wax `DefaultAgentMemory` when Integrations is enabled; otherwise `SlidingWindowMemory`
     ///   - inferenceProvider: Optional custom inference provider. Default: nil
     ///   - tracer: Optional tracer for observability. Default: nil
     ///   - inputGuardrails: Input validation guardrails. Default: []
@@ -302,7 +303,7 @@ public struct Agent: AgentRuntime, Sendable {
     ///   - tools: Typed tools available to the agent. Default: []
     ///   - instructions: System instructions defining agent behavior. Default: ""
     ///   - configuration: Agent configuration settings. Default: .default
-    ///   - memory: Optional explicit memory override. Default: composite ContextCore + Wax memory
+    ///   - memory: Optional explicit memory override. Default: ContextCore+Wax `DefaultAgentMemory` when Integrations is enabled; otherwise `SlidingWindowMemory`
     ///   - inferenceProvider: Optional custom inference provider. Default: nil
     ///   - tracer: Optional tracer for observability. Default: nil
     ///   - inputGuardrails: Input validation guardrails. Default: []
@@ -355,7 +356,7 @@ public struct Agent: AgentRuntime, Sendable {
     ///   - tools: Tools available to the agent. Default: []
     ///   - instructions: System instructions defining agent behavior. Default: ""
     ///   - configuration: Agent configuration settings. Default: .default
-    ///   - memory: Optional explicit memory override. Default: composite ContextCore + Wax memory
+    ///   - memory: Optional explicit memory override. Default: ContextCore+Wax `DefaultAgentMemory` when Integrations is enabled; otherwise `SlidingWindowMemory`
     ///   - inferenceProvider: Optional custom inference provider. Default: nil
     ///   - tracer: Optional tracer for observability. Default: nil
     ///   - inputGuardrails: Input validation guardrails. Default: []
@@ -412,7 +413,7 @@ public struct Agent: AgentRuntime, Sendable {
     /// - Parameters:
     ///   - instructions: System instructions defining agent behavior.
     ///   - configuration: Agent configuration settings. Default: `.default`
-    ///   - memory: Optional explicit memory override. Default: composite ContextCore + Wax memory
+    ///   - memory: Optional explicit memory override. Default: ContextCore+Wax `DefaultAgentMemory` when Integrations is enabled; otherwise `SlidingWindowMemory`
     ///   - inferenceProvider: Optional custom inference provider. Default: `nil`
     ///   - tracer: Optional tracer for observability. Default: `nil`
     ///   - inputGuardrails: Input validation guardrails. Default: `[]`
@@ -1121,7 +1122,13 @@ public struct Agent: AgentRuntime, Sendable {
         }
     }
 
-    static func makeDefaultMemory() throws -> any Memory {
+    /// Creates the package default memory for agents that do not pass one explicitly.
+    ///
+    /// With the Integrations trait: ContextCore+Wax ``DefaultAgentMemory``.
+    /// Without Integrations (lean default): ``SlidingWindowMemory``.
+    /// Prefer this over constructing integration types from macros or client code so
+    /// trait gating stays inside the Swarm module.
+    public static func makeDefaultMemory() throws -> any Memory {
         #if SWARM_INTEGRATIONS
         if SwarmRuntimeEnvironment.isRunningTests {
             let root = FileManager.default.temporaryDirectory
@@ -2856,7 +2863,7 @@ public extension Agent {
     ///   - instructions: System instructions defining agent behavior. Default: ""
     ///   - tools: Tools available to the agent. Default: []
     ///   - inferenceProvider: Optional custom inference provider. Default: nil
-    ///   - memory: Optional explicit memory override. Default: composite ContextCore + Wax memory
+    ///   - memory: Optional explicit memory override. Default: ContextCore+Wax `DefaultAgentMemory` when Integrations is enabled; otherwise `SlidingWindowMemory`
     ///   - tracer: Optional tracer for observability. Default: nil
     ///   - configuration: Additional agent configuration settings. Default: .default
     ///   - inputGuardrails: Input validation guardrails. Default: []
@@ -2918,7 +2925,7 @@ public extension Agent {
     ///   - instructions: System instructions. Default: ""
     ///   - tools: Tools available to the agent. Default: []
     ///   - inferenceProvider: Optional inference provider. Default: nil
-    ///   - memory: Optional explicit memory override. Default: composite ContextCore + Wax memory
+    ///   - memory: Optional explicit memory override. Default: ContextCore+Wax `DefaultAgentMemory` when Integrations is enabled; otherwise `SlidingWindowMemory`
     ///   - tracer: Optional tracer. Default: nil
     ///   - configuration: Additional configuration. Default: .default
     ///   - inputGuardrails: Input guardrails. Default: []

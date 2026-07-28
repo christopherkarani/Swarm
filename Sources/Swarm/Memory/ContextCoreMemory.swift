@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 // ContextCoreMemory.swift
 // Swarm Framework
 //
@@ -192,3 +193,4 @@ public actor ContextCoreMemory: Memory, MemoryPromptDescriptor, MemorySessionLif
         )
     }
 }
+#endif

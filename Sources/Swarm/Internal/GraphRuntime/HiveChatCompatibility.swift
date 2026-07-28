@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import HiveCore
 
@@ -213,3 +214,4 @@ extension HiveEnvironment where Schema == ChatGraph.Schema {
         )
     }
 }
+#endif

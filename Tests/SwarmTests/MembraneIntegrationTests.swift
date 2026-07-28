@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import MembraneCore
 @testable import Swarm
@@ -635,3 +636,4 @@ private actor ThrowingMembraneAdapter: MembraneAgentAdapter {
     func restore(checkpointData _: Data?) async throws {}
     func snapshotCheckpointData() async throws -> Data? { nil }
 }
+#endif

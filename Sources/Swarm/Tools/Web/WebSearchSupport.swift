@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import Wax
 
@@ -2341,3 +2342,4 @@ private extension String {
         isEmpty ? nil : self
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import CryptoKit
 import Foundation
 import HiveCore
@@ -1303,3 +1304,4 @@ struct HiveTrackedThreadState: Sendable {
     var frontierCount: Int?
     var eventSchemaVersion: String?
 }
+#endif

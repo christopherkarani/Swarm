@@ -1,5 +1,5 @@
 # Swarm CI Workflow
-# Builds and tests on macOS; verifies the Linux core build lane on Ubuntu
+# Lean default + Integrations trait lanes on macOS and Linux
 
 name: Swift CI
 
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # macOS Build & Test (full features including SwiftData)
+  # macOS: lean default build + full Integrations matrix
   build-macos:
     name: Build & Test (macOS)
     runs-on: macos-15
@@ -43,23 +43,26 @@ jobs:
       - name: Resolve dependencies
         run: swift package resolve
 
-      - name: Build
+      - name: Build lean default (Integrations off)
         run: swift build
 
-      - name: Run tests
+      - name: Test lean default
         run: swift test --no-parallel
 
-      - name: Run Hive integration tests
-        run: swift test --no-parallel --filter HiveSwarmTests
+      - name: Build with Integrations trait
+        run: swift build --traits Integrations
+
+      - name: Run tests with Integrations trait
+        run: swift test --no-parallel --traits Integrations
 
       - name: Run capability showcase matrix
-        run: swift run SwarmCapabilityShowcase matrix
+        run: swift run --traits Integrations SwarmCapabilityShowcase matrix
 
       - name: Test CodeReviewer example
         run: SWARM_CORE_ONLY=1 swift test
         working-directory: Examples/CodeReviewer
 
-  # Linux Build & Test (default graph, including Hive)
+  # Linux: lean default + Integrations (including Hive)
   build-linux:
     name: Build (Linux Core)
     runs-on: ubuntu-latest
@@ -88,17 +91,20 @@ jobs:
       - name: Resolve dependencies
         run: swift package resolve
 
-      - name: Build default Swarm + Hive graph
+      - name: Build lean default (Integrations off)
         run: swift build
 
-      - name: Build tests including Hive integration
-        run: swift build --build-tests
-
-      - name: Run tests
+      - name: Test lean default
         run: swift test --no-parallel
 
-      - name: Run Hive integration tests
-        run: swift test --no-parallel --filter HiveSwarmTests
+      - name: Build with Integrations trait
+        run: swift build --traits Integrations
+
+      - name: Build tests with Integrations trait
+        run: swift build --build-tests --traits Integrations
+
+      - name: Run tests with Integrations trait
+        run: swift test --no-parallel --traits Integrations
 
   # Code Quality (macOS only - SwiftLint/SwiftFormat)
   code-quality:
