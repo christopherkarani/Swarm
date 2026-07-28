@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import Wax
 import WaxVectorSearch
@@ -420,3 +421,4 @@ public extension WaxMemory {
         return root.appendingPathComponent(fileName)
     }
 }
+#endif

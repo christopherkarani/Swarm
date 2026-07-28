@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 @testable import Swarm
 import Testing
@@ -124,3 +125,4 @@ private func makeLargeSession() async throws -> InMemorySession {
     }
     return session
 }
+#endif

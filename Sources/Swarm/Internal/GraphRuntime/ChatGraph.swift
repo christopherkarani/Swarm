@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import CryptoKit
 import Foundation
 import HiveCore
@@ -1105,3 +1106,4 @@ private extension UInt32 {
         ]
     }
 }
+#endif

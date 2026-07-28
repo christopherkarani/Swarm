@@ -241,9 +241,12 @@ let result = try await Workflow()
 
 ### Durable: checkpoint and resume
 
-For checkpoint/resume and other power features, use the `.durable` namespace:
+Durable Hive checkpoint/resume requires the **`Integrations`** SwiftPM trait
+(`--traits Integrations` or `.package(..., traits: ["Integrations"])`). Without
+it, `.durable.execute` throws that durable execution is unavailable.
 
 ```swift
+// Requires Integrations trait
 let result = try await Workflow()
     .step(fetchAgent)
     .step(analyzeAgent)

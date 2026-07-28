@@ -1121,7 +1121,13 @@ public struct Agent: AgentRuntime, Sendable {
         }
     }
 
-    static func makeDefaultMemory() throws -> any Memory {
+    /// Creates the package default memory for agents that do not pass one explicitly.
+    ///
+    /// With the Integrations trait: ContextCore+Wax ``DefaultAgentMemory``.
+    /// Without Integrations (lean default): ``SlidingWindowMemory``.
+    /// Prefer this over constructing integration types from macros or client code so
+    /// trait gating stays inside the Swarm module.
+    public static func makeDefaultMemory() throws -> any Memory {
         #if SWARM_INTEGRATIONS
         if SwarmRuntimeEnvironment.isRunningTests {
             let root = FileManager.default.temporaryDirectory

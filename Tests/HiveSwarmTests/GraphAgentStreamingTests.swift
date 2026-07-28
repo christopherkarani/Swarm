@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 // HiveBackedAgentStreamingTests.swift
 // HiveSwarm
 //
@@ -305,3 +306,4 @@ private struct StreamingTestLogger: HiveLogger {
     func info(_ message: String, metadata: [String: String]) {}
     func error(_ message: String, metadata: [String: String]) {}
 }
+#endif

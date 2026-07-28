@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import HiveCore
 
@@ -22,3 +23,4 @@ struct HiveCodableJSONCodec<Value: Codable & Sendable>: HiveCodec, Sendable {
     }
 }
 
+#endif

@@ -121,6 +121,7 @@ struct SwarmConfigurationTests {
         }
     }
 
+    #if SWARM_INTEGRATIONS
     @Test("Ambient web configuration injects websearch without mutating agent tools")
     func ambientWebConfigurationInjectsWebsearch() async throws {
         try await withIsolatedConfiguration {
@@ -214,6 +215,7 @@ struct SwarmConfigurationTests {
             #expect(schemas.first(where: { $0.name == "websearch" })?.description == "Explicit override")
         }
     }
+    #endif
 
     // MARK: Private
 

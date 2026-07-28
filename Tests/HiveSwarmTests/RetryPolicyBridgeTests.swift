@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 // RetryPolicyBridgeTests.swift
 // HiveSwarm
 //
@@ -316,3 +317,4 @@ private struct RetryTestLogger: HiveLogger {
 private func retryAssistantMsg(id: String, content: String) -> HiveChatMessage {
     HiveChatMessage(id: id, role: .assistant, content: content, toolCalls: [], op: nil)
 }
+#endif

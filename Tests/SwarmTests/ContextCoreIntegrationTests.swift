@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Testing
 
 @testable import Swarm
@@ -56,3 +57,4 @@ private actor EndSessionRecorder {
         recordedCount += 1
     }
 }
+#endif

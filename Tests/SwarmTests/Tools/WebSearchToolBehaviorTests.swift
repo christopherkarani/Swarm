@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 @testable import Swarm
 import Testing
@@ -73,3 +74,4 @@ struct WebSearchToolBehaviorTests {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
     }
 }
+#endif

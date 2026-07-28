@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import WaxVectorSearch
 
@@ -63,3 +64,4 @@ public struct WaxEmbeddingProviderAdapter: WaxVectorSearch.EmbeddingProvider {
         return normalize ? EmbeddingUtils.normalize(embedding) : embedding
     }
 }
+#endif

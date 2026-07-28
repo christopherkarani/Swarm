@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import HiveCore
 
@@ -227,3 +228,4 @@ extension ToolRegistryAdapter {
         }
     }
 }
+#endif

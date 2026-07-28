@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Dispatch
 import Foundation
 import HiveCore
@@ -328,3 +329,4 @@ private struct WorkflowDurableLogger: HiveLogger {
     func info(_ message: String, metadata: [String: String]) {}
     func error(_ message: String, metadata: [String: String]) {}
 }
+#endif

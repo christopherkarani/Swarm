@@ -28,10 +28,31 @@ Two agents, one pipeline, compiled to a DAG with crash recovery and Swift concur
 
 ## Install
 
+Default **link** is **lean**: core Swarm + on-device Foundation Models. Graph/memory/web/Hive **products** are trait-gated (off by default) and are not linked into Swarm unless you enable Integrations.
+
+SwiftPM may still **resolve** temporary remote packages (Hive/Membrane/ContextCore/Wax) listed in `Package.swift` until those libraries are vendored as in-tree targets. Enabling Integrations links them; omitting the trait does not link them into Swarm.
+
 ```swift
+// Lean default link (recommended for most apps)
 .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.0")
+
+// Full integrations: durable Hive workflows, ContextCore+Wax default memory,
+// Membrane adapters, and web helpers
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.0",
+    traits: ["Integrations"]
+)
 ```
 
+From a checkout of this package:
+
+```bash
+swift build                                      # lean default
+swift build --traits Integrations                # full graph
+swift test --no-parallel --traits Integrations
+swift run --traits Integrations SwarmCapabilityShowcase matrix
+```
 
 ## Quick Start
 
@@ -91,10 +112,11 @@ Swarm now ships with an in-repo capability showcase that exercises the stable su
 Run it locally:
 
 ```bash
-swift run SwarmCapabilityShowcase list
-swift run SwarmCapabilityShowcase matrix
-swift run SwarmCapabilityShowcase run handoff
-swift run SwarmCapabilityShowcase smoke
+# Capability showcase matrix covers durable workflows; enable Integrations
+swift run --traits Integrations SwarmCapabilityShowcase list
+swift run --traits Integrations SwarmCapabilityShowcase matrix
+swift run --traits Integrations SwarmCapabilityShowcase run handoff
+swift run --traits Integrations SwarmCapabilityShowcase smoke
 ```
 
 The deterministic matrix is CI-safe. Live-provider smoke coverage is opt-in through environment variables. See [docs/guide/capability-showcase.md](docs/guide/capability-showcase.md) for the scenario catalog and smoke-mode details.

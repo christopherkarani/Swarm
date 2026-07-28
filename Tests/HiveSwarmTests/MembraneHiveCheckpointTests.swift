@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import HiveCore
 @_spi(ColonyInternal) @testable import Swarm
@@ -243,3 +244,4 @@ private struct TestFailure: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
 }
+#endif

@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import CryptoKit
 import Foundation
 import HiveCore
@@ -1706,3 +1707,4 @@ private struct CancellableTestTool: AnyJSONTool {
         throw CancellationError()
     }
 }
+#endif

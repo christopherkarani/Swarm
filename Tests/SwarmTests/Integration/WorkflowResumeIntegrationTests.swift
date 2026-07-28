@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import Testing
 @testable import Swarm
@@ -60,3 +61,4 @@ private final class ResumeCounter: @unchecked Sendable {
         return value >= 2 ? "done" : "running"
     }
 }
+#endif

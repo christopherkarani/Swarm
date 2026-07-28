@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import Testing
 @testable import Swarm
@@ -236,3 +237,4 @@ private actor FailingAgent: AgentRuntime {
 
     func cancel() async {}
 }
+#endif

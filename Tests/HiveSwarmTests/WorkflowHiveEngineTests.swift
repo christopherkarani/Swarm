@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import Testing
 @testable import Swarm
@@ -67,3 +68,4 @@ private struct LocalConstantAgent: AgentRuntime {
 
     func cancel() async {}
 }
+#endif

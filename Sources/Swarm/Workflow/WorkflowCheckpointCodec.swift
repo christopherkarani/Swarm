@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import HiveCore
 
@@ -21,3 +22,4 @@ struct WorkflowCheckpointCodec<Value: Codable & Sendable>: HiveCodec, Sendable {
         try JSONDecoder().decode(Value.self, from: data)
     }
 }
+#endif

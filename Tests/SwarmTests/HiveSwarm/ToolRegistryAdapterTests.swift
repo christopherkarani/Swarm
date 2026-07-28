@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 import Foundation
 import HiveCore
 @_spi(ColonyInternal) @testable import Swarm
@@ -44,3 +45,4 @@ struct SwarmToolRegistryTests {
         }
     }
 }
+#endif

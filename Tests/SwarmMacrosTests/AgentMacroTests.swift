@@ -59,7 +59,7 @@ final class AgentMacroTests: XCTestCase {
                     }
 
                     private static func makeDefaultMemory() -> (any Memory)? {
-                        try? DefaultAgentMemory()
+                        try? Agent.makeDefaultMemory()
                     }
 
                     nonisolated public var inferenceProvider: (any InferenceProvider)? {
@@ -353,7 +353,7 @@ final class AgentMacroTests: XCTestCase {
                     }
 
                     private static func makeDefaultMemory() -> (any Memory)? {
-                        try? DefaultAgentMemory()
+                        try? Agent.makeDefaultMemory()
                     }
 
                     nonisolated public var inferenceProvider: (any InferenceProvider)? {
@@ -674,7 +674,7 @@ extension AgentMacroTests {
                     }
 
                     private static func makeDefaultMemory() -> (any Memory)? {
-                        try? DefaultAgentMemory()
+                        try? Agent.makeDefaultMemory()
                     }
 
                     nonisolated public var inferenceProvider: (any InferenceProvider)? {

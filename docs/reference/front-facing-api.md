@@ -316,6 +316,10 @@ public struct Workflow: Sendable {
 
 ### Durable namespace
 
+Requires the **`Integrations`** SwiftPM trait (`traits: ["Integrations"]` or
+`--traits Integrations`). Without it, `execute` throws that durable execution
+is unavailable.
+
 ```swift
 public extension Workflow {
     struct Durable: Sendable {

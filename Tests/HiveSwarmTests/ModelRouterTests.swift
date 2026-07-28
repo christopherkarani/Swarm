@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 // ModelRouterTests.swift
 // HiveSwarm
 //
@@ -264,3 +265,4 @@ private struct TestError: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
 }
+#endif

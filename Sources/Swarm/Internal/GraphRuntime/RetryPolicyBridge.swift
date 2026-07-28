@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 // RetryPolicyBridge.swift
 // HiveSwarm
 //
@@ -98,3 +99,4 @@ enum RetryPolicyBridge {
         return UInt64(clamping: Int64(seconds * 1_000_000_000))
     }
 }
+#endif

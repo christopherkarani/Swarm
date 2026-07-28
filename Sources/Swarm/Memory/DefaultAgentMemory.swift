@@ -1,3 +1,4 @@
+#if SWARM_INTEGRATIONS
 // DefaultAgentMemory.swift
 // Swarm Framework
 //
@@ -479,3 +480,4 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
         return String(text[..<end])
     }
 }
+#endif
