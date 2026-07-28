@@ -303,11 +303,12 @@ agent.environment(\.inferenceProvider, myCustomProvider)
 
 ### Provider resolution order
 
-1. Explicit provider on the agent  
-2. Task-local / environment override  
-3. `Swarm.defaultProvider` from `await Swarm.configure(provider:)`  
-4. Foundation Models when the system model is available  
-5. Else `AgentError.inferenceProviderUnavailable`
+1. When `inferencePolicy.privacyRequired` is true: Foundation Models first, then only providers that report `privateInference` (explicit → environment → `Swarm.defaultProvider`); otherwise `AgentError.inferenceProviderUnavailable`
+2. Explicit provider on the agent  
+3. Task-local / environment override  
+4. `Swarm.defaultProvider` from `await Swarm.configure(provider:)`  
+5. Foundation Models when the system model is available  
+6. Else `AgentError.inferenceProviderUnavailable`
 
 ## Requirements
 

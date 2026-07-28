@@ -40,7 +40,7 @@ features:
 
   - icon: "\U0001F50C"
     title: Foundation Models First
-    details: Foundation Models, Anthropic, OpenAI, Ollama, Gemini, MLX. Swap providers with `inferenceProvider:` at init.
+    details: Built-in Apple Foundation Models. Inject any `InferenceProvider` for custom backends via `inferenceProvider:`.
     link: /reference/front-facing-api
     linkText: Configure providers
 

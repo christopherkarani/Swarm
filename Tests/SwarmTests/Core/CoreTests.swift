@@ -500,7 +500,7 @@ struct AgentErrorTests {
             .rateLimitExceeded(retryAfter: nil),
             .embeddingFailed(reason: "test"),
             .internalError(reason: "test"),
-            .toolCallingRequiresCloudProvider
+            .toolCallingUnsupported
         ]
 
         for error in allErrors {

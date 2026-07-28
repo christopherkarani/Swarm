@@ -10,10 +10,10 @@ EXAMPLE_LOG="${EXAMPLE_LOG:-/tmp/swarm-release-codereviewer-test.log}"
 
 echo "release-check: remote-only resolve/build/test for Swarm"
 
-AISTACK_USE_LOCAL_DEPS=0 CONDUIT_SKIP_MLX_DEPS=1 swift package resolve
-AISTACK_USE_LOCAL_DEPS=0 CONDUIT_SKIP_MLX_DEPS=1 swift build 2>&1 | tee "$BUILD_LOG"
-AISTACK_USE_LOCAL_DEPS=0 CONDUIT_SKIP_MLX_DEPS=1 swift test 2>&1 | tee "$TEST_LOG"
-SWARM_CORE_ONLY=1 AISTACK_USE_LOCAL_DEPS=0 CONDUIT_SKIP_MLX_DEPS=1 swift test --package-path Examples/CodeReviewer 2>&1 | tee "$EXAMPLE_LOG"
+AISTACK_USE_LOCAL_DEPS=0 swift package resolve
+AISTACK_USE_LOCAL_DEPS=0 swift build 2>&1 | tee "$BUILD_LOG"
+AISTACK_USE_LOCAL_DEPS=0 swift test 2>&1 | tee "$TEST_LOG"
+SWARM_CORE_ONLY=1 AISTACK_USE_LOCAL_DEPS=0 swift test --package-path Examples/CodeReviewer 2>&1 | tee "$EXAMPLE_LOG"
 
 if rg -n '\bwarning:|\berror:' "$BUILD_LOG" >/dev/null; then
   echo "release-check: compiler diagnostics found in build log" >&2

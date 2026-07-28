@@ -328,7 +328,7 @@ for message in await conversation.messages {
 │   Workflow Graph  ·  Checkpointing  ·  Deterministic retry │
 ├─────────────────────────────────────────────────────────────┤
 │              InferenceProvider (pluggable)                   │
-│ Foundation Models · Anthropic · OpenAI · Ollama · OpenRouter│
+│ Foundation Models (built-in) · custom InferenceProvider     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -342,7 +342,7 @@ for message in await conversation.messages {
 | tvOS     | 26.0+   |
 | Linux    | Ubuntu 22.04+ with Swift 6.2 |
 
-The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; cloud providers and Ollama use the shared `InferenceProvider` surface.
+The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; inject a mock or custom `InferenceProvider` there.
 
 ## Documentation
 

@@ -309,7 +309,7 @@ private extension CapabilityShowcase {
                 families: [.providers],
                 kind: .smoke
             ) { context in
-                try await runLiveProviderSmokeScenario(context: context, environment: environment)
+                try await runLiveProviderSmokeScenario(context: context)
             },
             .init(
                 id: "live-foundation-models-smoke",
@@ -924,8 +924,7 @@ private func runProvidersScenario(context: CapabilityScenarioContext) async thro
 // MARK: - Smoke Scenario
 
 private func runLiveProviderSmokeScenario(
-    context: CapabilityScenarioContext,
-    environment: [String: String]
+    context: CapabilityScenarioContext
 ) async throws -> CapabilityScenarioResult {
     #if canImport(FoundationModels)
     if #available(macOS 26.0, iOS 26.0, visionOS 26.0, *) {

@@ -55,11 +55,16 @@ public extension Swarm {
     /// Sets the default inference provider for all agents.
     ///
     /// Agents resolve providers in this order:
-    /// 1. Explicit provider on the agent
-    /// 2. TaskLocal via `.environment(\.inferenceProvider, ...)`
-    /// 3. `Swarm.defaultProvider` (set here)
-    /// 4. Foundation Models (on Apple platforms when the system model is available)
-    /// 5. Throw `AgentError.inferenceProviderUnavailable`
+    /// 1. When `AgentConfiguration.inferencePolicy.privacyRequired` is true:
+    ///    Foundation Models first, then only providers that report
+    ///    `InferenceProviderCapabilities.privateInference` (explicit →
+    ///    environment → `Swarm.defaultProvider`); non-private providers are
+    ///    filtered out.
+    /// 2. Explicit provider on the agent
+    /// 3. TaskLocal via `.environment(\.inferenceProvider, ...)`
+    /// 4. `Swarm.defaultProvider` (set here)
+    /// 5. Foundation Models (on Apple platforms when the system model is available)
+    /// 6. Throw `AgentError.inferenceProviderUnavailable`
     static func configure(provider: some InferenceProvider) async {
         await Configuration.shared.setProvider(provider)
     }

@@ -126,7 +126,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 73 | case | public | AgentError.embeddingFailed(reason:) | `public case embeddingFailed(reason: String)` |
 | 78 | case | public | AgentError.agentNotFound(name:) | `public case agentNotFound(name: String)` |
 | 81 | case | public | AgentError.internalError(reason:) | `public case internalError(reason: String)` |
-| 84 | case | public | AgentError.toolCallingRequiresCloudProvider | `public case toolCallingRequiresCloudProvider` |
+| 84 | case | public | AgentError.toolCallingUnsupported | `public case toolCallingUnsupported` |
 | 90 | var | public | AgentError.errorDescription | `public var errorDescription: String? { get }` |
 | 139 | var | public | AgentError.recoverySuggestion | `public var recoverySuggestion: String? { get }` |
 | 152 | var | public | AgentError.debugDescription | `public var debugDescription: String { get }` |

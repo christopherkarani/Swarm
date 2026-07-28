@@ -3,18 +3,56 @@ import Foundation
 import Testing
 
 /// Regression tests for Codex review fixes:
-/// 1. privacyRequired honors a privacy-capable `Swarm.defaultProvider` when FM is unavailable.
+/// 1. privacyRequired never routes through non-private defaults; private defaults
+///    are used when Foundation Models are unavailable.
 /// 2. `DefaultMemorySessionTracker.beginRun` honors cancellation.
 @Suite("Codex Review Fixes")
 struct AgentCodexReviewFixesTests {
 
     // MARK: - Fix #1: private resolver consults Swarm.defaultProvider
 
-    @Test("privacyRequired uses Swarm.defaultProvider when it is privacy-capable")
+    @Test("privacyRequired never invokes a non-private Swarm.defaultProvider")
+    func privacyRequiredNeverInvokesNonPrivateDefaultProvider() async throws {
+        try await withSwarmConfigurationIsolation {
+            let nonPrivate = MockInferenceProvider(
+                responses: ["leaked"],
+                capabilities: [] // no .privateInference
+            )
+            await Swarm.configure(provider: nonPrivate)
+
+            let configuration = AgentConfiguration.default
+                .inferencePolicy(InferencePolicy(privacyRequired: true))
+
+            do {
+                let agent = try Agent(
+                    instructions: "Keep this private.",
+                    configuration: configuration
+                )
+                // May succeed via Foundation Models when available; must not use nonPrivate.
+                _ = try await agent.run("hello")
+            } catch let error as AgentError {
+                if case .inferenceProviderUnavailable = error {
+                    // Expected when Foundation Models are unavailable and no private provider exists.
+                } else {
+                    Issue.record("Unexpected AgentError: \(error)")
+                }
+            } catch {
+                Issue.record("Unexpected error: \(error)")
+            }
+
+            #expect(await nonPrivate.generateCallCount == 0)
+            #expect(await nonPrivate.toolCallCalls.isEmpty)
+            #expect(await nonPrivate.generateMessageCalls.isEmpty)
+            #expect(await nonPrivate.toolCallMessageCalls.isEmpty)
+        }
+    }
+
+    @Test("privacyRequired uses Swarm.defaultProvider when it is privacy-capable and FM is unavailable")
     func privacyRequiredUsesPrivateDefaultProvider() async throws {
         try await withSwarmConfigurationIsolation {
-            // Skip when Foundation Models is available: the privacy resolver
-            // returns the on-device provider before consulting defaultProvider.
+            // When Foundation Models are available, the privacy resolver returns
+            // the on-device provider before consulting defaultProvider — so this
+            // branch only locks the defaultProvider fallback path.
             if DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() != nil {
                 return
             }
@@ -44,11 +82,9 @@ struct AgentCodexReviewFixesTests {
         }
     }
 
-    @Test("privacyRequired ignores Swarm.defaultProvider when it lacks privateInference")
-    func privacyRequiredSkipsNonPrivateDefaultProvider() async throws {
+    @Test("privacyRequired throws when default lacks privateInference and FM is unavailable")
+    func privacyRequiredSkipsNonPrivateDefaultProviderWhenFMUnavailable() async throws {
         await withSwarmConfigurationIsolation {
-            // Skip when Foundation Models is available — the resolver returns FM
-            // first and never reaches the default-provider step.
             if DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() != nil {
                 return
             }
