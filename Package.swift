@@ -18,7 +18,7 @@ if includeDemo {
 }
 
 var packageDependencies: [Package.Dependency] = [
-    // swift-syntax range is intentionally widened to include 601/602 lines.
+    // Floor swift-syntax at 601 so SPM cannot resolve 600.x (especially 600.0.1).
     //
     // Background: Xcode 26 (Swift 6.2.x) ships implicit SwiftPM prebuilts for
     // swift-syntax via the swiftlang "MacroSupport" prebuilt server. The 600.0.1
@@ -27,11 +27,11 @@ var packageDependencies: [Package.Dependency] = [
     // "Unable to find module dependency: 'SwiftSyntax'" errors. That prebuilt
     // download cannot be disabled from a consumer project (SWIFT_USE_PREBUILT_MACROS=NO,
     // IDESwiftPackageEnablePrebuilts=NO, SWIFTPM_DISABLE_PREBUILTS=1 and
-    // -skipMacroValidation all fail to suppress it). Widening the range here lets
-    // SwiftPM resolve to 601+ on Swift 6.2 toolchains, which does not ship the
-    // broken prebuilt. Keep the upper bound below 603 for package-graph stability
-    // with the current Membrane/Hive integration pin set.
-    .package(url: "https://github.com/swiftlang/swift-syntax.git", "600.0.0"..<"603.0.0"),
+    // -skipMacroValidation all fail to suppress it). Floor ≥ 601 keeps resolution
+    // on toolchains/prebuilts that work with Swift 6.2 / Xcode 26.
+    // Only SwarmMacros (+ SwiftSyntaxMacrosTestSupport in tests) depends on
+    // swift-syntax. Upper bound stays <603 for package-graph stability.
+    .package(url: "https://github.com/swiftlang/swift-syntax.git", "601.0.0"..<"603.0.0"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.12.0"),
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
     .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.4.1"),
