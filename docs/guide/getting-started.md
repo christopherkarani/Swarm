@@ -40,9 +40,11 @@ Enable Integrations when you need any of:
 )
 ```
 
-SwiftPM may still **resolve** temporary remote packages (Hive/Membrane/ContextCore/Wax)
-listed in Swarm’s manifest until they are vendored in-tree; omitting the trait does
-**not** link those products into your app.
+HiveCore, Membrane, and ContextCore are native in-tree modules under Swarm
+`Sources/` (internal targets, not separate products). Wax remains an external
+package and is linked only with Integrations. Omitting the trait does **not**
+link Integrations modules into your app, and lean resolve does not pull
+Hive/Membrane/ContextCore packages.
 
 ### Xcode
 

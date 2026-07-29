@@ -52,6 +52,14 @@ Swarm/
 │   │   ├── Macros/                # Public macro declarations
 │   │   ├── Integration/           # Membrane and Wax integrations
 │   │   └── Internal/GraphRuntime/ # Compiled DAG runtime (internal)
+│   ├── HiveCore/                  # In-tree durable graph (Integrations only)
+│   ├── MembraneCore/              # In-tree Membrane core (Integrations only)
+│   ├── Membrane/                  # In-tree Membrane session (Integrations only)
+│   ├── MembraneContextCore/       # In-tree Membrane↔ContextCore (Integrations)
+│   ├── ContextCoreTypes/          # In-tree ContextCore types (Integrations)
+│   ├── ContextCoreShaders/        # In-tree Metal shaders (Integrations)
+│   ├── ContextCoreEngine/         # In-tree ContextCore engine (Integrations)
+│   ├── ContextCore/               # In-tree ContextCore façade (Integrations)
 │   ├── SwarmMacros/               # Compiler plugin (@Tool, @Parameter,
 │   │                              #   @Traceable, #Prompt, builders)
 │   ├── SwarmMembrane/             # Membrane workflow integration product
@@ -94,7 +102,15 @@ swift test --filter SwarmTests.WorkflowTests   # Run a single suite
 
 Default consumers get lean Swarm (core + Foundation Models). Enable the
 `Integrations` trait for durable Hive workflows, ContextCore+Wax default
-memory, Membrane adapters, and web helpers:
+memory, Membrane adapters, and web helpers.
+
+HiveCore, Membrane (`MembraneCore` / `Membrane` / `MembraneContextCore`), and
+ContextCore (`ContextCoreTypes` / `ContextCoreShaders` / `ContextCoreEngine` /
+`ContextCore`) are **native in-tree** `Sources/` targets — internal modules
+only (no separate library products). They are linked into Swarm only when
+Integrations is on. Wax remains a remote package + trait-gated product;
+MetalANNS stays remote for the ContextCore chain. Lean resolve must not pull
+package identities `hive`, `membrane`, or `contextcore`.
 
 ```bash
 swift build --traits Integrations

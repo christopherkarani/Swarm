@@ -22,8 +22,10 @@ memory, Membrane adapters, and web helpers:
 | Durable execute with checkpoint / `resumeFrom` | Throws | Full Hive durable engine |
 | Membrane / web helpers | Unavailable or no-op | Linked and active |
 
-SwiftPM may still resolve temporary remotes listed in `Package.swift`; the trait
-controls **link**, not always package resolution. See README Install.
+HiveCore, Membrane, and ContextCore are native in-tree `Sources/` targets
+(internal modules, not separate products), linked only with Integrations.
+Wax remains a remote package + trait-gated product. Lean resolve does not pull
+Hive/Membrane/ContextCore package identities. See README Install.
 
 ## 1) Entry point and global configuration
 
