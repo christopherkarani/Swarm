@@ -30,7 +30,7 @@ Two agents, one pipeline, compiled to a DAG with crash recovery and Swift concur
 
 Default **link** is **lean**: core Swarm + on-device Foundation Models. Graph/memory/web/Hive paths are trait-gated (off by default) and are not linked into Swarm unless you enable Integrations.
 
-HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve does not pull Hive/Membrane/ContextCore packages.
+HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve does not pull Hive/Membrane/ContextCore **package identities**, but still resolves Wax, MetalANNS (→ GRDB), swift-crypto, swift-mutex, and swift-collections unless `SWARM_CORE_ONLY=1`. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML embedding model that is **not** bundled — without `minilm-l6-v2.mlpackage`, ContextCore falls back to deterministic pseudo-embeddings.
 
 ```swift
 // Lean default link (recommended for most apps)

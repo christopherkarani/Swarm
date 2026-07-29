@@ -108,9 +108,12 @@ HiveCore, Membrane (`MembraneCore` / `Membrane` / `MembraneContextCore`), and
 ContextCore (`ContextCoreTypes` / `ContextCoreShaders` / `ContextCoreEngine` /
 `ContextCore`) are **native in-tree** `Sources/` targets — internal modules
 only (no separate library products). They are linked into Swarm only when
-Integrations is on. Wax remains a remote package + trait-gated product;
-MetalANNS stays remote for the ContextCore chain. Lean resolve must not pull
-package identities `hive`, `membrane`, or `contextcore`.
+Integrations is on. ContextCore / full Membrane session stack are Apple-only
+(Metal/CoreML); Linux Integrations still links Hive + MembraneCore + web.
+Wax remains a remote package + trait-gated product; MetalANNS stays remote for
+the ContextCore chain. Lean resolve must not pull package identities `hive`,
+`membrane`, or `contextcore`, but still resolves Wax/MetalANNS/crypto/mutex/
+collections unless `SWARM_CORE_ONLY=1`.
 
 ```bash
 swift build --traits Integrations

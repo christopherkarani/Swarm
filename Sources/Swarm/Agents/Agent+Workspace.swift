@@ -86,7 +86,7 @@ private extension Agent {
             .appendingPathComponent(safeCacheNamespace(cacheNamespace), isDirectory: true)
         try FileManager.default.createDirectory(at: memoryDirectory, withIntermediateDirectories: true)
 
-        #if SWARM_INTEGRATIONS
+        #if SWARM_INTEGRATIONS && canImport(ContextCore)
         return try DefaultAgentMemory(configuration: DefaultAgentMemory.Configuration(
             waxStoreURL: memoryDirectory.appendingPathComponent("wax-memory.mv2s")
         ))
