@@ -1,4 +1,4 @@
-#if SWARM_INTEGRATIONS
+#if SWARM_INTEGRATIONS && canImport(Membrane)
 import Foundation
 import Membrane
 import MembraneCore

@@ -1129,7 +1129,7 @@ public struct Agent: AgentRuntime, Sendable {
     /// Prefer this over constructing integration types from macros or client code so
     /// trait gating stays inside the Swarm module.
     public static func makeDefaultMemory() throws -> any Memory {
-        #if SWARM_INTEGRATIONS
+        #if SWARM_INTEGRATIONS && canImport(ContextCore)
         if SwarmRuntimeEnvironment.isRunningTests {
             let root = FileManager.default.temporaryDirectory
                 .appendingPathComponent("SwarmDefaultMemoryTests", isDirectory: true)
@@ -1141,6 +1141,7 @@ public struct Agent: AgentRuntime, Sendable {
         }
         return try DefaultAgentMemory()
         #else
+        // Lean builds, or Integrations on non-Apple (no ContextCore link).
         return SlidingWindowMemory()
         #endif
     }
@@ -1362,7 +1363,7 @@ public struct Agent: AgentRuntime, Sendable {
                         query = input
                     }
                     var windowedContext = ""
-                    #if SWARM_INTEGRATIONS
+                    #if SWARM_INTEGRATIONS && canImport(ContextCore)
                     if let defaultMem = activeMemory as? DefaultAgentMemory {
                         windowedContext = await defaultMem.context(for: query, tokenLimit: historyBudget)
                     } else if let ccMemory = activeMemory as? ContextCoreMemory {

@@ -1,9 +1,10 @@
-#if SWARM_INTEGRATIONS
+#if SWARM_INTEGRATIONS && canImport(ContextCore)
 // DefaultAgentMemory.swift
 // Swarm Framework
 //
 // Default agent memory stack combining ContextCore working context with
 // Wax durable recall.
+// Apple-only: requires ContextCore (Metal/CoreML), which is not linked on Linux.
 
 import Foundation
 

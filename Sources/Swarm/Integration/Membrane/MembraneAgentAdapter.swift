@@ -1,5 +1,5 @@
 import Foundation
-#if SWARM_INTEGRATIONS
+#if SWARM_INTEGRATIONS && canImport(Membrane)
 import Membrane
 #endif
 
@@ -104,7 +104,7 @@ public protocol MembraneAgentAdapter: Sendable {
     func snapshotCheckpointData() async throws -> Data?
 }
 
-#if SWARM_INTEGRATIONS
+#if SWARM_INTEGRATIONS && canImport(Membrane)
 public actor DefaultMembraneAgentAdapter: MembraneAgentAdapter {
     public init(configuration: MembraneFeatureConfiguration = .default) {
         self.configuration = configuration

@@ -1,8 +1,9 @@
-#if SWARM_INTEGRATIONS
+#if SWARM_INTEGRATIONS && canImport(ContextCore)
 // ContextCoreMemory.swift
 // Swarm Framework
 //
 // ContextCore-backed memory implementation used by default in Swarm.
+// Apple-only: ContextCore is trait-linked only on Apple platforms (Metal/CoreML).
 
 import ContextCore
 import Foundation

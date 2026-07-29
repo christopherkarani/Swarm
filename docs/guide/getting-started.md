@@ -40,9 +40,22 @@ Enable Integrations when you need any of:
 )
 ```
 
-SwiftPM may still **resolve** temporary remote packages (Hive/Membrane/ContextCore/Wax)
-listed in Swarm’s manifest until they are vendored in-tree; omitting the trait does
-**not** link those products into your app.
+HiveCore, Membrane, and ContextCore are native in-tree modules under Swarm
+`Sources/` (internal targets, not separate products). Wax remains an external
+package and is linked only with Integrations. Omitting the trait does **not**
+link Integrations modules into your app, and lean resolve does not pull
+Hive/Membrane/ContextCore **package identities**. Trait still controls **link**;
+without `SWARM_CORE_ONLY=1`, resolve still downloads Wax, MetalANNS (→ GRDB),
+swift-crypto, swift-mutex, and swift-collections even when Integrations is off.
+
+**Platform note:** ContextCore and the full Membrane session stack need Apple
+frameworks (Metal/CoreML/Accelerate). On Linux, Integrations still enables Hive
+durable workflows, MembraneCore, and web helpers; default memory falls back to
+`SlidingWindowMemory` when ContextCore is unavailable.
+
+**Embeddings:** the CoreML `minilm-l6-v2.mlpackage` model is not bundled with
+Swarm. Without it, Integrations `DefaultAgentMemory` uses deterministic
+pseudo-embeddings until you supply the model under ContextCore resources.
 
 ### Xcode
 

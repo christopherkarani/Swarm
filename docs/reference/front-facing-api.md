@@ -22,8 +22,15 @@ memory, Membrane adapters, and web helpers:
 | Durable execute with checkpoint / `resumeFrom` | Throws | Full Hive durable engine |
 | Membrane / web helpers | Unavailable or no-op | Linked and active |
 
-SwiftPM may still resolve temporary remotes listed in `Package.swift`; the trait
-controls **link**, not always package resolution. See README Install.
+HiveCore, Membrane, and ContextCore are native in-tree `Sources/` targets
+(internal modules, not separate products), linked only with Integrations.
+Wax remains a remote package + trait-gated product. Lean resolve does not pull
+Hive/Membrane/ContextCore package identities, but still resolves Wax, MetalANNS
+(→ GRDB), swift-crypto, swift-mutex, and swift-collections unless
+`SWARM_CORE_ONLY=1`. ContextCore / full Membrane session stack are Apple-only
+(Metal/CoreML); Linux Integrations keeps Hive + MembraneCore + web helpers.
+`DefaultAgentMemory` (ContextCore + Wax) uses fallback pseudo-embeddings when
+the optional CoreML `minilm-l6-v2.mlpackage` is not present. See README Install.
 
 ## 1) Entry point and global configuration
 
