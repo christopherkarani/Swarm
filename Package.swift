@@ -63,7 +63,16 @@ if enableIntegrationModules {
         // collections/MetalANNS). With Integrations off, SPM does not pin them.
         // SWARM_CORE_ONLY=1 or SWARM_OMIT_INTEGRATION_TARGETS=1 drops this block.
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.13.5"),
-        .package(url: "https://github.com/christopherkarani/Wax.git", exact: "0.1.23"),
+        // Wax defaults MiniLMEmbeddings ON (~43MB CoreML bundle). Swarm default
+        // runtime paths leave enableVectorSearch=false and never require MiniLM
+        // embedders, so disable Wax package defaults (SE-0450 traits: []).
+        // Consumers that need BuiltInEmbeddings.miniLM can re-enable via their
+        // own Wax dependency traits: ["MiniLMEmbeddings"] (or [.defaults]).
+        .package(
+            url: "https://github.com/christopherkarani/Wax.git",
+            exact: "0.1.23",
+            traits: []
+        ),
         .package(url: "https://github.com/christopherkarani/MetalANNS.git", exact: "0.1.3"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.7.0"),
         .package(url: "https://github.com/swhitty/swift-mutex.git", from: "0.0.6"),
