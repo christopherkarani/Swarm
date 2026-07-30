@@ -43,10 +43,12 @@ Enable Integrations when you need any of:
 HiveCore, Membrane, and ContextCore are native in-tree modules under Swarm
 `Sources/` (internal targets, not separate products). Wax remains an external
 package and is linked only with Integrations. Omitting the trait does **not**
-link Integrations modules into your app, and lean resolve does not pull
-Hive/Membrane/ContextCore **package identities**. Trait still controls **link**;
-without `SWARM_CORE_ONLY=1`, resolve still downloads Wax, MetalANNS (→ GRDB),
-swift-crypto, swift-mutex, and swift-collections even when Integrations is off.
+link Integrations modules into your app. Lean resolve never pulls
+Hive/Membrane/ContextCore/Conduit **package identities**, and trait-gated
+product edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, and
+SwiftSoup off the lean pin list. Always-on remotes remain (swift-syntax,
+swift-log, MCP sdk, OTel, plus NIO transitives — including `swift-collections`
+via NIO). `SWARM_CORE_ONLY=1` drops the integration package block entirely.
 
 **Platform note:** ContextCore and the full Membrane session stack need Apple
 frameworks (Metal/CoreML/Accelerate). On Linux, Integrations still enables Hive

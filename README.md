@@ -30,7 +30,9 @@ Two agents, one pipeline, compiled to a DAG with crash recovery and Swift concur
 
 Default **link** is **lean**: core Swarm + on-device Foundation Models. Graph/memory/web/Hive paths are trait-gated (off by default) and are not linked into Swarm unless you enable Integrations.
 
-HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve does not pull Hive/Membrane/ContextCore **package identities**, but still resolves Wax, MetalANNS (→ GRDB), swift-crypto, swift-mutex, and swift-collections unless `SWARM_CORE_ONLY=1`. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML embedding model that is **not** bundled — without `minilm-l6-v2.mlpackage`, ContextCore falls back to deterministic pseudo-embeddings.
+HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve never pulls Hive/Membrane/ContextCore/Conduit **package identities**, and (with trait-gated product edges) also does **not** pin Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, or SwiftSoup. Always-on remotes remain (swift-syntax, swift-log, MCP sdk, OTel, plus NIO transitives — including `swift-collections` via NIO). `SWARM_CORE_ONLY=1` drops the integration package block entirely. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML embedding model that is **not** bundled — without `minilm-l6-v2.mlpackage`, ContextCore falls back to deterministic pseudo-embeddings.
+
+**Root-package note:** bare `swift build` / `swift test` on this repo compile every registered target, so integration modules need either `--traits Integrations` or the lean CI helper (`scripts/ci/lean-build-test.sh`). App consumers only build reachable targets and stay lean without that helper.
 
 ```swift
 // Lean default link (recommended for most apps)
@@ -48,8 +50,11 @@ HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (i
 From a checkout of this package:
 
 ```bash
-swift build                                      # lean default
-swift build --traits Integrations                # full graph
+# Lean (root package): product-scoped build, or scripts/ci/lean-build-test.sh
+swift build --product Swarm --product SwarmMCP --product SwarmOpenTelemetry \
+  --product SwarmMembrane --product SwarmCapabilityShowcase
+# Full graph
+swift build --traits Integrations
 swift test --no-parallel --traits Integrations
 swift run --traits Integrations SwarmCapabilityShowcase matrix
 ```

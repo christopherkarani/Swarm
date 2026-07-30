@@ -4,6 +4,13 @@ import CompilerPluginSupport
 import Foundation
 let includeDemo = ProcessInfo.processInfo.environment["SWARM_INCLUDE_DEMO"] == "1"
 let coreOnly = ProcessInfo.processInfo.environment["SWARM_CORE_ONLY"] == "1"
+// Root-package lean CI/dev helper: omit in-tree integration *targets* so bare
+// `swift build` / `swift test` do not compile HiveCore/Membrane/ContextCore
+// orphans (SPM root builds every target). Consumers never set this — they get
+// the full Package.swift with trait-gated edges (lean resolve, no MetalANNS).
+let omitIntegrationTargets =
+    ProcessInfo.processInfo.environment["SWARM_OMIT_INTEGRATION_TARGETS"] == "1"
+let enableIntegrationModules = !coreOnly && !omitIntegrationTargets
 
 var packageProducts: [Product] = [
     .library(name: "Swarm", targets: ["Swarm"]),
@@ -35,13 +42,12 @@ var packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/apple/swift-log.git", from: "1.12.0"),
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
     .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.4.1"),
-    .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.13.5"),
 ]
 
 // Integrations trait: opt-in graph/memory/web/Hive paths (off by default).
-// HiveCore, Membrane*, and ContextCore* are native in-tree Sources/ targets,
-// linked only when Integrations is enabled. Wax stays remote + trait-gated.
-// MetalANNS stays remote (ContextCore → MetalANNS → GRDB).
+// HiveCore, Membrane*, and ContextCore* are native in-tree Sources/ targets.
+// Product edges into those modules (and their remote deps) are trait-gated so
+// lean resolve/build does not pull MetalANNS/Wax/crypto/mutex/collections.
 //
 // ContextCore / Membrane (full stack) require Apple frameworks (Metal, CoreML,
 // Accelerate). They are trait-linked only on Apple platforms so Linux
@@ -49,15 +55,14 @@ var packageDependencies: [Package.Dependency] = [
 // compiling the GPU memory stack.
 let integrationTrait = "Integrations"
 let appleIntegrationPlatforms: [Platform] = [.macOS, .iOS, .tvOS, .visionOS]
-if !coreOnly {
+if enableIntegrationModules {
     packageDependencies += [
-        // Declared for non-coreOnly resolves (lean + Integrations). Trait controls
-        // *link* of Wax / in-tree modules; resolve still downloads these packages
-        // (and MetalANNS → GRDB) unless SWARM_CORE_ONLY=1.
-        // HiveCore → swift-crypto, swift-mutex
-        // MembraneCore → OrderedCollections (swift-collections)
-        // ContextCore* → MetalANNS (Apple platforms only at link/compile)
-        // Swarm → Wax (trait-gated product)
+        // Declared when integration modules are registered. All are only *used*
+        // through trait-gated product/target edges (Swarm → Hive/Membrane/
+        // ContextCore/Wax/SwiftSoup, and in-tree modules → crypto/mutex/
+        // collections/MetalANNS). With Integrations off, SPM does not pin them.
+        // SWARM_CORE_ONLY=1 or SWARM_OMIT_INTEGRATION_TARGETS=1 drops this block.
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.13.5"),
         .package(url: "https://github.com/christopherkarani/Wax.git", exact: "0.1.23"),
         .package(url: "https://github.com/christopherkarani/MetalANNS.git", exact: "0.1.3"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.7.0"),
@@ -69,16 +74,16 @@ if !coreOnly {
 var swarmDependencies: [Target.Dependency] = [
     "SwarmMacros",
     .product(name: "Logging", package: "swift-log"),
-    // HTML parsing for web helpers; only linked when Integrations is enabled.
-    .product(name: "SwiftSoup", package: "SwiftSoup", condition: .when(traits: [integrationTrait])),
 ]
 
 var swarmSwiftSettings: [SwiftSetting] = [
     .enableExperimentalFeature("StrictConcurrency"),
 ]
 
-if !coreOnly {
+if enableIntegrationModules {
     swarmDependencies += [
+        // HTML parsing for web helpers; only linked when Integrations is enabled.
+        .product(name: "SwiftSoup", package: "SwiftSoup", condition: .when(traits: [integrationTrait])),
         // Portable Integrations modules (all platforms when trait is on).
         .target(name: "HiveCore", condition: .when(traits: [integrationTrait])),
         .target(name: "MembraneCore", condition: .when(traits: [integrationTrait])),
@@ -133,7 +138,7 @@ var packageTargets: [Target] = [
     .target(
         name: "Swarm",
         dependencies: swarmDependencies,
-        exclude: coreOnly ? swarmCoreOnlyExcludes : [],
+        exclude: enableIntegrationModules ? [] : swarmCoreOnlyExcludes,
         swiftSettings: swarmSwiftSettings
     ),
     .target(
@@ -186,7 +191,7 @@ var packageTargets: [Target] = [
                 "Swarm",
                 "SwarmMCP",
             ]
-            if !coreOnly {
+            if enableIntegrationModules {
                 dependencies += [
                     .target(name: "MembraneCore", condition: .when(traits: [integrationTrait])),
                     .target(
@@ -230,7 +235,7 @@ var packageTargets: [Target] = [
     )
 ]
 
-if !coreOnly {
+if enableIntegrationModules {
     // MARK: - In-tree Integrations modules (internal targets only — no library products)
     // HiveCore, Membrane*, ContextCore* live under Sources/ and are linked into Swarm
     // only when the Integrations trait is enabled.
@@ -240,13 +245,28 @@ if !coreOnly {
         .swiftLanguageMode(.v6),
     ]
 
+    // Trait-gate remote product deps on in-tree modules. Unconditional product
+    // edges made SPM pin MetalANNS/crypto/mutex/collections even when
+    // Integrations was off (targets registered but unused). With trait gates,
+    // lean resolve only pins always-on remotes (syntax/log/MCP/OTel + NIO).
+    //
+    // Note: SPM root packages still *compile* every registered target on bare
+    // `swift build`/`swift test`. Use product-scoped builds, or
+    // SWARM_OMIT_INTEGRATION_TARGETS=1 for root-package lean CI (see
+    // scripts/ci/lean-build-test.sh). Consumers only build reachable targets.
+    let integrationsRemoteDepsActive = TargetDependencyCondition.when(traits: [integrationTrait])
+    let integrationsAppleRemoteDepsActive = TargetDependencyCondition.when(
+        platforms: appleIntegrationPlatforms,
+        traits: [integrationTrait]
+    )
+
     packageTargets += [
         // HiveCore — durable graph / checkpoint runtime
         .target(
             name: "HiveCore",
             dependencies: [
-                .product(name: "Crypto", package: "swift-crypto"),
-                .product(name: "Mutex", package: "swift-mutex"),
+                .product(name: "Crypto", package: "swift-crypto", condition: integrationsRemoteDepsActive),
+                .product(name: "Mutex", package: "swift-mutex", condition: integrationsRemoteDepsActive),
             ],
             path: "Sources/HiveCore",
             exclude: ["README.md"],
@@ -257,7 +277,11 @@ if !coreOnly {
         .target(
             name: "MembraneCore",
             dependencies: [
-                .product(name: "OrderedCollections", package: "swift-collections"),
+                .product(
+                    name: "OrderedCollections",
+                    package: "swift-collections",
+                    condition: integrationsRemoteDepsActive
+                ),
             ],
             path: "Sources/MembraneCore",
             swiftSettings: integrationsTargetSwiftSettings
@@ -281,7 +305,7 @@ if !coreOnly {
             swiftSettings: integrationsTargetSwiftSettings
         ),
 
-        // ContextCore stack (MetalANNS remains remote; Apple-linked via Swarm deps)
+        // ContextCore stack (MetalANNS remains remote; Apple + Integrations only)
         .target(
             name: "ContextCoreTypes",
             path: "Sources/ContextCoreTypes",
@@ -304,7 +328,7 @@ if !coreOnly {
                 .product(
                     name: "MetalANNS",
                     package: "MetalANNS",
-                    condition: .when(platforms: appleIntegrationPlatforms)
+                    condition: integrationsAppleRemoteDepsActive
                 ),
             ],
             path: "Sources/ContextCoreEngine",
@@ -323,7 +347,7 @@ if !coreOnly {
                 .product(
                     name: "MetalANNS",
                     package: "MetalANNS",
-                    condition: .when(platforms: appleIntegrationPlatforms)
+                    condition: integrationsAppleRemoteDepsActive
                 ),
             ],
             path: "Sources/ContextCore",

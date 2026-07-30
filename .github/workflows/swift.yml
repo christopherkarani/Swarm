@@ -40,17 +40,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-swift-6.2-
 
-      - name: Resolve dependencies
-        run: swift package resolve
-
-      - name: Build lean default (Integrations off)
-        run: swift build
-
-      - name: Test lean default
-        run: swift test --no-parallel
+      # Cold lean proof + product-scoped build + omit-target lean tests.
+      # Wipes .build/Package.resolved so cache cannot hide a cold resolve.
+      - name: Lean resolve, build, and test
+        run: bash scripts/ci/lean-build-test.sh
 
       - name: Build with Integrations trait
-        run: swift build --traits Integrations
+        run: |
+          rm -rf .build Package.resolved
+          swift package resolve
+          bash scripts/ci/verify-lean-resolve.sh
+          swift build --traits Integrations
 
       - name: Run tests with Integrations trait
         run: swift test --no-parallel --traits Integrations
@@ -88,17 +88,15 @@ jobs:
           restore-keys: |
             linux-swift-
 
-      - name: Resolve dependencies
-        run: swift package resolve
-
-      - name: Build lean default (Integrations off)
-        run: swift build
-
-      - name: Test lean default
-        run: swift test --no-parallel
+      - name: Lean resolve, build, and test
+        run: bash scripts/ci/lean-build-test.sh
 
       - name: Build with Integrations trait
-        run: swift build --traits Integrations
+        run: |
+          rm -rf .build Package.resolved
+          swift package resolve
+          bash scripts/ci/verify-lean-resolve.sh
+          swift build --traits Integrations
 
       - name: Build tests with Integrations trait
         run: swift build --build-tests --traits Integrations

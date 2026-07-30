@@ -89,13 +89,15 @@ This is a Swift Package — there is no Xcode project committed. All commands ru
 from the repo root.
 
 ```bash
-swift package resolve         # Resolve dependencies
-swift build                   # Lean default (Integrations trait off)
-swift test --no-parallel      # Core tests under default traits
+swift package resolve         # Resolve dependencies (lean pins without Integrations)
+bash scripts/ci/lean-build-test.sh   # Cold lean resolve + product build + lean tests
 swift build --traits Integrations
 swift test --no-parallel --traits Integrations
 swift test --no-parallel --traits Integrations --filter HiveSwarmTests
 swift test --filter SwarmTests.WorkflowTests   # Run a single suite
+# Note: bare `swift build`/`swift test` without --traits Integrations still
+# compile every registered target (orphans need trait-gated remotes). Prefer
+# lean-build-test.sh or --traits Integrations on this package root.
 ```
 
 ### Integrations trait (off by default)
@@ -112,8 +114,14 @@ Integrations is on. ContextCore / full Membrane session stack are Apple-only
 (Metal/CoreML); Linux Integrations still links Hive + MembraneCore + web.
 Wax remains a remote package + trait-gated product; MetalANNS stays remote for
 the ContextCore chain. Lean resolve must not pull package identities `hive`,
-`membrane`, or `contextcore`, but still resolves Wax/MetalANNS/crypto/mutex/
-collections unless `SWARM_CORE_ONLY=1`.
+`membrane`, `contextcore`, or `conduit`, and must not pin Wax/MetalANNS/GRDB/
+crypto/mutex/SwiftSoup (trait-gated product edges). Always-on: swift-syntax,
+swift-log, MCP sdk, OTel (+ NIO transitives; `swift-collections` via NIO is
+OK). CI: `scripts/ci/lean-build-test.sh` (cold resolve + product-scoped lean
+build + `SWARM_OMIT_INTEGRATION_TARGETS=1` tests) and
+`scripts/ci/verify-lean-resolve.sh`. Bare root `swift build` without
+`--traits Integrations` compiles every registered target — use the lean helper
+or product flags; consumers only build reachable targets.
 
 ```bash
 swift build --traits Integrations
@@ -127,8 +135,10 @@ Consumer `Package.swift`:
 ```
 
 CI (`.github/workflows/swift.yml`) runs on macOS 15 and Ubuntu with Swift 6.2.
-It exercises a lean default build plus a full `--traits Integrations` lane
-(including `HiveSwarmTests` and the capability showcase matrix).
+It exercises `scripts/ci/lean-build-test.sh` (cold lean resolve deny-list +
+product-scoped build + omit-target lean tests) plus a full
+`--traits Integrations` lane (including `HiveSwarmTests` and the capability
+showcase matrix).
 
 The Hive integration tests live in the `HiveSwarmTests` target and require
 `--traits Integrations`.

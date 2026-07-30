@@ -24,13 +24,16 @@ memory, Membrane adapters, and web helpers:
 
 HiveCore, Membrane, and ContextCore are native in-tree `Sources/` targets
 (internal modules, not separate products), linked only with Integrations.
-Wax remains a remote package + trait-gated product. Lean resolve does not pull
-Hive/Membrane/ContextCore package identities, but still resolves Wax, MetalANNS
-(→ GRDB), swift-crypto, swift-mutex, and swift-collections unless
-`SWARM_CORE_ONLY=1`. ContextCore / full Membrane session stack are Apple-only
-(Metal/CoreML); Linux Integrations keeps Hive + MembraneCore + web helpers.
-`DefaultAgentMemory` (ContextCore + Wax) uses fallback pseudo-embeddings when
-the optional CoreML `minilm-l6-v2.mlpackage` is not present. See README Install.
+Wax remains a remote package + trait-gated product. Lean resolve never pulls
+Hive/Membrane/ContextCore/Conduit package identities, and trait-gated product
+edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, and SwiftSoup
+off the lean pin list. Always-on remotes remain (swift-syntax, swift-log, MCP
+sdk, OTel, plus NIO transitives including `swift-collections`).
+`SWARM_CORE_ONLY=1` drops the integration package block. ContextCore / full
+Membrane session stack are Apple-only (Metal/CoreML); Linux Integrations keeps
+Hive + MembraneCore + web helpers. `DefaultAgentMemory` (ContextCore + Wax)
+uses fallback pseudo-embeddings when the optional CoreML
+`minilm-l6-v2.mlpackage` is not present. See README Install.
 
 ## 1) Entry point and global configuration
 
