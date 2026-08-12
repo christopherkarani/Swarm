@@ -112,7 +112,7 @@ struct ReadmeProviderCompileTests {
     @Test("README Multi-agent pipeline sample compiles")
     func readmeMultiAgentPipelineCompiles() throws {
         let mock = MockInferenceProvider(responses: ["facts", "summary"])
-        // WebSearchTool(apiKey:) exists on lean; execution requires Integrations.
+        // WebSearchTool(apiKey:) exists on lean; construction warns and execute requires Integrations.
         let researcher = try Agent(
             "Research the topic and extract key facts.",
             inferenceProvider: mock
@@ -213,7 +213,7 @@ struct ReadmeProviderCompileTests {
 
     @Test("README Crash-resumable workflows sample compiles")
     func readmeCrashResumableCompiles() throws {
-        // Construction is lean-safe; durable.execute requires Integrations at runtime.
+        // Construction is lean-safe (warns); durable.execute requires Integrations at runtime.
         let mock = MockInferenceProvider(responses: ["done"])
         let monitor = try Agent("Emit a short status.", inferenceProvider: mock)
         let checkpointsURL = FileManager.default.temporaryDirectory

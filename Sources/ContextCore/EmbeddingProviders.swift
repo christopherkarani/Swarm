@@ -1,23 +1,74 @@
 import ContextCoreEngine
 import CoreML
 import Foundation
+import Logging
+
+/// Runtime status of ContextCore's default CoreML MiniLM embedder.
+///
+/// When the model is missing, fails to load, or the process is running in the
+/// Simulator, ContextCore falls back to hash-seeded pseudo-vectors. Rankings
+/// from that path are not semantically meaningful.
+public enum SemanticEmbeddingAvailability: Sendable {
+    /// Whether the default CoreML MiniLM model can produce real embeddings.
+    public static var isAvailable: Bool {
+        CoreMLEmbeddingProvider.isRealModelAvailable
+    }
+
+    /// Why real embeddings are unavailable, if they are.
+    public static var unavailabilityReason: String? {
+        CoreMLEmbeddingProvider.unavailabilityReason
+    }
+
+    /// Most recent fallback warning in this process, if any.
+    public static var lastWarningMessage: String? {
+        CoreMLEmbeddingProvider.lastWarningMessage
+    }
+
+    /// Whether `provider` can produce real semantic embeddings.
+    ///
+    /// Custom embedders are treated as available. The default CoreML MiniLM
+    /// path reports ``isAvailable``.
+    public static func isAvailable(for provider: any EmbeddingProvider) -> Bool {
+        if provider is CoreMLEmbeddingProvider {
+            return CoreMLEmbeddingProvider.isRealModelAvailable
+        }
+        if let caching = provider as? CachingEmbeddingProvider {
+            return isAvailable(for: caching.base)
+        }
+        return true
+    }
+
+    /// Resets process-wide fallback diagnostics. Intended for tests.
+    public static func resetForTesting() {
+        CoreMLEmbeddingProvider.resetAvailabilityForTesting()
+    }
+}
 
 internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
     internal let dimension: Int = 384
 
-    internal init() {}
+    internal init() {
+        Self.probeAndWarnIfNeeded()
+    }
 
     func embed(_ text: String) async throws -> [Float] {
 #if targetEnvironment(simulator)
+        Self.takeFallback(
+            reason: "CoreML embeddings are unavailable in the Simulator"
+        )
         return Self.deterministicVector(for: text, dimension: dimension)
 #else
         do {
             let model = try Self.loadModel()
+            Self.markRealModelAvailable()
             let inputName = try Self.resolveInputName(for: model)
             let provider = try MLDictionaryFeatureProvider(dictionary: [inputName: text])
             let output = try await model.prediction(from: provider)
             return try Self.extractEmbedding(from: output, model: model)
         } catch {
+            Self.takeFallback(
+                reason: "CoreML model minilm-l6-v2.mlpackage is missing or failed to load (\(error.localizedDescription))"
+            )
             return Self.deterministicVector(for: text, dimension: dimension)
         }
 #endif
@@ -29,10 +80,14 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
         }
 
 #if targetEnvironment(simulator)
+        Self.takeFallback(
+            reason: "CoreML embeddings are unavailable in the Simulator"
+        )
         return texts.map { Self.deterministicVector(for: $0, dimension: dimension) }
 #else
         do {
             let model = try Self.loadModel()
+            Self.markRealModelAvailable()
             let inputName = try Self.resolveInputName(for: model)
             let providers = try texts.map { text in
                 try MLDictionaryFeatureProvider(dictionary: [inputName: text]) as MLFeatureProvider
@@ -48,9 +103,78 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
             }
             return vectors
         } catch {
+            Self.takeFallback(
+                reason: "CoreML model minilm-l6-v2.mlpackage is missing or failed to load (\(error.localizedDescription))"
+            )
             return texts.map { Self.deterministicVector(for: $0, dimension: dimension) }
         }
 #endif
+    }
+
+    fileprivate static var isRealModelAvailable: Bool {
+        probeAndWarnIfNeeded()
+        return availability.snapshot().isRealModelAvailable
+    }
+
+    fileprivate static var unavailabilityReason: String? {
+        probeAndWarnIfNeeded()
+        return availability.snapshot().reason
+    }
+
+    fileprivate static var lastWarningMessage: String? {
+        availability.snapshot().lastWarning
+    }
+
+    fileprivate static func resetAvailabilityForTesting() {
+        availability.reset()
+    }
+
+    private static let availability = EmbeddingAvailabilityState()
+    private static let embeddingLogger = Logger(label: "com.swarm.memory")
+
+    @discardableResult
+    private static func probeAndWarnIfNeeded() -> Bool {
+        let probed = availability.snapshot()
+        if probed.didProbe {
+            return probed.isRealModelAvailable
+        }
+
+        let result = probeModel()
+        availability.storeProbe(available: result.available, reason: result.reason)
+        if !result.available, let reason = result.reason {
+            takeFallback(reason: reason)
+        }
+        return result.available
+    }
+
+    private static func probeModel() -> (available: Bool, reason: String?) {
+#if targetEnvironment(simulator)
+        return (false, "CoreML embeddings are unavailable in the Simulator")
+#else
+        do {
+            _ = try loadModel()
+            return (true, nil)
+        } catch {
+            return (
+                false,
+                "CoreML model minilm-l6-v2.mlpackage is missing or failed to load (\(error.localizedDescription))"
+            )
+        }
+#endif
+    }
+
+    private static func markRealModelAvailable() {
+        availability.storeProbe(available: true, reason: nil)
+    }
+
+    private static func takeFallback(reason: String) {
+        let message = """
+        Real embeddings are unavailable (\(reason)). Semantic recall quality is degraded — \
+        vector rankings are not meaningful until a real embedding model is available.
+        """
+        if availability.recordWarning(message, reason: reason) {
+            embeddingLogger.warning("\(message)")
+        }
     }
 
     private static func loadModel() throws -> MLModel {
@@ -152,7 +276,7 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
 }
 
 internal struct CachingEmbeddingProvider: EmbeddingProvider, Sendable {
-    private let base: any EmbeddingProvider
+    fileprivate let base: any EmbeddingProvider
     private let cache: EmbeddingCache
 
     internal init(
@@ -214,5 +338,56 @@ internal struct CachingEmbeddingProvider: EmbeddingProvider, Sendable {
         }
 
         return orderedResults
+    }
+}
+
+private final class EmbeddingAvailabilityState: @unchecked Sendable {
+    struct Snapshot {
+        var didProbe = false
+        var isRealModelAvailable = false
+        var reason: String?
+        var didWarn = false
+        var lastWarning: String?
+    }
+
+    private let lock = NSLock()
+    private var state = Snapshot()
+
+    func snapshot() -> Snapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        return state
+    }
+
+    func storeProbe(available: Bool, reason: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        state.didProbe = true
+        state.isRealModelAvailable = available
+        if !available {
+            state.reason = reason
+        } else {
+            state.reason = nil
+        }
+    }
+
+    func recordWarning(_ message: String, reason: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        state.didProbe = true
+        state.isRealModelAvailable = false
+        state.reason = reason
+        state.lastWarning = message
+        guard !state.didWarn else {
+            return false
+        }
+        state.didWarn = true
+        return true
+    }
+
+    func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        state = Snapshot()
     }
 }

@@ -6,6 +6,7 @@
 // Wax durable recall.
 // Apple-only: requires ContextCore (Metal/CoreML), which is not linked on Linux.
 
+import ContextCore
 import Foundation
 
 /// Default Swarm memory stack.
@@ -41,6 +42,15 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
     public nonisolated let memoryPriority: MemoryPriorityHint = .primary
     public nonisolated let allowsAutomaticSessionSeeding = true
 
+    /// Whether this memory stack can produce real semantic embeddings.
+    ///
+    /// Returns `false` when ContextCore's default CoreML MiniLM model is missing,
+    /// failed to load, or the process is running in the Simulator. Rankings then
+    /// use hash-seeded pseudo-vectors and semantic recall quality is degraded.
+    /// Custom embedding providers injected through
+    /// ``ContextCoreMemoryConfiguration`` are treated as available.
+    public nonisolated let isSemanticMemoryAvailable: Bool
+
     /// Composite count across the deduplicated working and durable layers.
     public var count: Int {
         get async { await compositeMessages().count }
@@ -56,6 +66,9 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
         self.contextMemory = try ContextCoreMemory(configuration: configuration.contextCoreConfiguration)
         self.memoryPromptTitle = "ContextCore + Wax Memory Context"
         self.memoryPromptGuidance = "Use the ContextCore section first for current-session context. Use the Wax section only for durable recall that does not conflict."
+        self.isSemanticMemoryAvailable = SemanticEmbeddingAvailability.isAvailable(
+            for: configuration.contextCoreConfiguration.contextConfiguration.embeddingProvider
+        )
     }
 
     public func add(_ message: MemoryMessage) async {
@@ -479,6 +492,16 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
         guard text.count > maxCharacters else { return text }
         let end = text.index(text.startIndex, offsetBy: maxCharacters)
         return String(text[..<end])
+    }
+}
+
+enum SemanticMemoryDiagnostics {
+    static var lastWarning: String? {
+        SemanticEmbeddingAvailability.lastWarningMessage
+    }
+
+    static func reset() {
+        SemanticEmbeddingAvailability.resetForTesting()
     }
 }
 #endif

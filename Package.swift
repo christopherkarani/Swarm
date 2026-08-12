@@ -198,6 +198,10 @@ var packageTargets: [Target] = [
                         name: "Membrane",
                         condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
                     ),
+                    .target(
+                        name: "ContextCore",
+                        condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
+                    ),
                 ]
             }
             return dependencies
@@ -344,6 +348,7 @@ if enableIntegrationModules {
             dependencies: [
                 "ContextCoreEngine",
                 "ContextCoreTypes",
+                .product(name: "Logging", package: "swift-log"),
                 .product(
                     name: "MetalANNS",
                     package: "MetalANNS",
