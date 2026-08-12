@@ -535,58 +535,6 @@ public struct Workflow: Sendable {
     var observer: (any AgentObserver)?
     var advancedConfiguration = AdvancedConfiguration()
 
-    func executeWithTimeout(
-        _ operation: @escaping @Sendable () async throws -> AgentResult
-    ) async throws -> AgentResult {
-        if let timeoutDuration {
-            let coordinator = WorkflowTimedOperationCoordinator<AgentResult>()
-            let priority = Task.currentPriority
-            // `Task.detached` is required so a MainActor caller cannot deadlock
-            // the continuation (an unstructured `Task {}` would be scheduled on
-            // MainActor and never run). Detached tasks drop `@TaskLocal` values,
-            // so re-apply the ambient environment inside the worker.
-            let capturedEnvironment = AgentEnvironmentValues.current
-            return try await withTaskCancellationHandler(
-                operation: {
-                    try await withCheckedThrowingContinuation { continuation in
-                        coordinator.install(continuation: continuation)
-
-                        let operationTask = Task.detached(priority: priority) {
-                            do {
-                                let result = try await AgentEnvironmentValues.$current.withValue(
-                                    capturedEnvironment
-                                ) {
-                                    try await operation()
-                                }
-                                coordinator.finish(returning: result)
-                            } catch {
-                                coordinator.finish(throwing: error)
-                            }
-                        }
-                        coordinator.setOperationTask(operationTask)
-
-                        let timeoutTask = Task.detached(priority: priority) {
-                            do {
-                                try await Task.sleep(for: timeoutDuration)
-                                operationTask.cancel()
-                                coordinator.finish(throwing: AgentError.timeout(duration: timeoutDuration))
-                            } catch is CancellationError {
-                                return
-                            } catch {
-                                coordinator.finish(throwing: error)
-                            }
-                        }
-                        coordinator.setTimeoutTask(timeoutTask)
-                    }
-                },
-                onCancel: {
-                    coordinator.cancelPending(with: CancellationError())
-                }
-            )
-        }
-        return try await operation()
-    }
-
     func executeDirect(input: String) async throws -> AgentResult {
         guard !steps.isEmpty else {
             throw WorkflowError.invalidWorkflow(reason: "Workflow has no steps")
@@ -645,7 +593,7 @@ public struct Workflow: Sendable {
                     }
                 }
 
-                if merge.usesFirstCompletedSemantics {
+                if merge.cancelsLosersAfterFirstResult {
                     guard let winner = try await group.next() else {
                         throw WorkflowError.mergeStrategyFailed(
                             reason: "Parallel workflow produced no results"
@@ -654,9 +602,7 @@ public struct Workflow: Sendable {
                     group.cancelAll()
                     // Drain cancelled losers so their CancellationError does not
                     // replace the winning result when the group exits.
-                    while let remaining = await group.nextResult() {
-                        _ = remaining
-                    }
+                    while await group.nextResult() != nil {}
                     return [winner]
                 }
 
@@ -667,9 +613,7 @@ public struct Workflow: Sendable {
                 return collected.sorted { $0.0 < $1.0 }
             }
 
-            let results = completedResults.map(\.1)
-            let mergedOutput = mergeResults(results, strategy: merge)
-            return AgentResult(output: mergedOutput)
+            return AgentResult(output: merge.mergedOutput(from: completedResults.map(\.1)))
 
         case .route(_, let route):
             guard let selected = route(input) else {
@@ -707,31 +651,6 @@ public struct Workflow: Sendable {
         }
     }
 
-    func mergeResults(_ results: [AgentResult], strategy: MergeStrategy) -> String {
-        switch strategy {
-        case .structured:
-            // Produce a JSON object keyed by index for machine-parseable output.
-            let dict = results.enumerated().reduce(into: [String: String]()) { acc, pair in
-                acc["\(pair.offset)"] = pair.element.output
-            }
-            if let data = try? JSONSerialization.data(withJSONObject: dict, options: .sortedKeys),
-               let json = String(data: data, encoding: .utf8)
-            {
-                return json
-            }
-            // Fallback: indexed format if JSON serialization fails (non-UTF-8 content).
-            fallthrough
-        case .indexed:
-            return results.enumerated().map { idx, result in
-                "[\(idx)]: \(result.output)"
-            }.joined(separator: "\n")
-        case .custom(let transform):
-            return transform(results)
-        default:
-            return results.first?.output ?? ""
-        }
-    }
-
     var workflowSignature: String {
         let parts: [String] = steps.enumerated().map { index, step in
             switch step {
@@ -739,19 +658,7 @@ public struct Workflow: Sendable {
                 return "\(index):single:\(workflowAgentSignature(agent))"
             case .parallel(let agents, let merge, let mergeBehaviorSignature):
                 let agentsSignature = agents.map(workflowAgentSignature).joined(separator: ",")
-                let mergeSignature: String
-                switch merge {
-                case .structured:
-                    mergeSignature = "structured"
-                case .indexed:
-                    mergeSignature = "indexed"
-                case .firstCompleted:
-                    mergeSignature = "firstCompleted"
-                case .custom:
-                    mergeSignature = mergeBehaviorSignature?.value ?? "custom:opaque"
-                default:
-                    mergeSignature = "first"
-                }
+                let mergeSignature = merge.durableSignature(customMerge: mergeBehaviorSignature)
                 return "\(index):parallel:\(agentsSignature):\(mergeSignature)"
             case .route(let signature, _):
                 return "\(index):route:\(signature.value)"
@@ -770,15 +677,51 @@ public struct Workflow: Sendable {
 }
 
 extension Workflow.MergeStrategy {
-    /// `.first` is a deprecated alias of `.firstCompleted`.
-    fileprivate var usesFirstCompletedSemantics: Bool {
+    /// Deprecated `.first` is an alias of `.firstCompleted`.
+    fileprivate var cancelsLosersAfterFirstResult: Bool {
         switch self {
-        case .firstCompleted:
-            return true
         case .structured, .indexed, .custom:
             return false
         default:
             return true
+        }
+    }
+
+    fileprivate func mergedOutput(from results: [AgentResult]) -> String {
+        switch self {
+        case .structured:
+            let dict = results.enumerated().reduce(into: [String: String]()) { acc, pair in
+                acc["\(pair.offset)"] = pair.element.output
+            }
+            if let data = try? JSONSerialization.data(withJSONObject: dict, options: .sortedKeys),
+               let json = String(data: data, encoding: .utf8)
+            {
+                return json
+            }
+            fallthrough
+        case .indexed:
+            return results.enumerated().map { idx, result in
+                "[\(idx)]: \(result.output)"
+            }.joined(separator: "\n")
+        case .custom(let transform):
+            return transform(results)
+        default:
+            return results.first?.output ?? ""
+        }
+    }
+
+    fileprivate func durableSignature(customMerge: Workflow.OpaqueBehaviorSignature?) -> String {
+        switch self {
+        case .structured:
+            return "structured"
+        case .indexed:
+            return "indexed"
+        case .firstCompleted:
+            return "firstCompleted"
+        case .custom:
+            return customMerge?.value ?? "custom:opaque"
+        default:
+            return "first"
         }
     }
 }
@@ -892,79 +835,4 @@ private func workflowOptionalTypeSignature(_ value: Any?) -> String {
 
 private func workflowSignatureComponent(_ value: String) -> String {
     "\(value.utf8.count)#\(value)"
-}
-
-private final class WorkflowTimedOperationCoordinator<T: Sendable>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<T, Error>?
-    private var operationTask: Task<Void, Never>?
-    private var timeoutTask: Task<Void, Never>?
-    private var completed = false
-
-    func install(continuation: CheckedContinuation<T, Error>) {
-        lock.lock()
-        self.continuation = continuation
-        lock.unlock()
-    }
-
-    func setOperationTask(_ task: Task<Void, Never>) {
-        lock.lock()
-        operationTask = task
-        lock.unlock()
-    }
-
-    func setTimeoutTask(_ task: Task<Void, Never>) {
-        lock.lock()
-        timeoutTask = task
-        lock.unlock()
-    }
-
-    func finish(returning value: T) {
-        complete { continuation in
-            continuation.resume(returning: value)
-        }
-    }
-
-    func finish(throwing error: Error) {
-        complete { continuation in
-            continuation.resume(throwing: error)
-        }
-    }
-
-    func cancelPending(with error: Error) {
-        let pendingState = takePendingState()
-        pendingState.operationTask?.cancel()
-        pendingState.timeoutTask?.cancel()
-        pendingState.continuation?.resume(throwing: error)
-    }
-
-    private func complete(_ resume: (CheckedContinuation<T, Error>) -> Void) {
-        let pendingState = takePendingState()
-        pendingState.operationTask?.cancel()
-        pendingState.timeoutTask?.cancel()
-        guard let continuation = pendingState.continuation else { return }
-        resume(continuation)
-    }
-
-    private func takePendingState() -> (
-        continuation: CheckedContinuation<T, Error>?,
-        operationTask: Task<Void, Never>?,
-        timeoutTask: Task<Void, Never>?
-    ) {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard completed == false else {
-            return (nil, nil, nil)
-        }
-
-        completed = true
-        let pendingContinuation = continuation
-        let pendingOperationTask = operationTask
-        let pendingTimeoutTask = timeoutTask
-        continuation = nil
-        operationTask = nil
-        timeoutTask = nil
-        return (pendingContinuation, pendingOperationTask, pendingTimeoutTask)
-    }
 }
