@@ -130,7 +130,7 @@ private final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
             if let conversationProvider = self.base as? any ConversationInferenceProvider {
                 response = try await conversationProvider.generate(messages: messages, options: options)
             } else {
-                response = try await self.base.generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+                response = try await self.base.generate(prompt: TextOnlyConversationInferenceProviderAdapter.prompt(from: messages), options: options)
             }
             span.setAttribute(key: "gen_ai.response.output_length", value: response.count)
             return response
@@ -144,7 +144,7 @@ private final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
             if let conversationProvider = self.base as? any StreamingConversationInferenceProvider {
                 stream = conversationProvider.stream(messages: messages, options: options)
             } else {
-                stream = self.base.stream(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+                stream = self.base.stream(prompt: TextOnlyConversationInferenceProviderAdapter.prompt(from: messages), options: options)
             }
 
             var outputLength = 0
@@ -173,7 +173,7 @@ private final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
                 )
             } else {
                 response = try await self.base.generateWithToolCalls(
-                    prompt: InferenceMessage.flattenPrompt(messages),
+                    prompt: TextOnlyConversationInferenceProviderAdapter.prompt(from: messages),
                     tools: tools,
                     options: options
                 )
@@ -228,7 +228,7 @@ private final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
                 )
             } else {
                 result = try await self.base.generateStructured(
-                    prompt: InferenceMessage.flattenPrompt(messages),
+                    prompt: TextOnlyConversationInferenceProviderAdapter.prompt(from: messages),
                     request: request,
                     options: options
                 )
@@ -264,7 +264,7 @@ private final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
                 throw AgentError.generationFailed(reason: "Provider does not support tool-call streaming")
             }
             return promptProvider.streamWithToolCalls(
-                prompt: InferenceMessage.flattenPrompt(messages),
+                prompt: TextOnlyConversationInferenceProviderAdapter.prompt(from: messages),
                 tools: tools,
                 options: options
             )

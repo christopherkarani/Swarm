@@ -31,6 +31,18 @@ public struct TokenUsage: Sendable, Equatable, Codable {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
     }
+
+    /// Returns the sum of this usage and `other`.
+    ///
+    /// Use this to accumulate provider-reported usage across tool-loop iterations
+    /// or handoffs. Swarm never invents counts; callers should only merge values
+    /// the provider actually returned.
+    public func merging(_ other: TokenUsage) -> TokenUsage {
+        TokenUsage(
+            inputTokens: inputTokens + other.inputTokens,
+            outputTokens: outputTokens + other.outputTokens
+        )
+    }
 }
 
 // MARK: - TokenUsage + CustomStringConvertible

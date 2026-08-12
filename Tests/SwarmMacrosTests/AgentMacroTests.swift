@@ -74,6 +74,8 @@ final class AgentMacroTests: XCTestCase {
 
                     private var isCancelled: Bool = false
 
+                    private var lastTokenUsage: TokenUsage?
+
                     public init(
                         tools: [any AnyJSONTool] = [],
                         instructions: String = "You are a helpful assistant",
@@ -118,6 +120,7 @@ final class AgentMacroTests: XCTestCase {
 
                         do {
                             isCancelled = false
+                            lastTokenUsage = nil
 
                             // Load conversation history from session (limit to recent messages)
                             var sessionHistory: [MemoryMessage] = []
@@ -162,7 +165,7 @@ final class AgentMacroTests: XCTestCase {
                                 toolResults: [],
                                 iterationCount: 1,
                                 duration: duration,
-                                tokenUsage: nil,
+                                tokenUsage: lastTokenUsage,
                                 metadata: [:]
                             )
 
@@ -368,6 +371,8 @@ final class AgentMacroTests: XCTestCase {
 
                     private var isCancelled: Bool = false
 
+                    private var lastTokenUsage: TokenUsage?
+
                     public init(
                         tools: [any AnyJSONTool] = [],
                         instructions: String = "Math assistant",
@@ -412,6 +417,7 @@ final class AgentMacroTests: XCTestCase {
 
                         do {
                             isCancelled = false
+                            lastTokenUsage = nil
 
                             // Load conversation history from session (limit to recent messages)
                             var sessionHistory: [MemoryMessage] = []
@@ -456,7 +462,7 @@ final class AgentMacroTests: XCTestCase {
                                 toolResults: [],
                                 iterationCount: 1,
                                 duration: duration,
-                                tokenUsage: nil,
+                                tokenUsage: lastTokenUsage,
                                 metadata: [:]
                             )
 
@@ -688,6 +694,8 @@ extension AgentMacroTests {
                     private nonisolated let _tracer: (any Tracer)?
 
                     private var isCancelled: Bool = false
+
+                    private var lastTokenUsage: TokenUsage?
 
                     public init(
                         tools: [any AnyJSONTool] = [],

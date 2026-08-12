@@ -37,8 +37,36 @@ struct TextOnlyConversationInferenceProviderAdapterTests {
         #expect(output == "ok")
         let prompts = await provider.recordedPrompts()
         #expect(prompts.count == 1)
-        #expect(prompts[0].contains("[System]: system instructions"))
-        #expect(prompts[0].contains("[User]: hello"))
+        #expect(prompts[0] == """
+        [System]: system instructions
+
+        [User]: hello
+        """)
+    }
+
+    @Test("Flattened history is labeled and lossless-by-construction")
+    func flattenedHistoryIsLabeledAndLossless() {
+        let messages: [InferenceMessage] = [
+            .system("system instructions"),
+            .user("hello"),
+            .assistant(
+                "calling",
+                toolCalls: [.init(id: "1", name: "echo", arguments: ["text": .string("hi")])]
+            ),
+            .tool(name: "echo", content: "hi", toolCallID: "1"),
+        ]
+
+        let flattened = TextOnlyConversationInferenceProviderAdapter.prompt(from: messages)
+        #expect(flattened == """
+        [System]: system instructions
+
+        [User]: hello
+
+        [Assistant]: calling
+        [Assistant Tool Calls]: Calling tool: echo
+
+        [Tool Result - echo]: hi
+        """)
     }
 
     @Test("Text-only conversation adapter strips streaming tool-call capability")

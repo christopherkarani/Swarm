@@ -33,6 +33,18 @@ private actor NativeStructuredConversationProvider:
         structuredResult.rawJSON
     }
 
+    func generate(messages _: [InferenceMessage], options _: InferenceOptions) async throws -> String {
+        structuredResult.rawJSON
+    }
+
+    func generateWithToolCalls(
+        messages _: [InferenceMessage],
+        tools _: [ToolSchema],
+        options _: InferenceOptions
+    ) async throws -> InferenceResponse {
+        InferenceResponse(content: structuredResult.rawJSON, finishReason: .completed)
+    }
+
     nonisolated func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             continuation.finish(throwing: AgentError.internalError(reason: "Unexpected streaming call"))

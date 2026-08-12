@@ -58,6 +58,12 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
     /// Tool execution durations by tool name (in seconds).
     public let toolDurations: [String: [TimeInterval]]
 
+    /// Accumulated provider-reported input tokens. Zero when providers omit usage.
+    public let inputTokens: Int
+
+    /// Accumulated provider-reported output tokens. Zero when providers omit usage.
+    public let outputTokens: Int
+
     // MARK: - Timestamp
 
     /// When this snapshot was taken.
@@ -91,6 +97,11 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
     /// Total number of tool errors across all tools.
     public var totalToolErrors: Int {
         toolErrors.values.reduce(0, +)
+    }
+
+    /// Total provider-reported tokens (input + output).
+    public var totalTokens: Int {
+        inputTokens + outputTokens
     }
 
     /// Average execution duration in seconds.
@@ -151,7 +162,9 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
         toolCalls: [String: Int],
         toolErrors: [String: Int],
         toolDurations: [String: [TimeInterval]],
-        timestamp: Date = Date()
+        timestamp: Date = Date(),
+        inputTokens: Int = 0,
+        outputTokens: Int = 0
     ) {
         self.totalExecutions = totalExecutions
         self.successfulExecutions = successfulExecutions
@@ -162,6 +175,54 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
         self.toolErrors = toolErrors
         self.toolDurations = toolDurations
         self.timestamp = timestamp
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case totalExecutions
+        case successfulExecutions
+        case failedExecutions
+        case cancelledExecutions
+        case executionDurations
+        case toolCalls
+        case toolErrors
+        case toolDurations
+        case inputTokens
+        case outputTokens
+        case timestamp
+    }
+
+    /// Decodes a snapshot, defaulting missing token fields to zero so JSON written
+    /// before token metrics existed remains readable.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        totalExecutions = try container.decode(Int.self, forKey: .totalExecutions)
+        successfulExecutions = try container.decode(Int.self, forKey: .successfulExecutions)
+        failedExecutions = try container.decode(Int.self, forKey: .failedExecutions)
+        cancelledExecutions = try container.decode(Int.self, forKey: .cancelledExecutions)
+        executionDurations = try container.decode([TimeInterval].self, forKey: .executionDurations)
+        toolCalls = try container.decode([String: Int].self, forKey: .toolCalls)
+        toolErrors = try container.decode([String: Int].self, forKey: .toolErrors)
+        toolDurations = try container.decode([String: [TimeInterval]].self, forKey: .toolDurations)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        inputTokens = try container.decodeIfPresent(Int.self, forKey: .inputTokens) ?? 0
+        outputTokens = try container.decodeIfPresent(Int.self, forKey: .outputTokens) ?? 0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(totalExecutions, forKey: .totalExecutions)
+        try container.encode(successfulExecutions, forKey: .successfulExecutions)
+        try container.encode(failedExecutions, forKey: .failedExecutions)
+        try container.encode(cancelledExecutions, forKey: .cancelledExecutions)
+        try container.encode(executionDurations, forKey: .executionDurations)
+        try container.encode(toolCalls, forKey: .toolCalls)
+        try container.encode(toolErrors, forKey: .toolErrors)
+        try container.encode(toolDurations, forKey: .toolDurations)
+        try container.encode(inputTokens, forKey: .inputTokens)
+        try container.encode(outputTokens, forKey: .outputTokens)
+        try container.encode(timestamp, forKey: .timestamp)
     }
 }
 
@@ -171,7 +232,7 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
 ///
 /// `MetricsCollector` implements the `AgentTracer` protocol to automatically
 /// collect metrics from trace events. It tracks execution counts, durations,
-/// tool usage, and error rates.
+/// tool usage, error rates, and provider-reported token usage when present.
 ///
 /// ## Features
 ///
@@ -221,7 +282,8 @@ public actor MetricsCollector: Tracer {
     ///
     /// This method automatically extracts relevant metrics from trace events:
     /// - `agentStart`: Increments total executions
-    /// - `agentComplete`: Increments successful executions, records duration
+    /// - `agentComplete`: Increments successful executions, records duration,
+    ///   and accumulates `input_tokens` / `output_tokens` from that span only
     /// - `agentError`: Increments failed executions
     /// - `agentCancelled`: Increments cancelled executions
     /// - `toolCall`: Increments tool call counter
@@ -242,6 +304,12 @@ public actor MetricsCollector: Tracer {
             } else if let startTime = spanStartTimes[event.spanId] {
                 let duration = event.timestamp.timeIntervalSince(startTime)
                 executionDurations.append(duration)
+            }
+            if let input = event.metadata["input_tokens"]?.intValue {
+                inputTokens += input
+            }
+            if let output = event.metadata["output_tokens"]?.intValue {
+                outputTokens += output
             }
             spanStartTimes.removeValue(forKey: event.spanId)
 
@@ -324,7 +392,9 @@ public actor MetricsCollector: Tracer {
             toolCalls: toolCalls,
             toolErrors: toolErrors,
             toolDurations: toolDurationArrays,
-            timestamp: Date()
+            timestamp: Date(),
+            inputTokens: inputTokens,
+            outputTokens: outputTokens
         )
     }
 
@@ -346,6 +416,8 @@ public actor MetricsCollector: Tracer {
         toolErrors.removeAll()
         toolDurations.removeAll()
         spanStartTimes.removeAll()
+        inputTokens = 0
+        outputTokens = 0
     }
 
     // MARK: - Individual Metric Accessors
@@ -400,6 +472,12 @@ public actor MetricsCollector: Tracer {
 
     /// Number of cancelled agent executions.
     private var cancelledExecutions: Int = 0
+
+    /// Accumulated provider-reported input tokens.
+    private var inputTokens: Int = 0
+
+    /// Accumulated provider-reported output tokens.
+    private var outputTokens: Int = 0
 
     // MARK: - Duration Tracking
 
@@ -572,7 +650,9 @@ extension MetricsSnapshot: CustomStringConvertible {
           errorRate: \(String(format: "%.2f", errorRate))%,
           averageExecutionDuration: \(String(format: "%.3f", averageExecutionDuration))s,
           totalToolCalls: \(totalToolCalls),
-          totalToolErrors: \(totalToolErrors)
+          totalToolErrors: \(totalToolErrors),
+          inputTokens: \(inputTokens),
+          outputTokens: \(outputTokens)
         )
         """
     }

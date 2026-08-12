@@ -116,6 +116,13 @@ public struct AgentMacro: MemberMacro, ExtensionMacro {
                 """)
         }
 
+        // 7b. Last provider-reported usage, set by `process` when available.
+        if !existingMembers.contains("lastTokenUsage") {
+            members.append("""
+                private var lastTokenUsage: TokenUsage?
+                """)
+        }
+
         // 8. Generate initializer
         if !hasInit(in: declaration) {
             members.append("""
@@ -170,6 +177,7 @@ public struct AgentMacro: MemberMacro, ExtensionMacro {
 
                         do {
                             isCancelled = false
+                            lastTokenUsage = nil
 
                             // Load conversation history from session (limit to recent messages)
                             var sessionHistory: [MemoryMessage] = []
@@ -214,7 +222,7 @@ public struct AgentMacro: MemberMacro, ExtensionMacro {
                                 toolResults: [],
                                 iterationCount: 1,
                                 duration: duration,
-                                tokenUsage: nil,
+                                tokenUsage: lastTokenUsage,
                                 metadata: [:]
                             )
 

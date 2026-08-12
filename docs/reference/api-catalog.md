@@ -1054,7 +1054,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 19 | var | public | TokenUsage.outputTokens | `public let outputTokens: Int` |
 | 22 | var | public | TokenUsage.totalTokens | `public var totalTokens: Int { get }` |
 | 30 | func | public | TokenUsage.init(inputTokens:outputTokens:) | `public init(inputTokens: Int, outputTokens: Int)` |
-| 39 | var | public | TokenUsage.description | `public var description: String { get }` |
+| 36 | func | public | TokenUsage.merging(_:) | `public func merging(_ other: TokenUsage) -> TokenUsage` |
+| 51 | var | public | TokenUsage.description | `public var description: String { get }` |
 
 ## 3. Agents
 
@@ -2032,7 +2033,10 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 53 | var | public | MetricsSnapshot.toolCalls | `public let toolCalls: [String : Int]` |
 | 56 | var | public | MetricsSnapshot.toolErrors | `public let toolErrors: [String : Int]` |
 | 59 | var | public | MetricsSnapshot.toolDurations | `public let toolDurations: [String : [TimeInterval]]` |
-| 64 | var | public | MetricsSnapshot.timestamp | `public let timestamp: Date` |
+| 62 | var | public | MetricsSnapshot.inputTokens | `public let inputTokens: Int` |
+| 65 | var | public | MetricsSnapshot.outputTokens | `public let outputTokens: Int` |
+| 68 | var | public | MetricsSnapshot.totalTokens | `public var totalTokens: Int { get }` |
+| 70 | var | public | MetricsSnapshot.timestamp | `public let timestamp: Date` |
 | 69 | var | public | MetricsSnapshot.successRate | `public var successRate: Double { get }` |
 | 75 | var | public | MetricsSnapshot.errorRate | `public var errorRate: Double { get }` |
 | 81 | var | public | MetricsSnapshot.cancellationRate | `public var cancellationRate: Double { get }` |
@@ -2044,7 +2048,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 113 | var | public | MetricsSnapshot.medianExecutionDuration | `public var medianExecutionDuration: TimeInterval? { get }` |
 | 125 | var | public | MetricsSnapshot.p95ExecutionDuration | `public var p95ExecutionDuration: TimeInterval? { get }` |
 | 130 | var | public | MetricsSnapshot.p99ExecutionDuration | `public var p99ExecutionDuration: TimeInterval? { get }` |
-| 145 | func | public | MetricsSnapshot.init(totalExecutions:successfulExecutions:failedExecutions:cancelledExecutions:executionDurations:toolCalls:toolErrors:toolDurations:timestamp:) | `public init(totalExecutions: Int, successfulExecutions: Int, failedExecutions: Int, cancelledExecutions: Int, executionDurations: [TimeInterval], toolCalls: [String : Int], toolErrors: [String : Int], toolDurations: [String : [TimeInterval]], timestamp: Date = Date())` |
+| 145 | func | public | MetricsSnapshot.init(totalExecutions:successfulExecutions:failedExecutions:cancelledExecutions:executionDurations:toolCalls:toolErrors:toolDurations:timestamp:inputTokens:outputTokens:) | `public init(totalExecutions: Int, successfulExecutions: Int, failedExecutions: Int, cancelledExecutions: Int, executionDurations: [TimeInterval], toolCalls: [String : Int], toolErrors: [String : Int], toolDurations: [String : [TimeInterval]], timestamp: Date = Date(), inputTokens: Int = 0, outputTokens: Int = 0)` |
 | 201 | class | public | MetricsCollector | `public actor MetricsCollector` |
 | 207 | var | public | MetricsCollector.maxMetricsHistory | `public let maxMetricsHistory: Int` |
 | 213 | func | public | MetricsCollector.init(maxMetricsHistory:) | `public init(maxMetricsHistory: Int = 10000)` |
@@ -2265,6 +2269,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 45 | func | public | TracingHelper.init(tracer:agentName:) | `public init(tracer: (any Tracer)?, agentName: String)` |
 | 57 | func | public | TracingHelper.traceStart(input:) | `public func traceStart(input: String) async` |
 | 74 | func | public | TracingHelper.traceComplete(result:) | `public func traceComplete(result: AgentResult) async` |
+| 88 | func | public | TracingHelper.traceComplete(result:tokenUsage:) | `public func traceComplete(result: AgentResult, tokenUsage: TokenUsage?) async` |
 | 95 | func | public | TracingHelper.traceError(_:) | `public func traceError(_ error: any Error) async` |
 | 119 | func | public | TracingHelper.traceThought(_:) | `public func traceThought(_ thought: String) async` |
 | 137 | func | public | TracingHelper.tracePlan(_:) | `public func tracePlan(_ plan: String) async` |
@@ -2791,8 +2796,8 @@ First-class on-device Apple Foundation Models path. Gated by `#if canImport(Foun
 |------|------|--------|------|-----------|
 | 99 | macro | public | Tool(_:) | `public @attached(member, names: named(name), named(description), named(parameters), named(init), named(execute), named(_userExecute), named(Input), named(Output)) @attached(extension, conformances: Tool, Sendable) macro Tool(_ description: String)` |
 | 146 | macro | public | Parameter(_:default:oneOf:) | `public @attached(peer) macro Parameter(_ description: String, default defaultValue: Any? = nil, oneOf options: [String]? = nil)` |
-| 188 | macro | public | AgentActor(instructions:generateBuilder:) | `public @attached(member, names: named(tools), named(instructions), named(configuration), named(memory), named(inferenceProvider), named(tracer), named(_memory), named(_defaultMemory), named(resolvedMemory), named(makeDefaultMemory), named(_inferenceProvider), named(_tracer), named(isCancelled), named(init), named(run), named(stream), named(cancel), named(Builder)) @attached(extension, conformances: AgentRuntime) macro AgentActor(instructions: String, generateBuilder: Bool = true)` |
-| 256 | macro | public | AgentActor(_:) | `public @attached(member, names: named(tools), named(instructions), named(configuration), named(memory), named(inferenceProvider), named(tracer), named(_memory), named(_defaultMemory), named(resolvedMemory), named(makeDefaultMemory), named(_inferenceProvider), named(_tracer), named(isCancelled), named(init), named(run), named(stream), named(cancel), named(Builder)) @attached(extension, conformances: AgentRuntime) macro AgentActor(_ instructions: String)` |
+| 188 | macro | public | AgentActor(instructions:generateBuilder:) | `public @attached(member, names: named(tools), named(instructions), named(configuration), named(memory), named(inferenceProvider), named(tracer), named(_memory), named(_defaultMemory), named(resolvedMemory), named(makeDefaultMemory), named(_inferenceProvider), named(_tracer), named(isCancelled), named(lastTokenUsage), named(init), named(run), named(stream), named(cancel), named(Builder)) @attached(extension, conformances: AgentRuntime) macro AgentActor(instructions: String, generateBuilder: Bool = true)` |
+| 256 | macro | public | AgentActor(_:) | `public @attached(member, names: named(tools), named(instructions), named(configuration), named(memory), named(inferenceProvider), named(tracer), named(_memory), named(_defaultMemory), named(resolvedMemory), named(makeDefaultMemory), named(_inferenceProvider), named(_tracer), named(isCancelled), named(lastTokenUsage), named(init), named(run), named(stream), named(cancel), named(Builder)) @attached(extension, conformances: AgentRuntime) macro AgentActor(_ instructions: String)` |
 | 287 | macro | public | Traceable() | `public @attached(peer, names: named(executeWithTracing)) macro Traceable()` |
 | 315 | macro | public | Prompt(_:) | `public @freestanding(expression) macro Prompt(_ content: String) -> PromptString` |
 | 326 | struct | public | PromptString | `public struct PromptString` |

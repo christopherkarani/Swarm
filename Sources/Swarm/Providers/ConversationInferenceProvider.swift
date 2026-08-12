@@ -196,6 +196,10 @@ extension InferenceMessage {
         }
     }
 
+    /// Labeled serialization used by ``TextOnlyConversationInferenceProviderAdapter``.
+    ///
+    /// Role-capable providers must consume ``InferenceMessage`` arrays directly.
+    /// Flattening with role labels is reserved for text-only backends.
     package static func flattenPrompt(_ messages: [InferenceMessage]) -> String {
         messages.map(\.flattenedPromptLine).joined(separator: "\n\n")
     }

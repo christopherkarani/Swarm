@@ -341,7 +341,7 @@ for message in await conversation.messages {
 | **Guardrails** | `InputGuard.maxLength()`, `InputGuard.notEmpty()`, `InputGuard.custom()`, `OutputGuard.maxLength()`, `OutputGuard.custom()` |
 | **Conversation** | `Conversation` actor for stateful multi-turn dialogue |
 | **Resilience** | 7 backoff strategies, circuit breaker, fallback chains, rate limiting |
-| **Observability** | `AgentObserver`, `Tracer`, `SwiftLogTracer`, per-agent token metrics |
+| **Observability** | `AgentObserver`, `Tracer`, `SwiftLogTracer`, per-agent token metrics when the provider reports usage (Foundation Models does not) |
 | **MCP** | Model Context Protocol client and server support |
 | **Providers** | Built-in Apple Foundation Models (on-device); inject any `InferenceProvider` for custom backends |
 | **Macros** | `@Tool`, `@Parameter`, `@Traceable`, `#Prompt` |

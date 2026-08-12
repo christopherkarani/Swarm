@@ -245,7 +245,8 @@ public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, Ca
         if let conversationProvider = provider as? any ConversationInferenceProvider {
             return try await conversationProvider.generate(messages: messages, options: options)
         }
-        return try await provider.generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+        return try await TextOnlyConversationInferenceProviderAdapter(base: provider)
+            .generate(messages: messages, options: options)
     }
 
     public func generateWithToolCalls(
@@ -261,11 +262,8 @@ public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, Ca
                 options: options
             )
         }
-        return try await provider.generateWithToolCalls(
-            prompt: InferenceMessage.flattenPrompt(messages),
-            tools: tools,
-            options: options
-        )
+        return try await TextOnlyConversationInferenceProviderAdapter(base: provider)
+            .generateWithToolCalls(messages: messages, tools: tools, options: options)
     }
 
     /// Checks if a provider is registered for the given prefix.
@@ -332,7 +330,8 @@ public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, Ca
         if let conversationProvider = provider as? any StreamingConversationInferenceProvider {
             stream = conversationProvider.stream(messages: messages, options: options)
         } else {
-            stream = provider.stream(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+            stream = TextOnlyConversationInferenceProviderAdapter(base: provider)
+                .stream(messages: messages, options: options)
         }
 
         for try await token in stream {
@@ -374,7 +373,7 @@ public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, Ca
             stream = conversationProvider.streamWithToolCalls(messages: messages, tools: tools, options: options)
         } else if let promptProvider = provider as? any ToolCallStreamingInferenceProvider {
             stream = promptProvider.streamWithToolCalls(
-                prompt: InferenceMessage.flattenPrompt(messages),
+                prompt: TextOnlyConversationInferenceProviderAdapter.prompt(from: messages),
                 tools: tools,
                 options: options
             )
