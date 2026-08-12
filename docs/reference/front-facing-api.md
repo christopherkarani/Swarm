@@ -297,10 +297,11 @@ Fluent multi-agent pipeline composition.
 
 ```swift
 public struct Workflow: Sendable {
-    public enum MergeStrategy: @unchecked Sendable {
+    public enum MergeStrategy: Sendable {
         case structured
         case indexed
-        case first
+        case firstCompleted
+        case first // deprecated, renamed: firstCompleted
         case custom(@Sendable ([AgentResult]) -> String)
     }
 

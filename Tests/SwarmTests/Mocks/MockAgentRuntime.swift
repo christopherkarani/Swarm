@@ -50,7 +50,16 @@ public actor MockAgentRuntime: AgentRuntime {
 
     public func run(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) async throws -> AgentResult {
         if delay > .zero {
-            try await Task.sleep(for: delay)
+            do {
+                try await Task.sleep(for: delay)
+            } catch is CancellationError {
+                cancelled = true
+                throw CancellationError()
+            }
+        }
+        if Task.isCancelled {
+            cancelled = true
+            throw CancellationError()
         }
         if cancelled {
             throw AgentError.cancelled

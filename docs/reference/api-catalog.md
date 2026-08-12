@@ -3,7 +3,7 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6).
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 155
+- Source files scanned: 156
 - Public/open symbols cataloged: 2423
 
 ## 1. Swarm (entry point)
@@ -2418,22 +2418,23 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 89 | struct | public | Workflow | `public struct Workflow` |
-| 125 | enum | public | Workflow.MergeStrategy | `public enum MergeStrategy` |
-| 140 | case | public | Workflow.MergeStrategy.structured | `public case structured` |
-| 157 | case | public | Workflow.MergeStrategy.indexed | `public case indexed` |
-| 173 | case | public | Workflow.MergeStrategy.first | `public case first` |
-| 193 | case | public | Workflow.MergeStrategy.custom(_:) | `public case custom(@Sendable ([AgentResult]) -> String)` |
-| 209 | func | public | Workflow.init() | `public init()` |
-| 229 | func | public | Workflow.step(_:) | `public func step(_ agent: some AgentRuntime) -> Workflow` |
-| 259 | func | public | Workflow.parallel(_:merge:customMergeSignature:fileID:line:) | `public func parallel(_ agents: [any AgentRuntime], merge: Workflow.MergeStrategy = .structured, customMergeSignature: String? = nil, fileID: StaticString = #fileID, line: UInt = #line) -> Workflow` |
-| 311 | func | public | Workflow.route(_:signature:fileID:line:) | `public func route(_ condition: @escaping @Sendable (String) -> (any AgentRuntime)?, signature: String? = nil, fileID: StaticString = #fileID, line: UInt = #line) -> Workflow` |
-| 326 | func | public | Workflow.route(signature:fileID:line:_:) | `public func route(signature: String, fileID: StaticString = #fileID, line: UInt = #line, _ condition: @escaping @Sendable (String) -> (any AgentRuntime)?) -> Workflow` |
-| 361 | func | public | Workflow.repeatUntil(maxIterations:_:signature:fileID:line:) | `public func repeatUntil(maxIterations: Int = 100, _ condition: @escaping @Sendable (AgentResult) -> Bool, signature: String? = nil, fileID: StaticString = #fileID, line: UInt = #line) -> Workflow` |
-| 381 | func | public | Workflow.repeatUntil(maxIterations:signature:fileID:line:_:) | `public func repeatUntil(maxIterations: Int = 100, signature: String, fileID: StaticString = #fileID, line: UInt = #line, _ condition: @escaping @Sendable (AgentResult) -> Bool) -> Workflow` |
-| 407 | func | public | Workflow.timeout(_:) | `public func timeout(_ duration: Duration) -> Workflow` |
-| 433 | func | public | Workflow.observed(by:) | `public func observed(by observer: some AgentObserver) -> Workflow` |
-| 459 | func | public | Workflow.run(_:) | `public func run(_ input: String) async throws -> AgentResult` |
-| 494 | func | public | Workflow.stream(_:) | `public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>` |
+| 126 | enum | public | Workflow.MergeStrategy | `public enum MergeStrategy` |
+| 141 | case | public | Workflow.MergeStrategy.structured | `public case structured` |
+| 158 | case | public | Workflow.MergeStrategy.indexed | `public case indexed` |
+| 174 | case | public | Workflow.MergeStrategy.firstCompleted | `public case firstCompleted` |
+| 182 | case | public | Workflow.MergeStrategy.first | `public case first` _(Availability: * (deprecated); renamed to firstCompleted)_ |
+| 202 | case | public | Workflow.MergeStrategy.custom(_:) | `public case custom(@Sendable ([AgentResult]) -> String)` |
+| 218 | func | public | Workflow.init() | `public init()` |
+| 238 | func | public | Workflow.step(_:) | `public func step(_ agent: some AgentRuntime) -> Workflow` |
+| 268 | func | public | Workflow.parallel(_:merge:customMergeSignature:fileID:line:) | `public func parallel(_ agents: [any AgentRuntime], merge: Workflow.MergeStrategy = .structured, customMergeSignature: String? = nil, fileID: StaticString = #fileID, line: UInt = #line) -> Workflow` |
+| 320 | func | public | Workflow.route(_:signature:fileID:line:) | `public func route(_ condition: @escaping @Sendable (String) -> (any AgentRuntime)?, signature: String? = nil, fileID: StaticString = #fileID, line: UInt = #line) -> Workflow` |
+| 335 | func | public | Workflow.route(signature:fileID:line:_:) | `public func route(signature: String, fileID: StaticString = #fileID, line: UInt = #line, _ condition: @escaping @Sendable (String) -> (any AgentRuntime)?) -> Workflow` |
+| 370 | func | public | Workflow.repeatUntil(maxIterations:_:signature:fileID:line:) | `public func repeatUntil(maxIterations: Int = 100, _ condition: @escaping @Sendable (AgentResult) -> Bool, signature: String? = nil, fileID: StaticString = #fileID, line: UInt = #line) -> Workflow` |
+| 390 | func | public | Workflow.repeatUntil(maxIterations:signature:fileID:line:_:) | `public func repeatUntil(maxIterations: Int = 100, signature: String, fileID: StaticString = #fileID, line: UInt = #line, _ condition: @escaping @Sendable (AgentResult) -> Bool) -> Workflow` |
+| 416 | func | public | Workflow.timeout(_:) | `public func timeout(_ duration: Duration) -> Workflow` |
+| 442 | func | public | Workflow.observed(by:) | `public func observed(by observer: some AgentObserver) -> Workflow` |
+| 469 | func | public | Workflow.run(_:) | `public func run(_ input: String) async throws -> AgentResult` |
+| 504 | func | public | Workflow.stream(_:) | `public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>` |
 
 ### Workflow/WorkflowCheckpointing.swift
 
