@@ -638,13 +638,6 @@ public struct Agent: AgentRuntime, Sendable {
     private struct FinalAssistantResponse: Sendable {
         let content: String
         let structuredOutput: StructuredOutputResult?
-        let usage: TokenUsage?
-
-        init(content: String, structuredOutput: StructuredOutputResult?, usage: TokenUsage? = nil) {
-            self.content = content
-            self.structuredOutput = structuredOutput
-            self.usage = usage
-        }
     }
 
     private actor ActiveRunCancellationState {
@@ -955,7 +948,7 @@ public struct Agent: AgentRuntime, Sendable {
                 let response = makeResponse(from: result, responseID: responseID)
                 await Self.autoResponseTracker.recordResponse(response, sessionId: session.sessionId)
             }
-            await tracing.traceComplete(result: result)
+            await tracing.traceComplete(result: result, tokenUsage: resultBuilder.ownTokenUsage())
 
             // Notify observer of agent completion
             await observer?.onAgentEnd(context: nil, agent: self, result: result)
@@ -1503,7 +1496,6 @@ public struct Agent: AgentRuntime, Sendable {
                             observer: observer
                         )
                     }
-                    recordUsage(response.usage, on: resultBuilder)
                     transcriptMessages.append(
                         SwarmTranscriptCodec.encodeMessage(
                             role: .assistant,
@@ -1765,11 +1757,8 @@ public struct Agent: AgentRuntime, Sendable {
             var streamedContent = ""
             streamedContent.reserveCapacity(1024)
             let stream: AsyncThrowingStream<String, Error>
-            if let messages,
-               let conversationProvider = provider as? any StreamingConversationInferenceProvider {
-                stream = conversationProvider.stream(messages: messages, options: options)
-            } else if let messages {
-                stream = TextOnlyConversationInferenceProviderAdapter(base: provider)
+            if let messages {
+                stream = streamingConversationProvider(for: provider)
                     .stream(messages: messages, options: options)
             } else {
                 stream = provider.stream(prompt: prompt, options: options)
@@ -1782,12 +1771,8 @@ public struct Agent: AgentRuntime, Sendable {
             }
             content = streamedContent
             structuredOutput = nil
-        } else if let messages,
-                  let conversationProvider = provider as? any ConversationInferenceProvider {
-            content = try await conversationProvider.generate(messages: messages, options: options)
-            structuredOutput = nil
         } else if let messages {
-            content = try await TextOnlyConversationInferenceProviderAdapter(base: provider)
+            content = try await conversationProvider(for: provider)
                 .generate(messages: messages, options: options)
             structuredOutput = nil
         } else {
@@ -2297,8 +2282,8 @@ public struct Agent: AgentRuntime, Sendable {
                     await tracing?.traceToolResult(spanId: spanId, name: parsedCall.name, result: result.output, duration: handoffDuration)
                 }
 
-                // Merge handoff result metadata into current agent's result builder
-                // This preserves token counts, tool calls, and metadata from the target agent
+                // Merge handoff tool calls, results, and combined token totals into
+                // this agent's AgentResult. Nested usage is traced on the child span.
                 for toolCall in result.toolCalls {
                     _ = resultBuilder.addToolCall(toolCall)
                 }
@@ -2306,7 +2291,7 @@ public struct Agent: AgentRuntime, Sendable {
                     _ = resultBuilder.addToolResult(toolResult)
                 }
                 if let usage = result.tokenUsage {
-                    _ = resultBuilder.addTokenUsage(usage)
+                    _ = resultBuilder.addNestedTokenUsage(usage)
                 }
                 for (key, value) in result.metadata {
                     _ = resultBuilder.setMetadata(key, value)
@@ -2455,6 +2440,20 @@ public struct Agent: AgentRuntime, Sendable {
 
     // MARK: - Response Generation
 
+    /// Role-capable providers are used as-is. Text-only backends are wrapped so
+    /// history flattening stays inside ``TextOnlyConversationInferenceProviderAdapter``.
+    private func conversationProvider(for provider: any InferenceProvider) -> any ConversationInferenceProvider {
+        (provider as? any ConversationInferenceProvider)
+            ?? TextOnlyConversationInferenceProviderAdapter(base: provider)
+    }
+
+    private func streamingConversationProvider(
+        for provider: any InferenceProvider
+    ) -> any StreamingConversationInferenceProvider {
+        (provider as? any StreamingConversationInferenceProvider)
+            ?? TextOnlyConversationInferenceProviderAdapter(base: provider)
+    }
+
     private func generateWithTools(
         provider: any InferenceProvider,
         prompt: String,
@@ -2472,16 +2471,12 @@ public struct Agent: AgentRuntime, Sendable {
         await observer?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: [MemoryMessage.user(prompt)])
 
         let response: InferenceResponse
-        if let messages,
-           let conversationProvider = provider as? any ConversationInferenceProvider {
-            response = try await conversationProvider.generateWithToolCalls(
+        if let messages {
+            response = try await conversationProvider(for: provider).generateWithToolCalls(
                 messages: messages,
                 tools: tools,
                 options: options
             )
-        } else if let messages {
-            response = try await TextOnlyConversationInferenceProviderAdapter(base: provider)
-                .generateWithToolCalls(messages: messages, tools: tools, options: options)
         } else {
             response = try await provider.generateWithToolCalls(
                 prompt: prompt,

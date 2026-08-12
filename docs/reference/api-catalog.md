@@ -2269,6 +2269,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 45 | func | public | TracingHelper.init(tracer:agentName:) | `public init(tracer: (any Tracer)?, agentName: String)` |
 | 57 | func | public | TracingHelper.traceStart(input:) | `public func traceStart(input: String) async` |
 | 74 | func | public | TracingHelper.traceComplete(result:) | `public func traceComplete(result: AgentResult) async` |
+| 88 | func | public | TracingHelper.traceComplete(result:tokenUsage:) | `public func traceComplete(result: AgentResult, tokenUsage: TokenUsage?) async` |
 | 95 | func | public | TracingHelper.traceError(_:) | `public func traceError(_ error: any Error) async` |
 | 119 | func | public | TracingHelper.traceThought(_:) | `public func traceThought(_ thought: String) async` |
 | 137 | func | public | TracingHelper.tracePlan(_:) | `public func tracePlan(_ plan: String) async` |

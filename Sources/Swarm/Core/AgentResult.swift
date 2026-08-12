@@ -137,7 +137,7 @@ extension AgentResult {
             return self
         }
 
-        /// Sets the token usage, replacing any previously recorded value.
+        /// Sets this agent's own token usage, replacing any previously recorded value.
         @discardableResult
         package func setTokenUsage(_ usage: TokenUsage) -> Builder {
             lock.lock()
@@ -146,17 +146,36 @@ extension AgentResult {
             return self
         }
 
-        /// Adds provider-reported token usage, summing with any value already recorded.
+        /// Adds provider-reported usage from this agent's own LLM calls.
+        ///
+        /// Nested handoff usage must go through ``addNestedTokenUsage(_:)`` so
+        /// ``AgentResult/tokenUsage`` can still report the combined cost while
+        /// traces attribute tokens to the agent that actually consumed them.
         @discardableResult
         package func addTokenUsage(_ usage: TokenUsage) -> Builder {
             lock.lock()
             defer { lock.unlock() }
-            if let existing = tokenUsage {
-                tokenUsage = existing.merging(usage)
-            } else {
-                tokenUsage = usage
-            }
+            tokenUsage = tokenUsage.map { $0.merging(usage) } ?? usage
             return self
+        }
+
+        /// Adds usage from a nested handoff target into the combined result total.
+        ///
+        /// This does not change ``ownTokenUsage()`` — the child agent already
+        /// traced its own span.
+        @discardableResult
+        package func addNestedTokenUsage(_ usage: TokenUsage) -> Builder {
+            lock.lock()
+            defer { lock.unlock() }
+            nestedTokenUsage = nestedTokenUsage.map { $0.merging(usage) } ?? usage
+            return self
+        }
+
+        /// Token usage from this agent's own LLM calls, excluding nested handoffs.
+        package func ownTokenUsage() -> TokenUsage? {
+            lock.lock()
+            defer { lock.unlock() }
+            return tokenUsage
         }
 
         /// Sets a metadata value.
@@ -193,13 +212,20 @@ extension AgentResult {
                 .zero
             }
 
+            let combinedUsage: TokenUsage? = switch (tokenUsage, nestedTokenUsage) {
+            case let (own?, nested?): own.merging(nested)
+            case let (own?, nil): own
+            case let (nil, nested?): nested
+            case (nil, nil): nil
+            }
+
             return AgentResult(
                 output: output,
                 toolCalls: toolCalls,
                 toolResults: toolResults,
                 iterationCount: iterationCount,
                 duration: duration,
-                tokenUsage: tokenUsage,
+                tokenUsage: combinedUsage,
                 metadata: metadata
             )
         }
@@ -212,6 +238,7 @@ extension AgentResult {
         private var iterationCount: Int = 0
         private var startTime: ContinuousClock.Instant?
         private var tokenUsage: TokenUsage?
+        private var nestedTokenUsage: TokenUsage?
         private var metadata: [String: SendableValue] = [:]
         private let lock = NSLock()
     }

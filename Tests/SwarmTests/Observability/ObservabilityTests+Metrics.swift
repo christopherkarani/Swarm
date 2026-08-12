@@ -387,5 +387,34 @@ struct JSONMetricsReporterTests {
 
         #expect(decoded.totalExecutions == 5)
         #expect(decoded.successfulExecutions == 5)
+        #expect(decoded.inputTokens == 0)
+        #expect(decoded.outputTokens == 0)
+    }
+
+    @Test("MetricsSnapshot decodes snapshots that omit token keys")
+    func metricsSnapshotDecodesLegacyJSONWithoutTokenKeys() throws {
+        let json = """
+        {
+          "totalExecutions": 2,
+          "successfulExecutions": 1,
+          "failedExecutions": 1,
+          "cancelledExecutions": 0,
+          "executionDurations": [1.5],
+          "toolCalls": {},
+          "toolErrors": {},
+          "toolDurations": {},
+          "timestamp": "2026-01-01T00:00:00Z"
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(MetricsSnapshot.self, from: Data(json.utf8))
+
+        #expect(decoded.totalExecutions == 2)
+        #expect(decoded.successfulExecutions == 1)
+        #expect(decoded.failedExecutions == 1)
+        #expect(decoded.inputTokens == 0)
+        #expect(decoded.outputTokens == 0)
+        #expect(decoded.totalTokens == 0)
     }
 }

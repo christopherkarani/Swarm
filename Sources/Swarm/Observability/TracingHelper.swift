@@ -72,10 +72,25 @@ public struct TracingHelper: Sendable {
         ))
     }
 
-    /// Trace agent execution completion
+    /// Trace agent execution completion using ``AgentResult/tokenUsage``.
+    ///
+    /// Prefer ``traceComplete(result:tokenUsage:)`` when this span should report
+    /// only this agent's own LLM usage and exclude nested handoff totals.
     ///
     /// - Parameter result: The result of execution
     public func traceComplete(result: AgentResult) async {
+        await traceComplete(result: result, tokenUsage: result.tokenUsage)
+    }
+
+    /// Trace agent execution completion.
+    ///
+    /// - Parameters:
+    ///   - result: The result of execution
+    ///   - tokenUsage: Usage attributed to this agent span. Pass this agent's own
+    ///     LLM usage so a shared ``MetricsCollector`` does not double-count nested
+    ///     handoff runs that already emitted their own `agentComplete` events.
+    ///     Pass `nil` when the provider omitted usage.
+    public func traceComplete(result: AgentResult, tokenUsage: TokenUsage?) async {
         guard let tracer else { return }
         let duration = ContinuousClock.now - startTime
         await tracer.trace(TraceEvent(
@@ -90,7 +105,7 @@ public struct TracingHelper: Sendable {
                     "tool_calls_count": .int(result.toolCalls.count),
                     "output_length": .int(result.output.count)
                 ]
-                if let usage = result.tokenUsage {
+                if let usage = tokenUsage {
                     metadata["input_tokens"] = .int(usage.inputTokens)
                     metadata["output_tokens"] = .int(usage.outputTokens)
                     metadata["total_tokens"] = .int(usage.totalTokens)

@@ -178,6 +178,52 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case totalExecutions
+        case successfulExecutions
+        case failedExecutions
+        case cancelledExecutions
+        case executionDurations
+        case toolCalls
+        case toolErrors
+        case toolDurations
+        case inputTokens
+        case outputTokens
+        case timestamp
+    }
+
+    /// Decodes a snapshot, defaulting missing token fields to zero so JSON written
+    /// before token metrics existed remains readable.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        totalExecutions = try container.decode(Int.self, forKey: .totalExecutions)
+        successfulExecutions = try container.decode(Int.self, forKey: .successfulExecutions)
+        failedExecutions = try container.decode(Int.self, forKey: .failedExecutions)
+        cancelledExecutions = try container.decode(Int.self, forKey: .cancelledExecutions)
+        executionDurations = try container.decode([TimeInterval].self, forKey: .executionDurations)
+        toolCalls = try container.decode([String: Int].self, forKey: .toolCalls)
+        toolErrors = try container.decode([String: Int].self, forKey: .toolErrors)
+        toolDurations = try container.decode([String: [TimeInterval]].self, forKey: .toolDurations)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        inputTokens = try container.decodeIfPresent(Int.self, forKey: .inputTokens) ?? 0
+        outputTokens = try container.decodeIfPresent(Int.self, forKey: .outputTokens) ?? 0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(totalExecutions, forKey: .totalExecutions)
+        try container.encode(successfulExecutions, forKey: .successfulExecutions)
+        try container.encode(failedExecutions, forKey: .failedExecutions)
+        try container.encode(cancelledExecutions, forKey: .cancelledExecutions)
+        try container.encode(executionDurations, forKey: .executionDurations)
+        try container.encode(toolCalls, forKey: .toolCalls)
+        try container.encode(toolErrors, forKey: .toolErrors)
+        try container.encode(toolDurations, forKey: .toolDurations)
+        try container.encode(inputTokens, forKey: .inputTokens)
+        try container.encode(outputTokens, forKey: .outputTokens)
+        try container.encode(timestamp, forKey: .timestamp)
+    }
 }
 
 // MARK: - MetricsCollector
@@ -236,7 +282,8 @@ public actor MetricsCollector: Tracer {
     ///
     /// This method automatically extracts relevant metrics from trace events:
     /// - `agentStart`: Increments total executions
-    /// - `agentComplete`: Increments successful executions, records duration
+    /// - `agentComplete`: Increments successful executions, records duration,
+    ///   and accumulates `input_tokens` / `output_tokens` from that span only
     /// - `agentError`: Increments failed executions
     /// - `agentCancelled`: Increments cancelled executions
     /// - `toolCall`: Increments tool call counter

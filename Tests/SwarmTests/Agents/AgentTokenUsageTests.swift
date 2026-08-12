@@ -75,6 +75,67 @@ struct AgentTokenUsageTests {
         #expect(snapshot.outputTokens == 0)
     }
 
+    @Test("Handoff merges child usage on AgentResult without double-counting metrics")
+    func handoffMergesUsageWithoutDoubleCountingMetrics() async throws {
+        let parentUsage = TokenUsage(inputTokens: 10, outputTokens: 5)
+        let childUsage = TokenUsage(inputTokens: 20, outputTokens: 10)
+        let combined = TokenUsage(inputTokens: 30, outputTokens: 15)
+
+        let sourceProvider = MockInferenceProvider()
+        await sourceProvider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    .init(id: "call_handoff", name: "handoff_to_target", arguments: [:])
+                ],
+                finishReason: .toolCall,
+                usage: parentUsage
+            )
+        ])
+
+        let targetProvider = MockInferenceProvider()
+        await targetProvider.setToolCallResponses([
+            InferenceResponse(
+                content: "specialist done",
+                finishReason: .completed,
+                usage: childUsage
+            )
+        ])
+
+        let collector = MetricsCollector()
+        let target = try Agent(
+            tools: [MockTool(name: "noop", result: .string("ok"))],
+            instructions: "Finish the task.",
+            configuration: AgentConfiguration(name: "target-agent", defaultTracingEnabled: false),
+            inferenceProvider: targetProvider,
+            tracer: collector
+        )
+        let source = try Agent(
+            tools: [],
+            instructions: "Route to the specialist.",
+            configuration: AgentConfiguration(name: "source-agent", defaultTracingEnabled: false),
+            inferenceProvider: sourceProvider,
+            tracer: collector,
+            handoffs: [
+                AnyHandoffConfiguration(
+                    HandoffConfiguration(
+                        targetAgent: target,
+                        toolNameOverride: "handoff_to_target"
+                    )
+                )
+            ]
+        )
+
+        let result = try await source.run("please route this")
+        #expect(result.output == "specialist done")
+        #expect(result.tokenUsage == combined)
+
+        let snapshot = await collector.snapshot()
+        #expect(snapshot.inputTokens == combined.inputTokens)
+        #expect(snapshot.outputTokens == combined.outputTokens)
+        #expect(snapshot.totalTokens == combined.totalTokens)
+    }
+
     @Test("Foundation Models path leaves token usage nil without crashing")
     func foundationModelsLeavesTokenUsageNil() async throws {
         #if canImport(FoundationModels)

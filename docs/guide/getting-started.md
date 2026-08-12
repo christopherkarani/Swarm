@@ -205,7 +205,8 @@ Returns an `AgentResult` with the agent's final output, tool call records, durat
 and optional token usage. `tokenUsage` is populated only when the inference provider
 reports it on ``InferenceResponse/usage``. Apple Foundation Models does not expose a
 token-count API, so that path leaves `tokenUsage` as `nil` — Swarm does not fabricate
-counts.
+counts. After a handoff, the parent `AgentResult` still reports the combined cost;
+`MetricsCollector` attributes tokens per agent span so nested runs are not counted twice.
 
 ```swift
 let result = try await agent.run("What is 2 + 2?")
