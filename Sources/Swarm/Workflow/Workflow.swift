@@ -120,6 +120,7 @@ public struct Workflow: Sendable {
     /// ### Merge Strategies
     /// - ``structured``
     /// - ``indexed``
+    /// - ``firstCompleted``
     /// - ``first``
     /// - ``custom(_:)``
     public enum MergeStrategy: Sendable {
@@ -156,20 +157,28 @@ public struct Workflow: Sendable {
         /// ```
         case indexed
 
-        /// Returns the output of the first agent to complete.
+        /// Returns the output of the first agent to complete, then cancels the rest.
         ///
         /// Use this strategy when you only need one result and want the fastest
-        /// response. Note: All agents still run to completion, but only the
-        /// first completed result is used.
+        /// response. Remaining in-flight agents are cancelled cooperatively once
+        /// a winner is chosen.
         ///
         /// ## Example
         ///
         /// ```swift
         /// let result = try await Workflow()
-        ///     .parallel([fastAgent, slowAgent], merge: .first)
+        ///     .parallel([fastAgent, slowAgent], merge: .firstCompleted)
         ///     .run("Task")
         /// // result.output contains output from whichever agent finished first
         /// ```
+        case firstCompleted
+
+        /// Returns the output of the first agent to complete.
+        ///
+        /// - Important: Use ``firstCompleted`` instead. This case is a deprecated
+        ///   alias with the same first-to-complete semantics, including cancelling
+        ///   remaining agents after a winner is chosen.
+        @available(*, deprecated, renamed: "firstCompleted")
         case first
 
         /// Applies a custom merge function to combine all parallel results.
@@ -444,7 +453,8 @@ public struct Workflow: Sendable {
     ///
     /// - Parameter input: The initial input string for the workflow.
     /// - Returns: The final ``AgentResult`` after all steps complete.
-    /// - Throws: An error if execution fails, times out, or routing fails.
+    /// - Throws: ``WorkflowError/invalidWorkflow(reason:)`` if the workflow has
+    ///   no steps. Also throws if execution fails, times out, or routing fails.
     ///
     /// ## Example
     ///
@@ -531,6 +541,11 @@ public struct Workflow: Sendable {
         if let timeoutDuration {
             let coordinator = WorkflowTimedOperationCoordinator<AgentResult>()
             let priority = Task.currentPriority
+            // `Task.detached` is required so a MainActor caller cannot deadlock
+            // the continuation (an unstructured `Task {}` would be scheduled on
+            // MainActor and never run). Detached tasks drop `@TaskLocal` values,
+            // so re-apply the ambient environment inside the worker.
+            let capturedEnvironment = AgentEnvironmentValues.current
             return try await withTaskCancellationHandler(
                 operation: {
                     try await withCheckedThrowingContinuation { continuation in
@@ -538,7 +553,12 @@ public struct Workflow: Sendable {
 
                         let operationTask = Task.detached(priority: priority) {
                             do {
-                                coordinator.finish(returning: try await operation())
+                                let result = try await AgentEnvironmentValues.$current.withValue(
+                                    capturedEnvironment
+                                ) {
+                                    try await operation()
+                                }
+                                coordinator.finish(returning: result)
                             } catch {
                                 coordinator.finish(throwing: error)
                             }
@@ -568,18 +588,28 @@ public struct Workflow: Sendable {
     }
 
     func executeDirect(input: String) async throws -> AgentResult {
+        guard !steps.isEmpty else {
+            throw WorkflowError.invalidWorkflow(reason: "Workflow has no steps")
+        }
+
         if let repeatCondition {
             var lastResult: AgentResult?
 
             for _ in 0 ..< maxRepeatIterations {
                 let currentInput = lastResult?.output ?? input
-                lastResult = try await runSinglePass(input: currentInput)
-                if repeatCondition(lastResult!) {
-                    return lastResult!
+                let result = try await runSinglePass(input: currentInput)
+                lastResult = result
+                if repeatCondition(result) {
+                    return result
                 }
             }
 
-            return lastResult ?? AgentResult(output: "")
+            guard let lastResult else {
+                throw WorkflowError.invalidWorkflow(
+                    reason: "Workflow repeatUntil completed without producing a result"
+                )
+            }
+            return lastResult
         }
 
         return try await runSinglePass(input: input)
@@ -615,19 +645,29 @@ public struct Workflow: Sendable {
                     }
                 }
 
+                if merge.usesFirstCompletedSemantics {
+                    guard let winner = try await group.next() else {
+                        throw WorkflowError.mergeStrategyFailed(
+                            reason: "Parallel workflow produced no results"
+                        )
+                    }
+                    group.cancelAll()
+                    // Drain cancelled losers so their CancellationError does not
+                    // replace the winning result when the group exits.
+                    while let remaining = await group.nextResult() {
+                        _ = remaining
+                    }
+                    return [winner]
+                }
+
                 var collected: [(Int, AgentResult)] = []
                 for try await result in group {
                     collected.append(result)
                 }
-                return collected
+                return collected.sorted { $0.0 < $1.0 }
             }
 
-            let results = switch merge {
-            case .first:
-                completedResults.map(\.1)
-            default:
-                completedResults.sorted { $0.0 < $1.0 }.map(\.1)
-            }
+            let results = completedResults.map(\.1)
             let mergedOutput = mergeResults(results, strategy: merge)
             return AgentResult(output: mergedOutput)
 
@@ -685,10 +725,10 @@ public struct Workflow: Sendable {
             return results.enumerated().map { idx, result in
                 "[\(idx)]: \(result.output)"
             }.joined(separator: "\n")
-        case .first:
-            return results.first?.output ?? ""
         case .custom(let transform):
             return transform(results)
+        default:
+            return results.first?.output ?? ""
         }
     }
 
@@ -705,10 +745,12 @@ public struct Workflow: Sendable {
                     mergeSignature = "structured"
                 case .indexed:
                     mergeSignature = "indexed"
-                case .first:
-                    mergeSignature = "first"
+                case .firstCompleted:
+                    mergeSignature = "firstCompleted"
                 case .custom:
                     mergeSignature = mergeBehaviorSignature?.value ?? "custom:opaque"
+                default:
+                    mergeSignature = "first"
                 }
                 return "\(index):parallel:\(agentsSignature):\(mergeSignature)"
             case .route(let signature, _):
@@ -724,6 +766,20 @@ public struct Workflow: Sendable {
             "repeat:false:\(maxRepeatIterations)"
         }
         return (["workflowSignature:v2"] + parts + [repeatSignature]).joined(separator: "|")
+    }
+}
+
+extension Workflow.MergeStrategy {
+    /// `.first` is a deprecated alias of `.firstCompleted`.
+    fileprivate var usesFirstCompletedSemantics: Bool {
+        switch self {
+        case .firstCompleted:
+            return true
+        case .structured, .indexed, .custom:
+            return false
+        default:
+            return true
+        }
     }
 }
 
