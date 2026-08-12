@@ -163,7 +163,8 @@ but do not want to propagate tracing headers to an upstream provider.
 
 ## Capture Content
 
-LLM spans record request shape, provider metadata, token usage, output length,
+LLM spans record request shape, provider metadata, token usage when the provider
+reports it (Foundation Models does not), output length,
 and errors. They do not record prompts or model output by default.
 
 If your deployment policy allows content capture, opt in on the agent wrapper:

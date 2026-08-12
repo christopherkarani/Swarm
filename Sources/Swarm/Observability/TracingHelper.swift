@@ -83,12 +83,21 @@ public struct TracingHelper: Sendable {
             duration: duration.timeInterval,
             kind: .agentComplete,
             message: "LegacyAgent \(agentName) completed",
-            metadata: [
-                "duration_ms": .double(duration.milliseconds),
-                "iterations": .int(result.iterationCount),
-                "tool_calls_count": .int(result.toolCalls.count),
-                "output_length": .int(result.output.count)
-            ],
+            metadata: {
+                var metadata: [String: SendableValue] = [
+                    "duration_ms": .double(duration.milliseconds),
+                    "iterations": .int(result.iterationCount),
+                    "tool_calls_count": .int(result.toolCalls.count),
+                    "output_length": .int(result.output.count)
+                ]
+                if let usage = result.tokenUsage {
+                    metadata["input_tokens"] = .int(usage.inputTokens)
+                    metadata["output_tokens"] = .int(usage.outputTokens)
+                    metadata["total_tokens"] = .int(usage.totalTokens)
+                    metadata["tokenCount"] = .int(usage.totalTokens)
+                }
+                return metadata
+            }(),
             agentName: agentName
         ))
     }

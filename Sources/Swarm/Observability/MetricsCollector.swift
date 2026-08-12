@@ -58,6 +58,12 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
     /// Tool execution durations by tool name (in seconds).
     public let toolDurations: [String: [TimeInterval]]
 
+    /// Accumulated provider-reported input tokens. Zero when providers omit usage.
+    public let inputTokens: Int
+
+    /// Accumulated provider-reported output tokens. Zero when providers omit usage.
+    public let outputTokens: Int
+
     // MARK: - Timestamp
 
     /// When this snapshot was taken.
@@ -91,6 +97,11 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
     /// Total number of tool errors across all tools.
     public var totalToolErrors: Int {
         toolErrors.values.reduce(0, +)
+    }
+
+    /// Total provider-reported tokens (input + output).
+    public var totalTokens: Int {
+        inputTokens + outputTokens
     }
 
     /// Average execution duration in seconds.
@@ -151,7 +162,9 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
         toolCalls: [String: Int],
         toolErrors: [String: Int],
         toolDurations: [String: [TimeInterval]],
-        timestamp: Date = Date()
+        timestamp: Date = Date(),
+        inputTokens: Int = 0,
+        outputTokens: Int = 0
     ) {
         self.totalExecutions = totalExecutions
         self.successfulExecutions = successfulExecutions
@@ -162,6 +175,8 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
         self.toolErrors = toolErrors
         self.toolDurations = toolDurations
         self.timestamp = timestamp
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
     }
 }
 
@@ -171,7 +186,7 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
 ///
 /// `MetricsCollector` implements the `AgentTracer` protocol to automatically
 /// collect metrics from trace events. It tracks execution counts, durations,
-/// tool usage, and error rates.
+/// tool usage, error rates, and provider-reported token usage when present.
 ///
 /// ## Features
 ///
@@ -242,6 +257,12 @@ public actor MetricsCollector: Tracer {
             } else if let startTime = spanStartTimes[event.spanId] {
                 let duration = event.timestamp.timeIntervalSince(startTime)
                 executionDurations.append(duration)
+            }
+            if let input = event.metadata["input_tokens"]?.intValue {
+                inputTokens += input
+            }
+            if let output = event.metadata["output_tokens"]?.intValue {
+                outputTokens += output
             }
             spanStartTimes.removeValue(forKey: event.spanId)
 
@@ -324,7 +345,9 @@ public actor MetricsCollector: Tracer {
             toolCalls: toolCalls,
             toolErrors: toolErrors,
             toolDurations: toolDurationArrays,
-            timestamp: Date()
+            timestamp: Date(),
+            inputTokens: inputTokens,
+            outputTokens: outputTokens
         )
     }
 
@@ -346,6 +369,8 @@ public actor MetricsCollector: Tracer {
         toolErrors.removeAll()
         toolDurations.removeAll()
         spanStartTimes.removeAll()
+        inputTokens = 0
+        outputTokens = 0
     }
 
     // MARK: - Individual Metric Accessors
@@ -400,6 +425,12 @@ public actor MetricsCollector: Tracer {
 
     /// Number of cancelled agent executions.
     private var cancelledExecutions: Int = 0
+
+    /// Accumulated provider-reported input tokens.
+    private var inputTokens: Int = 0
+
+    /// Accumulated provider-reported output tokens.
+    private var outputTokens: Int = 0
 
     // MARK: - Duration Tracking
 
@@ -572,7 +603,9 @@ extension MetricsSnapshot: CustomStringConvertible {
           errorRate: \(String(format: "%.2f", errorRate))%,
           averageExecutionDuration: \(String(format: "%.3f", averageExecutionDuration))s,
           totalToolCalls: \(totalToolCalls),
-          totalToolErrors: \(totalToolErrors)
+          totalToolErrors: \(totalToolErrors),
+          inputTokens: \(inputTokens),
+          outputTokens: \(outputTokens)
         )
         """
     }

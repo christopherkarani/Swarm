@@ -586,6 +586,8 @@ public struct AgentResult: Sendable {
     public let toolResults: [ToolResult]
     public let iterationCount: Int
     public let duration: Duration
+    /// Provider-reported token usage, or `nil` when the backend does not expose counts
+    /// (including Apple Foundation Models on the current SDK).
     public let tokenUsage: TokenUsage?
 }
 ```

@@ -638,6 +638,13 @@ public struct Agent: AgentRuntime, Sendable {
     private struct FinalAssistantResponse: Sendable {
         let content: String
         let structuredOutput: StructuredOutputResult?
+        let usage: TokenUsage?
+
+        init(content: String, structuredOutput: StructuredOutputResult?, usage: TokenUsage? = nil) {
+            self.content = content
+            self.structuredOutput = structuredOutput
+            self.usage = usage
+        }
     }
 
     private actor ActiveRunCancellationState {
@@ -1209,6 +1216,11 @@ public struct Agent: AgentRuntime, Sendable {
         return UUID().uuidString
     }
 
+    private func recordUsage(_ usage: TokenUsage?, on resultBuilder: AgentResult.Builder) {
+        guard let usage else { return }
+        _ = resultBuilder.addTokenUsage(usage)
+    }
+
     private func makeResponse(from result: AgentResult, responseID: String) -> AgentResponse {
         let toolCallsById = Dictionary(uniqueKeysWithValues: result.toolCalls.map { ($0.id, $0) })
         let toolCallRecords: [ToolCallRecord] = result.toolResults.compactMap { toolResult in
@@ -1462,6 +1474,11 @@ public struct Agent: AgentRuntime, Sendable {
                     return schemas
                 }()
                 let providerAcceptsStructuredMessages = provider is any ConversationInferenceProvider
+                // `strict4k` rewrites the stuffed prompt (ContextCore windowing and/or
+                // PromptEnvelope truncation). That rewritten string is not a 1:1
+                // ``InferenceMessage`` array, so roles are not sent — the nil path is
+                // the configured memory policy, not a silent drop. Otherwise every
+                // conversation provider receives the full role-tagged history.
                 let structuredMessages: [InferenceMessage]? = if configuration.effectiveContextProfile.preset == .strict4k {
                     nil
                 } else if providerAcceptsStructuredMessages {
@@ -1486,6 +1503,7 @@ public struct Agent: AgentRuntime, Sendable {
                             observer: observer
                         )
                     }
+                    recordUsage(response.usage, on: resultBuilder)
                     transcriptMessages.append(
                         SwarmTranscriptCodec.encodeMessage(
                             role: .assistant,
@@ -1530,6 +1548,7 @@ public struct Agent: AgentRuntime, Sendable {
                         )
                     }
                 }
+                recordUsage(response.usage, on: resultBuilder)
 
                 if response.hasToolCalls {
                     let handoffResult = try await processToolCallsWithHandoffs(
@@ -1749,6 +1768,9 @@ public struct Agent: AgentRuntime, Sendable {
             if let messages,
                let conversationProvider = provider as? any StreamingConversationInferenceProvider {
                 stream = conversationProvider.stream(messages: messages, options: options)
+            } else if let messages {
+                stream = TextOnlyConversationInferenceProviderAdapter(base: provider)
+                    .stream(messages: messages, options: options)
             } else {
                 stream = provider.stream(prompt: prompt, options: options)
             }
@@ -1760,16 +1782,19 @@ public struct Agent: AgentRuntime, Sendable {
             }
             content = streamedContent
             structuredOutput = nil
+        } else if let messages,
+                  let conversationProvider = provider as? any ConversationInferenceProvider {
+            content = try await conversationProvider.generate(messages: messages, options: options)
+            structuredOutput = nil
+        } else if let messages {
+            content = try await TextOnlyConversationInferenceProviderAdapter(base: provider)
+                .generate(messages: messages, options: options)
+            structuredOutput = nil
         } else {
-            if let messages,
-               let conversationProvider = provider as? any ConversationInferenceProvider {
-                content = try await conversationProvider.generate(messages: messages, options: options)
-            } else {
-                content = try await provider.generate(
-                    prompt: prompt,
-                    options: options
-                )
-            }
+            content = try await provider.generate(
+                prompt: prompt,
+                options: options
+            )
             structuredOutput = nil
         }
 
@@ -2281,7 +2306,7 @@ public struct Agent: AgentRuntime, Sendable {
                     _ = resultBuilder.addToolResult(toolResult)
                 }
                 if let usage = result.tokenUsage {
-                    _ = resultBuilder.setTokenUsage(usage)
+                    _ = resultBuilder.addTokenUsage(usage)
                 }
                 for (key, value) in result.metadata {
                     _ = resultBuilder.setMetadata(key, value)
@@ -2454,6 +2479,9 @@ public struct Agent: AgentRuntime, Sendable {
                 tools: tools,
                 options: options
             )
+        } else if let messages {
+            response = try await TextOnlyConversationInferenceProviderAdapter(base: provider)
+                .generateWithToolCalls(messages: messages, tools: tools, options: options)
         } else {
             response = try await provider.generateWithToolCalls(
                 prompt: prompt,

@@ -37,6 +37,31 @@ struct MetricsCollectorTests {
         #expect(successful == 1)
     }
 
+    @Test("MetricsCollector tracks provider-reported token usage")
+    func metricsCollectorTracksTokenUsage() async {
+        let collector = MetricsCollector()
+        let traceId = UUID()
+        let spanId = UUID()
+
+        await collector.trace(.agentStart(traceId: traceId, spanId: spanId, agentName: "TestAgent"))
+        await collector.trace(TraceEvent(
+            traceId: traceId,
+            spanId: spanId,
+            kind: .agentComplete,
+            message: "done",
+            metadata: [
+                "input_tokens": .int(11),
+                "output_tokens": .int(7)
+            ],
+            agentName: "TestAgent"
+        ))
+
+        let snapshot = await collector.snapshot()
+        #expect(snapshot.inputTokens == 11)
+        #expect(snapshot.outputTokens == 7)
+        #expect(snapshot.totalTokens == 18)
+    }
+
     @Test("MetricsCollector tracks failed execution")
     func metricsCollectorTracksError() async {
         let collector = MetricsCollector()

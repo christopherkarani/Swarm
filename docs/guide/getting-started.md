@@ -201,13 +201,17 @@ let agent = try Agent("You are a helpful text utility.",
 
 ### Single-turn `run()`
 
-Returns an `AgentResult` with the agent's final output, tool call records, token usage, and duration:
+Returns an `AgentResult` with the agent's final output, tool call records, duration,
+and optional token usage. `tokenUsage` is populated only when the inference provider
+reports it on ``InferenceResponse/usage``. Apple Foundation Models does not expose a
+token-count API, so that path leaves `tokenUsage` as `nil` — Swarm does not fabricate
+counts.
 
 ```swift
 let result = try await agent.run("What is 2 + 2?")
 print(result.output)       // "4"
 print(result.duration)     // Duration
-print(result.tokenUsage)   // TokenUsage(inputTokens:, outputTokens:)
+print(result.tokenUsage)   // TokenUsage(...) when the provider reports usage; else nil
 ```
 
 ### Streaming with `stream()`

@@ -685,5 +685,10 @@ struct CoreTypesPendingTests {
         #expect(usage.inputTokens == 100)
         #expect(usage.outputTokens == 50)
         #expect(usage.totalTokens == 150)
+
+        let merged = usage.merging(TokenUsage(inputTokens: 10, outputTokens: 5))
+        #expect(merged.inputTokens == 110)
+        #expect(merged.outputTokens == 55)
+        #expect(merged.totalTokens == 165)
     }
 }

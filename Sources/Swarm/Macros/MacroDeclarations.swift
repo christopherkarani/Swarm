@@ -181,7 +181,7 @@ public macro Parameter(
     member,
     names: named(tools), named(instructions), named(configuration), named(memory), named(inferenceProvider),
     named(tracer), named(_memory), named(_defaultMemory), named(resolvedMemory), named(makeDefaultMemory),
-    named(_inferenceProvider), named(_tracer), named(isCancelled), named(init), named(run), named(stream),
+    named(_inferenceProvider), named(_tracer), named(isCancelled), named(lastTokenUsage), named(init), named(run), named(stream),
     named(cancel), named(Builder)
 )
 @attached(extension, conformances: AgentRuntime)
@@ -235,6 +235,7 @@ public macro AgentActor(
 /// - `var memory: (any Memory)?` - Optional memory
 /// - `var inferenceProvider: (any InferenceProvider)?` - Optional provider
 /// - `var tracer: (any Tracer)?` - Optional tracer
+/// - `var lastTokenUsage: TokenUsage?` - Set from `process` to forward usage
 /// - `init(...)` - Standard initializer with all parameters
 /// - `run(_ input:session:observer:)` - Calls your `process()` method
 /// - `stream(_ input:session:observer:)` - Wraps run() in tracked async stream
@@ -249,7 +250,7 @@ public macro AgentActor(
     member,
     names: named(tools), named(instructions), named(configuration), named(memory), named(inferenceProvider),
     named(tracer), named(_memory), named(_defaultMemory), named(resolvedMemory), named(makeDefaultMemory),
-    named(_inferenceProvider), named(_tracer), named(isCancelled), named(init), named(run), named(stream),
+    named(_inferenceProvider), named(_tracer), named(isCancelled), named(lastTokenUsage), named(init), named(run), named(stream),
     named(cancel), named(Builder)
 )
 @attached(extension, conformances: AgentRuntime)

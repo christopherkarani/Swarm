@@ -31,6 +31,25 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 
 /// On-device inference provider backed by Apple Foundation Models.
 ///
+/// ## Conversation history
+///
+/// `LanguageModelSession.respond(to:)` accepts a `Prompt`, not a role-tagged
+/// message array. This provider creates a fresh session per request — it does
+/// not keep Apple's accumulating `transcript` across Swarm turns — so structured
+/// ``InferenceMessage`` history is serialized into that prompt with role labels
+/// (`System:`, `User:`, `Assistant:`, `Tool result`). That is an Apple API
+/// constraint on the session-less path, not a Swarm shortcut: the macOS 26.x
+/// SDK this package targets has no public API to inject an arbitrary
+/// `Transcript` of user/assistant/tool turns into a new session. Tool results
+/// and assistant tool-call metadata are preserved in the serialized form.
+///
+/// ## Token usage
+///
+/// Apple's Foundation Models SDK does not expose token-count APIs on
+/// `LanguageModelSession.Response` in the macOS 26.x SDK this package targets.
+/// ``InferenceResponse/usage`` and ``AgentResult/tokenUsage`` remain `nil`.
+/// Swarm does not estimate or fabricate token counts for this provider.
+///
 /// ## First-class Apple platform path
 ///
 /// ```swift
@@ -361,6 +380,11 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         return generationOptions
     }
 
+    /// Serializes structured history into a single `Prompt` string.
+    ///
+    /// Required because `LanguageModelSession.respond(to:)` / `streamResponse(to:)`
+    /// take a `Prompt`, and this provider is session-less (a new
+    /// `LanguageModelSession` per call cannot reuse Apple's transcript).
     private func flattenPrompt(
         messages: [InferenceMessage],
         tools: [ToolSchema],

@@ -137,12 +137,25 @@ extension AgentResult {
             return self
         }
 
-        /// Sets the token usage.
+        /// Sets the token usage, replacing any previously recorded value.
         @discardableResult
         package func setTokenUsage(_ usage: TokenUsage) -> Builder {
             lock.lock()
             defer { lock.unlock() }
             tokenUsage = usage
+            return self
+        }
+
+        /// Adds provider-reported token usage, summing with any value already recorded.
+        @discardableResult
+        package func addTokenUsage(_ usage: TokenUsage) -> Builder {
+            lock.lock()
+            defer { lock.unlock() }
+            if let existing = tokenUsage {
+                tokenUsage = existing.merging(usage)
+            } else {
+                tokenUsage = usage
+            }
             return self
         }
 
