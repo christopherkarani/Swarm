@@ -132,10 +132,14 @@ public macro Tool(_ description: String) = #externalMacro(module: "SwarmMacros",
 /// |------------|---------------------|
 /// | `String` | `.string` |
 /// | `Int` | `.int` |
-/// | `Double` | `.double` |
+/// | `Double` / `Float` | `.double` |
 /// | `Bool` | `.bool` |
-/// | `[T]` | `.array(elementType: ...)` |
-/// | `Optional<T>` | Same as T, marked optional |
+/// | `[T]` / `Array<T>` | `.array(elementType: ...)` |
+/// | `T?` / `Optional<T>` | Same as T, marked optional |
+///
+/// Unsupported types (including `[String: T]` dictionaries) are **compile errors**.
+/// Use `@Parameter(oneOf:)` for string enums. For objects, dictionaries, or `.any`,
+/// write a ``FunctionTool`` instead.
 ///
 /// ## Parameters
 ///
@@ -384,7 +388,11 @@ public struct PromptString: Sendable, ExpressibleByStringLiteral, ExpressibleByS
 /// | `Int` | `.int` |
 /// | `Double` / `Float` | `.double` |
 /// | `Bool` | `.bool` |
-/// | `T?` | Same as T, `isRequired: false` |
+/// | `[T]` / `Array<T>` | `.array(elementType: ...)` |
+/// | `T?` / `Optional<T>` | Same as T, `isRequired: false` |
+///
+/// Unsupported types (including dictionaries) are compile errors. For advanced
+/// schemas, write a ``FunctionTool``.
 ///
 /// ## Relationship to @Tool
 ///

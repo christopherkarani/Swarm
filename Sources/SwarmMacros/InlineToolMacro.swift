@@ -3,6 +3,7 @@
 //
 // Implementation of the #Tool freestanding expression macro for inline tool creation.
 
+import SwiftDiagnostics
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
@@ -54,7 +55,10 @@ public struct InlineToolMacro: ExpressionMacro {
         }
 
         // ---- Parse closure parameters ----
-        let closureParams = extractClosureParams(from: trailingClosure)
+        let (closureParams, diagnostics) = extractClosureParams(from: trailingClosure)
+        if !diagnostics.isEmpty {
+            throw DiagnosticsError(diagnostics: diagnostics)
+        }
 
         // ---- Build generated struct names ----
         let capitalizedName = toolName.prefix(1).uppercased() + toolName.dropFirst()
@@ -93,9 +97,8 @@ public struct InlineToolMacro: ExpressionMacro {
             parametersArray = "[]"
         } else {
             let entries = closureParams.map { param -> String in
-                let paramType = mapSwiftTypeToParameterType(param.swiftType)
                 let isRequired = !param.isOptional
-                return "            ToolParameter(name: \"\(param.name)\", description: \"\(param.name)\", type: \(paramType), isRequired: \(isRequired))"
+                return "            ToolParameter(name: \"\(param.name)\", description: \"\(param.name)\", type: \(param.schemaLiteral), isRequired: \(isRequired))"
             }.joined(separator: ",\n")
             parametersArray = "[\n\(entries)\n        ]"
         }
@@ -137,52 +140,61 @@ public struct InlineToolMacro: ExpressionMacro {
         let name: String
         let swiftType: String
         let isOptional: Bool
+        let schemaLiteral: String
     }
 
     /// Extracts typed parameters from a closure signature `(label: Type, ...)`.
-    private static func extractClosureParams(from closure: ClosureExprSyntax) -> [ClosureParam] {
+    private static func extractClosureParams(
+        from closure: ClosureExprSyntax
+    ) -> (params: [ClosureParam], diagnostics: [Diagnostic]) {
         guard let signature = closure.signature,
               let paramClause = signature.parameterClause
         else {
-            return []
+            return ([], [])
         }
 
         switch paramClause {
         case .parameterClause(let clause):
-            return clause.parameters.compactMap { param in
+            var params: [ClosureParam] = []
+            var diagnostics: [Diagnostic] = []
+            for param in clause.parameters {
                 // secondName is the internal label (used in the body); firstName is the external label.
                 // For `(name: String)` there is only firstName; for `(ext int: String)`,
                 // firstName = "ext", secondName = "int" and the body uses "int".
                 let paramName = param.secondName?.text ?? param.firstName.text
-                guard let typeAnnotation = param.type else { return nil }
+                guard let typeAnnotation = param.type else { continue }
                 let rawType = typeAnnotation.description.trimmingCharacters(in: .whitespaces)
-                let isOptional = typeAnnotation.is(OptionalTypeSyntax.self)
-                    || typeAnnotation.is(ImplicitlyUnwrappedOptionalTypeSyntax.self)
-                return ClosureParam(name: paramName, swiftType: rawType, isOptional: isOptional)
+                switch ParameterTypeMapping.map(typeAnnotation) {
+                case let .mapped(mapped):
+                    params.append(ClosureParam(
+                        name: paramName,
+                        swiftType: rawType,
+                        isOptional: mapped.isTypeOptional,
+                        schemaLiteral: mapped.schemaLiteral
+                    ))
+                case let .diagnostic(diagnostic):
+                    diagnostics.append(diagnostic)
+                }
             }
+            return (params, diagnostics)
 
         case .simpleInput(let items):
             // Simple input like `name, age` — no type annotations, default to String
-            return items.map { item in
-                ClosureParam(name: item.name.text, swiftType: "String", isOptional: false)
+            let stringType = ParameterTypeMapping.parseTypeSyntax("String")
+            switch ParameterTypeMapping.map(stringType) {
+            case let .mapped(mapped):
+                let params = items.map { item in
+                    ClosureParam(
+                        name: item.name.text,
+                        swiftType: "String",
+                        isOptional: false,
+                        schemaLiteral: mapped.schemaLiteral
+                    )
+                }
+                return (params, [])
+            case let .diagnostic(diagnostic):
+                return ([], [diagnostic])
             }
-        }
-    }
-
-    /// Maps a Swift type string to its ToolParameter.ParameterType literal.
-    private static func mapSwiftTypeToParameterType(_ swiftType: String) -> String {
-        let cleanType = swiftType
-            .replacingOccurrences(of: "Optional<", with: "")
-            .replacingOccurrences(of: ">", with: "")
-            .replacingOccurrences(of: "?", with: "")
-            .trimmingCharacters(in: .whitespaces)
-
-        switch cleanType {
-        case "String": return ".string"
-        case "Int":    return ".int"
-        case "Double", "Float": return ".double"
-        case "Bool":   return ".bool"
-        default:       return ".string"
         }
     }
 }

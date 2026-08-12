@@ -512,14 +512,11 @@ public struct AgentMacro: MemberMacro, ExtensionMacro {
 /// Errors that can occur during @AgentActor macro expansion.
 enum AgentMacroError: Error, CustomStringConvertible {
     case onlyApplicableToActor
-    case missingProcessMethod
 
     var description: String {
         switch self {
         case .onlyApplicableToActor:
             return "@AgentActor can only be applied to actors"
-        case .missingProcessMethod:
-            return "@AgentActor requires a process(_ input: String) method"
         }
     }
 }
