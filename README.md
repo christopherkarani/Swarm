@@ -180,9 +180,11 @@ Notes that matter in production:
 ### Multi-agent pipeline
 
 ```swift
+// WebSearchTool requires the Integrations trait and an API key
+// (lean builds compile this initializer but throw at execution without Integrations).
 let researcher = try Agent("Research the topic and extract key facts.",
     inferenceProvider: .foundationModels()) {
-    WebSearchTool()
+    WebSearchTool(apiKey: "YOUR_API_KEY")
 }
 
 let writer = try Agent("Write a concise summary from the research.",
@@ -264,7 +266,9 @@ let reverse = FunctionTool(
     return .string(String(text.reversed()))
 }
 
-let agent = try Agent("Text utilities.", tools: [reverse])
+let agent = try Agent("Text utilities.") {
+    reverse
+}
 ```
 
 #### Crash-resumable workflows
