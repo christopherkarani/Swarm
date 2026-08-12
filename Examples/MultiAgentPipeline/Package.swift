@@ -5,7 +5,7 @@ let package = Package(
     name: "MultiAgentPipeline",
     platforms: [.macOS(.v26)],
     dependencies: [
-        .package(name: "Swarm", path: "../../"),
+        .package(name: "Swarm", path: "../../", traits: ["Integrations"]),
     ],
     targets: [
         .executableTarget(
