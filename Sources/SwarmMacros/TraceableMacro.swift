@@ -132,14 +132,11 @@ public struct TraceableMacro: PeerMacro {
 /// Errors for @Traceable macro.
 enum TraceableError: Error, CustomStringConvertible {
     case onlyApplicableToStruct
-    case missingExecuteMethod
 
     var description: String {
         switch self {
         case .onlyApplicableToStruct:
             return "@Traceable can only be applied to structs"
-        case .missingExecuteMethod:
-            return "@Traceable requires an execute() method to wrap"
         }
     }
 }

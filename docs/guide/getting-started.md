@@ -151,6 +151,8 @@ struct WebSearchTool {
 }
 ```
 
+Supported parameter types are `String`, `Int`, `Double`/`Float`, `Bool`, arrays of those, and `Optional` thereof. Dictionaries and other types are compile errors — use `FunctionTool` for `.any` or object schemas.
+
 ### `FunctionTool` (one-off closures)
 
 For quick inline tools that do not need a full struct:

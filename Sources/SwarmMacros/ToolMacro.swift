@@ -3,10 +3,11 @@
 //
 // Implementation of the @Tool macro for generating Tool protocol conformance.
 
+import Foundation
+import SwiftDiagnostics
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
-import Foundation
 
 // MARK: - ToolMacro
 
@@ -88,7 +89,10 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
         let toolName = deriveToolName(from: typeName)
 
         // Find all @Parameter annotated properties
-        let parameters = extractParameters(from: declaration)
+        let (parameters, diagnostics) = extractParameters(from: declaration)
+        if !diagnostics.isEmpty {
+            throw DiagnosticsError(diagnostics: diagnostics)
+        }
 
         // Generate members
         var members: [DeclSyntax] = []
@@ -139,9 +143,13 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
         in context: some MacroExpansionContext
     ) throws -> [ExtensionDeclSyntax] {
         // Only add extension for valid Tool declarations
-        // Must be a struct with a description argument
+        // Must be a struct with a description argument and mappable parameters
         guard declaration.is(StructDeclSyntax.self),
               extractDescription(from: node) != nil else {
+            return []
+        }
+        let (_, diagnostics) = extractParameters(from: declaration)
+        guard diagnostics.isEmpty else {
             return []
         }
         // Add Tool and Sendable conformance (AnyJSONTool bridging is handled by AnyJSONToolAdapter)
@@ -183,8 +191,11 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
     }
 
     /// Extracts @Parameter annotated properties from the declaration.
-    private static func extractParameters(from declaration: some DeclGroupSyntax) -> [ParameterInfo] {
+    private static func extractParameters(
+        from declaration: some DeclGroupSyntax
+    ) -> (parameters: [ParameterInfo], diagnostics: [Diagnostic]) {
         var parameters: [ParameterInfo] = []
+        var diagnostics: [Diagnostic] = []
 
         for member in declaration.memberBlock.members {
             guard let varDecl = member.decl.as(VariableDeclSyntax.self) else { continue }
@@ -205,38 +216,51 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
                 guard let pattern = binding.pattern.as(IdentifierPatternSyntax.self) else { continue }
                 let propertyName = pattern.identifier.text
 
-                // Get the type
-                let typeAnnotation = binding.typeAnnotation?.type
-                let swiftType = typeAnnotation?.description.trimmingCharacters(in: .whitespaces) ?? "String"
+                let typeSyntax: TypeSyntax
+                if let annotated = binding.typeAnnotation?.type {
+                    typeSyntax = annotated
+                } else {
+                    typeSyntax = ParameterTypeMapping.parseTypeSyntax("String")
+                }
+                let swiftType = typeSyntax.description.trimmingCharacters(in: .whitespaces)
 
-                // Check if optional
-                let isOptional = typeAnnotation?.is(OptionalTypeSyntax.self) == true ||
-                                 typeAnnotation?.is(ImplicitlyUnwrappedOptionalTypeSyntax.self) == true
-
-                // Get default value if present
-                let defaultValue = binding.initializer?.value.description
-
-                // Extract description from @Parameter attribute
                 let paramDescription = extractParameterDescription(from: attr)
-
-                // Extract default from @Parameter attribute
                 let paramDefault = extractParameterDefault(from: attr)
-
-                // Extract oneOf options
                 let oneOfOptions = extractOneOfOptions(from: attr)
+                let defaultExpression = paramDefault ?? binding.initializer?.value
+                let defaultValue = defaultExpression?.description
 
-                parameters.append(ParameterInfo(
-                    name: propertyName,
-                    description: paramDescription ?? "Parameter \(propertyName)",
-                    swiftType: swiftType,
-                    isOptional: isOptional || paramDefault != nil || defaultValue != nil,
-                    defaultValue: paramDefault ?? defaultValue,
-                    oneOfOptions: oneOfOptions
-                ))
+                switch ParameterTypeMapping.map(typeSyntax, oneOf: oneOfOptions) {
+                case let .mapped(mapped):
+                    var sendableDefault: String?
+                    if let defaultExpression {
+                        switch ParameterTypeMapping.convertDefault(defaultExpression, type: typeSyntax) {
+                        case let .mapped(encoded):
+                            sendableDefault = encoded
+                        case let .diagnostic(diagnostic):
+                            diagnostics.append(diagnostic)
+                            continue
+                        }
+                    }
+
+                    parameters.append(ParameterInfo(
+                        name: propertyName,
+                        description: paramDescription ?? "Parameter \(propertyName)",
+                        swiftType: swiftType,
+                        isOptional: mapped.isTypeOptional || defaultValue != nil,
+                        typeIsOptional: mapped.isTypeOptional,
+                        defaultValue: defaultValue,
+                        sendableDefaultLiteral: sendableDefault,
+                        schemaLiteral: mapped.schemaLiteral
+                    ))
+
+                case let .diagnostic(diagnostic):
+                    diagnostics.append(diagnostic)
+                }
             }
         }
 
-        return parameters
+        return (parameters, diagnostics)
     }
 
     /// Extracts description from @Parameter attribute.
@@ -254,11 +278,11 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
     }
 
     /// Extracts default value from @Parameter attribute.
-    private static func extractParameterDefault(from attr: AttributeSyntax) -> String? {
+    private static func extractParameterDefault(from attr: AttributeSyntax) -> ExprSyntax? {
         guard let arguments = attr.arguments?.as(LabeledExprListSyntax.self) else { return nil }
 
         for arg in arguments where arg.label?.text == "default" {
-            return arg.expression.description
+            return arg.expression
         }
         return nil
     }
@@ -298,86 +322,24 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
         }
 
         let parameterStrings = parameters.map { param -> String in
-            let paramType = mapSwiftTypeToParameterType(param.swiftType, oneOf: param.oneOfOptions)
             let isRequired = !param.isOptional
 
             var defaultValueStr = ""
-            if let defaultValue = param.defaultValue {
-                defaultValueStr = ", defaultValue: \(convertToSendableValue(defaultValue, type: param.swiftType))"
+            if let sendableDefault = param.sendableDefaultLiteral {
+                defaultValueStr = ", defaultValue: \(sendableDefault)"
             }
 
             return """
                 ToolParameter(
                     name: \(stringLiteral(param.name)),
                     description: \(stringLiteral(param.description)),
-                    type: \(paramType),
+                    type: \(param.schemaLiteral),
                     isRequired: \(isRequired)\(defaultValueStr)
                 )
             """
         }
 
         return "[\n        " + parameterStrings.joined(separator: ",\n        ") + "\n    ]"
-    }
-
-    /// Maps Swift type to ParameterType.
-    private static func mapSwiftTypeToParameterType(_ swiftType: String, oneOf: [String]?) -> String {
-        // Handle oneOf first
-        if let options = oneOf, !options.isEmpty {
-            let optionsStr = options.map(stringLiteral).joined(separator: ", ")
-            return ".oneOf([\(optionsStr)])"
-        }
-
-        // Clean up the type (remove Optional wrapper)
-        let cleanType = swiftType
-            .replacingOccurrences(of: "Optional<", with: "")
-            .replacingOccurrences(of: ">", with: "")
-            .replacingOccurrences(of: "?", with: "")
-            .trimmingCharacters(in: .whitespaces)
-
-        // Handle array types
-        if cleanType.hasPrefix("[") && cleanType.hasSuffix("]") {
-            let elementType = String(cleanType.dropFirst().dropLast())
-            let elementParamType = mapSwiftTypeToParameterType(elementType, oneOf: nil)
-            return ".array(elementType: \(elementParamType))"
-        }
-
-        // Map basic types
-        switch cleanType {
-        case "String":
-            return ".string"
-        case "Int":
-            return ".int"
-        case "Double", "Float":
-            return ".double"
-        case "Bool":
-            return ".bool"
-        default:
-            return ".string"
-        }
-    }
-
-    /// Converts a default value to SendableValue syntax.
-    private static func convertToSendableValue(_ value: String, type: String) -> String {
-        let cleanValue = value.trimmingCharacters(in: .whitespaces)
-
-        if cleanValue == "nil" {
-            return "nil"
-        }
-
-        let cleanType = type.replacingOccurrences(of: "?", with: "").trimmingCharacters(in: .whitespaces)
-
-        switch cleanType {
-        case "String":
-            return ".string(\(cleanValue))"
-        case "Int":
-            return ".int(\(cleanValue))"
-        case "Double", "Float":
-            return ".double(\(cleanValue))"
-        case "Bool":
-            return ".bool(\(cleanValue))"
-        default:
-            return ".string(\(cleanValue))"
-        }
     }
 
     private static func stringLiteral(_ value: String) -> String {
@@ -484,131 +446,6 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
         "\\" + String(repeating: "#", count: rawDelimiterCount) + String(escaped)
     }
 
-    /// Generates the execute(arguments:) wrapper method.
-    private static func generateExecuteWrapper(parameters: [ParameterInfo], declaration: some DeclGroupSyntax) -> DeclSyntax {
-        // Find the user's execute() method to determine return type
-        var userExecuteReturnType = "SendableValue"
-        var hasUserExecute = false
-
-        for member in declaration.memberBlock.members {
-            if let funcDecl = member.decl.as(FunctionDeclSyntax.self),
-               funcDecl.name.text == "execute" {
-                hasUserExecute = true
-                if let returnClause = funcDecl.signature.returnClause {
-                    userExecuteReturnType = returnClause.type.description.trimmingCharacters(in: .whitespaces)
-                }
-                break
-            }
-        }
-
-        // Generate parameter extraction code
-        var extractionCode = ""
-        for param in parameters {
-            let extraction = generateParameterExtraction(param)
-            extractionCode += extraction + "\n        "
-        }
-
-        // Generate the wrapper
-        let conversionCode = generateReturnConversion(userExecuteReturnType)
-
-        if hasUserExecute {
-            // Generate property assignments using a local copy for thread safety
-            let propertyAssignments = parameters.map { "toolCopy.\($0.name) = \($0.name)" }.joined(separator: "\n        ")
-
-            return """
-                public func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
-                    \(raw: extractionCode)
-                    var toolCopy = self
-                    \(raw: propertyAssignments)
-                    let result = try await toolCopy.execute()
-                    \(raw: conversionCode)
-                }
-                """
-        } else {
-            return """
-                public func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
-                    \(raw: extractionCode)
-                    return .null
-                }
-                """
-        }
-    }
-
-    /// Generates code to extract a parameter from arguments.
-    private static func generateParameterExtraction(_ param: ParameterInfo) -> String {
-        let accessor = getValueAccessor(for: param.swiftType)
-
-        if param.isOptional {
-            if let defaultValue = param.defaultValue {
-                return "let \(param.name) = arguments[\"\(param.name)\"]?\(accessor) ?? \(defaultValue)"
-            } else {
-                return "let \(param.name) = arguments[\"\(param.name)\"]?\(accessor)"
-            }
-        } else {
-            return """
-guard let \(param.name) = arguments["\(param.name)"]?\(accessor) else {
-                throw AgentError.invalidToolArguments(toolName: name, reason: "Missing required parameter '\(param.name)'")
-            }
-"""
-        }
-    }
-
-    /// Gets the value accessor method for a Swift type.
-    private static func getValueAccessor(for swiftType: String) -> String {
-        let cleanType = swiftType
-            .replacingOccurrences(of: "Optional<", with: "")
-            .replacingOccurrences(of: ">", with: "")
-            .replacingOccurrences(of: "?", with: "")
-            .trimmingCharacters(in: .whitespaces)
-
-        switch cleanType {
-        case "String":
-            return ".stringValue"
-        case "Int":
-            return ".intValue"
-        case "Double", "Float":
-            return ".doubleValue"
-        case "Bool":
-            return ".boolValue"
-        default:
-            return ".stringValue"
-        }
-    }
-
-    /// Generates code to convert return value to SendableValue.
-    private static func generateReturnConversion(_ returnType: String) -> String {
-        let cleanType = returnType.trimmingCharacters(in: .whitespaces)
-
-        switch cleanType {
-        case "String":
-            return "return .string(result)"
-        case "Int":
-            return "return .int(result)"
-        case "Double", "Float":
-            return "return .double(result)"
-        case "Bool":
-            return "return .bool(result)"
-        case "SendableValue":
-            return "return result"
-        case "Void", "()":
-            return "return .null"
-        default:
-            // For complex types, try to encode as Codable
-            // If encoding fails, throw an error rather than silently converting to string
-            // (which could expose sensitive data like PII)
-            return """
-do {
-                    return try SendableValue(encoding: result)
-                } catch {
-                    throw AgentError.toolExecutionFailed(
-                        toolName: name,
-                        underlyingError: "Unsupported return type '\\(type(of: result))'. " +
-                            "Tool return types must be String, Int, Double, Bool, SendableValue, Void, or Codable."
-                    )
-                }
-"""
-        }
-    }
     // MARK: - Tool Protocol Member Generation
 
     /// Extracts the return type of the user's execute() method.
@@ -637,7 +474,7 @@ do {
 
         let properties = parameters.map { param -> String in
             let swiftType: String
-            if param.isOptional && !param.swiftType.hasSuffix("?") {
+            if param.isOptional && !param.typeIsOptional {
                 swiftType = param.swiftType + "?"
             } else {
                 swiftType = param.swiftType
@@ -671,8 +508,9 @@ do {
         // For optional params (those with defaults), the Input property is Optional<T>.
         // When assigning back to a non-optional property, use nil-coalescing with the default value.
         let assignments = parameters.map { param -> String in
-            // Input property is optional when param is optional AND the swift type doesn't already end with ?
-            let inputIsOptional = param.isOptional && !param.swiftType.hasSuffix("?")
+            // Input property is optional when the schema parameter is optional
+            // but the stored Swift type is not already Optional.
+            let inputIsOptional = param.isOptional && !param.typeIsOptional
             if inputIsOptional, let defaultValue = param.defaultValue {
                 return "toolCopy.\(param.name) = input.\(param.name) ?? \(defaultValue)"
             } else {
@@ -710,8 +548,10 @@ struct ParameterInfo {
     let description: String
     let swiftType: String
     let isOptional: Bool
+    let typeIsOptional: Bool
     let defaultValue: String?
-    let oneOfOptions: [String]?
+    let sendableDefaultLiteral: String?
+    let schemaLiteral: String
 }
 
 // MARK: - MacroError
@@ -720,8 +560,6 @@ struct ParameterInfo {
 enum MacroError: Error, CustomStringConvertible {
     case missingDescription
     case onlyApplicableToStruct
-    case invalidParameterType
-    case missingExecuteMethod
 
     var description: String {
         switch self {
@@ -729,10 +567,6 @@ enum MacroError: Error, CustomStringConvertible {
             return "@Tool requires a description string argument"
         case .onlyApplicableToStruct:
             return "@Tool can only be applied to structs"
-        case .invalidParameterType:
-            return "Invalid parameter type"
-        case .missingExecuteMethod:
-            return "@Tool requires an execute() method"
         }
     }
 }

@@ -228,6 +228,8 @@ struct PriceTool {
 }
 ```
 
+Parameter types map from Swift: `String`, `Int`, `Double`/`Float`, `Bool`, arrays of those (`[T]` or `Array<T>`), and `Optional` thereof. Unsupported types — including `[String: T]` dictionaries — are compile errors. Use `@Parameter(oneOf:)` for string enums, or `FunctionTool` for objects, dictionaries, and `.any`.
+
 ### `FunctionTool` (closure shorthand)
 
 ```swift
