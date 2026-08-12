@@ -21,6 +21,22 @@ private struct DocSnippetPriceTool {
     func execute() async throws -> String { "182.50" }
 }
 
+/// Type-checks the README `agent.stream` switch without running inference.
+private func readmeStreamingSwitchSurface(_ event: AgentEvent) {
+    switch event {
+    case .output(.token(let t)):
+        _ = t
+    case .tool(.completed(let call, _)):
+        _ = call.toolName
+    case .lifecycle(.completed(let r)):
+        _ = r.duration
+    case .lifecycle(.failed(let error)):
+        _ = error
+    default:
+        break
+    }
+}
+
 @Suite("README Provider Compile Tests")
 struct ReadmeProviderCompileTests {
     @Test("README-style provider factories compile through public import")
@@ -52,11 +68,10 @@ struct ReadmeProviderCompileTests {
         }
     }
 
-    /// Proves major README / getting-started `Agent(...)` call sites match the
-    /// canonical label order: configuration → memory → inferenceProvider → guardrails.
+    /// Parameter-order proof for getting-started + README Foundation Models First.
+    /// Named README sample tests below own semantic memory / guardrails / quick start.
     @Test("Major public doc Agent snippets use legal parameter order")
     func majorPublicDocAgentSnippetsCompile() throws {
-        // getting-started: on-device first agent
         if #available(macOS 26.0, iOS 26.0, visionOS 26.0, *) {
             #if canImport(FoundationModels)
             _ = try Agent(
@@ -68,12 +83,7 @@ struct ReadmeProviderCompileTests {
             ) {
                 DocSnippetPriceTool()
             }
-            #endif
-        }
 
-        // README: Foundation Models First
-        if #available(macOS 26.0, iOS 26.0, visionOS 26.0, *) {
-            #if canImport(FoundationModels)
             _ = try Agent(
                 "You are a private on-device assistant.",
                 inferenceProvider: .foundationModels()
@@ -82,30 +92,12 @@ struct ReadmeProviderCompileTests {
             }
             #endif
         }
-
-        // README: custom InferenceProvider (mock stands in for any custom backend)
-        let embedder = MockEmbeddingProvider()
-        let mock = MockInferenceProvider(responses: ["ok"])
-        _ = try Agent(
-            "You remember past conversations.",
-            memory: .vector(embeddingProvider: embedder, similarityThreshold: 0.75),
-            inferenceProvider: mock
-        ) {
-            DocSnippetPriceTool()
-        }
-
-        // README / getting-started: guardrails-only
-        _ = try Agent(
-            "You are a helpful assistant.",
-            inputGuardrails: [InputGuard.maxLength(5000), InputGuard.notEmpty()],
-            outputGuardrails: [OutputGuard.maxLength(2000)]
-        )
     }
 
     @Test("README Quick Start sample compiles")
     func readmeQuickStartCompiles() throws {
         let mock = MockInferenceProvider(responses: ["Apple (AAPL) is currently trading at $182.50."])
-        let agent = try Agent(
+        _ = try Agent(
             "Answer finance questions using real data.",
             configuration: .default.name("Analyst"),
             inferenceProvider: mock
@@ -115,7 +107,6 @@ struct ReadmeProviderCompileTests {
                 CalculatorTool()
             #endif
         }
-        _ = agent
     }
 
     @Test("README Multi-agent pipeline sample compiles")
@@ -166,24 +157,12 @@ struct ReadmeProviderCompileTests {
     }
 
     @Test("README Streaming sample compiles")
-    func readmeStreamingCompiles() async throws {
+    func readmeStreamingCompiles() throws {
         let mock = MockInferenceProvider(responses: ["token"])
         let agent = try Agent("Summarizer.", inferenceProvider: mock)
-        // Same switch surface as the README streaming sample.
-        for try await event in agent.stream("Summarize the changelog.") {
-            switch event {
-            case .output(.token(let t)):
-                _ = t
-            case .tool(.completed(let call, _)):
-                _ = call.toolName
-            case .lifecycle(.completed(let r)):
-                _ = r.duration
-            case .lifecycle(.failed(let error)):
-                _ = error
-            default:
-                break
-            }
-        }
+        // Lock the README switch surface + stream return type without executing inference.
+        _ = agent.stream("Summarize the changelog.")
+        readmeStreamingSwitchSurface(.output(.token("x")))
     }
 
     @Test("README Semantic memory sample compiles")
@@ -234,7 +213,7 @@ struct ReadmeProviderCompileTests {
 
     @Test("README Crash-resumable workflows sample compiles")
     func readmeCrashResumableCompiles() throws {
-        #if SWARM_INTEGRATIONS
+        // Construction is lean-safe; durable.execute requires Integrations at runtime.
         let mock = MockInferenceProvider(responses: ["done"])
         let monitor = try Agent("Emit a short status.", inferenceProvider: mock)
         let checkpointsURL = FileManager.default.temporaryDirectory
@@ -244,7 +223,6 @@ struct ReadmeProviderCompileTests {
             .step(monitor)
             .durable.checkpoint(id: "monitor-v1", policy: .everyStep)
             .durable.checkpointing(.fileSystem(directory: checkpointsURL))
-        #endif
     }
 
     @Test("README Provider selection sample compiles")
@@ -257,10 +235,8 @@ struct ReadmeProviderCompileTests {
             #endif
         }
 
-        let custom = try Agent("Be helpful.", inferenceProvider: myCustomProvider)
         let agent = try Agent("Be helpful.", inferenceProvider: myCustomProvider)
         _ = agent.environment(\.inferenceProvider, myCustomProvider)
-        _ = custom
     }
 
     @Test("README Conversation sample compiles")
