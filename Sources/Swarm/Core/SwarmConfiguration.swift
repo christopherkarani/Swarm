@@ -77,6 +77,7 @@ public extension Swarm {
     /// 3. `Swarm.webConfiguration` (set here)
     /// 4. No ambient web tool
     static func configure(web configuration: WebSearchTool.Configuration) async {
+        IntegrationsTrait.warnIfUnavailable(feature: "Web search")
         await Configuration.shared.setWebConfiguration(configuration)
     }
 

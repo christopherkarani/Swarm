@@ -24,13 +24,13 @@ let result = try await Workflow()
   <img alt="Swarm API Flow" src="docs/public/api-flow.gif" width="600" />
 </div>
 
-Two agents, one pipeline, compiled to a DAG with crash recovery and Swift concurrency safety.
+Two agents, one pipeline, compiled to a DAG. Crash recovery is opt-in — enable the Integrations trait and durable checkpointing — and Swift concurrency safety is enforced at compile time.
 
 ## Install
 
 Default **link** is **lean**: core Swarm + on-device Foundation Models. Graph/memory/web/Hive paths are trait-gated (off by default) and are not linked into Swarm unless you enable Integrations.
 
-HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve never pulls Hive/Membrane/ContextCore/Conduit **package identities**, and (with trait-gated product edges) also does **not** pin Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, or SwiftSoup. Always-on remotes remain (swift-syntax, swift-log, MCP sdk, OTel, plus NIO transitives — including `swift-collections` via NIO). `SWARM_CORE_ONLY=1` drops the integration package block entirely. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML embedding model that is **not** bundled — without `minilm-l6-v2.mlpackage`, ContextCore falls back to deterministic pseudo-embeddings.
+HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve never pulls Hive/Membrane/ContextCore/Conduit **package identities**, and (with trait-gated product edges) also does **not** pin Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, or SwiftSoup. Always-on remotes remain (swift-syntax, swift-log, MCP sdk, OTel, plus NIO transitives — including `swift-collections` via NIO). `SWARM_CORE_ONLY=1` drops the integration package block entirely. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML embedding model that is **not** bundled — without `minilm-l6-v2.mlpackage`, ContextCore falls back to deterministic pseudo-embeddings, logs a once-per-process warning, and `DefaultAgentMemory.isSemanticMemoryAvailable` reports `false`.
 
 **Root-package note:** bare `swift build` / `swift test` on this repo compile every registered target, so integration modules need either `--traits Integrations` or the lean CI helper (`scripts/ci/lean-build-test.sh`). App consumers only build reachable targets and stay lean without that helper.
 
@@ -90,7 +90,7 @@ That is a working agent with type-safe tool calling. Swarm also supports **AGENT
 
 - **Swift concurrency is part of the surface.** Swift 6.2 `StrictConcurrency` is enabled across the package.
 - **Tools stay type-safe.** The `@Tool` macro generates JSON schemas from Swift structs.
-- **Workflows can survive crashes.** Durable workflow checkpointing lets you resume from an explicit checkpoint ID.
+- **Workflows can survive crashes.** Durable checkpointing (Integrations trait) lets you resume from an explicit checkpoint ID.
 - **Built-in inference is on-device Foundation Models.** Inject any `InferenceProvider` for custom backends; the agent loop stays the same.
 - **It is written in Swift all the way down.** `AsyncThrowingStream`, actors, result builders, and macros are first-class here.
 
@@ -175,7 +175,8 @@ Notes that matter in production:
 
 - **Availability**: use `FoundationModelsInferenceProvider.ifAvailable()` or check `FoundationModelsInferenceProvider.isAvailable` before assuming the system model is ready.
 - **Tool calling**: Swarm bridges `@Tool` / `ToolSchema` to Apple's `FoundationModels.Tool` and executes tools in the agent loop with guardrails intact.
-- **Streaming tool calls**: not advertised; streaming is text deltas, tools complete as capture-then-execute turns.
+- **Streaming tool calls**: not advertised as token-level tool streaming; `Agent.stream` observes the same `run` loop via `AgentEvent` (lifecycle, tools, and `.output(.token)` chunks). Foundation Models yields incremental text deltas; providers without a streaming API emit the full response as a single chunk.
+- **Structured outputs**: `runStructured` asks the model (prompt instruction) and parses JSON. It is not enforced schema generation — invalid JSON fails at parse time.
 - **Dynamic profiles**: `.foundationModels(profile:)` re-resolves instructions/tools/history every turn (WWDC 2026–aligned Swarm API).
 - **Linux / CI**: Foundation Models is compile-time gated; inject a mock or custom `InferenceProvider`, or use the deterministic `--demo` modes in `Examples/`.
 
@@ -183,7 +184,7 @@ Notes that matter in production:
 
 ```swift
 // WebSearchTool requires the Integrations trait and an API key
-// (lean builds compile this initializer but throw at execution without Integrations).
+// (lean builds compile this initializer, warn immediately, and throw on execute).
 let researcher = try Agent("Research the topic and extract key facts.",
     inferenceProvider: .foundationModels()) {
     WebSearchTool(apiKey: "YOUR_API_KEY")
@@ -222,6 +223,10 @@ let result = try await Workflow()
 ```
 
 ### Streaming
+
+`Agent.stream` runs the same agent loop as `run`, forwarding `AgentEvent` values through an observer. You get lifecycle, tool, and output events as they happen — not a separate token decoder.
+
+`.output(.token)` is an incremental text chunk when the provider streams (Foundation Models does). If the provider only has a completion API, that event is the full response in one chunk. Tool calls still complete as capture-then-execute turns unless the provider implements tool-call streaming.
 
 ```swift
 for try await event in agent.stream("Summarize the changelog.") {
@@ -320,7 +325,7 @@ for message in await conversation.messages {
 | **Data race safety** | Compile-time | Runtime | Runtime |
 | **On-device LLM** | Foundation Models | n/a | n/a |
 | **Execution model** | Typed `Workflow` graph | Loop-based | Loop-based |
-| **Crash recovery** | Checkpoints | n/a | Partial |
+| **Crash recovery** | Checkpoints (Integrations) | n/a | Partial |
 | **Type-safe tools** | `@Tool` macro (compile-time) | Decorators (runtime) | Runtime |
 | **Streaming** | `AsyncThrowingStream` | Callbacks | Callbacks |
 | **iOS / macOS native** | First-class | n/a | n/a |

@@ -28,7 +28,7 @@ Enable Integrations when you need any of:
 | Capability | Without Integrations (lean) | With `traits: ["Integrations"]` |
 |------------|----------------------------|----------------------------------|
 | Default agent memory | `SlidingWindowMemory` | ContextCore + Wax `DefaultAgentMemory` |
-| Durable Hive checkpoint/resume | Configuration type-checks; execute with checkpoint/resume configured throws | Full durable engine |
+| Durable Hive checkpoint/resume | Configuration type-checks; factories warn immediately; execute with checkpoint/resume configured throws | Full durable engine |
 | Membrane adapters | No-op / unavailable backends | Real Membrane session adapters |
 | Web helpers (`websearch`, page fetch/HTML parse) | Not injected / gated | Full web tool support |
 
@@ -57,7 +57,9 @@ durable workflows, MembraneCore, and web helpers; default memory falls back to
 
 **Embeddings:** the CoreML `minilm-l6-v2.mlpackage` model is not bundled with
 Swarm. Without it, Integrations `DefaultAgentMemory` uses deterministic
-pseudo-embeddings until you supply the model under ContextCore resources.
+pseudo-embeddings, logs a once-per-process warning, and
+`isSemanticMemoryAvailable` is `false` until you supply the model under
+ContextCore resources or inject a real embedding provider.
 
 ### Xcode
 
@@ -210,7 +212,13 @@ print(result.tokenUsage)   // TokenUsage(inputTokens:, outputTokens:)
 
 ### Streaming with `stream()`
 
-Stream `AgentEvent` values in real time -- ideal for live UI:
+`Agent.stream` runs the same loop as `run` and forwards `AgentEvent` values
+through an observer — lifecycle, tool, and output events as they occur.
+
+`.output(.token)` is an incremental text chunk when the provider streams
+(Foundation Models does). If the provider only has a completion API, that
+event is the full response in one chunk. This is not a separate token-level
+decoder sitting in front of `run`.
 
 ```swift
 for try await event in agent.stream("Tell me about Swift concurrency.") {
@@ -289,14 +297,18 @@ Durable Hive checkpoint/resume requires the **`Integrations`** SwiftPM trait
 Without Integrations:
 
 - `.durable.checkpoint` / `.checkpointing` and `WorkflowCheckpointing.*` still
-  type-check (configuration-only APIs).
-- `execute` / `.durable.execute` **throws** when checkpointing is configured or
-  `resumeFrom` is non-nil.
+  type-check (configuration-only APIs) and emit a once-per-process warning
+  naming the missing trait and the rebuild remedy
+  (`--traits Integrations` / `traits: ["Integrations"]`).
+- `execute` / `.durable.execute` **throws** `WorkflowError.durableRuntimeUnavailable`
+  when checkpointing is configured or `resumeFrom` is non-nil, with the same
+  remedy in the error message.
 - Bare workflow `run` / `execute` **without** durable configuration still runs as
   a non-durable workflow.
 
 ```swift
-// Requires Integrations trait for checkpoint/resume at execute time
+// Requires Integrations trait for checkpoint/resume at execute time.
+// Lean builds warn at `.checkpoint` / `.checkpointing` and throw on execute.
 let result = try await Workflow()
     .step(fetchAgent)
     .step(analyzeAgent)
@@ -353,6 +365,12 @@ Or using the `.environment()` modifier on any `AgentRuntime`:
 ```swift
 agent.environment(\.inferenceProvider, myCustomProvider)
 ```
+
+### Structured output
+
+`runStructured` asks the model (prompt instruction) and parses the reply as
+JSON. It is not enforced schema generation — invalid JSON fails at parse time
+rather than being constrained by a native generation schema.
 
 ### Provider resolution order
 

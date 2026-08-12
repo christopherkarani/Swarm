@@ -2,6 +2,16 @@ import Foundation
 
 /// Checkpoint persistence configuration for advanced workflows.
 public struct WorkflowCheckpointing: Sendable {
+    /// Whether durable checkpoint stores are linked in this build.
+    ///
+    /// Lean builds still type-check these factories so workflow graphs compile, but
+    /// ``Workflow/Durable/execute(_:resumeFrom:)`` throws until you rebuild with
+    /// `--traits Integrations` (or add `traits: ["Integrations"]` to the Swarm
+    /// package dependency).
+    public static var isAvailable: Bool {
+        IntegrationsTrait.isEnabled
+    }
+
     #if SWARM_INTEGRATIONS
     let backend: any WorkflowDurableCheckpointStore
 
@@ -14,19 +24,27 @@ public struct WorkflowCheckpointing: Sendable {
 
     /// In-memory checkpoint persistence.
     public static func inMemory() -> WorkflowCheckpointing {
+        IntegrationsTrait.warnIfUnavailable(
+            feature: "Durable workflow checkpointing",
+            logger: Log.orchestration
+        )
         #if SWARM_INTEGRATIONS
-        WorkflowCheckpointing(backend: WorkflowInMemoryCheckpointStore())
+        return WorkflowCheckpointing(backend: WorkflowInMemoryCheckpointStore())
         #else
-        WorkflowCheckpointing()
+        return WorkflowCheckpointing()
         #endif
     }
 
     /// File-system checkpoint persistence rooted at `directory`.
     public static func fileSystem(directory: URL) -> WorkflowCheckpointing {
+        IntegrationsTrait.warnIfUnavailable(
+            feature: "Durable workflow checkpointing",
+            logger: Log.orchestration
+        )
         #if SWARM_INTEGRATIONS
-        WorkflowCheckpointing(backend: WorkflowFileCheckpointStore(directory: directory))
+        return WorkflowCheckpointing(backend: WorkflowFileCheckpointStore(directory: directory))
         #else
-        WorkflowCheckpointing()
+        return WorkflowCheckpointing()
         #endif
     }
 }

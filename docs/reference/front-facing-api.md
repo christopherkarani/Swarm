@@ -19,8 +19,9 @@ memory, Membrane adapters, and web helpers:
 | Surface | Lean default | With Integrations |
 |---------|--------------|-------------------|
 | `Agent.makeDefaultMemory()` | `SlidingWindowMemory` | `DefaultAgentMemory` (ContextCore + Wax) |
-| Durable execute with checkpoint / `resumeFrom` | Throws | Full Hive durable engine |
-| Membrane / web helpers | Unavailable or no-op | Linked and active |
+| Durable execute with checkpoint / `resumeFrom` | Warns at checkpoint factories; throws `durableRuntimeUnavailable` | Full Hive durable engine |
+| Membrane / web helpers | Unavailable or no-op; `WebSearchTool` warns at init and throws on execute | Linked and active |
+| Default semantic embeddings | n/a (lean uses `SlidingWindowMemory`) | `DefaultAgentMemory.isSemanticMemoryAvailable` is `false` without MiniLM |
 
 HiveCore, Membrane, and ContextCore are native in-tree `Sources/` targets
 (internal modules, not separate products), linked only with Integrations.
@@ -33,7 +34,8 @@ sdk, OTel, plus NIO transitives including `swift-collections`).
 Membrane session stack are Apple-only (Metal/CoreML); Linux Integrations keeps
 Hive + MembraneCore + web helpers. `DefaultAgentMemory` (ContextCore + Wax)
 uses fallback pseudo-embeddings when the optional CoreML
-`minilm-l6-v2.mlpackage` is not present. See README Install.
+`minilm-l6-v2.mlpackage` is not present, logs a once-per-process warning, and
+exposes `DefaultAgentMemory.isSemanticMemoryAvailable`. See README Install.
 
 ## 1) Entry point and global configuration
 
@@ -252,6 +254,10 @@ Agent("instructions") {
 
 The builder produces an opaque `ToolCollection`; callers supply concrete `Tool` values or `[any Tool]`, and Swarm handles the internal type erasure.
 
+`WebSearchTool` compiles on lean builds. Query `WebSearchTool.isAvailable` (or
+`IntegrationsTrait.isEnabled`) before constructing it; lean inits warn immediately
+and `execute` throws with the rebuild remedy.
+
 ## 6) Conversation
 
 Stateful multi-turn conversation wrapper.
@@ -352,16 +358,18 @@ public struct Workflow: Sendable {
 Requires the **`Integrations`** SwiftPM trait (`traits: ["Integrations"]` or
 `--traits Integrations`) for real checkpoint/resume at **execute** time.
 
-With checkpoint/resume configured (or `resumeFrom` set), lean builds throw that
-durable execution requires Integrations. Without that configuration, bare
-execute still runs as a non-durable workflow. Checkpoint factories and
-`.durable.checkpoint` / `.checkpointing` remain type-checkable in lean mode
-(configuration-only); the trait gate is enforced when execute needs the durable
-engine.
+With checkpoint/resume configured (or `resumeFrom` set), lean builds warn at
+`WorkflowCheckpointing.inMemory()` / `.fileSystem(directory:)` and
+`.durable.checkpoint` / `.checkpointing`, then throw
+`WorkflowError.durableRuntimeUnavailable` with the rebuild remedy. Without that
+configuration, bare execute still runs as a non-durable workflow. Query
+`WorkflowCheckpointing.isAvailable` or `Workflow.Durable.isAvailable` before
+opting in.
 
 ```swift
 public extension Workflow {
     struct Durable: Sendable {
+        static var isAvailable: Bool { get }
         enum CheckpointPolicy: Sendable { case onCompletion, everyStep }
 
         func checkpoint(id: String, policy: CheckpointPolicy = .onCompletion) -> Workflow
@@ -371,7 +379,9 @@ public extension Workflow {
     }
 }
 
-// Configuration-only in lean builds; durable engine requires Integrations at execute
+// Configuration-only in lean builds; factories warn immediately.
+// Durable engine requires Integrations at execute.
+WorkflowCheckpointing.isAvailable
 WorkflowCheckpointing.inMemory()
 WorkflowCheckpointing.fileSystem(directory: URL)
 ```
@@ -422,6 +432,7 @@ When an agent is created without an explicit `memory:` argument, Swarm uses
 public static func makeDefaultMemory() throws -> any Memory
 // Integrations on  → DefaultAgentMemory (ContextCore + Wax)
 // Integrations off → SlidingWindowMemory
+// Query DefaultAgentMemory.isSemanticMemoryAvailable when using the Integrations default.
 ```
 
 Pass an explicit factory when you want a fixed backend regardless of traits:

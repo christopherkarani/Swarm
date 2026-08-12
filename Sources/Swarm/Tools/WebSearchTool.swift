@@ -215,6 +215,15 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         resolvedConfiguration.enabled
     }
 
+    /// Whether live web search, fetch, and grounding are linked in this build.
+    ///
+    /// Lean builds still type-check ``WebSearchTool`` so agent graphs compile, but
+    /// ``execute()`` throws until you rebuild with `--traits Integrations` (or add
+    /// `traits: ["Integrations"]` to the Swarm package dependency).
+    public static var isAvailable: Bool {
+        IntegrationsTrait.isEnabled
+    }
+
     // Legacy mutable properties preserved for direct-call compatibility.
     public var mode: String
     public var query: String
@@ -235,6 +244,7 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
     private let legacyAPIKey: String?
 
     public init(apiKey: String) {
+        IntegrationsTrait.warnIfUnavailable(feature: "Web search")
         configuration = nil
         legacyAPIKey = apiKey
         mode = Mode.search.rawValue
@@ -254,6 +264,7 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
     }
 
     public init(configuration: Configuration) {
+        IntegrationsTrait.warnIfUnavailable(feature: "Web search")
         self.configuration = configuration
         legacyAPIKey = configuration.apiKey
         mode = Mode.search.rawValue
@@ -283,7 +294,7 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         #else
         throw AgentError.toolExecutionFailed(
             toolName: name,
-            underlyingError: "Web search requires the Integrations trait."
+            underlyingError: IntegrationsTrait.requirementMessage(for: "Web search")
         )
         #endif
     }
@@ -298,7 +309,7 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         #else
         throw AgentError.toolExecutionFailed(
             toolName: name,
-            underlyingError: "Web search requires the Integrations trait."
+            underlyingError: IntegrationsTrait.requirementMessage(for: "Web search")
         )
         #endif
     }

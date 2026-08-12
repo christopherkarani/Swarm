@@ -7,6 +7,15 @@ public extension Workflow {
     struct Durable: Sendable {
         fileprivate let workflow: Workflow
 
+        /// Whether the durable Hive engine is linked in this build.
+        ///
+        /// Configuration APIs (``checkpoint(id:policy:)``, ``checkpointing(_:)``)
+        /// still type-check on lean builds. ``execute(_:resumeFrom:)`` throws when
+        /// checkpointing is configured until you rebuild with `--traits Integrations`.
+        public static var isAvailable: Bool {
+            IntegrationsTrait.isEnabled
+        }
+
         public enum CheckpointPolicy: Sendable {
             case onCompletion
             case everyStep
@@ -14,6 +23,10 @@ public extension Workflow {
 
         /// Enables workflow checkpointing for this workflow.
         public func checkpoint(id: String, policy: CheckpointPolicy = .onCompletion) -> Workflow {
+            IntegrationsTrait.warnIfUnavailable(
+                feature: "Durable workflow checkpointing",
+                logger: Log.orchestration
+            )
             var copy = workflow
             copy.advancedConfiguration.checkpoint = Workflow.CheckpointConfiguration(
                 id: id,
@@ -24,6 +37,10 @@ public extension Workflow {
 
         /// Configures checkpoint persistence for durable workflow execution.
         public func checkpointing(_ checkpointing: WorkflowCheckpointing) -> Workflow {
+            IntegrationsTrait.warnIfUnavailable(
+                feature: "Durable workflow checkpointing",
+                logger: Log.orchestration
+            )
             var copy = workflow
             copy.advancedConfiguration.checkpointing = checkpointing
             return copy
@@ -91,8 +108,8 @@ extension Workflow {
         }
         #else
         if checkpointID != nil || advancedConfiguration.checkpoint != nil || advancedConfiguration.checkpointing != nil {
-            throw WorkflowError.invalidWorkflow(
-                reason: "Durable workflow execution requires the Integrations trait."
+            throw WorkflowError.durableRuntimeUnavailable(
+                reason: IntegrationsTrait.requirementMessage(for: "Durable workflow execution")
             )
         }
         return try await executeWithTimeout {
