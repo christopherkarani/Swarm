@@ -28,6 +28,21 @@ Publish a `Swarm` GitHub tag that downstream users can resolve and build without
 1. Push the release branch to GitHub.
 2. Create and push the SemVer tag.
 3. Publish the GitHub release entry and release notes.
+4. **MiniLM embedding asset (download-on-demand):** Swarm does not bundle
+   `minilm-l6-v2.mlpackage`. For a release that should serve real semantic
+   embeddings:
+   1. Build / export `minilm-l6-v2.mlpackage` (all-MiniLM-L6-v2 via coremltools).
+   2. Zip it as `minilm-l6-v2.mlpackage.zip`.
+   3. Attach the zip to a GitHub release whose tag matches
+      `EmbeddingModelCatalog.releaseTag` (`embedding-minilm-l6-v2`) on
+      `https://github.com/christopherkarani/Swarm`, **or** attach it to the
+      current Swarm SemVer tag and update `EmbeddingModelCatalog.defaultSourceURL`.
+   4. Compute `shasum -a 256 minilm-l6-v2.mlpackage.zip` and replace
+      `EmbeddingModelCatalog.expectedSHA256` with that lowercase hex digest.
+   5. Tag / ship the constant update so clients verify the published asset.
+
+   Until that asset exists, `ensureModelAvailable()` fails loudly (404 or hash
+   mismatch). The placeholder SHA-256 in source is not a real digest.
 
 ## Pre-Tag Gate
 

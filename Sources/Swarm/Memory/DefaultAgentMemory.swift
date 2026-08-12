@@ -22,6 +22,15 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
         public var contextCoreConfiguration: ContextCoreMemoryConfiguration
         public var waxStoreURL: URL
         public var waxConfiguration: WaxMemory.Configuration
+        /// Forwards ``ContextCoreMemoryConfiguration/downloadsEmbeddingModelAutomatically``.
+        ///
+        /// Default `false`. When `true`, the first ContextCore session start
+        /// downloads the MiniLM model via
+        /// ``SemanticEmbeddingAvailability/ensureModelAvailable(configuration:progressHandler:)``.
+        public var downloadsEmbeddingModelAutomatically: Bool {
+            get { contextCoreConfiguration.downloadsEmbeddingModelAutomatically }
+            set { contextCoreConfiguration.downloadsEmbeddingModelAutomatically = newValue }
+        }
 
         public init(
             contextCoreConfiguration: ContextCoreMemoryConfiguration = .default,
@@ -29,8 +38,13 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
             waxConfiguration: WaxMemory.Configuration = WaxMemory.Configuration(
                 promptTitle: "Wax Memory Context (secondary)",
                 promptGuidance: "Use Wax memory as durable long-term context. Prefer current-session context first."
-            )
+            ),
+            downloadsEmbeddingModelAutomatically: Bool? = nil
         ) {
+            var contextCoreConfiguration = contextCoreConfiguration
+            if let downloadsEmbeddingModelAutomatically {
+                contextCoreConfiguration.downloadsEmbeddingModelAutomatically = downloadsEmbeddingModelAutomatically
+            }
             self.contextCoreConfiguration = contextCoreConfiguration
             self.waxStoreURL = waxStoreURL
             self.waxConfiguration = waxConfiguration
@@ -44,12 +58,19 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
 
     /// Whether this memory stack can produce real semantic embeddings.
     ///
-    /// Returns `false` when ContextCore's default CoreML MiniLM model is missing,
-    /// failed to load, or the process is running in the Simulator. Rankings then
-    /// use hash-seeded pseudo-vectors and semantic recall quality is degraded.
-    /// Custom embedding providers injected through
+    /// Returns `false` when ContextCore's default CoreML MiniLM model is missing
+    /// or failed to load. Rankings then use hash-seeded pseudo-vectors and
+    /// semantic recall quality is degraded. Call
+    /// ``SemanticEmbeddingAvailability/ensureModelAvailable(configuration:progressHandler:)``
+    /// to download the model; this property flips in-process after a successful
+    /// delivery. Custom embedding providers injected through
     /// ``ContextCoreMemoryConfiguration`` are treated as available.
-    public nonisolated let isSemanticMemoryAvailable: Bool
+    public nonisolated var isSemanticMemoryAvailable: Bool {
+        if tracksDefaultCoreMLEmbedder {
+            return SemanticEmbeddingAvailability.isAvailable
+        }
+        return true
+    }
 
     /// Composite count across the deduplicated working and durable layers.
     public var count: Int {
@@ -66,7 +87,7 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
         self.contextMemory = try ContextCoreMemory(configuration: configuration.contextCoreConfiguration)
         self.memoryPromptTitle = "ContextCore + Wax Memory Context"
         self.memoryPromptGuidance = "Use the ContextCore section first for current-session context. Use the Wax section only for durable recall that does not conflict."
-        self.isSemanticMemoryAvailable = SemanticEmbeddingAvailability.isAvailable(
+        self.tracksDefaultCoreMLEmbedder = SemanticEmbeddingAvailability.tracksDefaultCoreML(
             for: configuration.contextCoreConfiguration.contextConfiguration.embeddingProvider
         )
     }
@@ -203,6 +224,7 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
 
     private let configuration: Configuration
     private let contextMemory: ContextCoreMemory
+    private nonisolated let tracksDefaultCoreMLEmbedder: Bool
     private var waxMemory: WaxMemory?
 
     private func ensureWaxMemory() async throws -> WaxMemory {

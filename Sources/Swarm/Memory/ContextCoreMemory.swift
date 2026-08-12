@@ -18,17 +18,26 @@ public struct ContextCoreMemoryConfiguration: Sendable {
     public var promptTitle: String
     public var promptGuidance: String?
     public var allowsAutomaticSessionSeeding: Bool
+    /// When `true`, the first session start calls
+    /// ``SemanticEmbeddingAvailability/ensureModelAvailable(configuration:progressHandler:)``.
+    ///
+    /// Default `false`: Swarm never downloads the MiniLM model without explicit
+    /// consent. Prefer calling `ensureModelAvailable()` yourself so progress and
+    /// errors stay in the caller's control.
+    public var downloadsEmbeddingModelAutomatically: Bool
 
     public init(
         contextConfiguration: ContextCore.ContextConfiguration = .default,
         promptTitle: String = "ContextCore Memory Context (primary)",
         promptGuidance: String? = "Use ContextCore memory context as the primary working memory source.",
-        allowsAutomaticSessionSeeding: Bool = true
+        allowsAutomaticSessionSeeding: Bool = true,
+        downloadsEmbeddingModelAutomatically: Bool = false
     ) {
         self.contextConfiguration = contextConfiguration
         self.promptTitle = promptTitle
         self.promptGuidance = promptGuidance
         self.allowsAutomaticSessionSeeding = allowsAutomaticSessionSeeding
+        self.downloadsEmbeddingModelAutomatically = downloadsEmbeddingModelAutomatically
     }
 }
 
@@ -156,6 +165,9 @@ public actor ContextCoreMemory: Memory, MemoryPromptDescriptor, MemorySessionLif
         }
 
         do {
+            if configuration.downloadsEmbeddingModelAutomatically {
+                try await SemanticEmbeddingAvailability.ensureModelAvailable()
+            }
             context = try contextFactory()
             try await context.beginSession()
             for message in messages {

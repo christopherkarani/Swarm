@@ -42,6 +42,8 @@ It scores, ranks, compresses, and curates candidate memory in real time before e
 - ``EmbeddingProvider``
 - ``TokenCounter``
 - ``CompressionDelegate``
+- ``SemanticEmbeddingAvailability``
+- ``EmbeddingModelCatalog``
 
 ### Errors
 

@@ -55,11 +55,15 @@ frameworks (Metal/CoreML/Accelerate). On Linux, Integrations still enables Hive
 durable workflows, MembraneCore, and web helpers; default memory falls back to
 `SlidingWindowMemory` when ContextCore is unavailable.
 
-**Embeddings:** the CoreML `minilm-l6-v2.mlpackage` model is not bundled with
-Swarm. Without it, Integrations `DefaultAgentMemory` uses deterministic
-pseudo-embeddings, logs a once-per-process warning, and
-`isSemanticMemoryAvailable` is `false` until you supply the model under
-ContextCore resources or inject a real embedding provider.
+**Embeddings:** the CoreML MiniLM model is not bundled with Swarm. Call
+`SemanticEmbeddingAvailability.ensureModelAvailable()` to download it on
+demand (SHA-256 verified, compiled into `~/Library/Application Support/Swarm/Embeddings/`).
+Without it, Integrations `DefaultAgentMemory` uses deterministic
+pseudo-embeddings, logs a once-per-process warning naming that API, and
+`isSemanticMemoryAvailable` is `false`. Set
+`downloadsEmbeddingModelAutomatically` on the memory configuration to opt in
+to auto-download (default `off`). Simulator uses CoreML CPU inference; it is
+not a special-case fallback.
 
 ### Xcode
 

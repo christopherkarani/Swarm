@@ -3,7 +3,7 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6).
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 156
+- Source files scanned: 157
 - Public/open symbols cataloged: 2423
 
 ## 1. Swarm (entry point)
@@ -1485,6 +1485,15 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 151 | func | public | EmbeddingUtils.cosineSimilarity(_:_:) | `public static func cosineSimilarity(_ vec1: [Float], _ vec2: [Float]) -> Float` |
 | 174 | func | public | EmbeddingUtils.euclideanDistance(_:_:) | `public static func euclideanDistance(_ embedding1: [Float], _ embedding2: [Float]) -> Float` |
 | 190 | func | public | EmbeddingUtils.normalize(_:) | `public static func normalize(_ vector: [Float]) -> [Float]` |
+
+### Memory/ContextCoreEmbeddingAdapter.swift (Integrations)
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | struct | public | ContextCoreEmbeddingAdapter | Bridges Swarm `EmbeddingProvider` into ContextCore |
+| — | enum | public | SemanticEmbeddingAvailability | `ensureModelAvailable()`, `isAvailable`, `reprobe()` |
+| — | struct | public | EmbeddingModelDeliveryConfiguration | Download URL, pinned SHA-256, cache directory |
+| — | enum | public | EmbeddingModelCatalog | Publishing-target URL + `expectedSHA256` |
 
 ### Memory/HybridMemory.swift
 

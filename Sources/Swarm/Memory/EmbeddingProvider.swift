@@ -219,6 +219,14 @@ public extension EmbeddingProvider {
 
         return results
     }
+
+    /// Historical alias for ``dimensions`` used by ContextCore's internal protocol.
+    var dimension: Int { dimensions }
+
+    /// Historical alias for batch ``embed(_:)`` used by ContextCore's internal protocol.
+    func embedBatch(_ texts: [String]) async throws -> [[Float]] {
+        try await embed(texts)
+    }
 }
 
 // MARK: - EmbeddingError
