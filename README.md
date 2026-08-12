@@ -133,12 +133,14 @@ Two minimal, buildable apps under `Examples/` stress the public API:
 | Example | What it proves |
 | --- | --- |
 | [`Examples/OnDeviceChat`](Examples/OnDeviceChat) | Foundation Models chat with `@Tool`, streaming, and multi-turn `Conversation` (zero API keys; `--demo` for CI) |
-| [`Examples/MultiAgentPipeline`](Examples/MultiAgentPipeline) | Sequential + parallel workflows and durable checkpoint/resume (`--demo` for CI) |
+| [`Examples/MultiAgentPipeline`](Examples/MultiAgentPipeline) | Sequential + parallel workflows and durable checkpoint/resume (`--demo` for CI; requires Integrations) |
+| [`Examples/WaxChat`](Examples/WaxChat) | Wax durable memory + websearch chat (`--demo` for CI; requires Integrations) |
 | [`Examples/CodeReviewer`](Examples/CodeReviewer) | Lightweight CLI that links Swarm and prints a deterministic review plan |
 
 ```bash
 cd Examples/OnDeviceChat && swift run OnDeviceChat --demo
 cd Examples/MultiAgentPipeline && swift run MultiAgentPipeline --demo
+cd Examples/WaxChat && swift run WaxChat --demo
 ```
 
 ### Optional demos
