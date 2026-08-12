@@ -36,6 +36,14 @@ private enum ExpectedDiagnostic {
     static let unencodableArrayDefault = """
         Cannot encode a default value for parameter type '[Int]'. Supported types are String, Int, Double, Float, Bool, arrays of those types, and Optional of those types. For advanced schemas, write a FunctionTool instead.
         """
+
+    static let missingTypeAnnotation = """
+        Parameter 'count' is missing a type annotation. Supported types are String, Int, Double, Float, Bool, arrays of those types, and Optional of those types.
+        """
+
+    static let oneOfRequiresString = """
+        @Parameter(oneOf:) requires a String parameter (or Optional<String>). Parameter type 'Int' cannot be a string enum.
+        """
 }
 
 // MARK: - ToolMacroTypeMappingTests
@@ -658,6 +666,72 @@ final class ToolMacroTypeMappingTests: XCTestCase {
                 """,
                 diagnostics: [
                     DiagnosticSpec(message: ExpectedDiagnostic.unencodableArrayDefault, line: 4, column: 25)
+                ],
+                macros: toolMacros()
+            )
+        #else
+            throw XCTSkip("macros are only supported when running tests for the host platform")
+        #endif
+    }
+
+    func testMissingTypeAnnotationIsCompileError() throws {
+        #if canImport(SwarmMacros)
+            assertMacroExpansion(
+                """
+                @Tool("Counts")
+                struct InferredCountTool {
+                    @Parameter("Count")
+                    var count = 5
+
+                    func execute() async throws -> String {
+                        return ""
+                    }
+                }
+                """,
+                expandedSource: """
+                struct InferredCountTool {
+                    var count = 5
+
+                    func execute() async throws -> String {
+                        return ""
+                    }
+                }
+                """,
+                diagnostics: [
+                    DiagnosticSpec(message: ExpectedDiagnostic.missingTypeAnnotation, line: 4, column: 9)
+                ],
+                macros: toolMacros()
+            )
+        #else
+            throw XCTSkip("macros are only supported when running tests for the host platform")
+        #endif
+    }
+
+    func testOneOfOnNonStringIsCompileError() throws {
+        #if canImport(SwarmMacros)
+            assertMacroExpansion(
+                """
+                @Tool("Formats")
+                struct IntEnumTool {
+                    @Parameter("Format", oneOf: ["json", "xml"])
+                    var format: Int
+
+                    func execute() async throws -> String {
+                        return ""
+                    }
+                }
+                """,
+                expandedSource: """
+                struct IntEnumTool {
+                    var format: Int
+
+                    func execute() async throws -> String {
+                        return ""
+                    }
+                }
+                """,
+                diagnostics: [
+                    DiagnosticSpec(message: ExpectedDiagnostic.oneOfRequiresString, line: 4, column: 17)
                 ],
                 macros: toolMacros()
             )

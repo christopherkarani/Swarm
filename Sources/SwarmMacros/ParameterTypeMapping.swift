@@ -40,25 +40,29 @@ enum ParameterTypeMapping {
 
     /// Maps `type` to a `ToolParameter.ParameterType` literal.
     ///
-    /// `oneOf` short-circuits to `.oneOf([...])` (existing `@Parameter(oneOf:)`
-    /// escape). Optionality is tracked separately and does not affect the schema
-    /// case.
+    /// `oneOf` is valid only on `String` (including `Optional<String>`).
+    /// Optionality is tracked separately and does not affect the schema case.
     static func map(
         _ type: TypeSyntax,
         oneOf: [String]? = nil
     ) -> MappingOutcome<MappedParameterType> {
         let (coreType, isTypeOptional) = stripOptionals(type)
 
-        if let options = oneOf, !options.isEmpty {
-            let optionsStr = options.map { stringLiteral($0) }.joined(separator: ", ")
-            return .mapped(MappedParameterType(
-                schemaLiteral: ".oneOf([\(optionsStr)])",
-                isTypeOptional: isTypeOptional
-            ))
-        }
-
         switch mapCore(coreType) {
         case let .mapped(schemaLiteral):
+            if let options = oneOf, !options.isEmpty {
+                guard schemaLiteral == ".string" else {
+                    return .diagnostic(
+                        ToolParameterTypeDiagnostic.oneOfRequiresString(type.trimmedDescription)
+                            .diagnostic(at: type)
+                    )
+                }
+                let optionsStr = options.map { stringLiteral($0) }.joined(separator: ", ")
+                return .mapped(MappedParameterType(
+                    schemaLiteral: ".oneOf([\(optionsStr)])",
+                    isTypeOptional: isTypeOptional
+                ))
+            }
             return .mapped(MappedParameterType(
                 schemaLiteral: schemaLiteral,
                 isTypeOptional: isTypeOptional
@@ -116,13 +120,6 @@ enum ParameterTypeMapping {
     private static func mapCore(_ type: TypeSyntax) -> CoreOutcome {
         let type = unwrapAttributed(type)
 
-        if let optional = type.as(OptionalTypeSyntax.self) {
-            return mapCore(optional.wrappedType)
-        }
-        if let iuo = type.as(ImplicitlyUnwrappedOptionalTypeSyntax.self) {
-            return mapCore(iuo.wrappedType)
-        }
-
         if let array = type.as(ArrayTypeSyntax.self) {
             return mapArrayElement(array.element, spelled: type.trimmedDescription)
         }
@@ -146,12 +143,6 @@ enum ParameterTypeMapping {
         let genericArgs = genericTypeArguments(of: identifier)
 
         switch name {
-        case "Optional":
-            guard let wrapped = genericArgs.first, genericArgs.count == 1 else {
-                return .failed(.unsupported(spelled))
-            }
-            return mapCore(wrapped)
-
         case "Array":
             guard let element = genericArgs.first, genericArgs.count == 1 else {
                 return .failed(.unsupported(spelled))
@@ -311,6 +302,8 @@ enum ToolParameterTypeDiagnostic: DiagnosticMessage {
     case unsupportedType(String)
     case dictionaryType(String)
     case unencodableDefault(String)
+    case missingTypeAnnotation(String)
+    case oneOfRequiresString(String)
 
     var severity: DiagnosticSeverity { .error }
 
@@ -322,6 +315,10 @@ enum ToolParameterTypeDiagnostic: DiagnosticMessage {
             MessageID(domain: "SwarmMacros", id: "unsupportedDictionaryParameter")
         case .unencodableDefault:
             MessageID(domain: "SwarmMacros", id: "unencodableParameterDefault")
+        case .missingTypeAnnotation:
+            MessageID(domain: "SwarmMacros", id: "missingParameterTypeAnnotation")
+        case .oneOfRequiresString:
+            MessageID(domain: "SwarmMacros", id: "oneOfRequiresString")
         }
     }
 
@@ -338,6 +335,14 @@ enum ToolParameterTypeDiagnostic: DiagnosticMessage {
         case let .unencodableDefault(typeName):
             """
             Cannot encode a default value for parameter type '\(typeName)'. Supported types are String, Int, Double, Float, Bool, arrays of those types, and Optional of those types. For advanced schemas, write a FunctionTool instead.
+            """
+        case let .missingTypeAnnotation(name):
+            """
+            Parameter '\(name)' is missing a type annotation. Supported types are String, Int, Double, Float, Bool, arrays of those types, and Optional of those types.
+            """
+        case let .oneOfRequiresString(typeName):
+            """
+            @Parameter(oneOf:) requires a String parameter (or Optional<String>). Parameter type '\(typeName)' cannot be a string enum.
             """
         }
     }

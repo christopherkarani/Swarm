@@ -28,42 +28,15 @@ import SwiftSyntaxMacros
 ///
 /// Generates:
 /// - `name` property (derived from type name)
-/// - `description` property (from macro argument)
-/// - `parameters` array (from @Parameter properties)
-/// - `execute(arguments:)` wrapper method
-/// - Tool and Sendable conformances
+/// - `description` property (from the macro argument)
+/// - `parameters` array (from `@Parameter` properties)
+/// - `Input` / `Output` and typed `execute(_:)`
+/// - `Tool` and `Sendable` conformances
 ///
-/// ## Return Type Encoding
-///
-/// The macro automatically converts your tool's return type to `SendableValue`:
-///
-/// - **Primitive types** (String, Int, Double, Bool) are encoded directly
-/// - **SendableValue** returns are passed through unchanged
-/// - **Void/()** returns become `.null`
-/// - **Complex types** (custom structs, enums, etc.) are handled in two ways:
-///   1. First, the macro attempts to encode them using `SendableValue(encoding:)`, which uses `Codable`
-///   2. If encoding fails, the value is converted to a string using `String(describing:)` as a fallback
-///
-/// **Important**: The `String(describing:)` fallback means type information is lost. For complex return types:
-/// - Ensure your type conforms to `Codable` for proper encoding
-/// - Or manually return `SendableValue` from your `execute()` method
-/// - Be aware that sensitive data may be exposed in string representations
-///
-/// Example with complex type:
-/// ```swift
-/// struct CustomResult: Codable, Sendable {
-///     let value: Int
-///     let metadata: String
-/// }
-///
-/// @Tool("Returns custom data")
-/// struct MyTool {
-///     func execute() async throws -> CustomResult {
-///         // Will be encoded via Codable automatically
-///         return CustomResult(value: 42, metadata: "success")
-///     }
-/// }
-/// ```
+/// Parameter types are mapped from Swift (`String`, `Int`, `Double`/`Float`,
+/// `Bool`, arrays of those, and `Optional` thereof). Unsupported types —
+/// including dictionaries — are compile errors. Use `@Parameter(oneOf:)` for
+/// string enums, or `FunctionTool` for objects, dictionaries, and `.any`.
 public struct ToolMacro: MemberMacro, ExtensionMacro {
 
     // MARK: - MemberMacro
@@ -216,11 +189,12 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
                 guard let pattern = binding.pattern.as(IdentifierPatternSyntax.self) else { continue }
                 let propertyName = pattern.identifier.text
 
-                let typeSyntax: TypeSyntax
-                if let annotated = binding.typeAnnotation?.type {
-                    typeSyntax = annotated
-                } else {
-                    typeSyntax = ParameterTypeMapping.parseTypeSyntax("String")
+                guard let typeSyntax = binding.typeAnnotation?.type else {
+                    diagnostics.append(
+                        ToolParameterTypeDiagnostic.missingTypeAnnotation(propertyName)
+                            .diagnostic(at: pattern)
+                    )
+                    continue
                 }
                 let swiftType = typeSyntax.description.trimmingCharacters(in: .whitespaces)
 
