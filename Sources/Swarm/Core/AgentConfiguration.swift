@@ -196,6 +196,7 @@ public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
 /// - ``autoPreviousResponseId(_:)`` - Set auto response tracking
 /// - ``defaultTracingEnabled(_:)`` - Set default tracing
 /// - ``foundationModelsExecution(_:)`` - Set Foundation Models execution mode (experimental)
+/// - ``resilience(_:)`` - Set retry, circuit-breaker, and rate-limit policies for inference
 ///
 /// ## Thread Safety
 ///
@@ -603,6 +604,22 @@ public struct AgentConfiguration: Sendable, Equatable {
     /// - SeeAlso: ``FoundationModelsExecutionMode``, ``foundationModelsExecution(_:)``
     public var foundationModelsExecution: FoundationModelsExecutionMode
 
+    // MARK: - Resilience Settings
+
+    /// Retry, circuit-breaker, and rate-limit policies for **provider inference**.
+    ///
+    /// Default: ``ResilienceConfiguration/disabled`` (``RetryPolicy/noRetry``, no
+    /// breaker, no limiter). That default is a no-op — agent execution matches
+    /// Swarm before this field existed.
+    ///
+    /// Policies wrap provider inference only. Tool execution is never retried.
+    /// Retries consume the remaining ``timeout`` budget and cannot outlive the
+    /// run. Circuit-breaker and rate-limiter state is scoped per ``Agent``
+    /// instance. See ``ResilienceConfiguration`` and ``InferenceRetryability``.
+    ///
+    /// - SeeAlso: ``resilience(_:)``, ``ResilienceConfiguration``
+    public var resilience: ResilienceConfiguration
+
     // MARK: - Initialization
 
     /// Creates a new agent configuration.
@@ -627,6 +644,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - autoPreviousResponseId: Enable auto response ID tracking. Default: false
     ///   - defaultTracingEnabled: Enable default tracing when no tracer configured. Default: true
     ///   - foundationModelsExecution: Foundation Models tool-loop mode. Default: ``FoundationModelsExecutionMode/capture``
+    ///   - resilience: Retry / circuit-breaker / rate-limit policies for inference. Default: ``ResilienceConfiguration/disabled``
     public init(
         name: String = "Agent",
         maxIterations: Int = 10,
@@ -647,7 +665,8 @@ public struct AgentConfiguration: Sendable, Equatable {
         previousResponseId: String? = nil,
         autoPreviousResponseId: Bool = false,
         defaultTracingEnabled: Bool = true,
-        foundationModelsExecution: FoundationModelsExecutionMode = .capture
+        foundationModelsExecution: FoundationModelsExecutionMode = .capture,
+        resilience: ResilienceConfiguration = .disabled
     ) {
         if maxIterations < 1 {
             Log.agents.warning("AgentConfiguration: maxIterations \(maxIterations) must be >= 1; using 1")
@@ -679,6 +698,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.autoPreviousResponseId = autoPreviousResponseId
         self.defaultTracingEnabled = defaultTracingEnabled
         self.foundationModelsExecution = foundationModelsExecution
+        self.resilience = resilience
     }
 }
 
@@ -1206,6 +1226,30 @@ extension AgentConfiguration {
         copy.foundationModelsExecution = value
         return copy
     }
+
+    // MARK: Resilience Settings
+
+    /// Sets retry, circuit-breaker, and rate-limit policies for provider inference.
+    ///
+    /// Default: ``ResilienceConfiguration/disabled``.
+    ///
+    /// Tool execution is never wrapped. See ``ResilienceConfiguration`` for
+    /// timeout interaction, breaker scoping, and the retryability table.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .resilience(ResilienceConfiguration(retryPolicy: .standard))
+    /// ```
+    ///
+    /// - Parameter value: The resilience configuration
+    /// - Returns: A new configuration with the updated resilience policies
+    /// - SeeAlso: ``resilience``, ``ResilienceConfiguration``, ``InferenceRetryability``
+    @discardableResult public func resilience(_ value: ResilienceConfiguration) -> AgentConfiguration {
+        var copy = self
+        copy.resilience = value
+        return copy
+    }
 }
 
 // MARK: - CustomStringConvertible
@@ -1234,7 +1278,8 @@ extension AgentConfiguration: CustomStringConvertible {
             previousResponseId: \(previousResponseId.map { "\"\($0)\"" } ?? "nil"),
             autoPreviousResponseId: \(autoPreviousResponseId),
             defaultTracingEnabled: \(defaultTracingEnabled),
-            foundationModelsExecution: \(foundationModelsExecution)
+            foundationModelsExecution: \(foundationModelsExecution),
+            resilience: \(String(describing: resilience))
         )
         """
     }

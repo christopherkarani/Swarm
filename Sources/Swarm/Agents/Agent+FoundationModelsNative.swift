@@ -112,7 +112,12 @@ extension Agent {
         } else {
             onOutputChunk = nil
         }
-        let native: FoundationModelsNativeTurnResult = try await executeWithinRemainingTimeout(startTime: startTime) {
+        let native: FoundationModelsNativeTurnResult = try await executeProviderInference(
+            startTime: startTime,
+            observer: observer,
+            tracing: tracing,
+            allowsRetry: executingTools.isEmpty
+        ) {
             try await fmProvider.respondUsingNativeSession(
                 messages: messages,
                 tools: executingTools,

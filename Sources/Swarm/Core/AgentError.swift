@@ -39,10 +39,18 @@ import Foundation
 ///
 /// ## Retryable Errors
 ///
-/// Some errors are transient and can be retried:
+/// Use ``AgentError/isRetryable`` (and ``InferenceRetryability/isRetryable(_:)``
+/// for any `Error`) to decide whether ``Agent`` may retry a provider inference
+/// failure. Transient:
 /// - ``rateLimitExceeded(retryAfter:)``
 /// - ``inferenceProviderUnavailable(reason:)``
 /// - ``generationFailed(reason:)``
+/// - ``embeddingFailed(reason:)``
+///
+/// ``timeout(duration:)`` is **not** retryable — it is the run deadline.
+/// Provider timeouts arrive as ``generationFailed(reason:)`` or `URLError.timedOut`.
+/// Cancellation, guardrail rejection, schema/parse errors, and tool failures
+/// are never retried.
 ///
 /// ## Error Categories
 ///
@@ -720,6 +728,41 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.internalError(reason: \(reason))"
         case .toolCallingUnsupported:
             "AgentError.toolCallingUnsupported"
+        }
+    }
+}
+
+// MARK: - Retryability
+
+extension AgentError {
+    /// Whether ``Agent`` may retry this error on a **provider inference** call.
+    ///
+    /// See ``InferenceRetryability`` for the full classification table, including
+    /// non-`AgentError` types.
+    public var isRetryable: Bool {
+        switch self {
+        case .rateLimitExceeded,
+             .inferenceProviderUnavailable,
+             .generationFailed,
+             .embeddingFailed:
+            true
+        case .cancelled,
+             .timeout,
+             .invalidInput,
+             .invalidLoop,
+             .maxIterationsExceeded,
+             .guardrailViolation,
+             .contentFiltered,
+             .invalidToolArguments,
+             .toolExecutionFailed,
+             .toolNotFound,
+             .contextWindowExceeded,
+             .unsupportedLanguage,
+             .modelNotAvailable,
+             .agentNotFound,
+             .internalError,
+             .toolCallingUnsupported:
+            false
         }
     }
 }

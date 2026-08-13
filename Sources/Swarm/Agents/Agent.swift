@@ -615,6 +615,7 @@ public struct Agent: AgentRuntime, Sendable {
 
     private var toolRegistry: ToolRegistry
     private let cancellationState = ActiveRunCancellationState()
+    let resilienceRuntime = AgentResilienceRuntime()
     private static let autoResponseTracker = ResponseTracker()
     private static let defaultMemorySessionTracker = DefaultMemorySessionTracker()
     private static let responseIDMetadataKey = "response.id"
@@ -1513,7 +1514,11 @@ public struct Agent: AgentRuntime, Sendable {
                 // If no tools defined, generate without tool calling
                 if toolSchemas.isEmpty {
                     let loopInferenceOptions = inferenceOptions
-                    let response = try await executeWithinRemainingTimeout(startTime: startTime) {
+                    let response = try await executeProviderInference(
+                        startTime: startTime,
+                        observer: observer,
+                        tracing: tracing
+                    ) {
                         try await generateWithoutTools(
                             provider: provider,
                             prompt: prompt,
@@ -1543,7 +1548,11 @@ public struct Agent: AgentRuntime, Sendable {
                 // Generate response with tool calls
                 let loopInferenceOptions = inferenceOptions
                 let response = if useToolStreaming {
-                    try await executeWithinRemainingTimeout(startTime: startTime) {
+                    try await executeProviderInference(
+                        startTime: startTime,
+                        observer: observer,
+                        tracing: tracing
+                    ) {
                         try await generateWithToolsStreaming(
                             provider: provider,
                             prompt: prompt,
@@ -1555,7 +1564,11 @@ public struct Agent: AgentRuntime, Sendable {
                         )
                     }
                 } else {
-                    try await executeWithinRemainingTimeout(startTime: startTime) {
+                    try await executeProviderInference(
+                        startTime: startTime,
+                        observer: observer,
+                        tracing: tracing
+                    ) {
                         try await generateWithTools(
                             provider: provider,
                             prompt: prompt,

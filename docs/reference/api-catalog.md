@@ -3,8 +3,8 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6).
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 162
-- Public/open symbols cataloged: 2436
+- Source files scanned: 165
+- Public/open symbols cataloged: 2464
 
 ## 1. Swarm (entry point)
 
@@ -91,7 +91,9 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 130 | case | public | FoundationModelsExecutionMode.capture | `public case capture` |
 | 139 | case | public | FoundationModelsExecutionMode.nativeSession | `public case nativeSession` |
 | 604 | var | public | AgentConfiguration.foundationModelsExecution | `public var foundationModelsExecution: FoundationModelsExecutionMode` |
-| 630 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:foundationModelsExecution:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, foundationModelsExecution: FoundationModelsExecutionMode = .capture)` |
+| 608 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
+| 630 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
+| 108 | func | public | AgentConfiguration.resilience(_:) | `public @discardableResult func resilience(_ value: ResilienceConfiguration) -> AgentConfiguration` |
 | 345 | var | public | AgentConfiguration.description | `public var description: String { get }` |
 
 ### Core/AgentEnvironment.swift
@@ -2392,8 +2394,27 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 15 | typealias | public | Retry | `public typealias Retry = RetryPolicy` |
-| 16 | typealias | public | Fallback | `public typealias Fallback = FallbackChain` |
+| 17 | typealias | public | Retry | `public typealias Retry = RetryPolicy` |
+| 18 | typealias | public | Fallback | `public typealias Fallback = FallbackChain` |
+
+### Resilience/ResilienceConfiguration.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 20 | struct | public | CircuitBreakerSettings | `public struct CircuitBreakerSettings` |
+| 79 | struct | public | RateLimitSettings | `public struct RateLimitSettings` |
+| 160 | struct | public | ResilienceConfiguration | `public struct ResilienceConfiguration` |
+| 165 | var | public | ResilienceConfiguration.disabled | `public static let disabled: ResilienceConfiguration` |
+| 172 | var | public | ResilienceConfiguration.retryPolicy | `public var retryPolicy: RetryPolicy` |
+| 177 | var | public | ResilienceConfiguration.circuitBreaker | `public var circuitBreaker: CircuitBreakerSettings?` |
+| 182 | var | public | ResilienceConfiguration.rateLimit | `public var rateLimit: RateLimitSettings?` |
+
+### Resilience/InferenceRetryability.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 52 | enum | public | InferenceRetryability | `public enum InferenceRetryability` |
+| 57 | func | public | InferenceRetryability.isRetryable(_:) | `public static func isRetryable(_ error: Error) -> Bool` |
 
 ### Resilience/RetryPolicy.swift
 
