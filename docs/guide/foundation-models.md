@@ -52,6 +52,9 @@ Native mode exists so you can take Apple's session loop when you want parallel
 tools and real streaming. Capture stays the default because Swarm-side control
 (guardrails, checkpoints, memory injection) is the framework's differentiator.
 
+Under `strict4k`, native mode sends the same windowed/`PromptEnvelope` string
+capture uses — not the raw conversation history.
+
 ## What native mode cannot honor
 
 Foundation Models has no timeout API. Swarm still wraps the native `respond` /
