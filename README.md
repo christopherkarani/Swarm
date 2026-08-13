@@ -174,7 +174,7 @@ let result = try await agent.run("Summarize my notes.")
 Notes that matter in production:
 
 - **Availability**: use `FoundationModelsInferenceProvider.ifAvailable()` or check `FoundationModelsInferenceProvider.isAvailable` before assuming the system model is ready.
-- **Tool calling**: Swarm bridges `@Tool` / `ToolSchema` to Apple's `FoundationModels.Tool` and executes tools in the agent loop with guardrails intact.
+- **Tool calling**: Swarm bridges `@Tool` / `ToolSchema` to Apple's `FoundationModels.Tool` and executes tools in the agent loop with guardrails intact (capture mode, default). Opt in to experimental [native session mode](docs/guide/foundation-models.md) for parallel tool calls and token streaming with tools.
 - **Streaming tool calls**: not advertised as token-level tool streaming; `Agent.stream` observes the same `run` loop via `AgentEvent` (lifecycle, tools, and `.output(.token)` chunks). Foundation Models yields incremental text deltas; providers without a streaming API emit the full response as a single chunk.
 - **Structured outputs**: `runStructured` asks the model (prompt instruction) and parses JSON. It is not enforced schema generation — invalid JSON fails at parse time.
 - **Dynamic profiles**: `.foundationModels(profile:)` re-resolves instructions/tools/history every turn (WWDC 2026–aligned Swarm API).

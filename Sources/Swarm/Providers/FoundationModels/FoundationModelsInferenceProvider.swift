@@ -34,14 +34,17 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// ## Conversation history
 ///
 /// `LanguageModelSession.respond(to:)` accepts a `Prompt`, not a role-tagged
-/// message array. This provider creates a fresh session per request — it does
-/// not keep Apple's accumulating `transcript` across Swarm turns — so structured
-/// ``InferenceMessage`` history is serialized into that prompt with role labels
-/// (`System:`, `User:`, `Assistant:`, `Tool result`). That is an Apple API
-/// constraint on the session-less path, not a Swarm shortcut: the macOS 26.x
-/// SDK this package targets has no public API to inject an arbitrary
-/// `Transcript` of user/assistant/tool turns into a new session. Tool results
-/// and assistant tool-call metadata are preserved in the serialized form.
+/// message array. **Capture mode** (default) creates a fresh session per request —
+/// it does not keep Apple's accumulating `transcript` across Swarm turns — so
+/// structured ``InferenceMessage`` history is serialized into that prompt with
+/// role labels (`System:`, `User:`, `Assistant:`, `Tool result`).
+///
+/// **Native session mode** (``FoundationModelsExecutionMode/nativeSession``) keeps
+/// a `LanguageModelSession` for the agent run so Apple's transcript and KV cache
+/// can be reused. Memory is injected when that session is created, not on every
+/// inner tool iteration. See ``FoundationModelsExecutionMode`` for the trade-off
+/// table. The session is discarded when tools or instructions change, the
+/// conversation id changes, generation fails, or the provider is deallocated.
 ///
 /// ## Token usage
 ///
@@ -62,9 +65,14 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// ## Tool calling
 ///
 /// Swarm tools are bridged to `FoundationModels.Tool` at request time. The model
-/// produces structured arguments via guided generation. Capture tools surface
-/// those arguments back to Swarm so the agent runtime can execute tools with
-/// guardrails, observers, and retries intact.
+/// produces structured arguments via guided generation.
+///
+/// **Capture mode (default):** capture tools surface those arguments back to
+/// Swarm so the agent runtime can execute tools with guardrails, observers, and
+/// retries intact. One tool call is recovered per turn.
+///
+/// **Native session mode (experimental):** executing tools run inside Apple's
+/// session loop. Opt in with ``AgentConfiguration/foundationModelsExecution``.
 ///
 /// ## Dynamic profiles
 ///
@@ -107,6 +115,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     private let configuration: FoundationModelsProviderConfiguration
     private let dynamicProfile: (any DynamicProfile)?
     private let model: SystemLanguageModel
+    let nativeSessionStore = FoundationModelsNativeSessionStore()
 
     /// Whether the system language model is currently available on this device.
     public static var isAvailable: Bool {
@@ -320,7 +329,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
 
     // MARK: - Session helpers
 
-    private func resolveTurn(
+    func resolveTurn(
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions
@@ -345,7 +354,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         return (withSystem, applied.tools, applied.options, applied.instructions)
     }
 
-    private func makeSession(
+    func makeSession(
         tools: [any FoundationModels.Tool],
         instructions: String?
     ) -> LanguageModelSession {
@@ -366,7 +375,18 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         return session
     }
 
-    private func makeGenerationOptions(from options: InferenceOptions) -> GenerationOptions {
+    func makeSession(
+        tools: [any FoundationModels.Tool],
+        transcript: Transcript
+    ) -> LanguageModelSession {
+        let session = LanguageModelSession(model: model, tools: tools, transcript: transcript)
+        if configuration.prewarmOnInit {
+            session.prewarm(promptPrefix: nil)
+        }
+        return session
+    }
+
+    func makeGenerationOptions(from options: InferenceOptions) -> GenerationOptions {
         var generationOptions = GenerationOptions()
         generationOptions.temperature = options.temperature
         if let maxTokens = options.maxTokens {
@@ -385,7 +405,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     /// Required because `LanguageModelSession.respond(to:)` / `streamResponse(to:)`
     /// take a `Prompt`, and this provider is session-less (a new
     /// `LanguageModelSession` per call cannot reuse Apple's transcript).
-    private func flattenPrompt(
+    func flattenPrompt(
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions
@@ -458,7 +478,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         return string
     }
 
-    private func applyStopSequences(_ content: String, options: InferenceOptions) -> String {
+    func applyStopSequences(_ content: String, options: InferenceOptions) -> String {
         var result = content
         var earliestStop: String.Index?
         for stopSequence in options.stopSequences {
@@ -474,7 +494,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         return result
     }
 
-    private func mapError(_ error: Error) -> AgentError {
+    func mapError(_ error: Error) -> AgentError {
         if error is CancellationError {
             return .cancelled
         }
