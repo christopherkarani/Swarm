@@ -133,7 +133,7 @@ struct MemoryBackendStoreRecallMatrixTests {
     struct SwiftDataBackendStoreRecallMatrixTests {
         @Test("persistent SwiftDataBackend store→recall fidelity and maxMessages")
         func persistentSwiftDataStoreRecall() async throws {
-            if !SwiftDataMatrixGate.canRun { return }
+            if !SwiftDataTestGate.canRun { return }
 
             let backend = try SwiftDataBackend.inMemory()
             let memory: PersistentMemory = .persistent(
@@ -149,31 +149,6 @@ struct MemoryBackendStoreRecallMatrixTests {
             let recalled = await memory.allMessages()
             #expect(recalled.map(\.content) == ["psd-3", "psd-4", "psd-5"])
         }
-    }
-
-    private enum SwiftDataMatrixGate {
-        static let canRun: Bool = {
-            if let override = ProcessInfo.processInfo.environment["SWARM_RUN_SWIFTDATA_TESTS"] {
-                return override == "1" || override.lowercased() == "true"
-            }
-
-            do {
-                let appSupport = try FileManager.default.url(
-                    for: .applicationSupportDirectory,
-                    in: .userDomainMask,
-                    appropriateFor: nil,
-                    create: true
-                )
-                let probeDir = appSupport.appendingPathComponent("swarm_swiftdata_probe", isDirectory: true)
-                try FileManager.default.createDirectory(at: probeDir, withIntermediateDirectories: true)
-                let probeFile = probeDir.appendingPathComponent("probe.tmp")
-                try Data("probe".utf8).write(to: probeFile)
-                try FileManager.default.removeItem(at: probeFile)
-                return true
-            } catch {
-                return false
-            }
-        }()
     }
 #endif
 

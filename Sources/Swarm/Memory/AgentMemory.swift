@@ -483,6 +483,10 @@ extension Memory where Self == HybridMemory {
 
     /// Creates a ``HybridMemory`` using a built-in summarizer preset.
     ///
+    /// Separate from ``hybrid(configuration:summarizer:)`` because that
+    /// overload takes ``Summarizer`` as an existential, which cannot bind
+    /// leading-dot members like ``MemorySummarizer/foundationModels``.
+    ///
     /// ```swift
     /// let memory: HybridMemory = .hybrid(summarizer: .foundationModels)
     /// let llm: HybridMemory = .hybrid(summarizer: .inferenceProvider(myProvider))
@@ -550,6 +554,10 @@ extension Memory where Self == SummaryMemory {
     }
 
     /// Creates a ``SummaryMemory`` using a built-in summarizer preset.
+    ///
+    /// Separate from ``summary(configuration:summarizer:)`` because that
+    /// overload takes ``Summarizer`` as an existential, which cannot bind
+    /// leading-dot members like ``MemorySummarizer/foundationModels``.
     ///
     /// ```swift
     /// let memory: SummaryMemory = .summary(summarizer: .foundationModels)

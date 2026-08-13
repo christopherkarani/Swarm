@@ -167,15 +167,70 @@ public extension InferenceProviderSummarizer {
     }
 }
 
-public extension Summarizer where Self == InferenceProviderSummarizer {
-    /// Leading-dot factory for ``conversationSummarizer(provider:)``.
+extension InferenceProviderSummarizer {
+    /// Conversation summarizer backed by on-device Foundation Models, or `nil`.
     ///
-    /// Prefer ``MemorySummarizer/inferenceProvider(_:)`` at the
-    /// ``Memory/summary(configuration:summarizer:)`` call site:
-    /// `.summary(summarizer: .inferenceProvider(provider))`.
-    static func conversationSummarizer(
-        provider: any InferenceProvider
-    ) -> InferenceProviderSummarizer {
-        InferenceProviderSummarizer.conversationSummarizer(provider: provider)
+    /// Uses the same synchronous availability check ``Agent`` uses as its last
+    /// provider fallback. Environment / ``Swarm/defaultProvider`` are not
+    /// consulted — those require async access.
+    static func foundationModelsIfAvailable() -> InferenceProviderSummarizer? {
+        guard let provider = DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable()
+        else {
+            return nil
+        }
+        return conversationSummarizer(provider: provider)
+    }
+}
+
+// MARK: - MemorySummarizer
+
+/// Built-in summarizer presets for ``Memory/summary(configuration:summarizer:)``
+/// and ``Memory/hybrid(configuration:summarizer:)``.
+///
+/// ```swift
+/// // Default factory still truncates (does not summarize).
+/// let truncated: SummaryMemory = .summary()
+///
+/// // Real LLM summarization.
+/// let llm: SummaryMemory = .summary(summarizer: .inferenceProvider(myProvider))
+///
+/// // On-device Foundation Models when available; otherwise truncates.
+/// let onDevice: SummaryMemory = .summary(summarizer: .foundationModels)
+/// ```
+///
+/// These presets exist because the memory factories are synchronous:
+/// they cannot await ``Swarm/defaultProvider`` or Foundation Models
+/// availability the way ``Agent`` does at run time.
+public struct MemorySummarizer: Sendable {
+    /// Truncates (drops) old content. Does **not** summarize.
+    public static var truncating: MemorySummarizer {
+        MemorySummarizer(summarizer: TruncatingSummarizer.shared)
+    }
+
+    /// On-device Foundation Models via
+    /// ``InferenceProviderSummarizer/conversationSummarizer(provider:)``.
+    ///
+    /// If Foundation Models are unavailable, this is ``truncating``.
+    public static var foundationModels: MemorySummarizer {
+        if let summarizer = InferenceProviderSummarizer.foundationModelsIfAvailable() {
+            return MemorySummarizer(summarizer: summarizer)
+        }
+        return .truncating
+    }
+
+    /// LLM summarization using ``InferenceProviderSummarizer/conversationSummarizer(provider:)``.
+    ///
+    /// - Parameter provider: Inference backend used for summarization.
+    /// - Returns: A preset wrapping a conversation summarizer.
+    public static func inferenceProvider(_ provider: any InferenceProvider) -> MemorySummarizer {
+        MemorySummarizer(
+            summarizer: InferenceProviderSummarizer.conversationSummarizer(provider: provider)
+        )
+    }
+
+    let summarizer: any Summarizer
+
+    private init(summarizer: any Summarizer) {
+        self.summarizer = summarizer
     }
 }

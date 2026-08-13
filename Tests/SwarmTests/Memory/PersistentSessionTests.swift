@@ -9,31 +9,6 @@
     import SwiftData
     import Testing
 
-    private enum SwiftDataTestGate {
-        static let canRun: Bool = {
-            if let override = ProcessInfo.processInfo.environment["SWARM_RUN_SWIFTDATA_TESTS"] {
-                return override == "1" || override.lowercased() == "true"
-            }
-
-            do {
-                let appSupport = try FileManager.default.url(
-                    for: .applicationSupportDirectory,
-                    in: .userDomainMask,
-                    appropriateFor: nil,
-                    create: true
-                )
-                let probeDir = appSupport.appendingPathComponent("swarm_swiftdata_probe", isDirectory: true)
-                try FileManager.default.createDirectory(at: probeDir, withIntermediateDirectories: true)
-                let probeFile = probeDir.appendingPathComponent("probe.tmp")
-                try Data("probe".utf8).write(to: probeFile)
-                try FileManager.default.removeItem(at: probeFile)
-                return true
-            } catch {
-                return false
-            }
-        }()
-    }
-
     @Suite("PersistentSession Tests")
     struct PersistentSessionTests {
         // MARK: - Factory Method Tests

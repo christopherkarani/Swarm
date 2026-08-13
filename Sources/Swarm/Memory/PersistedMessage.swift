@@ -196,26 +196,5 @@
                 configurations: [configuration]
             )
         }
-
-        /// Creates a v1-only container without a migration plan.
-        ///
-        /// Used by tests to seed a store that must then reopen through
-        /// ``MemoryMigrationPlan``.
-        static func makeV1Container(url: URL) throws -> ModelContainer {
-            let schema = Schema(versionedSchema: MemorySchemaV1.self)
-            let configuration = ModelConfiguration(schema: schema, url: url)
-            return try ModelContainer(for: schema, configurations: [configuration])
-        }
-
-        /// Reopens a store with the current migration plan.
-        static func makeMigratedContainer(url: URL) throws -> ModelContainer {
-            let schema = Schema(versionedSchema: MemorySchemaV1.self)
-            let configuration = ModelConfiguration(schema: schema, url: url)
-            return try ModelContainer(
-                for: schema,
-                migrationPlan: MemoryMigrationPlan.self,
-                configurations: [configuration]
-            )
-        }
     }
 #endif

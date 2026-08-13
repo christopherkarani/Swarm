@@ -118,7 +118,7 @@ struct MemoryFactoryHonestyTests {
     func foundationModelsPresetMatchesPlatform() {
         let preset = MemorySummarizer.foundationModels
         let foundationModelsAvailable =
-            DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() != nil
+            InferenceProviderSummarizer.foundationModelsIfAvailable() != nil
 
         if foundationModelsAvailable {
             #expect(preset.summarizer is InferenceProviderSummarizer)

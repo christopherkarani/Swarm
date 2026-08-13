@@ -9,31 +9,6 @@
     import SwiftData
     import Testing
 
-    private enum SwiftDataTestGate {
-        static let canRun: Bool = {
-            if let override = ProcessInfo.processInfo.environment["SWARM_RUN_SWIFTDATA_TESTS"] {
-                return override == "1" || override.lowercased() == "true"
-            }
-
-            do {
-                let appSupport = try FileManager.default.url(
-                    for: .applicationSupportDirectory,
-                    in: .userDomainMask,
-                    appropriateFor: nil,
-                    create: true
-                )
-                let probeDir = appSupport.appendingPathComponent("swarm_swiftdata_probe", isDirectory: true)
-                try FileManager.default.createDirectory(at: probeDir, withIntermediateDirectories: true)
-                let probeFile = probeDir.appendingPathComponent("probe.tmp")
-                try Data("probe".utf8).write(to: probeFile)
-                try FileManager.default.removeItem(at: probeFile)
-                return true
-            } catch {
-                return false
-            }
-        }()
-    }
-
     @Suite("SwiftData memory schema migration")
     struct SwiftDataMemoryMigrationTests {
         @Test("v1 store reopened with MemoryMigrationPlan preserves messages")
@@ -64,7 +39,7 @@
 
             try seedV1Store(url: storeURL, conversationId: conversationId, messages: seed)
 
-            let migrated = try PersistedMessage.makeMigratedContainer(url: storeURL)
+            let migrated = try SwiftDataTestGate.makeMigratedContainer(url: storeURL)
             let memory = SwiftDataMemory(
                 modelContainer: migrated,
                 conversationId: conversationId
@@ -102,7 +77,7 @@
 
             try seedUnversionedStore(url: storeURL, conversationId: conversationId, messages: seed)
 
-            let migrated = try PersistedMessage.makeMigratedContainer(url: storeURL)
+            let migrated = try SwiftDataTestGate.makeMigratedContainer(url: storeURL)
             let memory = SwiftDataMemory(
                 modelContainer: migrated,
                 conversationId: conversationId
@@ -124,7 +99,7 @@
             conversationId: String,
             messages: [MemoryMessage]
         ) throws {
-            let container = try PersistedMessage.makeV1Container(url: url)
+            let container = try SwiftDataTestGate.makeV1Container(url: url)
             let context = ModelContext(container)
             for message in messages {
                 context.insert(PersistedMessage(from: message, conversationId: conversationId))
