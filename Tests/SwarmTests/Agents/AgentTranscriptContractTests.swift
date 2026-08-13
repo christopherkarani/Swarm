@@ -145,6 +145,27 @@ struct AgentTranscriptContractTests {
         #expect(transcript.entries.last?.structuredOutput?.result.source == .providerNative)
     }
 
+    @Test("tool-loop text parse does not claim providerNative from capabilities")
+    func toolLoopStructuredParseDoesNotClaimProviderNative() async throws {
+        let provider = MockInferenceProvider(
+            capabilities: [.structuredOutputs, .conversationMessages, .nativeToolCalling]
+        )
+        await provider.setToolCallResponses([
+            InferenceResponse(content: #"{"answer":"ok"}"#, finishReason: .completed),
+        ])
+        let agent = try Agent(
+            tools: [MockTool(name: "noop", result: .string("unused"))],
+            instructions: "Return structured JSON.",
+            inferenceProvider: provider
+        )
+        let result = try await agent.runStructured(
+            "Return a JSON answer.",
+            request: StructuredOutputRequest(format: .jsonObject)
+        )
+        #expect(result.structuredOutput.source == .promptFallback)
+        #expect(metadataString("structured_output.source", from: result.agentResult.metadata) == "prompt_fallback")
+    }
+
     @Test("InMemorySession branch keeps transcript replay-compatible and isolated")
     func inMemorySessionBranchKeepsTranscriptReplayCompatible() async throws {
         let provider = MockInferenceProvider()

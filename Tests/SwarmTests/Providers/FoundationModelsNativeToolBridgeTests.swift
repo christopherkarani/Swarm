@@ -42,9 +42,35 @@ struct FoundationModelsSchemaConversionTests {
         #expect(dictionary["limit"]?.intValue == 3 || dictionary["limit"]?.doubleValue == 3)
     }
 
-    @Test("Capture tools throw FoundationModelsToolCaptureError")
+    @Test("Builds GenerationSchema from a mapped structured-output request")
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
-    func captureToolsThrow() async throws {
+    func buildsStructuredOutputGenerationSchema() throws {
+        let request = StructuredOutputRequest(
+            format: .jsonSchema(
+                name: "Answer",
+                schemaJSON: """
+                {
+                  "type": "object",
+                  "properties": {
+                    "city": { "type": "string" },
+                    "ok": { "type": "boolean" }
+                  },
+                  "required": ["city"]
+                }
+                """
+            )
+        )
+        let generationSchema = try FoundationModelsSchemaConversion.generationSchema(for: request)
+        let debug = generationSchema.debugDescription
+        #expect(debug.contains("city"))
+        #expect(debug.contains("ok"))
+        #expect(debug.contains("Answer"))
+    }
+
+    @Test("Capture tools record into the store and return the sentinel")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func captureToolsRecordAndReturnSentinel() async throws {
+        let store = FoundationModelsToolCaptureStore()
         let parameters = try FoundationModelsSchemaConversion.argumentSchema(
             for: ToolSchema(
                 name: "echo",
@@ -57,20 +83,268 @@ struct FoundationModelsSchemaConversionTests {
         let tool = FoundationModelsCaptureTool(
             name: "echo",
             description: "Echo",
-            parameters: parameters
+            parameters: parameters,
+            store: store
         )
         let arguments = GeneratedContent(properties: ["text": "hello"])
+        let output = try await tool.call(arguments: arguments)
+        #expect(output == FoundationModelsCaptureTool.sentinelOutput)
 
-        do {
-            _ = try await tool.call(arguments: arguments)
-            Issue.record("Expected capture error")
-        } catch let error as FoundationModelsToolCaptureError {
-            #expect(error.toolCall.name == "echo")
-            #expect(error.toolCall.arguments["text"]?.stringValue == "hello")
-            let response = try #require(FoundationModelsToolBridge.inferenceResponse(from: error))
-            #expect(response.finishReason == .toolCall)
-            #expect(response.toolCalls.first?.name == "echo")
-        }
+        let snapshot = await store.snapshot()
+        #expect(snapshot.count == 1)
+        #expect(snapshot[0].name == "echo")
+        #expect(snapshot[0].arguments["text"]?.stringValue == "hello")
+    }
+
+    @Test("Simulated multi-call turn yields all N ParsedToolCalls in request order")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func simulatedMultiCallTurnYieldsAllCallsInOrder() async throws {
+        let store = FoundationModelsToolCaptureStore()
+        let schemas = [
+            ToolSchema(
+                name: "lookup",
+                description: "Look up",
+                parameters: [ToolParameter(name: "query", description: "Query", type: .string)]
+            ),
+            ToolSchema(
+                name: "weather",
+                description: "Weather",
+                parameters: [ToolParameter(name: "city", description: "City", type: .string)]
+            ),
+            ToolSchema(
+                name: "clock",
+                description: "Clock",
+                parameters: [ToolParameter(name: "tz", description: "Timezone", type: .string)]
+            ),
+        ]
+        let tools = try FoundationModelsToolBridge.makeCaptureTools(from: schemas, store: store)
+        #expect(tools.count == 3)
+        let lookupTool = try #require(tools[0] as? FoundationModelsCaptureTool)
+        let weatherTool = try #require(tools[1] as? FoundationModelsCaptureTool)
+        let clockTool = try #require(tools[2] as? FoundationModelsCaptureTool)
+
+        _ = try await lookupTool.call(arguments: GeneratedContent(properties: ["query": "swift"]))
+        _ = try await weatherTool.call(arguments: GeneratedContent(properties: ["city": "Tokyo"]))
+        _ = try await clockTool.call(arguments: GeneratedContent(properties: ["tz": "JST"]))
+
+        let lookup = Transcript.ToolCall(
+            id: "c1",
+            toolName: "lookup",
+            arguments: GeneratedContent(properties: ["query": "swift"])
+        )
+        let weather = Transcript.ToolCall(
+            id: "c2",
+            toolName: "weather",
+            arguments: GeneratedContent(properties: ["city": "Tokyo"])
+        )
+        let clock = Transcript.ToolCall(
+            id: "c3",
+            toolName: "clock",
+            arguments: GeneratedContent(properties: ["tz": "JST"])
+        )
+        let later = Transcript.ToolCall(
+            id: "c4",
+            toolName: "lookup",
+            arguments: GeneratedContent(properties: ["query": "sentinel-based"])
+        )
+        let entries: [Transcript.Entry] = [
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Let me look those up."))]
+            )),
+            .toolCalls(Transcript.ToolCalls([lookup, weather, clock])),
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Sentinel-mediated final."))]
+            )),
+            .toolCalls(Transcript.ToolCalls([later])),
+        ]
+
+        let response = try #require(
+            await FoundationModelsToolBridge.inferenceResponse(store: store, turnEntries: entries)
+        )
+        #expect(response.finishReason == .toolCall)
+        #expect(response.toolCalls.map(\.name) == ["lookup", "weather", "clock"])
+        #expect(response.toolCalls[0].arguments["query"]?.stringValue == "swift")
+        #expect(response.toolCalls[1].arguments["city"]?.stringValue == "Tokyo")
+        #expect(response.toolCalls[2].arguments["tz"]?.stringValue == "JST")
+        #expect(response.content == "Let me look those up.")
+        #expect(response.content?.contains("Sentinel-mediated") != true)
+    }
+
+    @Test("Store fallback is used only when the transcript has no toolCalls marker")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func storeFallbackWhenTranscriptHasNoToolCalls() async throws {
+        let store = FoundationModelsToolCaptureStore()
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "s1",
+                name: "lookup",
+                arguments: ["query": .string("swift")]
+            )
+        )
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "s2",
+                name: "weather",
+                arguments: ["city": .string("Tokyo")]
+            )
+        )
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "s3",
+                name: "lookup",
+                arguments: ["query": .string("later-wave")]
+            )
+        )
+        let entries: [Transcript.Entry] = [
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Working…"))]
+            )),
+        ]
+        let error = FoundationModelsToolCaptureError(
+            toolCall: InferenceResponse.ParsedToolCall(
+                name: "clock",
+                arguments: ["tz": .string("JST")]
+            )
+        )
+        let response = try #require(
+            await FoundationModelsToolBridge.inferenceResponse(
+                store: store,
+                turnEntries: entries,
+                error: error
+            )
+        )
+        #expect(response.toolCalls.map(\.name) == ["lookup", "weather", "lookup"])
+        #expect(response.toolCalls.compactMap(\.id) == ["s1", "s2", "s3"])
+        #expect(response.content == nil)
+    }
+
+    @Test("Empty placeholder then post-tool response does not recover a later wave")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func emptyPlaceholderThenLaterWaveIsNotFirstWave() async throws {
+        let store = FoundationModelsToolCaptureStore()
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "first",
+                name: "lookup",
+                arguments: ["query": .string("swift")]
+            )
+        )
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "later",
+                name: "weather",
+                arguments: ["city": .string("Tokyo")]
+            )
+        )
+        let later = Transcript.ToolCall(
+            id: "c-later",
+            toolName: "weather",
+            arguments: GeneratedContent(properties: ["city": "Tokyo"])
+        )
+        let entries: [Transcript.Entry] = [
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Let me look that up."))]
+            )),
+            .toolCalls(Transcript.ToolCalls([])),
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Sentinel-mediated final."))]
+            )),
+            .toolCalls(Transcript.ToolCalls([later])),
+        ]
+        let response = await FoundationModelsToolBridge.inferenceResponse(
+            store: store,
+            turnEntries: entries
+        )
+        #expect(response == nil)
+    }
+
+    @Test("Empty placeholder before a real parallel group still recovers that group")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func emptyPlaceholderThenRealGroupIsFirstWave() async throws {
+        let store = FoundationModelsToolCaptureStore()
+        let lookup = Transcript.ToolCall(
+            id: "c1",
+            toolName: "lookup",
+            arguments: GeneratedContent(properties: ["query": "swift"])
+        )
+        let weather = Transcript.ToolCall(
+            id: "c2",
+            toolName: "weather",
+            arguments: GeneratedContent(properties: ["city": "Tokyo"])
+        )
+        let later = Transcript.ToolCall(
+            id: "c3",
+            toolName: "clock",
+            arguments: GeneratedContent(properties: ["tz": "JST"])
+        )
+        let entries: [Transcript.Entry] = [
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Checking."))]
+            )),
+            .toolCalls(Transcript.ToolCalls([])),
+            .toolCalls(Transcript.ToolCalls([lookup, weather])),
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Sentinel-mediated final."))]
+            )),
+            .toolCalls(Transcript.ToolCalls([later])),
+        ]
+        let response = try #require(
+            await FoundationModelsToolBridge.inferenceResponse(store: store, turnEntries: entries)
+        )
+        #expect(response.toolCalls.map(\.name) == ["lookup", "weather"])
+        #expect(response.content == "Checking.")
+        #expect(response.content?.contains("Sentinel-mediated") != true)
+    }
+
+    @Test("Single-call turn still returns one ParsedToolCall")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func singleCallTurnMatchesPreviousBehavior() async throws {
+        let store = FoundationModelsToolCaptureStore()
+        let call = Transcript.ToolCall(
+            id: "only",
+            toolName: "lookup",
+            arguments: GeneratedContent(properties: ["query": "swift"])
+        )
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "store-id",
+                name: "lookup",
+                arguments: ["query": .string("swift")]
+            )
+        )
+        let entries: [Transcript.Entry] = [
+            .toolCalls(Transcript.ToolCalls([call])),
+        ]
+        let response = try #require(
+            await FoundationModelsToolBridge.inferenceResponse(store: store, turnEntries: entries)
+        )
+        #expect(response.finishReason == .toolCall)
+        #expect(response.toolCalls.count == 1)
+        #expect(response.toolCalls[0].name == "lookup")
+        #expect(response.content == nil)
+    }
+
+    @Test("Thrown capture error still converts to a single-call InferenceResponse")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func thrownCaptureErrorStillConverts() throws {
+        let error = FoundationModelsToolCaptureError(
+            toolCall: InferenceResponse.ParsedToolCall(
+                name: "echo",
+                arguments: ["text": .string("hello")]
+            )
+        )
+        let response = try #require(FoundationModelsToolBridge.inferenceResponse(from: error))
+        #expect(response.finishReason == .toolCall)
+        #expect(response.toolCalls.count == 1)
+        #expect(response.toolCalls[0].name == "echo")
+        #expect(response.content == nil)
     }
 }
 
@@ -132,10 +406,58 @@ struct FoundationModelsInferenceProviderTests {
 
         #expect(response.finishReason == .toolCall || response.finishReason == .completed)
         if response.finishReason == .toolCall {
-            #expect(response.toolCalls.count == 1)
+            #expect(response.toolCalls.count >= 1)
             #expect(response.toolCalls[0].name == "lookup")
             #expect(response.toolCalls[0].arguments["query"] != nil)
         }
+    }
+
+    @Test(
+        "Live native structured output uses guided generation when the schema maps",
+        .enabled(if: FoundationModelsLiveTestGate.isEnabled)
+    )
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func liveNativeStructuredOutput() async throws {
+        guard let provider = FoundationModelsInferenceProvider.ifAvailable() else {
+            return
+        }
+        let request = StructuredOutputRequest(
+            format: .jsonSchema(
+                name: "City",
+                schemaJSON: """
+                {
+                  "type": "object",
+                  "properties": { "city": { "type": "string" } },
+                  "required": ["city"],
+                  "additionalProperties": false
+                }
+                """
+            )
+        )
+        let result = try await provider.generateStructured(
+            prompt: "Name one city in France. Use the schema.",
+            request: request,
+            options: InferenceOptions()
+        )
+        #expect(result.source == .providerNative)
+        #expect(result.value.dictionaryValue?["city"]?.stringValue?.isEmpty == false)
+    }
+
+    @Test(
+        "Live jsonObject structured output stays prompt fallback",
+        .enabled(if: FoundationModelsLiveTestGate.isEnabled)
+    )
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func liveJSONObjectStaysPromptFallback() async throws {
+        guard let provider = FoundationModelsInferenceProvider.ifAvailable() else {
+            return
+        }
+        let result = try await provider.generateStructured(
+            prompt: "Reply with JSON {\"ok\": true} and nothing else.",
+            request: StructuredOutputRequest(format: .jsonObject),
+            options: InferenceOptions()
+        )
+        #expect(result.source == .promptFallback)
     }
 }
 

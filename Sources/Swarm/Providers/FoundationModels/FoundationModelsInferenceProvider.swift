@@ -67,9 +67,18 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// Swarm tools are bridged to `FoundationModels.Tool` at request time. The model
 /// produces structured arguments via guided generation.
 ///
-/// **Capture mode (default):** capture tools surface those arguments back to
-/// Swarm so the agent runtime can execute tools with guardrails, observers, and
-/// retries intact. One tool call is recovered per turn.
+/// **Capture mode (default):** capture tools record their arguments into a
+/// per-turn store and return a sentinel so Apple can invoke every tool in a
+/// parallel group. Swarm recovers **all** calls from the first `ToolCalls`
+/// group and executes them in the agent loop with guardrails, observers, and
+/// retries intact. Assistant text that accompanied those calls is preserved;
+/// sentinel-mediated final text is discarded.
+///
+/// **Structured outputs:** ``generateStructured`` uses native guided
+/// generation (`respond(to:schema:)`) when the JSON Schema maps onto
+/// `GenerationSchema`. ``StructuredOutputFormat/jsonObject`` and schemas
+/// outside that subset stay prompt-instruction + parse, labeled
+/// ``StructuredOutputResult/Source/promptFallback``.
 ///
 /// **Native session mode (experimental):** executing tools run inside Apple's
 /// session loop. Opt in with ``AgentConfiguration/foundationModelsExecution``.
@@ -267,9 +276,10 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             }
         }
 
+        let store = FoundationModelsToolCaptureStore()
         let fmTools: [any FoundationModels.Tool]
         do {
-            fmTools = try FoundationModelsToolBridge.makeCaptureTools(from: effectiveTools)
+            fmTools = try FoundationModelsToolBridge.makeCaptureTools(from: effectiveTools, store: store)
         } catch {
             throw AgentError.generationFailed(
                 reason: "Failed to bridge Swarm tools to FoundationModels.Tool: \(error)"
@@ -283,9 +293,17 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             options: resolved.options
         )
         let generationOptions = makeGenerationOptions(from: resolved.options)
+        let startCount = session.transcript.count
 
         do {
             let response = try await session.respond(to: prompt, options: generationOptions)
+            let turnEntries = Array(session.transcript.dropFirst(startCount))
+            if let captured = await FoundationModelsToolBridge.inferenceResponse(
+                store: store,
+                turnEntries: turnEntries
+            ) {
+                return captured
+            }
             let content = applyStopSequences(response.content, options: resolved.options)
             return InferenceResponse(
                 content: content,
@@ -293,7 +311,12 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                 finishReason: .completed
             )
         } catch {
-            if let captured = FoundationModelsToolBridge.inferenceResponse(from: error) {
+            let turnEntries = Array(session.transcript.dropFirst(startCount))
+            if let captured = await FoundationModelsToolBridge.inferenceResponse(
+                store: store,
+                turnEntries: turnEntries,
+                error: error
+            ) {
                 return captured
             }
             throw mapError(error)
@@ -307,16 +330,59 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         request: StructuredOutputRequest,
         options: InferenceOptions
     ) async throws -> StructuredOutputResult {
-        // Prefer prompt instruction + parse for portability; native schema generation
-        // requires a GenerationSchema derived from the request which may not always
-        // map 1:1 from Swarm's JSON schema representation.
-        var structuredOptions = options
-        structuredOptions.structuredOutput = request
-        let text = try await generate(prompt: prompt, options: structuredOptions)
-        return try StructuredOutputParser.parse(text, request: request, source: .promptFallback)
+        try await generateStructured(messages: [.user(prompt)], request: request, options: options)
     }
 
     public func generateStructured(
+        messages: [InferenceMessage],
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        let resolved = resolveTurn(messages: messages, tools: [], options: options)
+        switch FoundationModelsStructuredSchemaMapping.evaluate(request) {
+        case let .mapped(mapped):
+            do {
+                let schema = try FoundationModelsSchemaConversion.generationSchema(from: mapped)
+                var promptOptions = resolved.options
+                promptOptions.structuredOutput = nil
+                let prompt = flattenPrompt(
+                    messages: resolved.messages,
+                    tools: [],
+                    options: promptOptions
+                )
+                let session = makeSession(tools: [], instructions: resolved.instructions)
+                let generationOptions = makeGenerationOptions(from: resolved.options)
+                let response = try await session.respond(
+                    to: prompt,
+                    schema: schema,
+                    includeSchemaInPrompt: true,
+                    options: generationOptions
+                )
+                return StructuredOutputResult(
+                    format: request.format,
+                    rawJSON: response.content.jsonString,
+                    value: FoundationModelsSchemaConversion.sendableValue(from: response.content),
+                    source: .providerNative
+                )
+            } catch is GenerationSchema.SchemaError {
+                return try await generateStructuredPromptFallback(
+                    messages: messages,
+                    request: request,
+                    options: options
+                )
+            } catch {
+                throw mapError(error)
+            }
+        case .unsupported:
+            return try await generateStructuredPromptFallback(
+                messages: messages,
+                request: request,
+                options: options
+            )
+        }
+    }
+
+    private func generateStructuredPromptFallback(
         messages: [InferenceMessage],
         request: StructuredOutputRequest,
         options: InferenceOptions

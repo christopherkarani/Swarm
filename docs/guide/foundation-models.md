@@ -40,7 +40,7 @@ let agent = try Agent("Be helpful.", configuration: config,
 | | Capture (default) | Native session (experimental) |
 |---|---|---|
 | Tool loop owner | Swarm agent loop | `LanguageModelSession` |
-| Parallel tool calls | No (one captured call per turn) | Yes (Apple's session loop) |
+| Parallel tool calls | Yes (first `ToolCalls` group per turn) | Yes (Apple's session loop) |
 | Transcript / KV reuse | No (session rebuilt every Swarm iteration) | Transcript copied across `Agent.run` turns; Apple owns the inner loop |
 | Token streaming with tools | No | Yes (`Agent.stream` yields incremental tokens) |
 | Per-iteration memory injection | Yes | **No** — memory is injected when the native session starts |
@@ -48,9 +48,19 @@ let agent = try Agent("Be helpful.", configuration: config,
 | Mid-loop checkpoints | Yes | **No** |
 | Per-turn guardrail interception | Yes (wraps Swarm's loop) | **No** — input/tool guardrails run **inside** each tool body |
 
-Native mode exists so you can take Apple's session loop when you want parallel
+Native mode exists so you can take Apple's session loop when you want multi-round
 tools and real streaming. Capture stays the default because Swarm-side control
 (guardrails, checkpoints, memory injection) is the framework's differentiator.
+Capture now recovers every tool call in the first parallel group of a turn
+(previously only the first call) and keeps any assistant text that accompanied
+those calls.
+
+## Structured outputs
+
+When the requested JSON Schema maps onto `GenerationSchema`, capture-mode
+`generateStructured` uses `LanguageModelSession.respond(to:schema:)` and labels
+the result `.providerNative`. `.jsonObject` and unmappable schemas stay
+prompt-instruction + parse (`.promptFallback`).
 
 Under `strict4k`, native mode sends the same windowed/`PromptEnvelope` string
 capture uses — not the raw conversation history.

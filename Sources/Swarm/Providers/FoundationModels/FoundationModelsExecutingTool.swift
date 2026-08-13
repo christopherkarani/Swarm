@@ -161,7 +161,7 @@ struct FoundationModelsExecutingTool: FoundationModels.Tool {
 extension FoundationModelsToolBridge {
     /// Builds executing Foundation Models tools from Swarm schemas.
     ///
-    /// Unlike ``makeCaptureTools(from:)``, these tools run Swarm tools (with
+    /// Unlike ``makeCaptureTools(from:store:)``, these tools run Swarm tools (with
     /// guardrails and observers) inside `LanguageModelSession`'s own loop.
     static func makeExecutingTools(
         from tools: [ToolSchema],

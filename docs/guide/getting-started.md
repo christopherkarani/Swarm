@@ -380,11 +380,11 @@ agent.environment(\.inferenceProvider, myCustomProvider)
 
 ### Capture vs native session (experimental)
 
-By default Swarm **captures** Foundation Models tool calls and executes them in
-the agent loop (guardrails, checkpoints, per-iteration memory). Opt in to
-experimental native session mode for parallel tool calls and token streaming
-with tools — see [Foundation Models](foundation-models.md) for the trade-off
-table.
+By default Swarm **captures** Foundation Models tool calls (including a parallel
+group in one turn) and executes them in the agent loop (guardrails, checkpoints,
+per-iteration memory). Opt in to experimental native session mode for Apple's
+inner tool loop and token streaming with tools — see
+[Foundation Models](foundation-models.md) for the trade-off table.
 
 ```swift
 let config = AgentConfiguration.default
@@ -393,9 +393,9 @@ let config = AgentConfiguration.default
 
 ### Structured output
 
-`runStructured` asks the model (prompt instruction) and parses the reply as
-JSON. It is not enforced schema generation — invalid JSON fails at parse time
-rather than being constrained by a native generation schema.
+`runStructured` uses Foundation Models guided generation when the JSON Schema
+maps onto `GenerationSchema` (result `source` is `.providerNative`). `.jsonObject`
+and unmappable schemas stay prompt-instruction + parse (`.promptFallback`).
 
 ### Provider resolution order
 

@@ -1,6 +1,13 @@
 import Foundation
 
 /// Provider-agnostic structured output request owned by Swarm.
+///
+/// ``jsonObject`` asks for any JSON value via prompt instruction; it cannot be
+/// lowered onto Foundation Models `GenerationSchema` (no property set to
+/// guide). ``jsonSchema(name:schemaJSON:)`` uses native guided generation when
+/// the schema is inside the documented GenerationSchema subset; otherwise the
+/// same prompt+parse path runs and ``StructuredOutputResult/source`` stays
+/// ``StructuredOutputResult/Source/promptFallback``.
 public enum StructuredOutputFormat: Sendable, Equatable, Codable {
     case jsonObject
     case jsonSchema(name: String, schemaJSON: String)
@@ -37,6 +44,13 @@ public struct StructuredOutputRequest: Sendable, Equatable, Codable {
 
 /// Parsed structured output emitted by a provider or Swarm fallback path.
 public struct StructuredOutputResult: Sendable, Equatable, Codable {
+    /// How the JSON was produced.
+    ///
+    /// - ``providerNative``: the inference backend constrained generation
+    ///   (Foundation Models `respond(to:schema:)` when the schema maps).
+    /// - ``promptFallback``: Swarm appended JSON instructions and parsed the
+    ///   reply. Used for ``StructuredOutputFormat/jsonObject``, unmappable
+    ///   schemas, and providers without guided generation.
     public enum Source: String, Sendable, Equatable, Codable {
         case providerNative = "provider_native"
         case promptFallback = "prompt_fallback"
@@ -45,6 +59,9 @@ public struct StructuredOutputResult: Sendable, Equatable, Codable {
     public var format: StructuredOutputFormat
     public var rawJSON: String
     public var value: SendableValue
+    /// Which production path emitted ``rawJSON``. Survives on
+    /// ``StructuredAgentResult/structuredOutput`` and as
+    /// `structured_output.source` on ``AgentResult/metadata``.
     public var source: Source
 
     public init(
