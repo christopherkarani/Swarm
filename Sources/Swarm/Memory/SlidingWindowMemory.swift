@@ -60,6 +60,8 @@ public actor SlidingWindowMemory: Memory {
     ///
     /// - Parameters:
     ///   - maxTokens: Maximum tokens to retain (default: 4000).
+    ///     Estimated with ``CharacterBasedTokenEstimator`` (~4 characters per
+    ///     token) unless `tokenEstimator` is overridden.
     ///   - tokenEstimator: Estimator for token counting.
     public init(
         maxTokens: Int = 4000,

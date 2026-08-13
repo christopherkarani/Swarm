@@ -146,17 +146,55 @@
         }
     }
 
+    // MARK: - Versioned Schema
+
+    /// First shipped SwiftData schema for Swarm memory.
+    ///
+    /// Existing stores created with `Schema([PersistedMessage.self])` before
+    /// versioning share this model shape. Future schema changes must add a new
+    /// `VersionedSchema` and a ``MemoryMigrationPlan`` stage.
+    @available(macOS 14.0, iOS 17.0, watchOS 10.0, tvOS 17.0, *)
+    enum MemorySchemaV1: VersionedSchema {
+        static let versionIdentifier = Schema.Version(1, 0, 0)
+
+        static var models: [any PersistentModel.Type] {
+            [PersistedMessage.self]
+        }
+    }
+
+    /// Migration plan for SwiftData memory stores.
+    ///
+    /// Current schema is ``MemorySchemaV1``. Stages are empty until a v2
+    /// model change ships.
+    @available(macOS 14.0, iOS 17.0, watchOS 10.0, tvOS 17.0, *)
+    enum MemoryMigrationPlan: SchemaMigrationPlan {
+        static var schemas: [any VersionedSchema.Type] {
+            [MemorySchemaV1.self]
+        }
+
+        static var stages: [MigrationStage] {
+            []
+        }
+    }
+
     // MARK: - Model Container Configuration
 
     extension PersistedMessage {
         /// Creates a model container configured for PersistedMessage.
+        ///
+        /// Uses ``MemorySchemaV1`` with ``MemoryMigrationPlan`` so existing
+        /// v1 stores continue to open after future schema additions.
         static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {
-            let schema = Schema([PersistedMessage.self])
+            let schema = Schema(versionedSchema: MemorySchemaV1.self)
             let configuration = ModelConfiguration(
                 schema: schema,
                 isStoredInMemoryOnly: inMemory
             )
-            return try ModelContainer(for: schema, configurations: [configuration])
+            return try ModelContainer(
+                for: schema,
+                migrationPlan: MemoryMigrationPlan.self,
+                configurations: [configuration]
+            )
         }
     }
 #endif

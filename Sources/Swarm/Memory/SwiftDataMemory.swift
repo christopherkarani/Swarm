@@ -67,7 +67,8 @@
         ///   - modelContainer: SwiftData model container.
         ///   - conversationId: Identifier for this conversation.
         ///   - maxMessages: Maximum messages to retain (0 = unlimited).
-        ///   - tokenEstimator: Token counting estimator.
+        ///   - tokenEstimator: Token counting estimator. Defaults to
+        ///     ``CharacterBasedTokenEstimator`` (~4 characters per token).
         public init(
             modelContainer: ModelContainer,
             conversationId: String = "default",

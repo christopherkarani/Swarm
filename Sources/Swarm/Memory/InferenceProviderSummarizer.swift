@@ -7,21 +7,35 @@ import Foundation
 
 // MARK: - InferenceProviderSummarizer
 
-/// LLM-based summarizer using any `InferenceProvider`.
+/// LLM-based summarizer using any ``InferenceProvider``.
 ///
-/// Works on all platforms - use for server deployments where
-/// Apple's Foundation Models are not available.
+/// This is the real summarizer: it sends conversation text to an inference
+/// provider and returns the model's summary. Contrast with
+/// ``TruncatingSummarizer``, which only **truncates** (drops) content to fit a
+/// token budget and never calls a model.
+///
+/// Token budgets passed to ``summarize(_:maxTokens:)`` are forwarded as
+/// ``InferenceOptions/maxTokens``. The provider's tokenizer may differ from
+/// Swarm's default ``CharacterBasedTokenEstimator`` (~4 characters per token).
 ///
 /// ## Usage
 ///
 /// ```swift
-/// let provider = MyOpenAIProvider(apiKey: "...")
-/// let summarizer = InferenceProviderSummarizer(provider: provider)
-///
-/// let memory = SummaryMemory(
-///     shortTermCapacity: 10,
-///     summarizer: summarizer
+/// let summarizer = InferenceProviderSummarizer.conversationSummarizer(
+///     provider: myInferenceProvider
 /// )
+/// let memory: SummaryMemory = .summary(summarizer: summarizer)
+/// ```
+///
+/// Factory convenience via ``MemorySummarizer``:
+///
+/// ```swift
+/// let memory: SummaryMemory = .summary(
+///     summarizer: .inferenceProvider(myInferenceProvider)
+/// )
+///
+/// // On-device Apple Foundation Models when available; otherwise truncates:
+/// let memory: SummaryMemory = .summary(summarizer: .foundationModels)
 /// ```
 ///
 /// ## Customization
@@ -30,14 +44,14 @@ import Foundation
 ///
 /// ```swift
 /// let summarizer = InferenceProviderSummarizer(
-///     provider: provider,
+///     provider: myInferenceProvider,
 ///     systemPrompt: "Create a brief summary focusing on action items:"
 /// )
 /// ```
-actor InferenceProviderSummarizer: Summarizer {
-    // MARK: Internal
+public actor InferenceProviderSummarizer: Summarizer {
+    // MARK: Public
 
-    var isAvailable: Bool {
+    public var isAvailable: Bool {
         get async { true }
     }
 
@@ -47,7 +61,7 @@ actor InferenceProviderSummarizer: Summarizer {
     ///   - provider: The inference provider to use for summarization.
     ///   - systemPrompt: The prompt prefix for summarization requests.
     ///   - temperature: Temperature for generation (default: 0.3 for consistency).
-    init(
+    public init(
         provider: any InferenceProvider,
         systemPrompt: String = "Summarize the following conversation concisely, preserving key information and context:",
         temperature: Double = 0.3
@@ -59,7 +73,7 @@ actor InferenceProviderSummarizer: Summarizer {
 
     // MARK: - Summarizer Protocol
 
-    func summarize(_ text: String, maxTokens: Int) async throws -> String {
+    public func summarize(_ text: String, maxTokens: Int) async throws -> String {
         // Truncate input to prevent excessive token usage
         let maxInputLength = 50000 // Reasonable limit for most LLMs
         let truncatedText = text.count > maxInputLength
@@ -107,7 +121,7 @@ actor InferenceProviderSummarizer: Summarizer {
 
 // MARK: - Convenience Extensions
 
-extension InferenceProviderSummarizer {
+public extension InferenceProviderSummarizer {
     /// Creates a summarizer optimized for conversation summaries.
     ///
     /// - Parameter provider: The inference provider to use.
@@ -150,5 +164,73 @@ extension InferenceProviderSummarizer {
             """,
             temperature: 0.1
         )
+    }
+}
+
+extension InferenceProviderSummarizer {
+    /// Conversation summarizer backed by on-device Foundation Models, or `nil`.
+    ///
+    /// Uses the same synchronous availability check ``Agent`` uses as its last
+    /// provider fallback. Environment / ``Swarm/defaultProvider`` are not
+    /// consulted — those require async access.
+    static func foundationModelsIfAvailable() -> InferenceProviderSummarizer? {
+        guard let provider = DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable()
+        else {
+            return nil
+        }
+        return conversationSummarizer(provider: provider)
+    }
+}
+
+// MARK: - MemorySummarizer
+
+/// Built-in summarizer presets for ``Memory/summary(configuration:summarizer:)``
+/// and ``Memory/hybrid(configuration:summarizer:)``.
+///
+/// ```swift
+/// // Default factory still truncates (does not summarize).
+/// let truncated: SummaryMemory = .summary()
+///
+/// // Real LLM summarization.
+/// let llm: SummaryMemory = .summary(summarizer: .inferenceProvider(myProvider))
+///
+/// // On-device Foundation Models when available; otherwise truncates.
+/// let onDevice: SummaryMemory = .summary(summarizer: .foundationModels)
+/// ```
+///
+/// These presets exist because the memory factories are synchronous:
+/// they cannot await ``Swarm/defaultProvider`` or Foundation Models
+/// availability the way ``Agent`` does at run time.
+public struct MemorySummarizer: Sendable {
+    /// Truncates (drops) old content. Does **not** summarize.
+    public static var truncating: MemorySummarizer {
+        MemorySummarizer(summarizer: TruncatingSummarizer.shared)
+    }
+
+    /// On-device Foundation Models via
+    /// ``InferenceProviderSummarizer/conversationSummarizer(provider:)``.
+    ///
+    /// If Foundation Models are unavailable, this is ``truncating``.
+    public static var foundationModels: MemorySummarizer {
+        if let summarizer = InferenceProviderSummarizer.foundationModelsIfAvailable() {
+            return MemorySummarizer(summarizer: summarizer)
+        }
+        return .truncating
+    }
+
+    /// LLM summarization using ``InferenceProviderSummarizer/conversationSummarizer(provider:)``.
+    ///
+    /// - Parameter provider: Inference backend used for summarization.
+    /// - Returns: A preset wrapping a conversation summarizer.
+    public static func inferenceProvider(_ provider: any InferenceProvider) -> MemorySummarizer {
+        MemorySummarizer(
+            summarizer: InferenceProviderSummarizer.conversationSummarizer(provider: provider)
+        )
+    }
+
+    let summarizer: any Summarizer
+
+    private init(summarizer: any Summarizer) {
+        self.summarizer = summarizer
     }
 }

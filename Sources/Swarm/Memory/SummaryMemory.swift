@@ -48,6 +48,11 @@ public actor SummaryMemory: Memory {
         public let summarizationThreshold: Int
 
         /// Target token count for the summary.
+        ///
+        /// ``TruncatingSummarizer`` measures this with
+        /// ``CharacterBasedTokenEstimator`` (~4 characters per token).
+        /// ``InferenceProviderSummarizer`` forwards it as
+        /// ``InferenceOptions/maxTokens`` to the provider.
         public let summaryTokenTarget: Int
 
         /// Creates a summary memory configuration.
@@ -56,6 +61,8 @@ public actor SummaryMemory: Memory {
         ///   - recentMessageCount: Messages to keep intact (default: 20).
         ///   - summarizationThreshold: When to trigger summarization (default: 50).
         ///   - summaryTokenTarget: Target summary size in tokens (default: 500).
+        ///     ``TruncatingSummarizer`` uses ``CharacterBasedTokenEstimator``
+        ///     (~4 characters per token).
         public init(
             recentMessageCount: Int = 20,
             summarizationThreshold: Int = 50,
@@ -99,9 +106,11 @@ public actor SummaryMemory: Memory {
     ///
     /// - Parameters:
     ///   - configuration: Behavior configuration.
-    ///   - summarizer: Primary summarization service.
+    ///   - summarizer: Primary summarization service. Defaults to
+    ///     ``TruncatingSummarizer``, which truncates rather than summarizes.
     ///   - fallbackSummarizer: Fallback when primary unavailable.
-    ///   - tokenEstimator: Token counting estimator.
+    ///   - tokenEstimator: Token counting estimator. Defaults to
+    ///     ``CharacterBasedTokenEstimator`` (~4 characters per token).
     public init(
         configuration: Configuration = .default,
         summarizer: any Summarizer = TruncatingSummarizer.shared,

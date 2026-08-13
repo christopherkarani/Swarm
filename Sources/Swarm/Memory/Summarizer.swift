@@ -19,7 +19,9 @@ public protocol Summarizer: Sendable {
     ///
     /// - Parameters:
     ///   - text: The text to summarize.
-    ///   - maxTokens: Target maximum tokens for the summary.
+    ///   - maxTokens: Target maximum tokens for the summary. When the
+    ///     implementation uses ``CharacterBasedTokenEstimator``, this is a
+    ///     heuristic of ~4 characters per token, not a model tokenizer count.
     /// - Returns: A summarized version of the text.
     /// - Throws: `SummarizerError` if summarization fails.
     func summarize(_ text: String, maxTokens: Int) async throws -> String
@@ -56,16 +58,24 @@ public enum SummarizerError: Error, Sendable, CustomStringConvertible {
 
 // MARK: - TruncatingSummarizer
 
-/// A summarizer that truncates text instead of true summarization.
+/// A fallback that **truncates** (drops) text instead of summarizing it.
 ///
-/// Used as a fallback when no LLM is available. Truncates to the nearest
-/// sentence or word boundary within the token limit.
+/// This type does **not** produce a summary. It cuts the input to fit
+/// `maxTokens` using ``CharacterBasedTokenEstimator`` (~4 characters per
+/// token), preferring a sentence, newline, or word boundary. Older content
+/// past that budget is discarded.
+///
+/// Used as the factory default for ``Memory/summary(configuration:summarizer:)``
+/// and ``Memory/hybrid(configuration:summarizer:)`` because those factories
+/// are synchronous and cannot await ``Swarm/defaultProvider`` the way
+/// ``Agent`` does. For real summarization, pass
+/// ``InferenceProviderSummarizer`` or ``MemorySummarizer/foundationModels``.
 ///
 /// ## Usage
 ///
 /// ```swift
 /// let summarizer = TruncatingSummarizer.shared
-/// let summary = try await summarizer.summarize(longText, maxTokens: 500)
+/// let truncated = try await summarizer.summarize(longText, maxTokens: 500)
 /// ```
 public struct TruncatingSummarizer: Summarizer, Sendable {
     // MARK: Public

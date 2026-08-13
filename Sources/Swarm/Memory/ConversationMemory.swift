@@ -43,7 +43,8 @@ public actor ConversationMemory: Memory {
     ///
     /// - Parameters:
     ///   - maxMessages: Maximum messages to retain (default: 100).
-    ///   - tokenEstimator: Estimator for token counting.
+    ///   - tokenEstimator: Estimator used by ``context(for:tokenLimit:)``.
+    ///     Defaults to ``CharacterBasedTokenEstimator`` (~4 characters per token).
     public init(
         maxMessages: Int = 100,
         tokenEstimator: any TokenEstimator = CharacterBasedTokenEstimator.shared

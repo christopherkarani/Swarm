@@ -54,6 +54,9 @@ public actor HybridMemory: Memory {
         public let shortTermMaxMessages: Int
 
         /// Token limit for long-term summary.
+        ///
+        /// Measured with ``CharacterBasedTokenEstimator`` (~4 characters per
+        /// token) when the summarizer is ``TruncatingSummarizer``.
         public let longTermSummaryTokens: Int
 
         /// Ratio of token budget allocated to summary (0.0 - 1.0).
@@ -67,6 +70,8 @@ public actor HybridMemory: Memory {
         /// - Parameters:
         ///   - shortTermMaxMessages: Messages in short-term memory (default: 30).
         ///   - longTermSummaryTokens: Max tokens for summary (default: 1000).
+        ///     ``TruncatingSummarizer`` uses ``CharacterBasedTokenEstimator``
+        ///     (~4 characters per token).
         ///   - summaryTokenRatio: Context budget ratio for summary (default: 0.3).
         ///   - summarizationThreshold: Messages before summarization (default: 60).
         public init(
@@ -117,8 +122,10 @@ public actor HybridMemory: Memory {
     ///
     /// - Parameters:
     ///   - configuration: Behavior configuration.
-    ///   - summarizer: Summarization service.
-    ///   - tokenEstimator: Token counting estimator.
+    ///   - summarizer: Summarization service. Defaults to ``TruncatingSummarizer``,
+    ///     which truncates rather than summarizes.
+    ///   - tokenEstimator: Token counting estimator. Defaults to
+    ///     ``CharacterBasedTokenEstimator`` (~4 characters per token).
     public init(
         configuration: Configuration = .default,
         summarizer: any Summarizer = TruncatingSummarizer.shared,
