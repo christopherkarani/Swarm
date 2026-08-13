@@ -68,7 +68,8 @@ public actor PersistentMemory: Memory {
     ///   - backend: The storage backend to use.
     ///   - conversationId: Unique identifier for this conversation.
     ///   - maxMessages: Maximum messages to retain (0 = unlimited).
-    ///   - tokenEstimator: Estimator for token counting.
+    ///   - tokenEstimator: Estimator used by ``context(for:tokenLimit:)``.
+    ///     Defaults to ``CharacterBasedTokenEstimator`` (~4 characters per token).
     public init(
         backend: any PersistentMemoryBackend,
         conversationId: String = UUID().uuidString,

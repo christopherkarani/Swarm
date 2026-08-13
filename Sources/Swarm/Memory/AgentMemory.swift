@@ -41,12 +41,13 @@ import Foundation
 ///     similarityThreshold: 0.75
 /// )
 ///
-/// // Token-bounded sliding window
+/// // Token-bounded sliding window (~4 characters per token by default)
 /// let slidingMemory: SlidingWindowMemory = .slidingWindow(maxTokens: 8000)
 ///
-/// // With automatic summarization
+/// // With automatic summarization (default truncates; pass a real summarizer)
 /// let summaryMemory: SummaryMemory = .summary(
-///     configuration: .init(recentMessageCount: 30)
+///     configuration: .init(recentMessageCount: 30),
+///     summarizer: .inferenceProvider(myProvider)
 /// )
 /// ```
 ///
@@ -147,8 +148,9 @@ public protocol Memory: Actor, Sendable {
     /// - Parameters:
     ///   - query: The query to find relevant context for. May be the user's
     ///     current input, a search query, or empty for recent-only context.
-    ///   - tokenLimit: Maximum tokens to include in the context. Implementations
-    ///     should respect this limit to avoid exceeding model context windows.
+    ///   - tokenLimit: Maximum tokens to include in the context. Built-in
+    ///     implementations default to ``CharacterBasedTokenEstimator``
+    ///     (~4 characters per token), not a model tokenizer.
     /// - Returns: A formatted string containing relevant context, ready for
     ///   inclusion in LLM prompts.
     ///
@@ -200,6 +202,8 @@ public extension MemoryMessage {
     /// - Parameters:
     ///   - messages: Messages to format, typically from ``Memory/allMessages()``.
     ///   - tokenLimit: Maximum tokens allowed in the resulting context.
+    ///     The default estimator is ``CharacterBasedTokenEstimator``
+    ///     (~4 characters per token).
     ///   - tokenEstimator: Estimator for token counting. Defaults to
     ///     `CharacterBasedTokenEstimator.shared`.
     /// - Returns: Formatted context string with messages joined by double newlines.
@@ -242,10 +246,12 @@ public extension MemoryMessage {
     ///
     /// - Parameters:
     ///   - messages: Messages to format.
-    ///   - tokenLimit: Maximum tokens allowed.
+    ///   - tokenLimit: Maximum tokens allowed. The default estimator is
+    ///     ``CharacterBasedTokenEstimator`` (~4 characters per token).
     ///   - separator: String to join messages (e.g., `"\n"` for single newlines,
     ///     `"\n---\n"` for visual separation).
-    ///   - tokenEstimator: Estimator for token counting.
+    ///   - tokenEstimator: Estimator for token counting. Defaults to
+    ///     ``CharacterBasedTokenEstimator`` (~4 characters per token).
     /// - Returns: Formatted context string.
     static func formatContext(
         _ messages: [MemoryMessage],
@@ -340,6 +346,9 @@ extension Memory where Self == SlidingWindowMemory {
     /// - Long-form conversations where message count varies
     ///
     /// - Parameter maxTokens: Maximum tokens to retain (default: 4000).
+    ///   Estimated with ``CharacterBasedTokenEstimator`` (~4 characters per
+    ///   token) unless you construct ``SlidingWindowMemory`` with a custom
+    ///   estimator.
     /// - Returns: A ``SlidingWindowMemory`` instance.
     ///
     /// - SeeAlso: ``SlidingWindowMemory``
@@ -349,23 +358,26 @@ extension Memory where Self == SlidingWindowMemory {
 }
 
 extension Memory where Self == PersistentMemory {
-    /// Creates a ``PersistentMemory`` with a pluggable storage backend.
+    /// Creates a ``PersistentMemory`` with an explicit storage backend.
     ///
-    /// Persistent memory survives app restarts by using a storage backend
-    /// like SwiftData, Core Data, or custom implementations. Defaults to
-    /// an in-memory backend for testing.
+    /// Persistence is entirely the backend's job. ``InMemoryBackend`` does
+    /// **not** survive process exit — use ``SwiftDataBackend/persistent()``
+    /// on Apple platforms, or a custom disk/database backend, for durable
+    /// storage.
     ///
     /// ## Usage
     ///
     /// ```swift
-    /// // In-memory (for testing)
-    /// let agent = myAgent.withMemory(.persistent())
+    /// // Ephemeral (does not survive process exit)
+    /// let agent = myAgent.withMemory(.persistent(backend: InMemoryBackend()))
     ///
-    /// // With SwiftData backend
+    /// // Durable on Apple platforms
+    /// #if canImport(SwiftData)
     /// let agent = myAgent.withMemory(.persistent(
-    ///     backend: SwiftDataMemoryBackend(),
+    ///     backend: try SwiftDataBackend.persistent(),
     ///     conversationId: "user-123-thread-1"
     /// ))
+    /// #endif
     /// ```
     ///
     /// ## When to Use
@@ -375,19 +387,38 @@ extension Memory where Self == PersistentMemory {
     /// - When you need to query conversation history later
     ///
     /// - Parameters:
-    ///   - backend: The storage backend (default: `InMemoryBackend()`).
+    ///   - backend: Storage backend. ``InMemoryBackend`` is process-local only
+    ///     and does not survive process exit.
     ///   - conversationId: Unique identifier for this conversation (default: random UUID).
     ///   - maxMessages: Maximum messages to retain; 0 means unlimited (default: 0).
     /// - Returns: A ``PersistentMemory`` instance.
     ///
-    /// - SeeAlso: ``PersistentMemory``, ``PersistentMemoryBackend``
+    /// - SeeAlso: ``PersistentMemory``, ``PersistentMemoryBackend``, ``InMemoryBackend``
     public static func persistent(
-        backend: any PersistentMemoryBackend = InMemoryBackend(),
+        backend: any PersistentMemoryBackend,
         conversationId: String = UUID().uuidString,
         maxMessages: Int = 0
     ) -> PersistentMemory {
         PersistentMemory(
             backend: backend,
+            conversationId: conversationId,
+            maxMessages: maxMessages
+        )
+    }
+
+    /// Creates a ``PersistentMemory`` backed by ``InMemoryBackend``.
+    ///
+    /// - Warning: Despite the name, this overload does **not** persist.
+    ///   ``InMemoryBackend`` drops all messages when the process exits.
+    ///   Pass an explicit `backend:` instead. This overload will be removed
+    ///   in 0.7.0.
+    @available(*, deprecated, message: "`.persistent()` defaults to InMemoryBackend, which does not survive process exit. Pass an explicit backend such as SwiftDataBackend.persistent() (Apple) or InMemoryBackend() if ephemeral storage is intentional. The no-backend overload will be removed in 0.7.0.")
+    public static func persistent(
+        conversationId: String = UUID().uuidString,
+        maxMessages: Int = 0
+    ) -> PersistentMemory {
+        persistent(
+            backend: InMemoryBackend(),
             conversationId: conversationId,
             maxMessages: maxMessages
         )
@@ -400,16 +431,28 @@ extension Memory where Self == HybridMemory {
     /// Hybrid memory keeps recent messages in full detail while summarizing
     /// older messages to retain context without exceeding token limits.
     ///
+    /// - Warning: The default `summarizer` is ``TruncatingSummarizer``, which
+    ///   **drops** old content rather than summarizing it. Factory methods are
+    ///   synchronous and cannot await ``Swarm/defaultProvider`` or Foundation
+    ///   Models availability the way ``Agent`` does. For real summarization,
+    ///   pass ``MemorySummarizer/inferenceProvider(_:)`` or
+    ///   ``MemorySummarizer/foundationModels``.
+    ///
     /// ## Usage
     ///
     /// ```swift
-    /// // Default configuration
+    /// // Default: truncates old content (does not summarize)
     /// let agent = myAgent.withMemory(.hybrid())
+    ///
+    /// // Real LLM summarization
+    /// let agent = myAgent.withMemory(.hybrid(
+    ///     summarizer: .inferenceProvider(myProvider)
+    /// ))
     ///
     /// // Custom configuration
     /// let config = HybridMemory.Configuration(
     ///     shortTermMaxMessages: 50,
-    ///     summaryTriggerThreshold: 100
+    ///     summarizationThreshold: 100
     /// )
     /// let agent = myAgent.withMemory(.hybrid(configuration: config))
     /// ```
@@ -422,30 +465,59 @@ extension Memory where Self == HybridMemory {
     ///
     /// - Parameters:
     ///   - configuration: Behavior configuration (default: `.default`).
-    ///   - summarizer: Summarization service (default: `TruncatingSummarizer.shared`).
+    ///     ``HybridMemory/Configuration/longTermSummaryTokens`` uses
+    ///     ``CharacterBasedTokenEstimator`` (~4 characters per token).
+    ///   - summarizer: Summarization service. Defaults to
+    ///     ``TruncatingSummarizer/shared``, which truncates rather than
+    ///     summarizes.
     /// - Returns: A ``HybridMemory`` instance.
     ///
-    /// - SeeAlso: ``HybridMemory``, ``Summarizer``
+    /// - SeeAlso: ``HybridMemory``, ``Summarizer``, ``MemorySummarizer``,
+    ///   ``InferenceProviderSummarizer``
     public static func hybrid(
         configuration: HybridMemory.Configuration = .default,
         summarizer: any Summarizer = TruncatingSummarizer.shared
     ) -> HybridMemory {
         HybridMemory(configuration: configuration, summarizer: summarizer)
     }
+
+    /// Creates a ``HybridMemory`` using a built-in summarizer preset.
+    ///
+    /// ```swift
+    /// let memory: HybridMemory = .hybrid(summarizer: .foundationModels)
+    /// let llm: HybridMemory = .hybrid(summarizer: .inferenceProvider(myProvider))
+    /// ```
+    public static func hybrid(
+        configuration: HybridMemory.Configuration = .default,
+        summarizer: MemorySummarizer
+    ) -> HybridMemory {
+        hybrid(configuration: configuration, summarizer: summarizer.summarizer)
+    }
 }
 
 extension Memory where Self == SummaryMemory {
-    /// Creates a ``SummaryMemory`` that automatically summarizes old messages.
+    /// Creates a ``SummaryMemory`` that automatically condenses old messages.
     ///
     /// Summary memory keeps a fixed number of recent messages in full form
-    /// while continuously summarizing older messages. More aggressive than
-    /// ``HybridMemory`` in condensing history.
+    /// while condensing older messages. More aggressive than ``HybridMemory``.
+    ///
+    /// - Warning: The default `summarizer` is ``TruncatingSummarizer``, which
+    ///   **drops** old content rather than summarizing it. Factory methods are
+    ///   synchronous and cannot await ``Swarm/defaultProvider`` or Foundation
+    ///   Models availability the way ``Agent`` does. For real summarization,
+    ///   pass ``MemorySummarizer/inferenceProvider(_:)`` or
+    ///   ``MemorySummarizer/foundationModels``.
     ///
     /// ## Usage
     ///
     /// ```swift
-    /// // Default: 50 recent messages
+    /// // Default: truncates old content (does not summarize)
     /// let agent = myAgent.withMemory(.summary())
+    ///
+    /// // Real LLM summarization
+    /// let agent = myAgent.withMemory(.summary(
+    ///     summarizer: .inferenceProvider(myProvider)
+    /// ))
     ///
     /// // Keep more recent messages
     /// let agent = myAgent.withMemory(.summary(
@@ -461,15 +533,33 @@ extension Memory where Self == SummaryMemory {
     ///
     /// - Parameters:
     ///   - configuration: Behavior configuration (default: `.default`).
-    ///   - summarizer: Summarization service (default: `TruncatingSummarizer.shared`).
+    ///     ``SummaryMemory/Configuration/summaryTokenTarget`` uses
+    ///     ``CharacterBasedTokenEstimator`` (~4 characters per token) when
+    ///     the summarizer is ``TruncatingSummarizer``.
+    ///   - summarizer: Summarization service. Defaults to
+    ///     ``TruncatingSummarizer/shared``, which truncates rather than
+    ///     summarizes.
     /// - Returns: A ``SummaryMemory`` instance.
     ///
-    /// - SeeAlso: ``SummaryMemory``
+    /// - SeeAlso: ``SummaryMemory``, ``MemorySummarizer``, ``InferenceProviderSummarizer``
     public static func summary(
         configuration: SummaryMemory.Configuration = .default,
         summarizer: any Summarizer = TruncatingSummarizer.shared
     ) -> SummaryMemory {
         SummaryMemory(configuration: configuration, summarizer: summarizer)
+    }
+
+    /// Creates a ``SummaryMemory`` using a built-in summarizer preset.
+    ///
+    /// ```swift
+    /// let memory: SummaryMemory = .summary(summarizer: .foundationModels)
+    /// let llm: SummaryMemory = .summary(summarizer: .inferenceProvider(myProvider))
+    /// ```
+    public static func summary(
+        configuration: SummaryMemory.Configuration = .default,
+        summarizer: MemorySummarizer
+    ) -> SummaryMemory {
+        summary(configuration: configuration, summarizer: summarizer.summarizer)
     }
 }
 
@@ -483,14 +573,14 @@ extension Memory where Self == VectorMemory {
     /// ## Usage
     ///
     /// ```swift
-    /// let provider = OpenAIEmbeddingProvider(apiKey: key)
-    ///
-    /// // Default settings
-    /// let agent = myAgent.withMemory(.vector(embeddingProvider: provider))
+    /// // Inject any EmbeddingProvider. Swarm does not ship a cloud embedder.
+    /// // With Integrations on Apple, ContextCore MiniLM is available via
+    /// // SemanticEmbeddingAvailability / DefaultAgentMemory.
+    /// let agent = myAgent.withMemory(.vector(embeddingProvider: myEmbeddingProvider))
     ///
     /// // Custom similarity threshold and result limit
     /// let agent = myAgent.withMemory(.vector(
-    ///     embeddingProvider: provider,
+    ///     embeddingProvider: myEmbeddingProvider,
     ///     similarityThreshold: 0.8,
     ///     maxResults: 5
     /// ))

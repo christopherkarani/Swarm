@@ -12,7 +12,9 @@ import Foundation
 /// - Stateless server deployments
 /// - Development and prototyping
 ///
-/// **Note**: Data is lost when the process terminates.
+/// **In-memory storage does not survive process exit.** All conversations
+/// are discarded when the process terminates. Use ``SwiftDataBackend`` or a
+/// custom disk/database ``PersistentMemoryBackend`` for durable storage.
 ///
 /// ## Usage
 ///

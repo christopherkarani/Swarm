@@ -6,12 +6,19 @@ public struct MemoryQuery: Sendable, Equatable {
     public let text: String
 
     /// Total token budget available to the memory implementation.
+    ///
+    /// Built-in memories measure this with ``CharacterBasedTokenEstimator``
+    /// by default (~4 characters per token). That is a heuristic, not a
+    /// model tokenizer.
     public let tokenLimit: Int
 
     /// Maximum number of retrieved items to include.
     public let maxItems: Int
 
     /// Maximum token budget for any single retrieved item.
+    ///
+    /// Same estimator heuristic as ``tokenLimit`` (~4 characters per token
+    /// with the default ``CharacterBasedTokenEstimator``).
     public let maxItemTokens: Int
 
     public init(

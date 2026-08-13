@@ -158,6 +158,8 @@ public actor VectorMemory: Memory {
     /// - Parameters:
     ///   - query: The query to find relevant context for.
     ///   - tokenLimit: Maximum tokens to include in the context.
+    ///     Measured with ``CharacterBasedTokenEstimator`` (~4 characters per
+    ///     token) unless a custom estimator was supplied at init.
     /// - Returns: A formatted string containing relevant context, ordered by similarity.
     public func context(for query: String, tokenLimit: Int) async -> String {
         guard !embeddedMessages.isEmpty else {

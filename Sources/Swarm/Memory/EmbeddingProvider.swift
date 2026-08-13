@@ -36,21 +36,13 @@ import Foundation
 /// Create a custom provider by conforming to `EmbeddingProvider`:
 ///
 /// ```swift
-/// struct OpenAIEmbeddingProvider: EmbeddingProvider {
-///     let apiKey: String
-///     let model: String = "text-embedding-3-small"
-///
-///     var dimensions: Int { 1536 }
-///     var modelIdentifier: String { model }
+/// struct MyEmbeddingProvider: EmbeddingProvider {
+///     var dimensions: Int { 384 }
+///     var modelIdentifier: String { "my-embedder" }
 ///
 ///     func embed(_ text: String) async throws -> [Float] {
-///         // Call OpenAI embeddings API
-///         let request = EmbeddingRequest(
-///             model: model,
-///             input: text
-///         )
-///         let response = try await api.embed(request)
-///         return response.embedding
+///         // Call your embedding backend and return `dimensions` floats.
+///         try await myAPI.embed(text)
 ///     }
 /// }
 /// ```
@@ -58,7 +50,7 @@ import Foundation
 /// ## Usage with VectorMemory
 ///
 /// ```swift
-/// let provider = OpenAIEmbeddingProvider(apiKey: apiKey)
+/// let provider: any EmbeddingProvider = MyEmbeddingProvider()
 /// let memory: VectorMemory = .vector(
 ///     embeddingProvider: provider,
 ///     similarityThreshold: 0.75,

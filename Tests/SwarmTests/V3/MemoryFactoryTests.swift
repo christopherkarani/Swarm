@@ -44,9 +44,9 @@ struct MemoryFactoryTests {
         #expect(count == 0)
     }
 
-    @Test("persistent factory creates PersistentMemory with default in-memory backend")
+    @Test("persistent factory requires an explicit backend")
     func persistentFactory() async {
-        let memory: any Memory = .persistent()
+        let memory: any Memory = .persistent(backend: InMemoryBackend())
         let count = await memory.count
         #expect(count == 0)
     }

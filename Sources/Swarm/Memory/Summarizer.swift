@@ -19,7 +19,9 @@ public protocol Summarizer: Sendable {
     ///
     /// - Parameters:
     ///   - text: The text to summarize.
-    ///   - maxTokens: Target maximum tokens for the summary.
+    ///   - maxTokens: Target maximum tokens for the summary. When the
+    ///     implementation uses ``CharacterBasedTokenEstimator``, this is a
+    ///     heuristic of ~4 characters per token, not a model tokenizer count.
     /// - Returns: A summarized version of the text.
     /// - Throws: `SummarizerError` if summarization fails.
     func summarize(_ text: String, maxTokens: Int) async throws -> String
@@ -56,16 +58,24 @@ public enum SummarizerError: Error, Sendable, CustomStringConvertible {
 
 // MARK: - TruncatingSummarizer
 
-/// A summarizer that truncates text instead of true summarization.
+/// A fallback that **truncates** (drops) text instead of summarizing it.
 ///
-/// Used as a fallback when no LLM is available. Truncates to the nearest
-/// sentence or word boundary within the token limit.
+/// This type does **not** produce a summary. It cuts the input to fit
+/// `maxTokens` using ``CharacterBasedTokenEstimator`` (~4 characters per
+/// token), preferring a sentence, newline, or word boundary. Older content
+/// past that budget is discarded.
+///
+/// Used as the factory default for ``Memory/summary(configuration:summarizer:)``
+/// and ``Memory/hybrid(configuration:summarizer:)`` because those factories
+/// are synchronous and cannot await ``Swarm/defaultProvider`` the way
+/// ``Agent`` does. For real summarization, pass
+/// ``InferenceProviderSummarizer`` or ``MemorySummarizer/foundationModels``.
 ///
 /// ## Usage
 ///
 /// ```swift
 /// let summarizer = TruncatingSummarizer.shared
-/// let summary = try await summarizer.summarize(longText, maxTokens: 500)
+/// let truncated = try await summarizer.summarize(longText, maxTokens: 500)
 /// ```
 public struct TruncatingSummarizer: Summarizer, Sendable {
     // MARK: Public
@@ -241,4 +251,63 @@ struct FallbackSummarizer: Summarizer, Sendable {
 
     private let primary: any Summarizer
     private let fallback: any Summarizer
+}
+
+// MARK: - MemorySummarizer
+
+/// Built-in summarizer presets for ``Memory/summary(configuration:summarizer:)``
+/// and ``Memory/hybrid(configuration:summarizer:)``.
+///
+/// ```swift
+/// // Default factory still truncates (does not summarize).
+/// let truncated: SummaryMemory = .summary()
+///
+/// // Real LLM summarization.
+/// let llm: SummaryMemory = .summary(summarizer: .inferenceProvider(myProvider))
+///
+/// // On-device Foundation Models when available; otherwise truncates.
+/// let onDevice: SummaryMemory = .summary(summarizer: .foundationModels)
+/// ```
+///
+/// These presets exist because the memory factories are synchronous:
+/// they cannot await ``Swarm/defaultProvider`` or Foundation Models
+/// availability the way ``Agent`` does at run time.
+public struct MemorySummarizer: Sendable {
+    /// Truncates (drops) old content. Does **not** summarize.
+    public static var truncating: MemorySummarizer {
+        MemorySummarizer(summarizer: TruncatingSummarizer.shared)
+    }
+
+    /// On-device Foundation Models via
+    /// ``InferenceProviderSummarizer/conversationSummarizer(provider:)``.
+    ///
+    /// Resolves the provider with the same *synchronous* check Agent uses
+    /// for its last fallback (`DefaultInferenceProviderFactory`). If
+    /// Foundation Models are unavailable, this is ``truncating``.
+    /// Environment / ``Swarm/defaultProvider`` are not consulted — those
+    /// require async access that the factory call site does not have.
+    public static var foundationModels: MemorySummarizer {
+        if let provider = DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() {
+            return MemorySummarizer(
+                summarizer: InferenceProviderSummarizer.conversationSummarizer(provider: provider)
+            )
+        }
+        return .truncating
+    }
+
+    /// LLM summarization using ``InferenceProviderSummarizer/conversationSummarizer(provider:)``.
+    ///
+    /// - Parameter provider: Inference backend used for summarization.
+    /// - Returns: A preset wrapping a conversation summarizer.
+    public static func inferenceProvider(_ provider: any InferenceProvider) -> MemorySummarizer {
+        MemorySummarizer(
+            summarizer: InferenceProviderSummarizer.conversationSummarizer(provider: provider)
+        )
+    }
+
+    let summarizer: any Summarizer
+
+    private init(summarizer: any Summarizer) {
+        self.summarizer = summarizer
+    }
 }
