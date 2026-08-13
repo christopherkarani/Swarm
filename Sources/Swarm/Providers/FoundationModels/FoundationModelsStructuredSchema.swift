@@ -63,7 +63,7 @@ indirect enum FoundationModelsMappedType: Sendable, Equatable {
 ///
 /// ``StructuredOutputFormat/jsonObject`` has no schema, so it cannot be guided
 /// and stays prompt-instruction + parse. Also rejected (honest
-/// ``StructuredOutputResult/Source-swift.enum/promptFallback``):
+/// ``StructuredOutputResult/Source/promptFallback``):
 ///
 /// - `additionalProperties: true` or a nested schema (free-form keys)
 /// - `pattern`, `format`, `minLength`, `maxLength`
@@ -171,8 +171,7 @@ private struct Parser {
         let object = try parser.parseObjectSchema(
             node,
             name: rootName,
-            path: "$",
-            allowNestedDefinitions: false
+            path: "$"
         )
         return FoundationModelsMappedGenerationSchema(
             name: object.name,
@@ -201,7 +200,7 @@ private struct Parser {
             return []
         }
 
-        definitionNames = Set(defsNode.keys.map(Self.sanitizeTypeName))
+        definitionNames = Set(defsNode.keys.map(FoundationModelsGenerationTypeName.sanitize))
         var result: [FoundationModelsMappedGenerationSchema] = []
         result.reserveCapacity(defsNode.count)
         for key in defsNode.keys.sorted() {
@@ -214,7 +213,6 @@ private struct Parser {
             try rejectUnknownKeys(in: defNode, path: "$/$defs/\(key)")
             let mapped: FoundationModelsMappedGenerationSchema
             if defNode["enum"] != nil, defNode["properties"] == nil {
-                try rejectUnknownKeys(in: defNode, path: "$/$defs/\(key)")
                 guard case let .stringEnum(values) = try parseStringEnum(
                     defNode["enum"] as Any,
                     path: "$/$defs/\(key)"
@@ -224,7 +222,7 @@ private struct Parser {
                     )
                 }
                 mapped = FoundationModelsMappedGenerationSchema(
-                    name: Self.sanitizeTypeName(key),
+                    name: FoundationModelsGenerationTypeName.sanitize(key),
                     description: defNode["description"] as? String,
                     properties: [],
                     stringEnum: values,
@@ -233,9 +231,8 @@ private struct Parser {
             } else {
                 mapped = try parseObjectSchema(
                     defNode,
-                    name: Self.sanitizeTypeName(key),
-                    path: "$/$defs/\(key)",
-                    allowNestedDefinitions: false
+                    name: FoundationModelsGenerationTypeName.sanitize(key),
+                    path: "$/$defs/\(key)"
                 )
             }
             result.append(mapped)
@@ -246,12 +243,9 @@ private struct Parser {
     private func parseObjectSchema(
         _ node: [String: Any],
         name: String,
-        path: String,
-        allowNestedDefinitions: Bool
+        path: String
     ) throws -> FoundationModelsMappedGenerationSchema {
-        if !allowNestedDefinitions, node["$defs"] != nil || node["definitions"] != nil,
-           path != "$"
-        {
+        if path != "$", node["$defs"] != nil || node["definitions"] != nil {
             throw FoundationModelsStructuredSchemaMapping.Reason.unsupportedKeyword(
                 "$defs",
                 path: path
@@ -260,9 +254,8 @@ private struct Parser {
 
         try rejectOpenAdditionalProperties(in: node, path: path)
 
-        if let ref = node["$ref"] as? String {
+        if node["$ref"] != nil {
             try rejectRefComposition(in: node, path: path)
-            _ = try resolveReference(ref)
             throw FoundationModelsStructuredSchemaMapping.Reason.unsupportedType(
                 "$ref as whole object schema",
                 path: path
@@ -305,7 +298,7 @@ private struct Parser {
         }
 
         return FoundationModelsMappedGenerationSchema(
-            name: Self.sanitizeTypeName(name),
+            name: FoundationModelsGenerationTypeName.sanitize(name),
             description: node["description"] as? String ?? node["title"] as? String,
             properties: properties,
             stringEnum: nil,
@@ -347,8 +340,7 @@ private struct Parser {
                 let nested = try parseObjectSchema(
                     node,
                     name: anonymousName,
-                    path: path,
-                    allowNestedDefinitions: false
+                    path: path
                 )
                 return .object(nested)
             }
@@ -411,7 +403,7 @@ private struct Parser {
         } else {
             throw FoundationModelsStructuredSchemaMapping.Reason.invalidReference(ref)
         }
-        let name = Self.sanitizeTypeName(String(ref.dropFirst(prefix.count)))
+        let name = FoundationModelsGenerationTypeName.sanitize(String(ref.dropFirst(prefix.count)))
         guard !name.isEmpty, definitionNames.contains(name) else {
             throw FoundationModelsStructuredSchemaMapping.Reason.unresolvedReference(ref)
         }
@@ -469,8 +461,11 @@ private struct Parser {
         "$defs", "definitions", "$ref",
         "minItems", "maxItems",
     ]
+}
 
-    static func sanitizeTypeName(_ raw: String) -> String {
+/// Sanitizes JSON Schema type names for Foundation Models `GenerationSchema`.
+enum FoundationModelsGenerationTypeName {
+    static func sanitize(_ raw: String) -> String {
         let filtered = raw.map { character -> Character in
             character.isLetter || character.isNumber ? character : "_"
         }

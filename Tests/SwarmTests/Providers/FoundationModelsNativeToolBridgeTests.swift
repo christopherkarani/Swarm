@@ -172,6 +172,137 @@ struct FoundationModelsSchemaConversionTests {
         #expect(response.content?.contains("Sentinel-mediated") != true)
     }
 
+    @Test("Store fallback is used only when the transcript has no toolCalls marker")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func storeFallbackWhenTranscriptHasNoToolCalls() async throws {
+        let store = FoundationModelsToolCaptureStore()
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "s1",
+                name: "lookup",
+                arguments: ["query": .string("swift")]
+            )
+        )
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "s2",
+                name: "weather",
+                arguments: ["city": .string("Tokyo")]
+            )
+        )
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "s3",
+                name: "lookup",
+                arguments: ["query": .string("later-wave")]
+            )
+        )
+        let entries: [Transcript.Entry] = [
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Working…"))]
+            )),
+        ]
+        let error = FoundationModelsToolCaptureError(
+            toolCall: InferenceResponse.ParsedToolCall(
+                name: "clock",
+                arguments: ["tz": .string("JST")]
+            )
+        )
+        let response = try #require(
+            await FoundationModelsToolBridge.inferenceResponse(
+                store: store,
+                turnEntries: entries,
+                error: error
+            )
+        )
+        #expect(response.toolCalls.map(\.name) == ["lookup", "weather", "lookup"])
+        #expect(response.toolCalls.compactMap(\.id) == ["s1", "s2", "s3"])
+        #expect(response.content == nil)
+    }
+
+    @Test("Empty placeholder then post-tool response does not recover a later wave")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func emptyPlaceholderThenLaterWaveIsNotFirstWave() async throws {
+        let store = FoundationModelsToolCaptureStore()
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "first",
+                name: "lookup",
+                arguments: ["query": .string("swift")]
+            )
+        )
+        await store.record(
+            InferenceResponse.ParsedToolCall(
+                id: "later",
+                name: "weather",
+                arguments: ["city": .string("Tokyo")]
+            )
+        )
+        let later = Transcript.ToolCall(
+            id: "c-later",
+            toolName: "weather",
+            arguments: GeneratedContent(properties: ["city": "Tokyo"])
+        )
+        let entries: [Transcript.Entry] = [
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Let me look that up."))]
+            )),
+            .toolCalls(Transcript.ToolCalls([])),
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Sentinel-mediated final."))]
+            )),
+            .toolCalls(Transcript.ToolCalls([later])),
+        ]
+        let response = await FoundationModelsToolBridge.inferenceResponse(
+            store: store,
+            turnEntries: entries
+        )
+        #expect(response == nil)
+    }
+
+    @Test("Empty placeholder before a real parallel group still recovers that group")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func emptyPlaceholderThenRealGroupIsFirstWave() async throws {
+        let store = FoundationModelsToolCaptureStore()
+        let lookup = Transcript.ToolCall(
+            id: "c1",
+            toolName: "lookup",
+            arguments: GeneratedContent(properties: ["query": "swift"])
+        )
+        let weather = Transcript.ToolCall(
+            id: "c2",
+            toolName: "weather",
+            arguments: GeneratedContent(properties: ["city": "Tokyo"])
+        )
+        let later = Transcript.ToolCall(
+            id: "c3",
+            toolName: "clock",
+            arguments: GeneratedContent(properties: ["tz": "JST"])
+        )
+        let entries: [Transcript.Entry] = [
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Checking."))]
+            )),
+            .toolCalls(Transcript.ToolCalls([])),
+            .toolCalls(Transcript.ToolCalls([lookup, weather])),
+            .response(Transcript.Response(
+                assetIDs: [],
+                segments: [.text(Transcript.TextSegment(content: "Sentinel-mediated final."))]
+            )),
+            .toolCalls(Transcript.ToolCalls([later])),
+        ]
+        let response = try #require(
+            await FoundationModelsToolBridge.inferenceResponse(store: store, turnEntries: entries)
+        )
+        #expect(response.toolCalls.map(\.name) == ["lookup", "weather"])
+        #expect(response.content == "Checking.")
+        #expect(response.content?.contains("Sentinel-mediated") != true)
+    }
+
     @Test("Single-call turn still returns one ParsedToolCall")
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
     func singleCallTurnMatchesPreviousBehavior() async throws {

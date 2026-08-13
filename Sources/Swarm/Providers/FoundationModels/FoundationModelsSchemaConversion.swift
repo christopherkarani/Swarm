@@ -49,7 +49,7 @@ enum FoundationModelsSchemaConversion {
         }
 
         let root = DynamicGenerationSchema(
-            name: sanitizeTypeName("\(tool.name)_Arguments"),
+            name: FoundationModelsGenerationTypeName.sanitize("\(tool.name)_Arguments"),
             description: "Arguments for \(tool.name)",
             properties: properties
         )
@@ -166,13 +166,13 @@ enum FoundationModelsSchemaConversion {
                 )
             }
             return DynamicGenerationSchema(
-                name: sanitizeTypeName(name),
+                name: FoundationModelsGenerationTypeName.sanitize(name),
                 description: nil,
                 properties: nested
             )
         case let .oneOf(options):
             return DynamicGenerationSchema(
-                name: sanitizeTypeName(name),
+                name: FoundationModelsGenerationTypeName.sanitize(name),
                 description: nil,
                 anyOf: options
             )
@@ -185,7 +185,7 @@ enum FoundationModelsSchemaConversion {
     ) throws -> DynamicGenerationSchema {
         if let values = mapped.stringEnum {
             return DynamicGenerationSchema(
-                name: sanitizeTypeName(typeName),
+                name: FoundationModelsGenerationTypeName.sanitize(typeName),
                 description: mapped.description,
                 anyOf: values
             )
@@ -199,7 +199,7 @@ enum FoundationModelsSchemaConversion {
             )
         }
         return DynamicGenerationSchema(
-            name: sanitizeTypeName(typeName),
+            name: FoundationModelsGenerationTypeName.sanitize(typeName),
             description: mapped.description,
             properties: properties
         )
@@ -220,7 +220,7 @@ enum FoundationModelsSchemaConversion {
             return DynamicGenerationSchema(type: Bool.self)
         case let .stringEnum(values):
             return DynamicGenerationSchema(
-                name: sanitizeTypeName(name),
+                name: FoundationModelsGenerationTypeName.sanitize(name),
                 description: nil,
                 anyOf: values
             )
@@ -233,19 +233,8 @@ enum FoundationModelsSchemaConversion {
         case let .object(schema):
             return try namedDynamicSchema(schema, typeName: schema.name)
         case let .reference(refName):
-            return DynamicGenerationSchema(referenceTo: sanitizeTypeName(refName))
+            return DynamicGenerationSchema(referenceTo: FoundationModelsGenerationTypeName.sanitize(refName))
         }
-    }
-
-    static func sanitizeTypeName(_ raw: String) -> String {
-        let filtered = raw.map { character -> Character in
-            character.isLetter || character.isNumber ? character : "_"
-        }
-        var name = String(filtered)
-        if name.isEmpty || name.first?.isNumber == true {
-            name = "T_\(name)"
-        }
-        return name
     }
 }
 #endif

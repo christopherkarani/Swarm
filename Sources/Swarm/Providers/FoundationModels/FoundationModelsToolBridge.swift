@@ -34,10 +34,6 @@ actor FoundationModelsToolCaptureStore {
     func snapshot() -> [InferenceResponse.ParsedToolCall] {
         calls
     }
-
-    var isEmpty: Bool {
-        calls.isEmpty
-    }
 }
 
 /// Error thrown from a capture tool so Swarm can reclaim control of tool execution.
@@ -123,11 +119,17 @@ enum FoundationModelsToolBridge {
     /// Builds an inference response from captured calls and this turn's transcript.
     ///
     /// Policy:
-    /// - Prefer the first `Transcript.toolCalls` group (Apple's request order).
-    /// - Carry assistant text that appeared **before** that group.
-    /// - Discard post-tool `response` text (it was generated from sentinel output).
-    /// - If the transcript has no tool-call group, fall back to the store snapshot.
-    /// - If a capture tool still threw, merge that call when the store is empty.
+    /// - Prefer the first non-empty `Transcript.toolCalls` group that appears
+    ///   **before** any post-tool response (Apple's request order).
+    /// - Empty placeholder groups are skipped only until that first real group
+    ///   or a post-tool `.response` (sentinel-mediated text).
+    /// - Carry assistant text that appeared **before** the first tool-call marker.
+    /// - Discard post-tool `response` text.
+    /// - Fall back to the store only when the transcript recorded **no**
+    ///   `toolCalls` entries (session aborted before Apple wrote a group).
+    ///   Once a `toolCalls` marker exists, later-wave store contents are ignored.
+    /// - If a capture tool still threw and nothing else was recovered, use the
+    ///   throw-path converter.
     static func inferenceResponse(
         store: FoundationModelsToolCaptureStore,
         turnEntries: [Transcript.Entry],
@@ -141,7 +143,7 @@ enum FoundationModelsToolBridge {
         if let fromTranscript, !fromTranscript.calls.isEmpty {
             calls = fromTranscript.calls
             accompanying = fromTranscript.accompanyingContent
-        } else if !stored.isEmpty {
+        } else if fromTranscript == nil, !stored.isEmpty {
             calls = stored
             accompanying = nil
         } else if let error, let thrown = inferenceResponse(from: error) {
@@ -196,14 +198,21 @@ enum FoundationModelsToolBridge {
 
     static func firstWave(from entries: [Transcript.Entry]) -> FirstWave? {
         var accompanying: [String] = []
-        for entry in entries {
+        var sawToolCalls = false
+        entryLoop: for entry in entries {
             switch entry {
             case let .response(response):
+                if sawToolCalls {
+                    // Sentinel-mediated continuation. Do not treat later tool
+                    // groups as the first wave.
+                    break entryLoop
+                }
                 let text = FoundationModelsNativeTranscriptMapper.concatenatedText(response.segments)
                 if !text.isEmpty {
                     accompanying.append(text)
                 }
             case let .toolCalls(calls):
+                sawToolCalls = true
                 let parsed = calls.map { call in
                     InferenceResponse.ParsedToolCall(
                         id: call.id,
@@ -211,18 +220,27 @@ enum FoundationModelsToolBridge {
                         arguments: FoundationModelsSchemaConversion.argumentDictionary(from: call.arguments)
                     )
                 }
-                guard !parsed.isEmpty else { continue }
-                let joined = accompanying.joined(separator: "\n")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                return FirstWave(
-                    accompanyingContent: joined.isEmpty ? nil : joined,
-                    calls: parsed
-                )
+                if !parsed.isEmpty {
+                    let joined = accompanying.joined(separator: "\n")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    return FirstWave(
+                        accompanyingContent: joined.isEmpty ? nil : joined,
+                        calls: parsed
+                    )
+                }
             default:
                 continue
             }
         }
-        return nil
+        guard sawToolCalls else {
+            return nil
+        }
+        let joined = accompanying.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return FirstWave(
+            accompanyingContent: joined.isEmpty ? nil : joined,
+            calls: []
+        )
     }
 }
 #endif
