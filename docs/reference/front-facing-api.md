@@ -532,7 +532,9 @@ Built-in inference is Apple Foundation Models only. Custom backends implement
 
 Opt in to experimental native session mode with
 ``AgentConfiguration/foundationModelsExecution(_:)``. Capture remains the
-default. See the [Foundation Models guide](/guide/foundation-models).
+default and now recovers a full parallel tool-call group per turn. Structured
+outputs use guided generation when the JSON Schema maps; otherwise prompt+parse.
+See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
 (wrapped as ``FoundationModelsNativeTool``).

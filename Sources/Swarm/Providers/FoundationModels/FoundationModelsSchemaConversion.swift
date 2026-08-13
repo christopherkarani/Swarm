@@ -12,6 +12,31 @@ import FoundationModels
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
 enum FoundationModelsSchemaConversion {
+    /// Builds a guided-generation schema from a mapped structured-output request.
+    ///
+    /// Call ``FoundationModelsStructuredSchemaMapping/evaluate(_:)`` first; this
+    /// lowering is mechanical and throws only if Apple rejects the tree.
+    static func generationSchema(
+        from mapped: FoundationModelsMappedGenerationSchema
+    ) throws -> GenerationSchema {
+        let dependencies = try mapped.definitions.map { definition in
+            try namedDynamicSchema(definition, typeName: definition.name)
+        }
+        let root = try namedDynamicSchema(mapped, typeName: mapped.name)
+        return try GenerationSchema(root: root, dependencies: dependencies)
+    }
+
+    /// Builds a guided-generation schema for a structured-output request, or throws
+    /// if the request is outside the supported GenerationSchema subset.
+    static func generationSchema(for request: StructuredOutputRequest) throws -> GenerationSchema {
+        switch FoundationModelsStructuredSchemaMapping.evaluate(request) {
+        case let .mapped(mapped):
+            return try generationSchema(from: mapped)
+        case let .unsupported(reason):
+            throw reason
+        }
+    }
+
     /// Builds a guided-generation schema for a Swarm tool's argument object.
     static func argumentSchema(for tool: ToolSchema) throws -> GenerationSchema {
         let properties = tool.parameters.map { parameter in
@@ -154,7 +179,65 @@ enum FoundationModelsSchemaConversion {
         }
     }
 
-    private static func sanitizeTypeName(_ raw: String) -> String {
+    private static func namedDynamicSchema(
+        _ mapped: FoundationModelsMappedGenerationSchema,
+        typeName: String
+    ) throws -> DynamicGenerationSchema {
+        if let values = mapped.stringEnum {
+            return DynamicGenerationSchema(
+                name: sanitizeTypeName(typeName),
+                description: mapped.description,
+                anyOf: values
+            )
+        }
+        let properties = try mapped.properties.map { property in
+            DynamicGenerationSchema.Property(
+                name: property.name,
+                description: property.description,
+                schema: try dynamicSchema(for: property.type, name: "\(typeName)_\(property.name)"),
+                isOptional: property.isOptional
+            )
+        }
+        return DynamicGenerationSchema(
+            name: sanitizeTypeName(typeName),
+            description: mapped.description,
+            properties: properties
+        )
+    }
+
+    private static func dynamicSchema(
+        for type: FoundationModelsMappedType,
+        name: String
+    ) throws -> DynamicGenerationSchema {
+        switch type {
+        case .string:
+            return DynamicGenerationSchema(type: String.self)
+        case .integer:
+            return DynamicGenerationSchema(type: Int.self)
+        case .number:
+            return DynamicGenerationSchema(type: Double.self)
+        case .boolean:
+            return DynamicGenerationSchema(type: Bool.self)
+        case let .stringEnum(values):
+            return DynamicGenerationSchema(
+                name: sanitizeTypeName(name),
+                description: nil,
+                anyOf: values
+            )
+        case let .array(element, minItems, maxItems):
+            return DynamicGenerationSchema(
+                arrayOf: try dynamicSchema(for: element, name: "\(name)_Element"),
+                minimumElements: minItems,
+                maximumElements: maxItems
+            )
+        case let .object(schema):
+            return try namedDynamicSchema(schema, typeName: schema.name)
+        case let .reference(refName):
+            return DynamicGenerationSchema(referenceTo: sanitizeTypeName(refName))
+        }
+    }
+
+    static func sanitizeTypeName(_ raw: String) -> String {
         let filtered = raw.map { character -> Character in
             character.isLetter || character.isNumber ? character : "_"
         }

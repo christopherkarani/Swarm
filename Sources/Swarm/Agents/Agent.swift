@@ -1261,16 +1261,21 @@ public struct Agent: AgentRuntime, Sendable {
     func finalizeAssistantResponse(
         content: String,
         request: StructuredOutputRequest?,
-        provider: any InferenceProvider
+        provider _: any InferenceProvider
     ) throws -> FinalAssistantResponse {
         guard let request else {
             return FinalAssistantResponse(content: content, structuredOutput: nil)
         }
 
-        let source: StructuredOutputResult.Source = providerCapabilities(for: provider).contains(.structuredOutputs)
-            ? .providerNative
-            : .promptFallback
-        let structuredOutput = try StructuredOutputParser.parse(content, request: request, source: source)
+        // Text remaining after a tool loop (or native session) was produced
+        // without `respond(to:schema:)`. Label it prompt-fallback even when the
+        // provider advertises `.structuredOutputs` — native guided generation
+        // reports `.providerNative` from `generateStructured` itself.
+        let structuredOutput = try StructuredOutputParser.parse(
+            content,
+            request: request,
+            source: .promptFallback
+        )
         return FinalAssistantResponse(content: structuredOutput.rawJSON, structuredOutput: structuredOutput)
     }
 
