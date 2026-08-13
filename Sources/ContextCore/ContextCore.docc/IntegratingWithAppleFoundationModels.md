@@ -7,21 +7,12 @@ import ContextCore
 import FoundationModels
 
 struct AppleFoundationEmbeddingProvider: EmbeddingProvider {
-    let dimension = 384
+    let dimensions = 384
 
     func embed(_ text: String) async throws -> [Float] {
         // Replace with the current FoundationModels embedding API.
-        // Keep output normalized and stable in `dimension`.
+        // Keep output normalized and stable in `dimensions`.
         fatalError("Implement with your FoundationModels SDK version")
-    }
-
-    func embedBatch(_ texts: [String]) async throws -> [[Float]] {
-        var vectors: [[Float]] = []
-        vectors.reserveCapacity(texts.count)
-        for text in texts {
-            vectors.append(try await embed(text))
-        }
-        return vectors
     }
 }
 

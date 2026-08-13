@@ -5,11 +5,20 @@ import Logging
 
 /// Runtime status of ContextCore's default CoreML MiniLM embedder.
 ///
-/// When the model is missing, fails to load, or the process is running in the
-/// Simulator, ContextCore falls back to hash-seeded pseudo-vectors. Rankings
+/// When the model is missing, fails to load, or compilation has not been
+/// performed, ContextCore falls back to hash-seeded pseudo-vectors. Rankings
 /// from that path are not semantically meaningful.
+///
+/// Swarm does **not** bundle the ~43 MB MiniLM package. Call
+/// ``ensureModelAvailable(configuration:progressHandler:)`` (explicit network
+/// I/O) or opt in via `downloadsEmbeddingModelAutomatically` on the memory
+/// configuration (default `false`).
 public enum SemanticEmbeddingAvailability: Sendable {
     /// Whether the default CoreML MiniLM model can produce real embeddings.
+    ///
+    /// Becomes `true` in-process after a successful
+    /// ``ensureModelAvailable(configuration:progressHandler:)`` without requiring
+    /// a restart.
     public static var isAvailable: Bool {
         CoreMLEmbeddingProvider.isRealModelAvailable
     }
@@ -22,6 +31,11 @@ public enum SemanticEmbeddingAvailability: Sendable {
     /// Most recent fallback warning in this process, if any.
     public static var lastWarningMessage: String? {
         CoreMLEmbeddingProvider.lastWarningMessage
+    }
+
+    /// Where the default provider last resolved the MiniLM artifact.
+    public static var lastLoadSource: EmbeddingModelLoadSource {
+        EmbeddingModelCache.lastLoadSource
     }
 
     /// Whether `provider` can produce real semantic embeddings.
@@ -38,26 +52,67 @@ public enum SemanticEmbeddingAvailability: Sendable {
         return true
     }
 
+    /// Whether `provider` is the default CoreML MiniLM path (possibly cached).
+    public static func tracksDefaultCoreML(for provider: any EmbeddingProvider) -> Bool {
+        if provider is CoreMLEmbeddingProvider {
+            return true
+        }
+        if let caching = provider as? CachingEmbeddingProvider {
+            return tracksDefaultCoreML(for: caching.base)
+        }
+        return false
+    }
+
+    /// Downloads, verifies, and compiles the MiniLM model if it is not cached.
+    ///
+    /// This is the **explicit** delivery API. Swarm never performs this network
+    /// I/O unless you call this method or set `downloadsEmbeddingModelAutomatically`
+    /// on the memory configuration.
+    ///
+    /// After a successful return, ``isAvailable`` flips in this process so
+    /// callers do not need to restart. Delivery success is recorded from the
+    /// verified cache install; a later ``reprobe()`` still requires CoreML to
+    /// load the compiled model.
+    ///
+    /// - Parameters:
+    ///   - configuration: Download URL, pinned SHA-256, and cache directory.
+    ///   - progressHandler: Optional stage/fraction callback.
+    /// - Throws: ``EmbeddingModelDeliveryError`` when download, hash, or compile fails.
+    public static func ensureModelAvailable(
+        configuration: EmbeddingModelDeliveryConfiguration = .default,
+        progressHandler: (@Sendable (EmbeddingModelDeliveryProgress) -> Void)? = nil
+    ) async throws {
+        _ = try await EmbeddingModelDownloader.shared.ensureAvailable(
+            configuration: configuration,
+            progressHandler: progressHandler
+        )
+        CoreMLEmbeddingProvider.markDelivered(source: .compiledCache)
+    }
+
+    /// Clears the last probe and checks the cache / bundle again.
+    ///
+    /// Unlike ``ensureModelAvailable(configuration:progressHandler:)``, this
+    /// requires CoreML to load the compiled model before ``isAvailable`` is `true`.
+    public static func reprobe() {
+        CoreMLEmbeddingProvider.reprobeAvailability()
+    }
+
     /// Resets process-wide fallback diagnostics. Intended for tests.
     public static func resetForTesting() {
         CoreMLEmbeddingProvider.resetAvailabilityForTesting()
+        EmbeddingModelCache.resetForTesting()
     }
 }
 
 internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
-    internal let dimension: Int = 384
+    internal let dimensions: Int = 384
+    internal let modelIdentifier = "minilm-l6-v2"
 
     internal init() {
         Self.probeAndWarnIfNeeded()
     }
 
     func embed(_ text: String) async throws -> [Float] {
-#if targetEnvironment(simulator)
-        Self.takeFallback(
-            reason: "CoreML embeddings are unavailable in the Simulator"
-        )
-        return Self.deterministicVector(for: text, dimension: dimension)
-#else
         do {
             let model = try Self.loadModel()
             Self.markRealModelAvailable()
@@ -67,24 +122,17 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
             return try Self.extractEmbedding(from: output, model: model)
         } catch {
             Self.takeFallback(
-                reason: "CoreML model minilm-l6-v2.mlpackage is missing or failed to load (\(error.localizedDescription))"
+                reason: "CoreML model minilm-l6-v2 is missing or failed to load (\(error.localizedDescription))"
             )
-            return Self.deterministicVector(for: text, dimension: dimension)
+            return Self.deterministicVector(for: text, dimension: dimensions)
         }
-#endif
     }
 
-    func embedBatch(_ texts: [String]) async throws -> [[Float]] {
+    func embed(_ texts: [String]) async throws -> [[Float]] {
         guard !texts.isEmpty else {
             return []
         }
 
-#if targetEnvironment(simulator)
-        Self.takeFallback(
-            reason: "CoreML embeddings are unavailable in the Simulator"
-        )
-        return texts.map { Self.deterministicVector(for: $0, dimension: dimension) }
-#else
         do {
             let model = try Self.loadModel()
             Self.markRealModelAvailable()
@@ -104,11 +152,10 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
             return vectors
         } catch {
             Self.takeFallback(
-                reason: "CoreML model minilm-l6-v2.mlpackage is missing or failed to load (\(error.localizedDescription))"
+                reason: "CoreML model minilm-l6-v2 is missing or failed to load (\(error.localizedDescription))"
             )
-            return texts.map { Self.deterministicVector(for: $0, dimension: dimension) }
+            return texts.map { Self.deterministicVector(for: $0, dimension: dimensions) }
         }
-#endif
     }
 
     fileprivate static var isRealModelAvailable: Bool {
@@ -127,6 +174,11 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
 
     fileprivate static func resetAvailabilityForTesting() {
         availability.reset()
+    }
+
+    fileprivate static func reprobeAvailability() {
+        availability.reset()
+        _ = probeAndWarnIfNeeded()
     }
 
     private static let availability = EmbeddingAvailabilityState()
@@ -148,19 +200,30 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
     }
 
     private static func probeModel() -> (available: Bool, reason: String?) {
-#if targetEnvironment(simulator)
-        return (false, "CoreML embeddings are unavailable in the Simulator")
-#else
-        do {
-            _ = try loadModel()
-            return (true, nil)
-        } catch {
+        let resolution = resolveModelURL()
+        EmbeddingModelCache.recordLoadSource(resolution.source)
+        switch resolution.source {
+        case .missing:
             return (
                 false,
-                "CoreML model minilm-l6-v2.mlpackage is missing or failed to load (\(error.localizedDescription))"
+                "CoreML model minilm-l6-v2 is not cached and is not in bundle resources. Call SemanticEmbeddingAvailability.ensureModelAvailable() to download it"
             )
+        case .compiledCache, .bundle:
+            do {
+                _ = try loadModel()
+                return (true, nil)
+            } catch {
+                return (
+                    false,
+                    "CoreML model minilm-l6-v2 failed to load (\(error.localizedDescription))"
+                )
+            }
         }
-#endif
+    }
+
+    fileprivate static func markDelivered(source: EmbeddingModelLoadSource) {
+        EmbeddingModelCache.recordLoadSource(source)
+        availability.storeProbe(available: true, reason: nil)
     }
 
     private static func markRealModelAvailable() {
@@ -170,7 +233,9 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
     private static func takeFallback(reason: String) {
         let message = """
         Real embeddings are unavailable (\(reason)). Semantic recall quality is degraded — \
-        vector rankings are not meaningful until a real embedding model is available.
+        vector rankings are not meaningful until a real embedding model is available. \
+        Call SemanticEmbeddingAvailability.ensureModelAvailable() to download the MiniLM model, \
+        or set downloadsEmbeddingModelAutomatically on the memory configuration.
         """
         if availability.recordWarning(message, reason: reason) {
             embeddingLogger.warning("\(message)")
@@ -178,17 +243,43 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
     }
 
     private static func loadModel() throws -> MLModel {
+        let resolution = resolveModelURL()
+        EmbeddingModelCache.recordLoadSource(resolution.source)
+        guard let modelURL = resolution.url else {
+            throw ContextCoreError.embeddingFailed(
+                "Missing minilm-l6-v2. Call SemanticEmbeddingAvailability.ensureModelAvailable() to download it"
+            )
+        }
+
+        let configuration = MLModelConfiguration()
+#if targetEnvironment(simulator)
+        // Simulator has no Neural Engine and often no MPSGraph GPU backend.
+        // CPU inference works for MiniLM; do not skip the real model path.
+        configuration.computeUnits = .cpuOnly
+#else
+        configuration.computeUnits = .all
+#endif
+        return try MLModel(contentsOf: modelURL, configuration: configuration)
+    }
+
+    private static func resolveModelURL() -> (url: URL?, source: EmbeddingModelLoadSource) {
+        let compiled = EmbeddingModelCache.compiledModelURL
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: compiled.path, isDirectory: &isDirectory),
+           isDirectory.boolValue
+        {
+            return (compiled, .compiledCache)
+        }
+
         let candidates: [URL?] = [
             Bundle.module.url(forResource: "minilm-l6-v2", withExtension: "mlpackage", subdirectory: "Embeddings"),
             Bundle.module.url(forResource: "minilm-l6-v2", withExtension: "mlpackage", subdirectory: "Resources/Embeddings"),
             Bundle.module.url(forResource: "minilm-l6-v2", withExtension: "mlpackage"),
         ]
-
-        guard let modelURL = candidates.compactMap({ $0 }).first else {
-            throw ContextCoreError.embeddingFailed("Missing minilm-l6-v2.mlpackage in bundle resources")
+        if let bundled = candidates.compactMap({ $0 }).first {
+            return (bundled, .bundle)
         }
-
-        return try MLModel(contentsOf: modelURL)
+        return (nil, .missing)
     }
 
     private static func resolveInputName(for model: MLModel) throws -> String {
@@ -287,8 +378,12 @@ internal struct CachingEmbeddingProvider: EmbeddingProvider, Sendable {
         self.cache = cache
     }
 
-    var dimension: Int {
-        base.dimension
+    var dimensions: Int {
+        base.dimensions
+    }
+
+    var modelIdentifier: String {
+        base.modelIdentifier
     }
 
     func embed(_ text: String) async throws -> [Float] {
@@ -301,7 +396,7 @@ internal struct CachingEmbeddingProvider: EmbeddingProvider, Sendable {
         return embedded
     }
 
-    func embedBatch(_ texts: [String]) async throws -> [[Float]] {
+    func embed(_ texts: [String]) async throws -> [[Float]] {
         guard !texts.isEmpty else {
             return []
         }
@@ -323,7 +418,7 @@ internal struct CachingEmbeddingProvider: EmbeddingProvider, Sendable {
         }
 
         if !missOrder.isEmpty {
-            let embeddedMisses = try await base.embedBatch(missOrder)
+            let embeddedMisses = try await base.embed(missOrder)
             guard embeddedMisses.count == missOrder.count else {
                 throw ContextCoreError.embeddingFailed("embedBatch returned mismatched result count")
             }

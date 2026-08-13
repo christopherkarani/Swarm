@@ -20,6 +20,7 @@ struct SemanticMemoryAvailabilityTests {
         #expect(warning.contains("Real embeddings are unavailable"))
         #expect(warning.contains("Semantic recall quality is degraded"))
         #expect(warning.contains("vector rankings are not meaningful"))
+        #expect(warning.contains("SemanticEmbeddingAvailability.ensureModelAvailable()"))
     }
 
     @Test("custom embedding provider reports semantic memory available")
@@ -45,21 +46,12 @@ struct SemanticMemoryAvailabilityTests {
 }
 
 private struct FixedSemanticEmbeddingProvider: ContextCore.EmbeddingProvider, Sendable {
-    let dimension = 384
+    let dimensions = 384
 
     func embed(_ text: String) async throws -> [Float] {
-        var vector = [Float](repeating: 0, count: dimension)
+        var vector = [Float](repeating: 0, count: dimensions)
         vector[0] = Float(text.hashValue % 100) / 100
         return vector
-    }
-
-    func embedBatch(_ texts: [String]) async throws -> [[Float]] {
-        var results: [[Float]] = []
-        results.reserveCapacity(texts.count)
-        for text in texts {
-            results.append(try await embed(text))
-        }
-        return results
     }
 }
 

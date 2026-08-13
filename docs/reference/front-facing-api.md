@@ -21,7 +21,7 @@ memory, Membrane adapters, and web helpers:
 | `Agent.makeDefaultMemory()` | `SlidingWindowMemory` | `DefaultAgentMemory` (ContextCore + Wax) |
 | Durable execute with checkpoint / `resumeFrom` | Warns at checkpoint factories; throws `durableRuntimeUnavailable` | Full Hive durable engine |
 | Membrane / web helpers | Unavailable or no-op; `WebSearchTool` warns at init and throws on execute | Linked and active |
-| Default semantic embeddings | n/a (lean uses `SlidingWindowMemory`) | `DefaultAgentMemory.isSemanticMemoryAvailable` is `false` without MiniLM |
+| Default semantic embeddings | n/a (lean uses `SlidingWindowMemory`) | `DefaultAgentMemory.isSemanticMemoryAvailable` is `false` until `SemanticEmbeddingAvailability.ensureModelAvailable()` (or a bundled/cached MiniLM)
 
 HiveCore, Membrane, and ContextCore are native in-tree `Sources/` targets
 (internal modules, not separate products), linked only with Integrations.
@@ -33,9 +33,9 @@ sdk, OTel, plus NIO transitives including `swift-collections`).
 `SWARM_CORE_ONLY=1` drops the integration package block. ContextCore / full
 Membrane session stack are Apple-only (Metal/CoreML); Linux Integrations keeps
 Hive + MembraneCore + web helpers. `DefaultAgentMemory` (ContextCore + Wax)
-uses fallback pseudo-embeddings when the optional CoreML
-`minilm-l6-v2.mlpackage` is not present, logs a once-per-process warning, and
-exposes `DefaultAgentMemory.isSemanticMemoryAvailable`. See README Install.
+uses fallback pseudo-embeddings when MiniLM is not cached or bundled, logs a
+once-per-process warning naming `SemanticEmbeddingAvailability.ensureModelAvailable()`,
+and exposes `DefaultAgentMemory.isSemanticMemoryAvailable`. See README Install.
 
 ## 1) Entry point and global configuration
 
@@ -436,6 +436,8 @@ public static func makeDefaultMemory() throws -> any Memory
 // Integrations on  → DefaultAgentMemory (ContextCore + Wax)
 // Integrations off → SlidingWindowMemory
 // Query DefaultAgentMemory.isSemanticMemoryAvailable when using the Integrations default.
+// Call SemanticEmbeddingAvailability.ensureModelAvailable() to download MiniLM.
+// downloadsEmbeddingModelAutomatically (default false) logs and continues on failure.
 ```
 
 Pass an explicit factory when you want a fixed backend regardless of traits:
