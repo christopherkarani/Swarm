@@ -264,6 +264,10 @@ public struct Agent: AgentRuntime, Sendable {
         self.guardrailRunnerConfiguration = guardrailRunnerConfiguration
         _handoffs = handoffs
         toolRegistry = try ToolRegistry(tools: tools)
+        inferenceCircuitBreaker = configuration.resilience.makeCircuitBreaker(
+            agentName: configuration.name
+        )
+        inferenceRateLimiter = configuration.resilience.makeRateLimiter()
     }
 
     /// Convenience initializer that takes an unlabeled inference provider.
@@ -615,7 +619,10 @@ public struct Agent: AgentRuntime, Sendable {
 
     private var toolRegistry: ToolRegistry
     private let cancellationState = ActiveRunCancellationState()
-    let resilienceRuntime = AgentResilienceRuntime()
+    /// Created from ``AgentConfiguration/resilience`` at init. Copies of this value share the actor.
+    let inferenceCircuitBreaker: CircuitBreaker?
+    /// Created from ``AgentConfiguration/resilience`` at init. Copies of this value share the actor.
+    let inferenceRateLimiter: RateLimiter?
     private static let autoResponseTracker = ResponseTracker()
     private static let defaultMemorySessionTracker = DefaultMemorySessionTracker()
     private static let responseIDMetadataKey = "response.id"

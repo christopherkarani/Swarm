@@ -16,59 +16,45 @@ extension Agent {
     ///   - startTime: Run start used to compute remaining timeout.
     ///   - observer: Optional observer; retries fire ``AgentObserver/onInferenceRetry(context:agent:attempt:error:)``.
     ///   - tracing: Optional tracing helper; retries emit a `.metric` trace event.
-    ///   - allowsRetry: When `false`, skip retry (still honor limiter + breaker).
-    ///     Used for Foundation Models native session turns that execute tools
-    ///     inside Apple's loop so those tools are not replayed.
+    ///   - retryPolicy: Override for this call. Pass ``RetryPolicy/noRetry`` to skip
+    ///     retry while still honoring limiter and breaker (Foundation Models native
+    ///     session turns that execute tools inside Apple's loop). `nil` uses
+    ///     ``ResilienceConfiguration/retryPolicy``.
     ///   - operation: The inference call.
     func executeProviderInference<T: Sendable>(
         startTime: ContinuousClock.Instant,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
-        allowsRetry: Bool = true,
+        retryPolicy: RetryPolicy? = nil,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try await executeWithinRemainingTimeout(startTime: startTime) {
-            try await self.resilienceRuntime.execute(
-                configuration: self.configuration.resilience,
-                agentName: self.configuration.name,
-                agent: self,
+        let policy = retryPolicy ?? configuration.resilience.retryPolicy
+        return try await executeWithinRemainingTimeout(startTime: startTime) {
+            try await self.performResilientInference(
+                retryPolicy: policy,
                 observer: observer,
                 tracing: tracing,
-                allowsRetry: allowsRetry,
                 operation: operation
             )
         }
     }
-}
 
-// MARK: - AgentResilienceRuntime
-
-/// Per-agent actors for circuit breaking and rate limiting.
-///
-/// Scoped to an ``Agent`` instance and shared across its runs. Distinct agent
-/// values get distinct runtimes.
-actor AgentResilienceRuntime {
-    func execute<T: Sendable>(
-        configuration: ResilienceConfiguration,
-        agentName: String,
-        agent: any AgentRuntime,
+    private func performResilientInference<T: Sendable>(
+        retryPolicy: RetryPolicy,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
-        allowsRetry: Bool,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        guard configuration.hasActivePolicies else {
+        if inferenceRateLimiter == nil,
+           inferenceCircuitBreaker == nil,
+           retryPolicy.maxAttempts == 0 {
             return try await operation()
         }
 
-        if let limiter = rateLimiter(for: configuration.rateLimit) {
-            try await limiter.acquire()
-        }
-
+        let agent: any AgentRuntime = self
         let invoke: @Sendable () async throws -> T = {
             try await Self.invokeWithRetry(
-                configuration: configuration,
-                allowsRetry: allowsRetry,
+                policy: retryPolicy,
                 agent: agent,
                 observer: observer,
                 tracing: tracing,
@@ -76,70 +62,25 @@ actor AgentResilienceRuntime {
             )
         }
 
-        if let breaker = circuitBreaker(for: configuration.circuitBreaker, agentName: agentName) {
+        if let limiter = inferenceRateLimiter {
+            try await limiter.acquire()
+        }
+
+        if let breaker = inferenceCircuitBreaker {
             return try await breaker.execute(invoke)
         }
 
         return try await invoke()
     }
 
-    // MARK: Private
-
-    private var circuitBreakerInstance: CircuitBreaker?
-    private var rateLimiterInstance: RateLimiter?
-
-    private func circuitBreaker(
-        for settings: CircuitBreakerSettings?,
-        agentName: String
-    ) -> CircuitBreaker? {
-        guard let settings else { return nil }
-        if let circuitBreakerInstance {
-            return circuitBreakerInstance
-        }
-
-        let resolvedName: String
-        if let explicitName = settings.name, !explicitName.isEmpty {
-            resolvedName = explicitName
-        } else {
-            let trimmed = agentName.trimmingCharacters(in: .whitespacesAndNewlines)
-            resolvedName = "agent:\(trimmed.isEmpty ? "Agent" : trimmed):inference"
-        }
-
-        let breaker = CircuitBreaker(
-            name: resolvedName,
-            failureThreshold: settings.failureThreshold,
-            successThreshold: settings.successThreshold,
-            resetTimeout: settings.resetTimeout,
-            halfOpenMaxRequests: settings.halfOpenMaxRequests
-        )
-        circuitBreakerInstance = breaker
-        return breaker
-    }
-
-    private func rateLimiter(for settings: RateLimitSettings?) -> RateLimiter? {
-        guard let settings else { return nil }
-        if let rateLimiterInstance {
-            return rateLimiterInstance
-        }
-
-        let limiter = RateLimiter(
-            maxTokens: settings.maxTokens,
-            refillRatePerSecond: settings.refillRatePerSecond
-        )
-        rateLimiterInstance = limiter
-        return limiter
-    }
-
     private static func invokeWithRetry<T: Sendable>(
-        configuration: ResilienceConfiguration,
-        allowsRetry: Bool,
+        policy: RetryPolicy,
         agent: any AgentRuntime,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        let policy = configuration.retryPolicy
-        guard allowsRetry, policy.maxAttempts > 0 else {
+        guard policy.maxAttempts > 0 else {
             return try await operation()
         }
 
@@ -147,9 +88,10 @@ actor AgentResilienceRuntime {
             maxAttempts: policy.maxAttempts,
             backoff: policy.backoff,
             shouldRetry: { error in
-                InferenceRetryability.isRetryable(error)
+                InferenceRetryability.isRetryable(error) && policy.shouldRetry(error)
             },
             onRetry: { attempt, error in
+                await policy.onRetry?(attempt, error)
                 Log.agents.warning(
                     "Inference retry attempt \(attempt): \(error.localizedDescription)"
                 )

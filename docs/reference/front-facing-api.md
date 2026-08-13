@@ -218,7 +218,7 @@ let config = AgentConfiguration.default
     ))
 ```
 
-Retryability is classified by ``InferenceRetryability/isRetryable(_:)`` (see that type's table). ``FallbackChain`` is not wired into `Agent` in this release.
+Retryability is ``InferenceRetryability/isRetryable(_:)`` **and** the policy's `shouldRetry` (default: always). Permanent failures in that table are never retried. ``FallbackChain`` is not wired into `Agent` in this release.
 
 ### Runtime wrappers (on AgentRuntime)
 

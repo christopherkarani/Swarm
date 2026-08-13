@@ -116,7 +116,7 @@ extension Agent {
             startTime: startTime,
             observer: observer,
             tracing: tracing,
-            allowsRetry: executingTools.isEmpty
+            retryPolicy: executingTools.isEmpty ? nil : .noRetry
         ) {
             try await fmProvider.respondUsingNativeSession(
                 messages: messages,

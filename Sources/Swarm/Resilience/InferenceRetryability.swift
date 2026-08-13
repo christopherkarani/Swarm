@@ -13,9 +13,10 @@ import FoundationNetworking
 
 /// Classifies whether a provider-inference failure may be retried by ``Agent``.
 ///
-/// ``Agent`` wraps **provider inference only**. This helper is the single
-/// retryability gate: even if a ``RetryPolicy``'s `shouldRetry` closure returns
-/// `true`, permanent failures listed below are never retried.
+/// ``Agent`` wraps **provider inference only**. This helper is the hard
+/// retryability gate: a ``RetryPolicy``'s `shouldRetry` may further restrict
+/// retries, but even if it returns `true`, permanent failures listed below are
+/// never retried.
 ///
 /// ## Retryable (transient)
 ///

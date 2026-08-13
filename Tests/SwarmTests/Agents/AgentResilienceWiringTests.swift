@@ -163,6 +163,72 @@ struct AgentResilienceWiringTests {
         #expect(modified.resilience.retryPolicy == .standard)
         #expect(modified.maxIterations == original.maxIterations)
     }
+
+    @Test("Custom shouldRetry can restrict retries but cannot expand them")
+    func shouldRetryIsAndedWithClassification() async throws {
+        let provider = MockInferenceProvider(responses: ["should not appear"])
+        await provider.setErrorSequence([Self.transient])
+        let restrictive = RetryPolicy(
+            maxAttempts: 3,
+            backoff: .immediate,
+            shouldRetry: { _ in false }
+        )
+        let agent = try Agent(
+            tools: [],
+            instructions: "Restrict retries",
+            configuration: AgentConfiguration.default
+                .enableStreaming(false)
+                .timeout(.seconds(15))
+                .resilience(ResilienceConfiguration(retryPolicy: restrictive)),
+            inferenceProvider: provider
+        )
+
+        await #expect(throws: AgentError.self) {
+            _ = try await agent.run("hello")
+        }
+        #expect(await provider.recordedInferenceCallCount == 1)
+    }
+
+    @Test("Copies of the same Agent share the circuit breaker")
+    func agentCopiesShareCircuitBreaker() async throws {
+        let provider = MockInferenceProvider(responses: ["unused"])
+        await provider.setError(Self.transient)
+
+        let agent = try Agent(
+            tools: [],
+            instructions: "Shared breaker",
+            configuration: AgentConfiguration.default
+                .enableStreaming(false)
+                .resilience(ResilienceConfiguration(
+                    retryPolicy: .noRetry,
+                    circuitBreaker: CircuitBreakerSettings(
+                        failureThreshold: 2,
+                        resetTimeout: 60,
+                        name: "shared-breaker"
+                    )
+                )),
+            inferenceProvider: provider
+        )
+
+        await #expect(throws: AgentError.self) {
+            _ = try await agent.run("one")
+        }
+        await #expect(throws: AgentError.self) {
+            _ = try await agent.run("two")
+        }
+
+        let copy = agent
+        do {
+            _ = try await copy.run("three")
+            Issue.record("Expected the copied agent to share the open breaker")
+        } catch let error as ResilienceError {
+            #expect(error == .circuitBreakerOpen(serviceName: "shared-breaker"))
+        } catch {
+            Issue.record("Expected ResilienceError.circuitBreakerOpen, got \(error)")
+        }
+
+        #expect(await provider.recordedInferenceCallCount == 2)
+    }
 }
 
 // MARK: - Helpers

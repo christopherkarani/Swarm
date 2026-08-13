@@ -134,10 +134,12 @@ public struct RateLimitSettings: Sendable, Equatable {
 ///
 /// ## Retryability
 ///
-/// ``Agent`` ignores a policy's `shouldRetry` closure for classification and
-/// instead uses ``InferenceRetryability/isRetryable(_:)``. Permanent failures
+/// ``Agent`` retries only when **both** ``InferenceRetryability/isRetryable(_:)``
+/// and the policy's `shouldRetry` closure return `true`. Permanent failures
 /// (cancellation, guardrail rejection, schema/parse errors, tool failures) are
-/// never retried. See ``InferenceRetryability`` for the table.
+/// never retried, even if `shouldRetry` returns `true`. A custom `shouldRetry`
+/// may further restrict retries; it cannot expand them. See
+/// ``InferenceRetryability`` for the table.
 ///
 /// ## Scoping
 ///
@@ -166,9 +168,9 @@ public struct ResilienceConfiguration: Sendable, Equatable {
 
     /// Retry policy applied to each provider inference call.
     ///
-    /// Default: ``RetryPolicy/noRetry``. Only ``RetryPolicy/maxAttempts`` and
-    /// ``RetryPolicy/backoff`` are honored by ``Agent``; retryability is
-    /// classified by ``InferenceRetryability``.
+    /// Default: ``RetryPolicy/noRetry``. ``Agent`` honors ``RetryPolicy/maxAttempts``,
+    /// ``RetryPolicy/backoff``, ``RetryPolicy/shouldRetry``, and ``RetryPolicy/onRetry``.
+    /// Retryability is the conjunction of ``InferenceRetryability`` and `shouldRetry`.
     public var retryPolicy: RetryPolicy
 
     /// Optional circuit-breaker settings for inference.
@@ -200,5 +202,33 @@ public struct ResilienceConfiguration: Sendable, Equatable {
     /// Whether any policy would change inference execution relative to the default.
     package var hasActivePolicies: Bool {
         retryPolicy.maxAttempts > 0 || circuitBreaker != nil || rateLimit != nil
+    }
+
+    /// Builds the agent-scoped circuit breaker, or `nil` when breaker settings are absent.
+    package func makeCircuitBreaker(agentName: String) -> CircuitBreaker? {
+        guard let settings = circuitBreaker else { return nil }
+        let resolvedName: String
+        if let explicitName = settings.name, !explicitName.isEmpty {
+            resolvedName = explicitName
+        } else {
+            let trimmed = agentName.trimmingCharacters(in: .whitespacesAndNewlines)
+            resolvedName = "agent:\(trimmed.isEmpty ? "Agent" : trimmed):inference"
+        }
+        return CircuitBreaker(
+            name: resolvedName,
+            failureThreshold: settings.failureThreshold,
+            successThreshold: settings.successThreshold,
+            resetTimeout: settings.resetTimeout,
+            halfOpenMaxRequests: settings.halfOpenMaxRequests
+        )
+    }
+
+    /// Builds the agent-scoped rate limiter, or `nil` when rate-limit settings are absent.
+    package func makeRateLimiter() -> RateLimiter? {
+        guard let settings = rateLimit else { return nil }
+        return RateLimiter(
+            maxTokens: settings.maxTokens,
+            refillRatePerSecond: settings.refillRatePerSecond
+        )
     }
 }
