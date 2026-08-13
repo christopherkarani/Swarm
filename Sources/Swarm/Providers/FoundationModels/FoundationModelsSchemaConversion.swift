@@ -79,6 +79,39 @@ enum FoundationModelsSchemaConversion {
         return ["value": value]
     }
 
+    /// Converts Swarm `SendableValue`s into a Foundation Models `GeneratedContent` tree.
+    static func generatedContent(from dictionary: [String: SendableValue]) -> GeneratedContent {
+        generatedContent(from: .dictionary(dictionary))
+    }
+
+    /// Converts a Swarm `SendableValue` into Foundation Models `GeneratedContent`.
+    static func generatedContent(from value: SendableValue) -> GeneratedContent {
+        switch value {
+        case .null:
+            return GeneratedContent(kind: .null)
+        case let .bool(bool):
+            return GeneratedContent(kind: .bool(bool))
+        case let .int(int):
+            return GeneratedContent(kind: .number(Double(int)))
+        case let .double(double):
+            return GeneratedContent(kind: .number(double))
+        case let .string(string):
+            return GeneratedContent(kind: .string(string))
+        case let .array(values):
+            return GeneratedContent(kind: .array(values.map(generatedContent(from:))))
+        case let .dictionary(dictionary):
+            let keys = dictionary.keys.sorted()
+            var properties: [String: GeneratedContent] = [:]
+            properties.reserveCapacity(keys.count)
+            for key in keys {
+                if let nested = dictionary[key] {
+                    properties[key] = generatedContent(from: nested)
+                }
+            }
+            return GeneratedContent(kind: .structure(properties: properties, orderedKeys: keys))
+        }
+    }
+
     // MARK: - Private
 
     private static func dynamicSchema(

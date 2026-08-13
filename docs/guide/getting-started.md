@@ -378,6 +378,19 @@ Or using the `.environment()` modifier on any `AgentRuntime`:
 agent.environment(\.inferenceProvider, myCustomProvider)
 ```
 
+### Capture vs native session (experimental)
+
+By default Swarm **captures** Foundation Models tool calls and executes them in
+the agent loop (guardrails, checkpoints, per-iteration memory). Opt in to
+experimental native session mode for parallel tool calls and token streaming
+with tools — see [Foundation Models](foundation-models.md) for the trade-off
+table.
+
+```swift
+let config = AgentConfiguration.default
+    .foundationModelsExecution(.nativeSession)
+```
+
 ### Structured output
 
 `runStructured` asks the model (prompt instruction) and parses the reply as
@@ -409,6 +422,7 @@ The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only featur
 ## Next Steps
 
 - **[Agents](../reference/front-facing-api.md#3-agent-struct-primary-init)** -- Agent types, configuration, tool calling
+- **[Foundation Models](foundation-models.md)** -- Capture vs experimental native session mode
 - **[Tools](../reference/front-facing-api.md#5-tool-and-functiontool)** -- `@Tool` macro, `FunctionTool`, `ToolCollection`, and `@ToolBuilder`
 - **[Workflow](../reference/front-facing-api.md#7-workflow)** -- Sequential, parallel, and routed execution
 - **[Memory](../reference/front-facing-api.md#9-memory-factories)** -- Conversation, vector, summary, persistent

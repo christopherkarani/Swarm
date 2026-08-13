@@ -629,13 +629,13 @@ public struct Agent: AgentRuntime, Sendable {
         let structuredOutput: StructuredOutputResult?
     }
 
-    private struct ToolLoopOutcome: Sendable {
+    struct ToolLoopOutcome: Sendable {
         let output: String
         let structuredOutput: StructuredOutputResult?
         let transcriptMessages: [MemoryMessage]
     }
 
-    private struct FinalAssistantResponse: Sendable {
+    struct FinalAssistantResponse: Sendable {
         let content: String
         let structuredOutput: StructuredOutputResult?
     }
@@ -1258,7 +1258,7 @@ public struct Agent: AgentRuntime, Sendable {
         )
     }
 
-    private func finalizeAssistantResponse(
+    func finalizeAssistantResponse(
         content: String,
         request: StructuredOutputRequest?,
         provider: any InferenceProvider
@@ -1482,6 +1482,29 @@ public struct Agent: AgentRuntime, Sendable {
                     nil
                 }
 
+                if let nativeOutcome = try await executeNativeFoundationModelsSessionIfAvailable(
+                    provider: provider,
+                    messages: FoundationModelsNativePrompt.messages(
+                        structuredMessages: structuredMessages,
+                        envelopePrompt: prompt
+                    ),
+                    toolRegistry: toolRegistry,
+                    toolSchemas: toolSchemas,
+                    inferenceOptions: inferenceOptions,
+                    systemPrompt: systemMessage,
+                    observer: observer,
+                    tracing: tracing,
+                    resultBuilder: resultBuilder,
+                    executionContext: executionContext,
+                    startTime: startTime,
+                    session: session,
+                    enableStreaming: enableStreaming,
+                    structuredOutputRequest: structuredOutputRequest
+                ) {
+                    await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                    return nativeOutcome
+                }
+
                 // If no tools defined, generate without tool calling
                 if toolSchemas.isEmpty {
                     let loopInferenceOptions = inferenceOptions
@@ -1650,7 +1673,7 @@ public struct Agent: AgentRuntime, Sendable {
         }
     }
 
-    private func executeWithinRemainingTimeout<T: Sendable>(
+    func executeWithinRemainingTimeout<T: Sendable>(
         startTime: ContinuousClock.Instant,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
@@ -2562,7 +2585,7 @@ public struct Agent: AgentRuntime, Sendable {
         )
     }
 
-    private func optionsWithMembraneRuntimeSettings(_ base: InferenceOptions) -> InferenceOptions {
+    func optionsWithMembraneRuntimeSettings(_ base: InferenceOptions) -> InferenceOptions {
         guard let membrane = AgentEnvironmentValues.current.membrane, membrane.isEnabled else {
             return base
         }

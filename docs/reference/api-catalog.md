@@ -3,8 +3,8 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6).
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 157
-- Public/open symbols cataloged: 2423
+- Source files scanned: 161
+- Public/open symbols cataloged: 2436
 
 ## 1. Swarm (entry point)
 
@@ -51,6 +51,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 108 | func | public | AgentConfiguration.contextProfile(_:) | `public @discardableResult func contextProfile(_ value: ContextProfile) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.defaultTracingEnabled(_:) | `public @discardableResult func defaultTracingEnabled(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.enableStreaming(_:) | `public @discardableResult func enableStreaming(_ value: Bool) -> AgentConfiguration` |
+| 108 | func | public | AgentConfiguration.foundationModelsExecution(_:) | `public @discardableResult func foundationModelsExecution(_ value: FoundationModelsExecutionMode) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.includeReasoning(_:) | `public @discardableResult func includeReasoning(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.includeToolCallDetails(_:) | `public @discardableResult func includeToolCallDetails(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.inferencePolicy(_:) | `public @discardableResult func inferencePolicy(_ value: InferencePolicy?) -> AgentConfiguration` |
@@ -86,7 +87,11 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 245 | var | public | AgentConfiguration.previousResponseId | `public var previousResponseId: String?` |
 | 253 | var | public | AgentConfiguration.autoPreviousResponseId | `public var autoPreviousResponseId: Bool` |
 | 264 | var | public | AgentConfiguration.defaultTracingEnabled | `public var defaultTracingEnabled: Bool` |
-| 289 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true)` |
+| 126 | enum | public | FoundationModelsExecutionMode | `public enum FoundationModelsExecutionMode` |
+| 130 | case | public | FoundationModelsExecutionMode.capture | `public case capture` |
+| 139 | case | public | FoundationModelsExecutionMode.nativeSession | `public case nativeSession` |
+| 604 | var | public | AgentConfiguration.foundationModelsExecution | `public var foundationModelsExecution: FoundationModelsExecutionMode` |
+| 630 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:foundationModelsExecution:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, foundationModelsExecution: FoundationModelsExecutionMode = .capture)` |
 | 345 | var | public | AgentConfiguration.description | `public var description: String { get }` |
 
 ### Core/AgentEnvironment.swift
@@ -1323,6 +1328,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 290 | func | public | ToolBuilder.buildExpression(_:) | `public static func buildExpression(_ expression: any AnyJSONTool) -> [any AnyJSONTool]` |
 | 295 | func | public | ToolBuilder.buildExpression(_:) | `public static func buildExpression<T>(_ expression: T) -> [any AnyJSONTool] where T : Tool` |
 | 300 | func | public | ToolBuilder.buildExpression(_:) | `public static func buildExpression(_ expression: [any AnyJSONTool]) -> [any AnyJSONTool]` |
+| 305 | func | public | ToolBuilder.buildExpression(_:) | `public static func buildExpression(_ expression: FoundationModelsNativeTool) -> ToolCollection` _(Availability: macOS 26.0+, iOS 26.0+, visionOS 26.0+; Requires FoundationModels)_ |
+| 315 | func | public | ToolBuilder.buildExpression(_:) | `public static func buildExpression<T>(_ expression: T) -> ToolCollection where T : FoundationModels.Tool` _(Availability: macOS 26.0+, iOS 26.0+, visionOS 26.0+; Requires FoundationModels)_ |
 | 305 | func | public | ToolBuilder.buildLimitedAvailability(_:) | `public static func buildLimitedAvailability(_ component: [any AnyJSONTool]) -> [any AnyJSONTool]` |
 | 312 | typealias | public | ToolArrayBuilder | `public typealias ToolArrayBuilder = ToolBuilder` _(Availability: * (deprecated); renamed to ToolBuilder)_ |
 
@@ -2636,6 +2643,19 @@ First-class on-device Apple Foundation Models path. Gated by `#if canImport(Foun
 | 487 | func | public | InferenceProvider.foundationModels(configuration:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
 | 493 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
 | 509 | func | public | InferenceProvider.foundationModels(profile:configuration:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
+
+### Providers/FoundationModels/FoundationModelsNativeTool.swift
+
+Experimental adapter wrapping a user `FoundationModels.Tool` as a Swarm `AnyJSONTool`.
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 39 | struct | public | FoundationModelsNativeTool | `public struct FoundationModelsNativeTool` |
+| 40 | var | public | FoundationModelsNativeTool.name | `public let name: String` |
+| 41 | var | public | FoundationModelsNativeTool.description | `public let description: String` |
+| 42 | var | public | FoundationModelsNativeTool.parameters | `public let parameters: [ToolParameter]` |
+| 47 | func | public | FoundationModelsNativeTool.init(_:) | `public init<T>(_ tool: T) where T : FoundationModels.Tool` |
+| 69 | func | public | FoundationModelsNativeTool.execute(arguments:) | `public func execute(arguments: [String: SendableValue]) async throws -> SendableValue` |
 
 ### Providers/FoundationModels/DynamicProfile.swift
 

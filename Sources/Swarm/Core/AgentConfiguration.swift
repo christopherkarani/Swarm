@@ -91,6 +91,54 @@ public struct InferencePolicy: Sendable, Equatable {
     }
 }
 
+// MARK: - FoundationModelsExecutionMode
+
+/// How Apple Foundation Models should run tool-calling turns.
+///
+/// This option is **experimental** and only observed by
+/// ``FoundationModelsInferenceProvider``. Non-Foundation-Models providers ignore it.
+///
+/// ## Capture vs native session
+///
+/// | | ``capture`` (default) | ``nativeSession`` (experimental) |
+/// |---|---|---|
+/// | Tool loop owner | Swarm agent loop | `LanguageModelSession` |
+/// | Parallel tool calls | No (one captured call per turn) | Yes (Apple's session loop) |
+/// | Transcript / KV reuse | No (session rebuilt every turn) | Yes (session kept for the agent run) |
+/// | Token streaming with tools | No | Yes (`Agent.stream` yields incremental tokens) |
+/// | Per-iteration memory injection | Yes | **No** — memory is injected when the native session starts |
+/// | Swarm `maxIterations` cap | Yes | **No** — Apple owns the inner loop |
+/// | Mid-loop checkpoints | Yes | **No** |
+/// | Per-turn guardrail interception | Yes (wraps Swarm's loop) | **No** — input/tool guardrails run **inside** each tool body |
+///
+/// - Experiment: Native session mode may change in a minor release. Capture remains
+///   the supported default because Swarm-side control (guardrails, checkpoints,
+///   memory injection) is the framework's differentiator.
+///
+/// ```swift
+/// let config = AgentConfiguration.default
+///     .foundationModelsExecution(.nativeSession)
+/// let agent = try Agent("Be helpful.", configuration: config,
+///     inferenceProvider: .foundationModels()) {
+///     WeatherTool()
+/// }
+/// ```
+public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
+    /// Swarm owns the tool loop. Foundation Models tools throw a capture error so
+    /// Swarm can execute tools with guardrails, observers, retries, and
+    /// per-iteration memory injection. This is the default.
+    case capture
+
+    /// Let Foundation Models run its own tool loop on a persistent
+    /// `LanguageModelSession`.
+    ///
+    /// - Experiment: Opt-in. Unlocks parallel tool calls, transcript/KV reuse, and
+    ///   real token streaming with tools. Loses per-iteration memory injection,
+    ///   Swarm-side max-iteration caps, mid-loop checkpoints, and per-turn
+    ///   guardrail interception (guardrails move inside tool bodies).
+    case nativeSession
+}
+
 // MARK: - AgentConfiguration
 
 /// Configuration settings for agent execution.
@@ -147,6 +195,7 @@ public struct InferencePolicy: Sendable, Equatable {
 /// - ``previousResponseId(_:)`` - Set response continuation
 /// - ``autoPreviousResponseId(_:)`` - Set auto response tracking
 /// - ``defaultTracingEnabled(_:)`` - Set default tracing
+/// - ``foundationModelsExecution(_:)`` - Set Foundation Models execution mode (experimental)
 ///
 /// ## Thread Safety
 ///
@@ -539,6 +588,21 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   ``SwiftLogTracer``
     public var defaultTracingEnabled: Bool
 
+    // MARK: - Foundation Models Execution
+
+    /// How Apple Foundation Models should execute tool-calling turns.
+    ///
+    /// Default: ``FoundationModelsExecutionMode/capture``.
+    ///
+    /// Non-Foundation-Models providers ignore this flag. Capture mode behavior
+    /// is unchanged when the value stays `.capture`.
+    ///
+    /// - Experiment: ``FoundationModelsExecutionMode/nativeSession`` is opt-in.
+    ///   See ``FoundationModelsExecutionMode`` for the full trade-off table.
+    ///
+    /// - SeeAlso: ``FoundationModelsExecutionMode``, ``foundationModelsExecution(_:)``
+    public var foundationModelsExecution: FoundationModelsExecutionMode
+
     // MARK: - Initialization
 
     /// Creates a new agent configuration.
@@ -562,6 +626,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - previousResponseId: Previous response ID for continuation. Default: nil
     ///   - autoPreviousResponseId: Enable auto response ID tracking. Default: false
     ///   - defaultTracingEnabled: Enable default tracing when no tracer configured. Default: true
+    ///   - foundationModelsExecution: Foundation Models tool-loop mode. Default: ``FoundationModelsExecutionMode/capture``
     public init(
         name: String = "Agent",
         maxIterations: Int = 10,
@@ -581,7 +646,8 @@ public struct AgentConfiguration: Sendable, Equatable {
         parallelToolCalls: Bool = false,
         previousResponseId: String? = nil,
         autoPreviousResponseId: Bool = false,
-        defaultTracingEnabled: Bool = true
+        defaultTracingEnabled: Bool = true,
+        foundationModelsExecution: FoundationModelsExecutionMode = .capture
     ) {
         if maxIterations < 1 {
             Log.agents.warning("AgentConfiguration: maxIterations \(maxIterations) must be >= 1; using 1")
@@ -612,6 +678,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.previousResponseId = previousResponseId
         self.autoPreviousResponseId = autoPreviousResponseId
         self.defaultTracingEnabled = defaultTracingEnabled
+        self.foundationModelsExecution = foundationModelsExecution
     }
 }
 
@@ -1110,6 +1177,35 @@ extension AgentConfiguration {
         copy.defaultTracingEnabled = value
         return copy
     }
+
+    // MARK: Foundation Models Execution
+
+    /// Sets how Apple Foundation Models should execute tool-calling turns.
+    ///
+    /// Default: ``FoundationModelsExecutionMode/capture``.
+    ///
+    /// Non-Foundation-Models providers ignore this flag. See
+    /// ``FoundationModelsExecutionMode`` for the capture vs native trade-off table.
+    ///
+    /// - Experiment: ``FoundationModelsExecutionMode/nativeSession`` is opt-in and
+    ///   may change in a minor release.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .foundationModelsExecution(.nativeSession)
+    /// ```
+    ///
+    /// - Parameter value: The Foundation Models execution mode
+    /// - Returns: A new configuration with the updated execution mode
+    /// - SeeAlso: ``foundationModelsExecution``, ``FoundationModelsExecutionMode``
+    @discardableResult public func foundationModelsExecution(
+        _ value: FoundationModelsExecutionMode
+    ) -> AgentConfiguration {
+        var copy = self
+        copy.foundationModelsExecution = value
+        return copy
+    }
 }
 
 // MARK: - CustomStringConvertible
@@ -1137,7 +1233,8 @@ extension AgentConfiguration: CustomStringConvertible {
             parallelToolCalls: \(parallelToolCalls),
             previousResponseId: \(previousResponseId.map { "\"\($0)\"" } ?? "nil"),
             autoPreviousResponseId: \(autoPreviousResponseId),
-            defaultTracingEnabled: \(defaultTracingEnabled)
+            defaultTracingEnabled: \(defaultTracingEnabled),
+            foundationModelsExecution: \(foundationModelsExecution)
         )
         """
     }

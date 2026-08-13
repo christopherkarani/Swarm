@@ -530,6 +530,13 @@ Built-in inference is Apple Foundation Models only. Custom backends implement
 | `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Same, driven by Swarm ``DynamicProfile`` (WWDC 2026–aligned; re-resolves each turn) |
 | Custom `InferenceProvider` | your type | Implement the protocol for non-FM backends |
 
+Opt in to experimental native session mode with
+``AgentConfiguration/foundationModelsExecution(_:)``. Capture remains the
+default. See the [Foundation Models guide](/guide/foundation-models).
+
+You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
+(wrapped as ``FoundationModelsNativeTool``).
+
 ## 12) Events and results
 
 ```swift

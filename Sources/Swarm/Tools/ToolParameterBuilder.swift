@@ -5,6 +5,10 @@
 
 import Foundation
 
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
+
 // MARK: - ToolParameterBuilder
 
 /// A result builder for constructing tool parameter arrays with DSL syntax.
@@ -292,6 +296,26 @@ public struct ToolBuilder {
     public static func buildExpression(_ expression: FunctionTool) -> ToolCollection {
         ToolCollection(storage: [expression])
     }
+
+    #if canImport(FoundationModels)
+        /// Wraps a ``FoundationModelsNativeTool`` into a `ToolCollection`.
+        @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+        @available(tvOS, unavailable)
+        @available(watchOS, unavailable)
+        public static func buildExpression(_ expression: FoundationModelsNativeTool) -> ToolCollection {
+            ToolCollection(storage: [expression])
+        }
+
+        /// Wraps a user-authored `FoundationModels.Tool` into a `ToolCollection`.
+        ///
+        /// - Experiment: Intended for ``FoundationModelsExecutionMode/nativeSession``.
+        @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+        @available(tvOS, unavailable)
+        @available(watchOS, unavailable)
+        public static func buildExpression<T: FoundationModels.Tool>(_ expression: T) -> ToolCollection {
+            ToolCollection(storage: [FoundationModelsNativeTool(expression)])
+        }
+    #endif
 
     #if canImport(Darwin)
         /// Wraps the built-in calculator tool into a `ToolCollection`.

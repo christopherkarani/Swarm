@@ -17,3 +17,4 @@ The current API reference covers the supported public surface for Swarm 0.6.0. P
 | [Observability](/guide/opentelemetry-tracing) | Tracing, OpenTelemetry, `OSLogTracer`, `SwiftLogTracer`, metrics |
 | [MCP](/reference/api-catalog) | Model Context Protocol client and server |
 | [Providers](/reference/front-facing-api) | Foundation Models, `InferenceProvider`, `MultiProvider` routing |
+| [Foundation Models modes](/guide/foundation-models) | Capture vs experimental native session |
