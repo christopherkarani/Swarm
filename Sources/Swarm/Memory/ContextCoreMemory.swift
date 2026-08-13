@@ -24,20 +24,30 @@ public struct ContextCoreMemoryConfiguration: Sendable {
     /// Default `false`: Swarm never downloads the MiniLM model without explicit
     /// consent. Prefer calling `ensureModelAvailable()` yourself so progress and
     /// errors stay in the caller's control.
+    ///
+    /// A failed auto-download is logged and does **not** block session start;
+    /// the store continues with fallback embeddings until
+    /// ``SemanticEmbeddingAvailability/ensureModelAvailable(configuration:progressHandler:)``
+    /// succeeds.
     public var downloadsEmbeddingModelAutomatically: Bool
+    /// Delivery URL, pinned hash, and cache directory used when
+    /// ``downloadsEmbeddingModelAutomatically`` is `true`.
+    public var embeddingModelDelivery: EmbeddingModelDeliveryConfiguration
 
     public init(
         contextConfiguration: ContextCore.ContextConfiguration = .default,
         promptTitle: String = "ContextCore Memory Context (primary)",
         promptGuidance: String? = "Use ContextCore memory context as the primary working memory source.",
         allowsAutomaticSessionSeeding: Bool = true,
-        downloadsEmbeddingModelAutomatically: Bool = false
+        downloadsEmbeddingModelAutomatically: Bool = false,
+        embeddingModelDelivery: EmbeddingModelDeliveryConfiguration = .default
     ) {
         self.contextConfiguration = contextConfiguration
         self.promptTitle = promptTitle
         self.promptGuidance = promptGuidance
         self.allowsAutomaticSessionSeeding = allowsAutomaticSessionSeeding
         self.downloadsEmbeddingModelAutomatically = downloadsEmbeddingModelAutomatically
+        self.embeddingModelDelivery = embeddingModelDelivery
     }
 }
 
@@ -164,10 +174,23 @@ public actor ContextCoreMemory: Memory, MemoryPromptDescriptor, MemorySessionLif
             return
         }
 
-        do {
-            if configuration.downloadsEmbeddingModelAutomatically {
-                try await SemanticEmbeddingAvailability.ensureModelAvailable()
+        if configuration.downloadsEmbeddingModelAutomatically {
+            do {
+                try await SemanticEmbeddingAvailability.ensureModelAvailable(
+                    configuration: configuration.embeddingModelDelivery
+                )
+            } catch {
+                Log.memory.warning(
+                    """
+                    Automatic MiniLM download failed (\(error.localizedDescription)). \
+                    Starting the session with embedding fallback. Call \
+                    SemanticEmbeddingAvailability.ensureModelAvailable() to retry.
+                    """
+                )
             }
+        }
+
+        do {
             context = try contextFactory()
             try await context.beginSession()
             for message in messages {

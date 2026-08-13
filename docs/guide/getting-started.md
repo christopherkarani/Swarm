@@ -62,8 +62,9 @@ Without it, Integrations `DefaultAgentMemory` uses deterministic
 pseudo-embeddings, logs a once-per-process warning naming that API, and
 `isSemanticMemoryAvailable` is `false`. Set
 `downloadsEmbeddingModelAutomatically` on the memory configuration to opt in
-to auto-download (default `off`). Simulator uses CoreML CPU inference; it is
-not a special-case fallback.
+to auto-download (default `off`). A failed auto-download logs a warning and
+starts the session with fallback embeddings; call `ensureModelAvailable()` to
+retry. Simulator uses CoreML CPU inference; it is not a special-case fallback.
 
 ### Xcode
 

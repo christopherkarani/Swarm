@@ -115,70 +115,50 @@ public struct EmbeddingModelDeliveryConfiguration: Sendable {
 
 /// Process-wide MiniLM cache location and last load-source probe.
 ///
-/// Mutable fields are protected by `lock`. `@unchecked Sendable` matches
-/// `EmbeddingAvailabilityState` in `EmbeddingProviders.swift`.
-final class EmbeddingModelCache: @unchecked Sendable {
-    static let shared = EmbeddingModelCache()
+/// Mutable fields live on `State`, protected by `lock`. `@unchecked Sendable`
+/// matches `EmbeddingAvailabilityState` in `EmbeddingProviders.swift`.
+enum EmbeddingModelCache {
+    private static let state = State()
 
-    private let lock = NSLock()
-    private var directoryOverride: URL?
-    private var lastSource: EmbeddingModelLoadSource = .missing
-
-    private init() {}
+    private final class State: @unchecked Sendable {
+        let lock = NSLock()
+        var directoryOverride: URL?
+        var lastSource: EmbeddingModelLoadSource = .missing
+    }
 
     static var defaultDirectory: URL {
         EmbeddingModelCatalog.defaultCacheDirectory
     }
 
     static var directory: URL {
-        shared.directory
-    }
-
-    var directory: URL {
-        lock.lock()
-        defer { lock.unlock() }
-        return directoryOverride ?? Self.defaultDirectory
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        return state.directoryOverride ?? defaultDirectory
     }
 
     static func setDirectoryOverride(_ url: URL?) {
-        shared.setDirectoryOverride(url)
-    }
-
-    func setDirectoryOverride(_ url: URL?) {
-        lock.lock()
-        defer { lock.unlock() }
-        directoryOverride = url
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        state.directoryOverride = url
     }
 
     static var lastLoadSource: EmbeddingModelLoadSource {
-        shared.lastLoadSource
-    }
-
-    var lastLoadSource: EmbeddingModelLoadSource {
-        lock.lock()
-        defer { lock.unlock() }
-        return lastSource
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        return state.lastSource
     }
 
     static func recordLoadSource(_ source: EmbeddingModelLoadSource) {
-        shared.recordLoadSource(source)
-    }
-
-    func recordLoadSource(_ source: EmbeddingModelLoadSource) {
-        lock.lock()
-        defer { lock.unlock() }
-        lastSource = source
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        state.lastSource = source
     }
 
     static func resetForTesting() {
-        shared.resetForTesting()
-    }
-
-    func resetForTesting() {
-        lock.lock()
-        defer { lock.unlock() }
-        directoryOverride = nil
-        lastSource = .missing
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        state.directoryOverride = nil
+        state.lastSource = .missing
     }
 
     static var compiledModelURL: URL {
@@ -320,13 +300,20 @@ actor EmbeddingModelDownloader {
     }
 
     private static func prepareCompileSource(downloadedFile: URL, stagingRoot: URL) throws -> URL {
-        let data = try Data(contentsOf: downloadedFile, options: [.mappedIfSafe])
-        if EmbeddingModelZip.isZip(data) {
-            let unzipped = stagingRoot.appendingPathComponent("unzipped", isDirectory: true)
-            try EmbeddingModelZip.extract(archive: data, to: unzipped)
-            return try EmbeddingModelZip.locateModelPackage(in: unzipped)
+        let magic = try readPrefix(downloadedFile, count: 4)
+        guard EmbeddingModelZip.isZip(magic) else {
+            return downloadedFile
         }
-        return downloadedFile
+        let data = try Data(contentsOf: downloadedFile, options: [.mappedIfSafe])
+        let unzipped = stagingRoot.appendingPathComponent("unzipped", isDirectory: true)
+        try EmbeddingModelZip.extract(archive: data, to: unzipped)
+        return try EmbeddingModelZip.locateModelPackage(in: unzipped)
+    }
+
+    private static func readPrefix(_ url: URL, count: Int) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        return try handle.read(upToCount: count) ?? Data()
     }
 
     private static func installAtomically(from compiled: URL, to destination: URL) throws {

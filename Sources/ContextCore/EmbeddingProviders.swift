@@ -69,8 +69,10 @@ public enum SemanticEmbeddingAvailability: Sendable {
     /// I/O unless you call this method or set `downloadsEmbeddingModelAutomatically`
     /// on the memory configuration.
     ///
-    /// After a successful return, ``isAvailable`` is re-probed in this process
-    /// so callers do not need to restart.
+    /// After a successful return, ``isAvailable`` flips in this process so
+    /// callers do not need to restart. Delivery success is recorded from the
+    /// verified cache install; a later ``reprobe()`` still requires CoreML to
+    /// load the compiled model.
     ///
     /// - Parameters:
     ///   - configuration: Download URL, pinned SHA-256, and cache directory.
@@ -84,12 +86,13 @@ public enum SemanticEmbeddingAvailability: Sendable {
             configuration: configuration,
             progressHandler: progressHandler
         )
-        reprobe()
+        CoreMLEmbeddingProvider.markDelivered(source: .compiledCache)
     }
 
     /// Clears the last probe and checks the cache / bundle again.
     ///
-    /// Called automatically by ``ensureModelAvailable(configuration:progressHandler:)``.
+    /// Unlike ``ensureModelAvailable(configuration:progressHandler:)``, this
+    /// requires CoreML to load the compiled model before ``isAvailable`` is `true`.
     public static func reprobe() {
         CoreMLEmbeddingProvider.reprobeAvailability()
     }
@@ -200,14 +203,27 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
         let resolution = resolveModelURL()
         EmbeddingModelCache.recordLoadSource(resolution.source)
         switch resolution.source {
-        case .compiledCache, .bundle:
-            return (true, nil)
         case .missing:
             return (
                 false,
                 "CoreML model minilm-l6-v2 is not cached and is not in bundle resources. Call SemanticEmbeddingAvailability.ensureModelAvailable() to download it"
             )
+        case .compiledCache, .bundle:
+            do {
+                _ = try loadModel()
+                return (true, nil)
+            } catch {
+                return (
+                    false,
+                    "CoreML model minilm-l6-v2 failed to load (\(error.localizedDescription))"
+                )
+            }
         }
+    }
+
+    fileprivate static func markDelivered(source: EmbeddingModelLoadSource) {
+        EmbeddingModelCache.recordLoadSource(source)
+        availability.storeProbe(available: true, reason: nil)
     }
 
     private static func markRealModelAvailable() {

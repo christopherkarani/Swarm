@@ -106,9 +106,9 @@ enum EmbeddingModelZip {
         relativePath: String,
         destination: URL
     ) throws {
+        let output = try resolvedOutputURL(relativePath: relativePath, destination: destination)
         if relativePath.hasSuffix("/") || relativePath.isEmpty {
-            let directory = destination.appendingPathComponent(relativePath, isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
             return
         }
 
@@ -134,7 +134,6 @@ enum EmbeddingModelZip {
             throw EmbeddingModelDeliveryError.compilationFailed("Unsupported ZIP compression method \(method)")
         }
 
-        let output = destination.appendingPathComponent(relativePath)
         try FileManager.default.createDirectory(
             at: output.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -142,33 +141,69 @@ enum EmbeddingModelZip {
         try inflated.write(to: output, options: .atomic)
     }
 
+    /// Rejects absolute paths, `..` segments, and any resolved URL outside `destination`.
+    private static func resolvedOutputURL(relativePath: String, destination: URL) throws -> URL {
+        let normalized = relativePath.replacingOccurrences(of: "\\", with: "/")
+        if normalized.contains("\0") || normalized.hasPrefix("/") {
+            throw EmbeddingModelDeliveryError.compilationFailed("ZIP entry path is not safe: \(relativePath)")
+        }
+        let segments = normalized.split(separator: "/", omittingEmptySubsequences: true)
+        if segments.contains("..") {
+            throw EmbeddingModelDeliveryError.compilationFailed("ZIP entry path is not safe: \(relativePath)")
+        }
+
+        let destinationRoot = destination.standardizedFileURL
+        let output = destinationRoot.appendingPathComponent(normalized).standardizedFileURL
+        let rootPath = destinationRoot.path
+        let outputPath = output.path
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        guard outputPath == rootPath || outputPath.hasPrefix(prefix) else {
+            throw EmbeddingModelDeliveryError.compilationFailed("ZIP entry path is not safe: \(relativePath)")
+        }
+        return output
+    }
+
+    /// ZIP method 8 is raw DEFLATE (RFC 1951), not zlib-wrapped (RFC 1950).
     private static func inflate(_ input: Data, uncompressedSize: Int) throws -> Data {
         guard !input.isEmpty else {
             return Data()
         }
 
-        let destinationCapacity = max(uncompressedSize, input.count)
-        var destination = Data(count: destinationCapacity)
-        let decodedCount: Int = try input.withUnsafeBytes { sourceBuffer in
-            try destination.withUnsafeMutableBytes { destinationBuffer in
+        let capacity = max(uncompressedSize, input.count, 1)
+        if let decoded = decodeZlib(input, capacity: capacity) {
+            return decoded
+        }
+
+        var wrapped = Data([0x78, 0x01])
+        wrapped.append(input)
+        if let decoded = decodeZlib(wrapped, capacity: capacity) {
+            return decoded
+        }
+
+        throw EmbeddingModelDeliveryError.compilationFailed("ZIP deflate failed")
+    }
+
+    private static func decodeZlib(_ input: Data, capacity: Int) -> Data? {
+        var destination = Data(count: capacity)
+        let decodedCount = input.withUnsafeBytes { sourceBuffer in
+            destination.withUnsafeMutableBytes { destinationBuffer in
                 guard let source = sourceBuffer.bindMemory(to: UInt8.self).baseAddress,
                       let dest = destinationBuffer.bindMemory(to: UInt8.self).baseAddress
                 else {
-                    throw EmbeddingModelDeliveryError.compilationFailed("ZIP deflate buffers were empty")
+                    return 0
                 }
-                let count = compression_decode_buffer(
+                return compression_decode_buffer(
                     dest,
-                    destinationCapacity,
+                    capacity,
                     source,
                     input.count,
                     nil,
                     COMPRESSION_ZLIB
                 )
-                if count == 0 {
-                    throw EmbeddingModelDeliveryError.compilationFailed("ZIP deflate failed")
-                }
-                return count
             }
+        }
+        guard decodedCount > 0 else {
+            return nil
         }
         destination.count = decodedCount
         return destination

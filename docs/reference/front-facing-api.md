@@ -437,6 +437,7 @@ public static func makeDefaultMemory() throws -> any Memory
 // Integrations off → SlidingWindowMemory
 // Query DefaultAgentMemory.isSemanticMemoryAvailable when using the Integrations default.
 // Call SemanticEmbeddingAvailability.ensureModelAvailable() to download MiniLM.
+// downloadsEmbeddingModelAutomatically (default false) logs and continues on failure.
 ```
 
 Pass an explicit factory when you want a fixed backend regardless of traits:

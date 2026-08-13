@@ -1494,6 +1494,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | — | enum | public | SemanticEmbeddingAvailability | `ensureModelAvailable()`, `isAvailable`, `reprobe()` |
 | — | struct | public | EmbeddingModelDeliveryConfiguration | Download URL, pinned SHA-256, cache directory |
 | — | enum | public | EmbeddingModelCatalog | Publishing-target URL + `expectedSHA256` |
+| — | var | public | ContextCoreMemoryConfiguration.downloadsEmbeddingModelAutomatically | Default `false`; failed auto-download does not block session start |
+| — | var | public | ContextCoreMemoryConfiguration.embeddingModelDelivery | Delivery config used when auto-download is on |
 
 ### Memory/HybridMemory.swift
 
