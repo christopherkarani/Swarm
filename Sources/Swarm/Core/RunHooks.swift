@@ -163,6 +163,19 @@ public protocol AgentObserver: Sendable {
     ///   - agent: The agent completing an iteration.
     ///   - number: The iteration number.
     func onIterationEnd(context: AgentContext?, agent: any AgentRuntime, number: Int) async
+
+    /// Called before a retried provider inference attempt.
+    ///
+    /// Fired only when ``ResilienceConfiguration/retryPolicy`` allows retries and
+    /// the previous attempt failed with a retryable error. `attempt` is 1-indexed
+    /// (the first retry is `1`). The initial attempt does not invoke this hook.
+    ///
+    /// - Parameters:
+    ///   - context: Optional agent context for orchestration scenarios.
+    ///   - agent: The agent retrying inference.
+    ///   - attempt: The retry number (1-indexed, excluding the original attempt).
+    ///   - error: The error that triggered the retry.
+    func onInferenceRetry(context: AgentContext?, agent: any AgentRuntime, attempt: Int, error: Error) async
 }
 
 // MARK: - AgentObserver Default Implementations
@@ -212,6 +225,9 @@ public extension AgentObserver {
 
     /// Default no-op implementation for iteration end.
     func onIterationEnd(context _: AgentContext?, agent _: any AgentRuntime, number _: Int) async {}
+
+    /// Default no-op implementation for inference retries.
+    func onInferenceRetry(context _: AgentContext?, agent _: any AgentRuntime, attempt _: Int, error _: Error) async {}
 }
 
 // MARK: - CompositeObserver
@@ -407,6 +423,16 @@ package struct CompositeObserver: AgentObserver {
         }
     }
 
+    package func onInferenceRetry(context: AgentContext?, agent: any AgentRuntime, attempt: Int, error: Error) async {
+        await withTaskGroup(of: Void.self) { group in
+            for hook in observers {
+                group.addTask {
+                    await hook.onInferenceRetry(context: context, agent: agent, attempt: attempt, error: error)
+                }
+            }
+        }
+    }
+
     // MARK: Private
 
     /// The observer to delegate to.
@@ -563,6 +589,17 @@ public struct LoggingObserver: AgentObserver {
             ""
         }
         Log.agents.info("Iteration started\(contextId) - number: \(number)")
+    }
+
+    public func onInferenceRetry(context: AgentContext?, agent _: any AgentRuntime, attempt: Int, error: Error) async {
+        let contextId = if let context {
+            " [context: \(context.executionId)]"
+        } else {
+            ""
+        }
+        Log.agents.warning(
+            "Inference retry\(contextId) - attempt: \(attempt), error: \(error.localizedDescription)"
+        )
     }
 
     // MARK: Private

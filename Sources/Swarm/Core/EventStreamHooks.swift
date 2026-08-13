@@ -104,6 +104,13 @@ internal struct EventStreamObserver: AgentObserver {
             duration: 0 // Duration not available without explicit tracking
         )))
     }
+
+    func onInferenceRetry(context _: AgentContext?, agent _: any AgentRuntime, attempt: Int, error: Error) async {
+        continuation.yield(.observation(.inferenceRetry(
+            attempt: attempt,
+            message: error.localizedDescription
+        )))
+    }
 }
 
 // MARK: - ToolCallStore

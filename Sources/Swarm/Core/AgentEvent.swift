@@ -146,6 +146,11 @@ public enum AgentEvent: Sendable {
 
         /// An LLM call completed with usage telemetry.
         case llmCompleted(model: String?, promptTokens: Int?, completionTokens: Int?, duration: TimeInterval)
+
+        /// Provider inference will be retried after a transient failure.
+        ///
+        /// `attempt` is 1-indexed (the first retry is `1`).
+        case inferenceRetry(attempt: Int, message: String)
     }
 
 }
@@ -452,6 +457,8 @@ extension AgentEvent.Observation: Equatable {
             lM == rM && lP == rP
         case let (.llmCompleted(lM, lP, lC, lD), .llmCompleted(rM, rP, rC, rD)):
             lM == rM && lP == rP && lC == rC && lD == rD
+        case let (.inferenceRetry(lA, lM), .inferenceRetry(rA, rM)):
+            lA == rA && lM == rM
         default:
             false
         }

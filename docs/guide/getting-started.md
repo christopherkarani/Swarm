@@ -391,6 +391,20 @@ let config = AgentConfiguration.default
     .foundationModelsExecution(.nativeSession)
 ```
 
+### Resilience (opt-in)
+
+By default agents do not retry inference. Attach policies through configuration:
+
+```swift
+let config = AgentConfiguration.default
+    .resilience(ResilienceConfiguration(
+        retryPolicy: .standard,
+        circuitBreaker: CircuitBreakerSettings(failureThreshold: 5)
+    ))
+```
+
+Retries wrap **provider calls only** (not tools), share the run's remaining timeout, and skip permanent failures such as guardrail rejection. See ``InferenceRetryability``.
+
 ### Structured output
 
 `runStructured` uses Foundation Models guided generation when the JSON Schema

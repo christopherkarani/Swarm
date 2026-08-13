@@ -42,6 +42,12 @@ public actor MockInferenceProvider: InferenceProvider,
     /// Error to throw on the next call. Set to nil to proceed normally.
     public var errorToThrow: Error?
 
+    /// Errors to throw in sequence before returning a successful response.
+    ///
+    /// Each inference call consumes one entry. After the sequence is exhausted,
+    /// the mock falls back to ``errorToThrow`` and then to configured responses.
+    public var errorSequence: [Error] = []
+
     /// Delay to simulate network latency.
     public var responseDelay: Duration = .zero
 
@@ -84,6 +90,17 @@ public actor MockInferenceProvider: InferenceProvider,
         generateCalls.last
     }
 
+    /// Combined count of prompt, message, and tool-call inference invocations.
+    ///
+    /// Streaming helpers record a stream call *and* then call `generate`, so this
+    /// count excludes `streamCalls` / `streamMessageCalls` to avoid double-counting.
+    public var recordedInferenceCallCount: Int {
+        generateCalls.count
+            + generateMessageCalls.count
+            + toolCallCalls.count
+            + toolCallMessageCalls.count
+    }
+
     // MARK: - Initialization
 
     /// Creates a new mock inference provider.
@@ -118,6 +135,12 @@ public actor MockInferenceProvider: InferenceProvider,
     /// Sets an error to throw on the next call.
     public func setError(_ error: Error?) {
         errorToThrow = error
+    }
+
+    /// Sets a finite sequence of errors to throw before succeeding.
+    public func setErrorSequence(_ errors: [Error]) {
+        errorSequence = errors
+        errorSequenceIndex = 0
     }
 
     /// Sets the response delay.
@@ -226,6 +249,8 @@ public actor MockInferenceProvider: InferenceProvider,
         tokenCountCalls = []
         toolCallResponses = []
         errorToThrow = nil
+        errorSequence = []
+        errorSequenceIndex = 0
     }
 
     /// Configures the mock for a simple tool calling sequence.
@@ -294,11 +319,27 @@ public actor MockInferenceProvider: InferenceProvider,
     /// Current index in the tool call responses array.
     private var toolCallResponseIndex = 0
 
-    private func nextTextResponse() async throws -> String {
-        if let error = errorToThrow {
+    /// Current index in the scripted error sequence.
+    private var errorSequenceIndex = 0
+
+    private func consumeScriptedError() throws {
+        if errorSequenceIndex < errorSequence.count {
+            let error = errorSequence[errorSequenceIndex]
+            errorSequenceIndex += 1
             throw error
         }
 
+        if let error = errorToThrow {
+            throw error
+        }
+    }
+
+    private func nextTextResponse() async throws -> String {
+        try consumeScriptedError()
+        return try await nextSuccessfulTextBody()
+    }
+
+    private func nextSuccessfulTextBody() async throws -> String {
         if responseDelay > .zero {
             try await Task.sleep(for: responseDelay)
         }
@@ -313,9 +354,7 @@ public actor MockInferenceProvider: InferenceProvider,
     }
 
     private func nextToolCallResponse() async throws -> InferenceResponse {
-        if let error = errorToThrow {
-            throw error
-        }
+        try consumeScriptedError()
 
         if responseDelay > .zero {
             try await Task.sleep(for: responseDelay)
@@ -327,7 +366,7 @@ public actor MockInferenceProvider: InferenceProvider,
             return response
         }
 
-        let content = try await nextTextResponse()
+        let content = try await nextSuccessfulTextBody()
         return InferenceResponse(content: content, finishReason: .completed)
     }
 

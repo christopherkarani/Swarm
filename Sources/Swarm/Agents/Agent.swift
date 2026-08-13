@@ -264,6 +264,10 @@ public struct Agent: AgentRuntime, Sendable {
         self.guardrailRunnerConfiguration = guardrailRunnerConfiguration
         _handoffs = handoffs
         toolRegistry = try ToolRegistry(tools: tools)
+        inferenceCircuitBreaker = configuration.resilience.makeCircuitBreaker(
+            agentName: configuration.name
+        )
+        inferenceRateLimiter = configuration.resilience.makeRateLimiter()
     }
 
     /// Convenience initializer that takes an unlabeled inference provider.
@@ -615,6 +619,10 @@ public struct Agent: AgentRuntime, Sendable {
 
     private var toolRegistry: ToolRegistry
     private let cancellationState = ActiveRunCancellationState()
+    /// Created from ``AgentConfiguration/resilience`` at init. Copies of this value share the actor.
+    let inferenceCircuitBreaker: CircuitBreaker?
+    /// Created from ``AgentConfiguration/resilience`` at init. Copies of this value share the actor.
+    let inferenceRateLimiter: RateLimiter?
     private static let autoResponseTracker = ResponseTracker()
     private static let defaultMemorySessionTracker = DefaultMemorySessionTracker()
     private static let responseIDMetadataKey = "response.id"
@@ -1513,7 +1521,11 @@ public struct Agent: AgentRuntime, Sendable {
                 // If no tools defined, generate without tool calling
                 if toolSchemas.isEmpty {
                     let loopInferenceOptions = inferenceOptions
-                    let response = try await executeWithinRemainingTimeout(startTime: startTime) {
+                    let response = try await executeProviderInference(
+                        startTime: startTime,
+                        observer: observer,
+                        tracing: tracing
+                    ) {
                         try await generateWithoutTools(
                             provider: provider,
                             prompt: prompt,
@@ -1543,7 +1555,11 @@ public struct Agent: AgentRuntime, Sendable {
                 // Generate response with tool calls
                 let loopInferenceOptions = inferenceOptions
                 let response = if useToolStreaming {
-                    try await executeWithinRemainingTimeout(startTime: startTime) {
+                    try await executeProviderInference(
+                        startTime: startTime,
+                        observer: observer,
+                        tracing: tracing
+                    ) {
                         try await generateWithToolsStreaming(
                             provider: provider,
                             prompt: prompt,
@@ -1555,7 +1571,11 @@ public struct Agent: AgentRuntime, Sendable {
                         )
                     }
                 } else {
-                    try await executeWithinRemainingTimeout(startTime: startTime) {
+                    try await executeProviderInference(
+                        startTime: startTime,
+                        observer: observer,
+                        tracing: tracing
+                    ) {
                         try await generateWithTools(
                             provider: provider,
                             prompt: prompt,

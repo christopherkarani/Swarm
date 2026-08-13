@@ -417,6 +417,28 @@ public struct TracingHelper: Sendable {
         ))
     }
 
+    /// Trace a retried provider inference attempt.
+    ///
+    /// - Parameters:
+    ///   - attempt: 1-indexed retry number (the first retry is `1`).
+    ///   - error: The error that triggered the retry.
+    public func traceInferenceRetry(attempt: Int, error: Error) async {
+        guard let tracer else { return }
+        await tracer.trace(TraceEvent(
+            traceId: traceId,
+            kind: .metric,
+            level: .warning,
+            message: "Inference retry attempt \(attempt)",
+            metadata: [
+                "metric_name": .string("inference_retry"),
+                "attempt": .int(attempt),
+                "failure_kind": .string(String(reflecting: Swift.type(of: error)))
+            ],
+            agentName: agentName,
+            error: ErrorInfo(from: error)
+        ))
+    }
+
     // MARK: Private
 
     /// Start time of the traced operation

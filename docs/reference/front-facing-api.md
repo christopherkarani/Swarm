@@ -203,6 +203,23 @@ let agent = try Agent(
 | `handoffs` | `[AnyHandoffConfiguration]` | `[]` | Handoff targets for multi-agent orchestration |
 | `tools` | `@ToolBuilder () -> ToolCollection` | `{ .empty }` | Trailing closure producing the agent's tools |
 
+### Resilience (inference only)
+
+`AgentConfiguration.resilience` is additive and defaults to ``ResilienceConfiguration/disabled`` (``RetryPolicy/noRetry``, no breaker, no limiter). That default is a no-op.
+
+When configured, ``Agent/run`` applies **rate-limit acquire → circuit-breaker → retry** around **provider inference** only. Tool execution is never retried. Retries consume the remaining ``AgentConfiguration/timeout`` budget and cannot outlive the run. Circuit-breaker and rate-limiter actors are scoped **per Agent instance**, shared across that instance's runs.
+
+```swift
+let config = AgentConfiguration.default
+    .resilience(ResilienceConfiguration(
+        retryPolicy: .standard,
+        circuitBreaker: CircuitBreakerSettings(failureThreshold: 5),
+        rateLimit: RateLimitSettings(maxRequestsPerMinute: 60)
+    ))
+```
+
+Retryability is ``InferenceRetryability/isRetryable(_:)`` **and** the policy's `shouldRetry` (default: always). Permanent failures in that table are never retried. ``FallbackChain`` is not wired into `Agent` in this release.
+
 ### Runtime wrappers (on AgentRuntime)
 
 Core runtime wrappers are provided by `AgentRuntime` extensions:
@@ -590,6 +607,7 @@ public enum AgentEvent: Sendable {
         case memoryAccessed(operation: MemoryOperation, count: Int)
         case llmStarted(model: String?, promptTokens: Int?)
         case llmCompleted(model: String?, promptTokens: Int?, completionTokens: Int?, duration: TimeInterval)
+        case inferenceRetry(attempt: Int, message: String)
     }
 }
 
