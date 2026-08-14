@@ -1,9 +1,9 @@
 # Swarm Public API Catalog
 
-Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14.
+Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14. OpenAI-compatible provider rows added 2026-08-14.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 169
+- Source files scanned: 174
 - Public/open symbols cataloged: 2495
 
 ## 1. Swarm (entry point)
@@ -2686,6 +2686,22 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 69 | func | public | MCPToolBridge.bridgeTools() | `public func bridgeTools() async throws -> [any AnyJSONTool]` |
 
 ## 11. Providers
+
+### Providers/OpenAICompatible/OpenAICompatibleProvider.swift
+
+OpenAI-compatible Chat Completions provider (`URLSession` only). Covers OpenAI, Azure OpenAI, OpenRouter, Ollama, and LM Studio.
+
+| Kind | Access | Name | Signature |
+|------|--------|------|-----------|
+| enum | public | OpenAICompatibleStructuredOutputMode | `public enum OpenAICompatibleStructuredOutputMode` |
+| struct | public | OpenAICompatibleProviderConfiguration | `public struct OpenAICompatibleProviderConfiguration` |
+| func | public | OpenAICompatibleProviderConfiguration.openAI(apiKey:model:) | `public static func openAI(apiKey: String, model: String = "gpt-4o") -> OpenAICompatibleProviderConfiguration` |
+| func | public | OpenAICompatibleProviderConfiguration.azureOpenAI(resource:deployment:apiKey:apiVersion:model:) | `public static func azureOpenAI(resource: String, deployment: String, apiKey: String, apiVersion: String = "2024-10-21", model: String? = nil) -> OpenAICompatibleProviderConfiguration` |
+| func | public | OpenAICompatibleProviderConfiguration.openRouter(apiKey:model:httpHeaders:) | `public static func openRouter(apiKey: String, model: String, httpHeaders: [String: String] = [:]) -> OpenAICompatibleProviderConfiguration` |
+| func | public | OpenAICompatibleProviderConfiguration.ollama(model:baseURL:) | `public static func ollama(model: String, baseURL: URL = URL(string: "http://127.0.0.1:11434/v1")!) -> OpenAICompatibleProviderConfiguration` |
+| func | public | OpenAICompatibleProviderConfiguration.lmStudio(model:baseURL:apiKey:) | `public static func lmStudio(model: String, baseURL: URL = URL(string: "http://127.0.0.1:1234/v1")!, apiKey: String? = nil) -> OpenAICompatibleProviderConfiguration` |
+| struct | public | OpenAICompatibleProvider | `public struct OpenAICompatibleProvider` |
+| func | public | InferenceProvider.openAICompatible(_:) | `public static func openAICompatible(_ configuration: OpenAICompatibleProviderConfiguration, session: URLSession = .shared) -> OpenAICompatibleProvider` |
 
 ### Providers/FoundationModels/FoundationModelsInferenceProvider.swift
 

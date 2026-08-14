@@ -72,6 +72,7 @@ export default defineConfig({
             { text: 'Getting Started', link: '/guide/getting-started' },
             { text: 'Durable Execution', link: '/guide/durable-execution' },
             { text: 'Foundation Models', link: '/guide/foundation-models' },
+            { text: 'Remote Providers', link: '/guide/remote-providers' },
             { text: 'Capability Showcase', link: '/guide/capability-showcase' },
             { text: 'Agent Workspace', link: '/guide/agent-workspace' },
             { text: 'OpenTelemetry Tracing', link: '/guide/opentelemetry-tracing' },

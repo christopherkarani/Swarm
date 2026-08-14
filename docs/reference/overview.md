@@ -17,5 +17,6 @@ The current API reference covers the supported public surface for Swarm 0.6.0. P
 | [Resilience](/reference/api-catalog) | Retry, circuit breakers, fallback, timeouts |
 | [Observability](/guide/opentelemetry-tracing) | Tracing, OpenTelemetry, `OSLogTracer`, `SwiftLogTracer`, metrics |
 | [MCP](/reference/api-catalog) | Model Context Protocol client and server |
-| [Providers](/reference/front-facing-api) | Foundation Models, `InferenceProvider`, `MultiProvider` routing |
+| [Providers](/reference/front-facing-api) | Foundation Models, OpenAI-compatible remote, `InferenceProvider`, `MultiProvider` routing |
+| [Remote providers](/guide/remote-providers) | OpenAI / Azure / OpenRouter / Ollama / LM Studio |
 | [Foundation Models modes](/guide/foundation-models) | Capture vs experimental native session |

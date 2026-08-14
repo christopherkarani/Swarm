@@ -76,7 +76,8 @@ checkpoints do not fire.
 ## Availability
 
 Requires macOS/iOS 26+ with Apple Intelligence available. Linux and CI use
-capture-equivalent mock providers; the flag is ignored there.
+``OpenAICompatibleProvider`` (see [Remote Providers](remote-providers.md)) or
+capture-equivalent mock providers; the native-session flag is ignored there.
 
 Live on-device tests:
 

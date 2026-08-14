@@ -104,6 +104,9 @@ jobs:
       - name: Run tests with Integrations trait
         run: swift test --no-parallel --traits Integrations
 
+      - name: Linux OpenAI-compatible provider proof
+        run: swift test --no-parallel --filter OpenAICompatible
+
   # Code Quality (macOS only - SwiftLint/SwiftFormat)
   code-quality:
     name: Code Quality

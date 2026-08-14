@@ -538,13 +538,16 @@ public protocol ConversationInferenceProvider: InferenceProvider {
 
 ### Provider factories (dot-syntax)
 
-Built-in inference is Apple Foundation Models only. Custom backends implement
+Built-in inference is Apple Foundation Models (on-device) and
+``OpenAICompatibleProvider`` (remote / local HTTP). Other backends implement
 ``InferenceProvider`` and are passed explicitly (or via
 `await Swarm.configure(provider:)`).
 
 ```swift
 .foundationModels()                 // On-device first-class provider
 .foundationModels(profile: profile) // Dynamic profile re-resolved each turn
+.openAICompatible(.ollama(model: "llama3.2"))
+.openAICompatible(.openAI(apiKey: "sk-...", model: "gpt-4o"))
 // Custom: pass any InferenceProvider value
 ```
 
@@ -552,7 +555,8 @@ Built-in inference is Apple Foundation Models only. Custom backends implement
 |----------------|-------------|-------|
 | `.foundationModels()` | `FoundationModelsInferenceProvider` | Built-in on-device path; native tool calling via Apple's Tool protocol |
 | `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Same, driven by Swarm ``DynamicProfile`` (WWDC 2026–aligned; re-resolves each turn) |
-| Custom `InferenceProvider` | your type | Implement the protocol for non-FM backends |
+| `.openAICompatible(_:)` | `OpenAICompatibleProvider` | OpenAI / Azure / OpenRouter / Ollama / LM Studio over Chat Completions; Linux-first |
+| Custom `InferenceProvider` | your type | Implement the protocol for other backends |
 
 Opt in to experimental native session mode with
 ``AgentConfiguration/foundationModelsExecution(_:)``. Capture remains the

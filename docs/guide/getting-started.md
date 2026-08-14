@@ -153,10 +153,32 @@ guard let provider = FoundationModelsInferenceProvider.ifAvailable() else {
 let agent = try Agent("You are helpful.", inferenceProvider: provider)
 ```
 
+### OpenAI-compatible remote provider (Linux / no Apple Intelligence)
+
+Same agent loop, `URLSession` only. Prompt content is sent to `baseURL` —
+contrast with on-device Foundation Models.
+
+```swift
+let agent = try Agent(
+    "Answer finance questions using real data.",
+    configuration: .default.name("Analyst"),
+    memory: .conversation(maxMessages: 50),
+    inferenceProvider: .openAICompatible(.ollama(model: "llama3.2")),
+    inputGuardrails: [InputGuard.maxLength(5000), InputGuard.notEmpty()]
+) {
+    PriceTool()
+}
+```
+
+Factories: `.openAI(apiKey:model:)`, `.azureOpenAI(resource:deployment:apiKey:)`,
+`.openRouter(apiKey:model:)`, `.ollama(model:)`, `.lmStudio(model:)`. See
+[Remote Providers](remote-providers.md).
+
 ### Custom `InferenceProvider`
 
-For non–Foundation Models backends, implement or inject any type that conforms to
-`InferenceProvider` and pass it explicitly (or via `await Swarm.configure(provider:)`):
+For non–Foundation Models / non–OpenAI-compatible backends, implement or inject
+any type that conforms to `InferenceProvider` and pass it explicitly (or via
+`await Swarm.configure(provider:)`):
 
 ```swift
 let agent = try Agent(
@@ -475,13 +497,14 @@ and unmappable schemas stay prompt-instruction + parse (`.promptFallback`).
 | Linux | Ubuntu 22.04+ with Swift 6.2 |
 
 ::: tip
-The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; inject a mock or custom `InferenceProvider` there.
+The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; use ``OpenAICompatibleProvider`` or inject a mock.
 :::
 
 ## Next Steps
 
 - **[Agents](../reference/front-facing-api.md#3-agent-struct-primary-init)** -- Agent types, configuration, tool calling
 - **[Foundation Models](foundation-models.md)** -- Capture vs experimental native session mode
+- **[Remote Providers](remote-providers.md)** -- OpenAI-compatible HTTP (OpenAI, Azure, OpenRouter, Ollama, LM Studio)
 - **[Tools](../reference/front-facing-api.md#5-tool-and-functiontool)** -- `@Tool` macro, `FunctionTool`, `ToolCollection`, and `@ToolBuilder`
 - **[Workflow](../reference/front-facing-api.md#7-workflow)** -- Sequential, parallel, and routed execution
 - **[Memory](../reference/front-facing-api.md#9-memory-factories)** -- Conversation, vector, summary, persistent
