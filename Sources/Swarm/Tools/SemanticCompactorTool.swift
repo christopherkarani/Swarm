@@ -14,41 +14,63 @@ import Foundation
 ///
 /// On supported Apple devices (iOS 18+ / macOS 15+), it runs entirely on-device,
 /// ensuring privacy and low latency.
-@Tool("Compacts or summarizes a piece of text to its essential information.")
-public struct SemanticCompactorTool {
-    // MARK: - Parameters
-    
-    @Parameter("The long text or content to compact")
-    var text: String
-    
-    @Parameter("The compaction strategy: 'summary' (concise paragraph), 'key_points' (bullet list), or 'semantic_core' (most minimal version).", default: "summary")
-    var strategy: String = "summary"
-    
-    @Parameter("The maximum length of the output in characters (approximate).", default: 500)
-    var maxLength: Int = 500
-    
-    // MARK: - Properties
-    
+///
+/// Implemented as ``AnyJSONTool`` so it compiles without the Macros trait.
+/// Prefer ``FunctionTool`` or `@Tool` in application code.
+public struct SemanticCompactorTool: AnyJSONTool, Sendable {
+    public let name = "semantic_compactor"
+    public let description = "Compacts or summarizes a piece of text to its essential information."
+    public let parameters: [ToolParameter] = [
+        ToolParameter(
+            name: "text",
+            description: "The long text or content to compact",
+            type: .string
+        ),
+        ToolParameter(
+            name: "strategy",
+            description: """
+            The compaction strategy: 'summary' (concise paragraph), \
+            'key_points' (bullet list), or 'semantic_core' (most minimal version).
+            """,
+            type: .string,
+            isRequired: false,
+            defaultValue: .string("summary")
+        ),
+        ToolParameter(
+            name: "maxLength",
+            description: "The maximum length of the output in characters (approximate).",
+            type: .int,
+            isRequired: false,
+            defaultValue: .int(500)
+        ),
+    ]
+
+    /// The long text or content to compact.
+    public var text: String = ""
+
+    /// The compaction strategy: `summary`, `key_points`, or `semantic_core`.
+    public var strategy: String = "summary"
+
+    /// The maximum length of the output in characters (approximate).
+    public var maxLength: Int = 500
+
     private let summarizer: any Summarizer
-    
-    // MARK: - Initialization
-    
+
     /// Creates a new semantic compactor tool.
     ///
-    /// - Parameter summarizer: The summarization engine to use. 
+    /// - Parameter summarizer: The summarization engine to use.
     ///   Defaults to a fallback chain that tries Foundation Models first, then truncates.
     public init(summarizer: (any Summarizer)? = nil) {
-        // Initialize @Parameter properties with defaults
         self.text = ""
         self.strategy = "summary"
         self.maxLength = 500
-        
+
         if let summarizer {
             self.summarizer = summarizer
         } else {
             #if canImport(FoundationModels)
             if #available(macOS 26.0, iOS 26.0, *) {
-                 self.summarizer = FallbackSummarizer(
+                self.summarizer = FallbackSummarizer(
                     primary: FoundationModelsSummarizer(),
                     fallback: TruncatingSummarizer.shared
                 )
@@ -60,45 +82,58 @@ public struct SemanticCompactorTool {
             #endif
         }
     }
-    
-    // MARK: - Execution
-    
+
     public func execute() async throws -> String {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return "No text provided to compact."
         }
-        
-        // Adjust prompt based on strategy
+
         let prompt: String
         switch strategy.lowercased() {
         case "key_points", "bullets":
-            prompt = "Extract the key points from the following text as a bulleted list. Be concise and factual.\n\nText:\n\(text)\n\nKey Points:"
+            prompt = """
+            Extract the key points from the following text as a bulleted list. Be concise and factual.
+
+            Text:
+            \(text)
+
+            Key Points:
+            """
         case "semantic_core", "compact":
-            prompt = "Condense the following text to its absolute semantic core. Remove all filler words while preserving all names, dates, figures, and critical facts. Use as few words as possible.\n\nText:\n\(text)\n\nCore Info:"
+            prompt = """
+            Condense the following text to its absolute semantic core. \
+            Remove all filler words while preserving all names, dates, figures, and critical facts. \
+            Use as few words as possible.
+
+            Text:
+            \(text)
+
+            Core Info:
+            """
         default:
-            // Standard summary
             prompt = text
         }
-        
-        // Use the summarizer
-        // Since the current Summarizer protocol in the codebase handles its own internal prompts 
-        // for FoundationModelsSummarizer, we pass the text. 
-        // If it's a specialized strategy, we wrap the text in a prompt if the summarizer is just a 
-        // generic LLM wrapper, but FoundationModelsSummarizer has its own internal conversational 
-        // prompt. 
-        
-        // For the sake of this tool's flexibility, we'll try to use the summarizer 
-        // but respect the maxTokens (approx characters / 4)
+
         let maxTokens = maxLength / 4
-        
+
         do {
-            // Note: In a real implementation we might pass the 'prompt' instead of 'text' 
-            // if the summarizer supports arbitrary prompts, but the current protocol 
-            // is designed for memory summarization.
             return try await summarizer.summarize(prompt, maxTokens: maxTokens)
         } catch {
-            // Fallback to basic truncation if the summarizer fails
             return try await TruncatingSummarizer.shared.summarize(text, maxTokens: maxTokens)
         }
+    }
+
+    public func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
+        guard let text = arguments["text"]?.stringValue else {
+            throw AgentError.invalidToolArguments(
+                toolName: name,
+                reason: "Missing required parameter 'text'"
+            )
+        }
+        var copy = self
+        copy.text = text
+        copy.strategy = arguments["strategy"]?.stringValue ?? "summary"
+        copy.maxLength = arguments["maxLength"]?.intValue ?? 500
+        return .string(try await copy.execute())
     }
 }

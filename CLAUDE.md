@@ -47,7 +47,7 @@ Swarm/
 │   │   ├── Guardrails/            # Input/Output/Tool guardrail specs + runner
 │   │   ├── Resilience/            # Retry, circuit breaker, fallback, rate limit
 │   │   ├── Observability/         # AgentTracer, SwiftLog/OSLog tracers, metrics
-│   │   ├── MCP/                   # MCPClient, MCPServer, ToolBridge, capabilities
+│   │   ├── MCP/                   # MCPClient, MCPServerConnection, stdio/HTTP transports, ToolBridge
 │   │   ├── Workspace/             # AgentWorkspace (AGENTS.md, .swarm/ skills)
 │   │   ├── Macros/                # Public macro declarations
 │   │   ├── Integration/           # Membrane and Wax integrations
@@ -115,7 +115,8 @@ Integrations is on. ContextCore / full Membrane session stack are Apple-only
 Wax remains a remote package + trait-gated product; MetalANNS stays remote for
 the ContextCore chain. Lean resolve must not pull package identities `hive`,
 `membrane`, `contextcore`, or `conduit`, and must not pin Wax/MetalANNS/GRDB/
-crypto/mutex/SwiftSoup (trait-gated product edges). Always-on: swift-syntax,
+crypto/mutex/SwiftSoup (trait-gated product edges). Default-on: swift-syntax
+(via the Macros trait; disable with `traits: []`),
 swift-log, MCP sdk, OTel (+ NIO transitives; `swift-collections` via NIO is
 OK). CI: `scripts/ci/lean-build-test.sh` (cold resolve + product-scoped lean
 build + `SWARM_OMIT_INTEGRATION_TARGETS=1` tests) and

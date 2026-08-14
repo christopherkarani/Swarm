@@ -38,7 +38,6 @@ import Foundation
 /// let merged = base.merged(with: override)
 /// // Result: temperature 0.7, maxTokens 2048
 /// ```
-@Builder
 public struct ModelSettings: Sendable, Equatable {
     // MARK: - Sampling Parameters
 
@@ -205,6 +204,129 @@ public struct ModelSettings: Sendable, Equatable {
         self.minP = minP
         self.providerSettings = providerSettings
         self.reasoning = reasoning
+    }
+}
+
+// MARK: - Fluent Builders
+
+public extension ModelSettings {
+    @discardableResult
+    func temperature(_ value: Double?) -> Self {
+        var copy = self
+        copy.temperature = value
+        return copy
+    }
+
+    @discardableResult
+    func topP(_ value: Double?) -> Self {
+        var copy = self
+        copy.topP = value
+        return copy
+    }
+
+    @discardableResult
+    func topK(_ value: Int?) -> Self {
+        var copy = self
+        copy.topK = value
+        return copy
+    }
+
+    @discardableResult
+    func maxTokens(_ value: Int?) -> Self {
+        var copy = self
+        copy.maxTokens = value
+        return copy
+    }
+
+    @discardableResult
+    func frequencyPenalty(_ value: Double?) -> Self {
+        var copy = self
+        copy.frequencyPenalty = value
+        return copy
+    }
+
+    @discardableResult
+    func presencePenalty(_ value: Double?) -> Self {
+        var copy = self
+        copy.presencePenalty = value
+        return copy
+    }
+
+    @discardableResult
+    func stopSequences(_ value: [String]?) -> Self {
+        var copy = self
+        copy.stopSequences = value
+        return copy
+    }
+
+    @discardableResult
+    func seed(_ value: Int?) -> Self {
+        var copy = self
+        copy.seed = value
+        return copy
+    }
+
+    @discardableResult
+    func toolChoice(_ value: ToolChoice?) -> Self {
+        var copy = self
+        copy.toolChoice = value
+        return copy
+    }
+
+    @discardableResult
+    func parallelToolCalls(_ value: Bool?) -> Self {
+        var copy = self
+        copy.parallelToolCalls = value
+        return copy
+    }
+
+    @discardableResult
+    func truncation(_ value: TruncationStrategy?) -> Self {
+        var copy = self
+        copy.truncation = value
+        return copy
+    }
+
+    @discardableResult
+    func verbosity(_ value: Verbosity?) -> Self {
+        var copy = self
+        copy.verbosity = value
+        return copy
+    }
+
+    @discardableResult
+    func promptCacheRetention(_ value: CacheRetention?) -> Self {
+        var copy = self
+        copy.promptCacheRetention = value
+        return copy
+    }
+
+    @discardableResult
+    func repetitionPenalty(_ value: Double?) -> Self {
+        var copy = self
+        copy.repetitionPenalty = value
+        return copy
+    }
+
+    @discardableResult
+    func minP(_ value: Double?) -> Self {
+        var copy = self
+        copy.minP = value
+        return copy
+    }
+
+    @discardableResult
+    func providerSettings(_ value: [String: SendableValue]?) -> Self {
+        var copy = self
+        copy.providerSettings = value
+        return copy
+    }
+
+    @discardableResult
+    func reasoning(_ value: ReasoningConfig?) -> Self {
+        var copy = self
+        copy.reasoning = value
+        return copy
     }
 }
 

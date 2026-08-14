@@ -1,10 +1,10 @@
 # Swarm Public API Catalog
 
-Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6).
+Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 166
-- Public/open symbols cataloged: 2481
+- Source files scanned: 169
+- Public/open symbols cataloged: 2495
 
 ## 1. Swarm (entry point)
 
@@ -2520,12 +2520,23 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 56 | var | public | HTTPMCPServer.name | `public let name: String` |
 | 62 | var | public | HTTPMCPServer.capabilities | `public var capabilities: MCPCapabilities { get }` |
 | 77 | func | public | HTTPMCPServer.init(url:name:apiKey:timeout:maxRetries:session:) | `public init(url: URL, name: String, apiKey: String? = nil, timeout: TimeInterval = 30.0, maxRetries: Int = 3, session: URLSession = .shared) throws` |
+| 70 | var | public | HTTPMCPServer.negotiatedProtocolVersion | `public var negotiatedProtocolVersion: String? { get }` |
+| 76 | var | public | HTTPMCPServer.sessionID | `public var sessionID: String? { get }` |
 | 113 | func | public | HTTPMCPServer.initialize() | `public func initialize() async throws -> MCPCapabilities` |
 | 142 | func | public | HTTPMCPServer.listTools() | `public func listTools() async throws -> [ToolSchema]` |
 | 164 | func | public | HTTPMCPServer.callTool(name:arguments:) | `public func callTool(name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
+| 180 | func | public | HTTPMCPServer.callToolRaw(name:arguments:) | `public func callToolRaw(name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
 | 188 | func | public | HTTPMCPServer.listResources() | `public func listResources() async throws -> [MCPResource]` |
 | 208 | func | public | HTTPMCPServer.readResource(uri:) | `public func readResource(uri: String) async throws -> MCPResourceContent` |
 | 259 | func | public | HTTPMCPServer.close() | `public func close() async throws` |
+
+### MCP/StdioMCPServer.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | class | public | StdioMCPServer | `public actor StdioMCPServer` |
+| — | func | public | StdioMCPServer.init(command:arguments:environment:workingDirectory:name:timeout:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, workingDirectory: URL? = nil, name: String, timeout: TimeInterval = 30.0)` |
+| — | func | public | StdioMCPServer.callToolRaw(name:arguments:) | `public func callToolRaw(name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
 
 ### MCP/MCPCapabilities.swift
 
@@ -2547,7 +2558,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 56 | class | public | MCPClient | `public actor MCPClient` |
 | 68 | var | public | MCPClient.connectedServers | `public var connectedServers: [String] { get }` |
 | 77 | func | public | MCPClient.init() | `public init()` |
-| 99 | func | public | MCPClient.addServer(_:) | `public func addServer(_ server: any MCPServer) async throws` |
+| 99 | func | public | MCPClient.addServer(_:) | `public func addServer(_ server: any MCPServerConnection) async throws` |
 | 135 | func | public | MCPClient.removeServer(named:) | `public func removeServer(named name: String) async throws` |
 | 174 | func | public | MCPClient.getAllTools() | `public func getAllTools() async throws -> [any AnyJSONTool]` |
 | 279 | func | public | MCPClient.refreshTools() | `public func refreshTools() async throws -> [any AnyJSONTool]` |
@@ -2578,6 +2589,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 115 | func | public | MCPError.methodNotFound(_:) | `public static func methodNotFound(_ method: String? = nil) -> MCPError` |
 | 128 | func | public | MCPError.invalidParams(_:) | `public static func invalidParams(_ details: String? = nil) -> MCPError` |
 | 139 | func | public | MCPError.internalError(_:) | `public static func internalError(_ details: String? = nil) -> MCPError` |
+| — | func | public | MCPError.unsupportedProtocolVersion(_:) | `public static func unsupportedProtocolVersion(_ version: String) -> MCPError` |
 | 150 | var | public | MCPError.errorDescription | `public var errorDescription: String? { get }` |
 | 162 | var | public | MCPError.debugDescription | `public var debugDescription: String { get }` |
 | 176 | func | public | MCPError.init(from:) | `public init(from decoder: any Decoder) throws` |
@@ -2603,8 +2615,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 224 | func | public | MCPResponse.init(jsonrpc:id:result:error:) | `public init(jsonrpc: String = "2.0", id: String, result: SendableValue? = nil, error: MCPErrorObject? = nil) throws` |
 | 249 | func | public | MCPResponse.init(from:) | `public init(from decoder: any Decoder) throws` |
 | 291 | func | public | MCPResponse.encode(to:) | `public func encode(to encoder: any Encoder) throws` |
-| 339 | func | public | MCPResponse.success(id:result:) | `public static func success(id: String, result: SendableValue) -> MCPResponse` |
-| 358 | func | public | MCPResponse.failure(id:error:) | `public static func failure(id: String, error: MCPErrorObject) -> MCPResponse` |
+| 339 | func | public | MCPResponse.success(id:result:) | `public static func success(id: String, result: SendableValue) throws -> MCPResponse` |
+| 358 | func | public | MCPResponse.failure(id:error:) | `public static func failure(id: String, error: MCPErrorObject) throws -> MCPResponse` |
 | 399 | struct | public | MCPErrorObject | `public struct MCPErrorObject` |
 | 405 | var | public | MCPErrorObject.code | `public let code: Int` |
 | 411 | var | public | MCPErrorObject.message | `public let message: String` |
@@ -2639,17 +2651,18 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 90 | protocol | public | MCPServer | `public protocol MCPServer : Sendable` |
-| 95 | var | public | MCPServer.name | `public var name: String { get }` |
-| 112 | var | public | MCPServer.capabilities | `public var capabilities: MCPCapabilities { get async }` |
-| 138 | func | public | MCPServer.initialize() | `public func initialize() async throws -> MCPCapabilities` |
-| 159 | func | public | MCPServer.close() | `public func close() async throws` |
-| 182 | func | public | MCPServer.listTools() | `public func listTools() async throws -> [ToolSchema]` |
-| 216 | func | public | MCPServer.callTool(name:arguments:) | `public func callTool(name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
-| 239 | func | public | MCPServer.listResources() | `public func listResources() async throws -> [MCPResource]` |
-| 265 | func | public | MCPServer.readResource(uri:) | `public func readResource(uri: String) async throws -> MCPResourceContent` |
-| 276 | func | public | MCPServer.requireToolsCapability() | `public func requireToolsCapability() async throws` |
-| 288 | func | public | MCPServer.requireResourcesCapability() | `public func requireResourcesCapability() async throws` |
+| 90 | protocol | public | MCPServerConnection | `public protocol MCPServerConnection : Sendable` |
+| 95 | var | public | MCPServerConnection.name | `public var name: String { get }` |
+| 112 | var | public | MCPServerConnection.capabilities | `public var capabilities: MCPCapabilities { get async }` |
+| 138 | func | public | MCPServerConnection.initialize() | `public func initialize() async throws -> MCPCapabilities` |
+| 159 | func | public | MCPServerConnection.close() | `public func close() async throws` |
+| 182 | func | public | MCPServerConnection.listTools() | `public func listTools() async throws -> [ToolSchema]` |
+| 216 | func | public | MCPServerConnection.callTool(name:arguments:) | `public func callTool(name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
+| 239 | func | public | MCPServerConnection.listResources() | `public func listResources() async throws -> [MCPResource]` |
+| 265 | func | public | MCPServerConnection.readResource(uri:) | `public func readResource(uri: String) async throws -> MCPResourceContent` |
+| 276 | func | public | MCPServerConnection.requireToolsCapability() | `public func requireToolsCapability() async throws` |
+| 288 | func | public | MCPServerConnection.requireResourcesCapability() | `public func requireResourcesCapability() async throws` |
+| — | typealias | public | MCPServer | `@available(*, deprecated, renamed: "MCPServerConnection") public typealias MCPServer = MCPServerConnection` |
 | 301 | enum | public | MCPServerState | `public enum MCPServerState` |
 | 305 | var | public | MCPServerState.isReady | `public var isReady: Bool { get }` |
 | 310 | var | public | MCPServerState.isTerminated | `public var isTerminated: Bool { get }` |
@@ -2665,7 +2678,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 36 | class | public | MCPToolBridge | `public actor MCPToolBridge` |
-| 44 | func | public | MCPToolBridge.init(server:) | `public init(server: any MCPServer)` |
+| 44 | func | public | MCPToolBridge.init(server:) | `public init(server: any MCPServerConnection)` |
 | 69 | func | public | MCPToolBridge.bridgeTools() | `public func bridgeTools() async throws -> [any AnyJSONTool]` |
 
 ## 11. Providers

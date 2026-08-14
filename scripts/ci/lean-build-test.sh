@@ -37,4 +37,7 @@ SWARM_OMIT_INTEGRATION_TARGETS=1 swift package resolve
 SWARM_OMIT_INTEGRATION_TARGETS=1 bash scripts/ci/verify-lean-resolve.sh
 SWARM_OMIT_INTEGRATION_TARGETS=1 swift test --no-parallel
 
+echo "lean-build-test: phase 3 — Macros-disabled consumer (zero swift-syntax)"
+bash scripts/ci/verify-macros-disabled-consumer.sh
+
 echo "lean-build-test: PASS"

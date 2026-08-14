@@ -142,6 +142,23 @@ public extension MCPError {
             message: details ?? "Internal error: Internal JSON-RPC error"
         )
     }
+
+    /// Creates an invalid-request error for an unsupported MCP protocol version.
+    ///
+    /// Swarm never silently assumes compatibility with an unknown server
+    /// revision. The message lists every version this client will accept.
+    ///
+    /// - Parameter version: The version string reported by the server, or
+    ///   empty when the initialize result omitted `protocolVersion`.
+    /// - Returns: An MCPError with code -32600.
+    static func unsupportedProtocolVersion(_ version: String) -> MCPError {
+        let reported = version.isEmpty ? "<missing>" : version
+        let supported = MCPProtocolVersion.supported.sorted().joined(separator: ", ")
+        return MCPError(
+            code: invalidRequestCode,
+            message: "Unsupported MCP protocol version '\(reported)'. Swarm supports: \(supported)."
+        )
+    }
 }
 
 // MARK: LocalizedError

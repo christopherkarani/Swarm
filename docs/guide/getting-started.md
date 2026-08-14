@@ -46,9 +46,10 @@ package and is linked only with Integrations. Omitting the trait does **not**
 link Integrations modules into your app. Lean resolve never pulls
 Hive/Membrane/ContextCore/Conduit **package identities**, and trait-gated
 product edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, and
-SwiftSoup off the lean pin list. Always-on remotes remain (swift-syntax,
-swift-log, MCP sdk, OTel, plus NIO transitives — including `swift-collections`
-via NIO). `SWARM_CORE_ONLY=1` drops the integration package block entirely.
+SwiftSoup off the lean pin list. Default remotes remain (swift-syntax via the
+default-on **Macros** trait, swift-log, MCP sdk, OTel, plus NIO transitives —
+including `swift-collections` via NIO). Disable Macros with `traits: []` to
+drop swift-syntax. `SWARM_CORE_ONLY=1` drops the integration package block entirely.
 
 **Platform note:** ContextCore and the full Membrane session stack need Apple
 frameworks (Metal/CoreML/Accelerate). On Linux, Integrations still enables Hive
@@ -65,6 +66,46 @@ pseudo-embeddings, logs a once-per-process warning naming that API, and
 to auto-download (default `off`). A failed auto-download logs a warning and
 starts the session with fallback embeddings; call `ensureModelAvailable()` to
 retry. Simulator uses CoreML CPU inference; it is not a special-case fallback.
+
+### Disabling the Macros trait
+
+The **`Macros`** SwiftPM trait is **on by default**. It pulls `swift-syntax` so
+`@Tool`, `@Parameter`, `#Prompt`, and `@Traceable` work. Specifying traits on
+the package dependency replaces defaults, so `traits: ["Integrations"]` still
+keeps macros (Integrations enables Macros). To drop `swift-syntax` entirely:
+
+```swift
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.0",
+    traits: []
+)
+```
+
+You lose `@Tool`, `@Parameter`, `#Prompt`, and `@Traceable`. Everything else
+stays: agents, workflows, memory, and ``FunctionTool``.
+
+```swift
+import Swarm
+
+let echo = FunctionTool(
+    name: "echo",
+    description: "Echoes a message",
+    parameters: [
+        ToolParameter(name: "message", description: "Text to echo", type: .string)
+    ]
+) { args in
+    let message = try args.require("message", as: String.self)
+    return .string(message)
+}
+
+let agent = try Agent(
+    "Repeat the user's text.",
+    inferenceProvider: .foundationModels()
+) {
+    echo
+}
+```
 
 ### Xcode
 

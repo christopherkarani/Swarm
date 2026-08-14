@@ -38,6 +38,7 @@ var packageDependencies: [Package.Dependency] = [
     // on toolchains/prebuilts that work with Swift 6.2 / Xcode 26.
     // Only SwarmMacros (+ SwiftSyntaxMacrosTestSupport in tests) depends on
     // swift-syntax. Upper bound stays <603 for package-graph stability.
+    // Product edges are Macros-trait-gated so consumers can drop the pin.
     .package(url: "https://github.com/swiftlang/swift-syntax.git", "601.0.0"..<"603.0.0"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.12.0"),
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
@@ -53,6 +54,7 @@ var packageDependencies: [Package.Dependency] = [
 // Accelerate). They are trait-linked only on Apple platforms so Linux
 // Integrations can still build Hive + MembraneCore + web helpers without
 // compiling the GPU memory stack.
+let macrosTrait = "Macros"
 let integrationTrait = "Integrations"
 let appleIntegrationPlatforms: [Platform] = [.macOS, .iOS, .tvOS, .visionOS]
 if enableIntegrationModules {
@@ -63,8 +65,12 @@ if enableIntegrationModules {
         // collections/MetalANNS). With Integrations off, SPM does not pin them.
         // SWARM_CORE_ONLY=1 or SWARM_OMIT_INTEGRATION_TARGETS=1 drops this block.
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.13.5"),
-        .package(url: "https://github.com/christopherkarani/Wax.git", exact: "0.1.23"),
-        .package(url: "https://github.com/christopherkarani/MetalANNS.git", exact: "0.1.3"),
+        // Floor at the previously exact pin. 0.1.24 fails to clone (broken
+        // homebrew-wax submodule ref). 0.1.25 makes FrameStore.close()/frames()
+        // throwing and breaks WaxMemory + WaxMembraneStorage. Revisit after
+        // adapting to the throwing API.
+        .package(url: "https://github.com/christopherkarani/Wax.git", "0.1.23"..<"0.1.24"),
+        .package(url: "https://github.com/christopherkarani/MetalANNS.git", from: "0.1.3"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.7.0"),
         .package(url: "https://github.com/swhitty/swift-mutex.git", from: "0.0.6"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
@@ -72,7 +78,7 @@ if enableIntegrationModules {
 }
 
 var swarmDependencies: [Target.Dependency] = [
-    "SwarmMacros",
+    .target(name: "SwarmMacros", condition: .when(traits: [macrosTrait])),
     .product(name: "Logging", package: "swift-log"),
 ]
 
@@ -106,6 +112,8 @@ if enableIntegrationModules {
     swarmSwiftSettings.append(.define("SWARM_INTEGRATIONS", .when(traits: [integrationTrait])))
 }
 
+swarmSwiftSettings.append(.define("SWARM_MACROS", .when(traits: [macrosTrait])))
+
 let swarmCoreOnlyExcludes = [
     "Integration/Wax",
     "Integration/Membrane/SessionMembraneAgentAdapter.swift",
@@ -124,12 +132,28 @@ var packageTargets: [Target] = [
     .macro(
         name: "SwarmMacros",
         dependencies: [
-            .product(name: "SwiftSyntax", package: "swift-syntax"),
-            .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
-            .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
-            .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
-            .product(name: "SwiftDiagnostics", package: "swift-syntax"),
-            .product(name: "SwiftParser", package: "swift-syntax")
+            .product(name: "SwiftSyntax", package: "swift-syntax", condition: .when(traits: [macrosTrait])),
+            .product(
+                name: "SwiftSyntaxMacros",
+                package: "swift-syntax",
+                condition: .when(traits: [macrosTrait])
+            ),
+            .product(
+                name: "SwiftCompilerPlugin",
+                package: "swift-syntax",
+                condition: .when(traits: [macrosTrait])
+            ),
+            .product(
+                name: "SwiftSyntaxBuilder",
+                package: "swift-syntax",
+                condition: .when(traits: [macrosTrait])
+            ),
+            .product(
+                name: "SwiftDiagnostics",
+                package: "swift-syntax",
+                condition: .when(traits: [macrosTrait])
+            ),
+            .product(name: "SwiftParser", package: "swift-syntax", condition: .when(traits: [macrosTrait])),
         ],
         swiftSettings: [
             .enableExperimentalFeature("StrictConcurrency")
@@ -209,6 +233,7 @@ var packageTargets: [Target] = [
             }
             return dependencies
         }(),
+        exclude: ["MCP/Fixtures"],
         resources: [],
         swiftSettings: swarmSwiftSettings
     ),
@@ -216,8 +241,12 @@ var packageTargets: [Target] = [
         name: "SwarmMacrosTests",
         dependencies: [
             "Swarm",
-            "SwarmMacros",
-            .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax")
+            .target(name: "SwarmMacros", condition: .when(traits: [macrosTrait])),
+            .product(
+                name: "SwiftSyntaxMacrosTestSupport",
+                package: "swift-syntax",
+                condition: .when(traits: [macrosTrait])
+            ),
         ],
         swiftSettings: [
             .enableExperimentalFeature("StrictConcurrency")
@@ -332,11 +361,6 @@ if enableIntegrationModules {
             dependencies: [
                 "ContextCoreShaders",
                 "ContextCoreTypes",
-                .product(
-                    name: "MetalANNS",
-                    package: "MetalANNS",
-                    condition: integrationsAppleRemoteDepsActive
-                ),
             ],
             path: "Sources/ContextCoreEngine",
             swiftSettings: integrationsTargetSwiftSettings,
@@ -413,8 +437,19 @@ let package = Package(
     ],
     products: packageProducts,
     traits: [
-        // Lean default: core Swarm + Foundation Models only. Opt in for full graph.
-        .default(enabledTraits: []),
+        // Macros on by default (SE-0450). Consumers disable with `traits: []` to
+        // drop swift-syntax; FunctionTool is the macro-free tool path.
+        // Integrations enables Macros so existing `traits: ["Integrations"]`
+        // consumers keep @Tool (specifying traits replaces defaults).
+        .default(enabledTraits: [macrosTrait]),
+        .trait(
+            name: macrosTrait,
+            description: """
+            Enable Swarm compiler macros (@Tool, @Parameter, #Prompt, @Traceable, \
+            and related plugins). On by default. Disable to drop the swift-syntax \
+            dependency; use FunctionTool for the macro-free tool path.
+            """
+        ),
         .trait(
             name: integrationTrait,
             description: """
@@ -423,8 +458,9 @@ let package = Package(
             ContextCore are native in-tree Sources/ targets (internal; not separate products). \
             ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); \
             Linux Integrations still gets Hive + MembraneCore + web helpers. \
-            Wax remains an external package for now.
-            """
+            Wax remains an external package for now. Enabling Integrations also enables Macros.
+            """,
+            enabledTraits: [macrosTrait]
         ),
     ],
     dependencies: packageDependencies,

@@ -6,9 +6,11 @@
 # Forbidden = hive | membrane | contextcore | conduit (and matching
 # christopherkarani/* remote URLs). In-tree Sources/ modules are fine.
 #
-# Lean residual (Integrations off): always-on syntax/log/MCP/OTel (+ NIO
-# transitives including swift-collections). Must NOT pin Wax, MetalANNS→GRDB,
-# swift-crypto, swift-mutex, or SwiftSoup.
+# Lean residual (Integrations off, Macros on by default): syntax/log/MCP/OTel
+# (+ NIO transitives including swift-collections). Must NOT pin Wax,
+# MetalANNS→GRDB, swift-crypto, swift-mutex, or SwiftSoup.
+# Disable Macros (`traits: []`) to drop swift-syntax — see
+# scripts/ci/verify-macros-disabled-consumer.sh.
 #
 # Usage (after resolve):
 #   swift package resolve

@@ -305,7 +305,7 @@ private struct OrderedWorkflowAgent: AgentRuntime {
     func cancel() async {}
 }
 
-private actor BlockingToolListServer: MCPServer {
+private actor BlockingToolListServer: MCPServerConnection {
     let name: String
     private var tools: [ToolSchema]
     private var blockedContinuation: CheckedContinuation<Void, Never>?
@@ -374,7 +374,7 @@ private actor BlockingToolListServer: MCPServer {
     }
 }
 
-private actor BlockingResourceListServer: MCPServer {
+private actor BlockingResourceListServer: MCPServerConnection {
     let name: String
     private var resources: [MCPResource]
     private var blockedContinuation: CheckedContinuation<Void, Never>?

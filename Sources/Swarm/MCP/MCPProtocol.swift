@@ -258,7 +258,19 @@ package struct MCPResponse: Sendable, Codable, Equatable {
                 )
             )
         }
-        let id = try container.decode(String.self, forKey: .id)
+        let id: String
+        if let stringId = try? container.decode(String.self, forKey: .id) {
+            id = stringId
+        } else if let intId = try? container.decode(Int.self, forKey: .id) {
+            id = String(intId)
+        } else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: [CodingKeys.id],
+                    debugDescription: "Response ID must be a string or number"
+                )
+            )
+        }
         guard !id.isEmpty else {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
@@ -333,11 +345,11 @@ package extension MCPResponse {
     ///   - result: The result value to include in the response.
     /// - Returns: An MCPResponse with the result set and error as `nil`.
     ///
-    /// - Precondition: `id` must be non-empty. Passing an empty string is a
-    ///   programming error and will terminate the process in both debug and
-    ///   release builds via `precondition`.
-    static func success(id: String, result: SendableValue) -> MCPResponse {
-        precondition(!id.isEmpty, "MCPResponse.success requires a non-empty id")
+    /// - Throws: `MCPError.invalidRequest` when `id` is empty.
+    static func success(id: String, result: SendableValue) throws -> MCPResponse {
+        guard !id.isEmpty else {
+            throw MCPError.invalidRequest("MCPResponse.success requires a non-empty id")
+        }
         return MCPResponse(
             id: id,
             result: result,
@@ -352,11 +364,11 @@ package extension MCPResponse {
     ///   - error: The error object describing what went wrong.
     /// - Returns: An MCPResponse with the error set and result as `nil`.
     ///
-    /// - Precondition: `id` must be non-empty. Passing an empty string is a
-    ///   programming error and will terminate the process in both debug and
-    ///   release builds via `precondition`.
-    static func failure(id: String, error: MCPErrorObject) -> MCPResponse {
-        precondition(!id.isEmpty, "MCPResponse.failure requires a non-empty id")
+    /// - Throws: `MCPError.invalidRequest` when `id` is empty.
+    static func failure(id: String, error: MCPErrorObject) throws -> MCPResponse {
+        guard !id.isEmpty else {
+            throw MCPError.invalidRequest("MCPResponse.failure requires a non-empty id")
+        }
         return MCPResponse(
             id: id,
             result: nil,
