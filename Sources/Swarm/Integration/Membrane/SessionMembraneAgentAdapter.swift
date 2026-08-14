@@ -118,14 +118,7 @@ public extension MembraneEnvironment {
         initialSnapshot: MembraneCore.ContextSnapshot? = nil
     ) -> MembraneEnvironment {
         let session = Membrane.MembraneSession(
-            configuration: Membrane.MembraneFeatureConfiguration(
-                jitMinToolCount: configuration.jitMinToolCount,
-                defaultJITLoadCount: configuration.defaultJITLoadCount,
-                pointerThresholdBytes: configuration.pointerThresholdBytes,
-                pointerSummaryMaxChars: configuration.pointerSummaryMaxChars,
-                runtimeFeatureFlags: configuration.runtimeFeatureFlags,
-                runtimeModelAllowlist: configuration.runtimeModelAllowlist
-            ),
+            configuration: configuration.makeMembraneSessionConfiguration(),
             budget: budget,
             recallStore: recallStore,
             pointerStore: pointerStore,
@@ -136,6 +129,20 @@ public extension MembraneEnvironment {
             isEnabled: true,
             configuration: configuration,
             adapter: SessionMembraneAgentAdapter(session: session)
+        )
+    }
+}
+
+extension MembraneFeatureConfiguration {
+    /// Maps Swarm's public configuration onto Membrane's internal session type.
+    func makeMembraneSessionConfiguration() -> Membrane.MembraneFeatureConfiguration {
+        Membrane.MembraneFeatureConfiguration(
+            jitMinToolCount: jitMinToolCount,
+            defaultJITLoadCount: defaultJITLoadCount,
+            pointerThresholdBytes: pointerThresholdBytes,
+            pointerSummaryMaxChars: pointerSummaryMaxChars,
+            runtimeFeatureFlags: runtimeFeatureFlags,
+            runtimeModelAllowlist: runtimeModelAllowlist
         )
     }
 }

@@ -2,6 +2,12 @@ import Foundation
 import MembraneContextCore
 import MembraneCore
 
+/// Internal Membrane session configuration.
+///
+/// Defaults match Swarm's public `MembraneFeatureConfiguration` so the
+/// adapter-boundary mapping is a field copy, not a policy change.
+/// `pointerThresholdBytes` is 400 — the value the live Swarm adapter path
+/// has always shipped. Do not reintroduce a second default here.
 public struct MembraneFeatureConfiguration: Sendable, Equatable {
     public static let `default` = MembraneFeatureConfiguration()
 
@@ -15,7 +21,7 @@ public struct MembraneFeatureConfiguration: Sendable, Equatable {
     public init(
         jitMinToolCount: Int = 12,
         defaultJITLoadCount: Int = 6,
-        pointerThresholdBytes: Int = 1024,
+        pointerThresholdBytes: Int = 400,
         pointerSummaryMaxChars: Int = 240,
         runtimeFeatureFlags: [String: Bool] = [:],
         runtimeModelAllowlist: [String] = []
