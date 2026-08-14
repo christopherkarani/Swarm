@@ -91,6 +91,46 @@ struct OpenAICompatibleSSEParserTests {
         #expect(usage == TokenUsage(inputTokens: 11, outputTokens: 4))
     }
 
+    @Test("Emits usage before toolCallsCompleted so Agent can record it")
+    func emitsUsageBeforeToolCallsCompleted() {
+        var accumulator = OpenAICompatibleStreamAccumulator()
+        var updates: [InferenceStreamUpdate] = []
+
+        updates += accumulator.consume(
+            OpenAICompatibleChatChunk(json: [
+                "choices": [[
+                    "delta": [
+                        "tool_calls": [[
+                            "index": 0,
+                            "id": "call_1",
+                            "function": ["name": "echo", "arguments": "{\"text\":\"hi\"}"],
+                        ]],
+                    ],
+                    "finish_reason": "tool_calls",
+                ]],
+            ])
+        )
+        updates += accumulator.consume(
+            OpenAICompatibleChatChunk(json: [
+                "choices": [] as [Any],
+                "usage": ["prompt_tokens": 11, "completion_tokens": 4],
+            ])
+        )
+        updates += accumulator.finish()
+
+        let kinds = updates.map { update -> String in
+            switch update {
+            case .outputChunk: "chunk"
+            case .toolCallPartial: "partial"
+            case .usage: "usage"
+            case .toolCallsCompleted: "completed"
+            }
+        }
+        #expect(kinds.contains("usage"))
+        #expect(kinds.contains("completed"))
+        #expect(kinds.lastIndex(of: "usage")! < kinds.lastIndex(of: "completed")!)
+    }
+
     @Test("Skips truncated and malformed data lines without aborting")
     func skipsTruncatedAndMalformedLines() {
         var parser = OpenAICompatibleSSEParser()

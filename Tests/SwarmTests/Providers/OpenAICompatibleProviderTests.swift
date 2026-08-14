@@ -260,6 +260,78 @@ struct OpenAICompatibleProviderTests {
         #expect(recorded.headers["Authorization"] == nil)
     }
 
+    @Test("Omits response_format when tools are present on a structured turn")
+    func omitsResponseFormatWhenToolsArePresent() async throws {
+        OpenAICompatibleURLProtocol.reset()
+        defer { OpenAICompatibleURLProtocol.reset() }
+        OpenAICompatibleURLProtocol.enqueue(json: Self.completionJSON(content: #"{"ok":true}"#))
+
+        let provider = OpenAICompatibleProvider(
+            configuration: .init(
+                baseURL: endpoint,
+                model: "gpt-test",
+                structuredOutputMode: .nativeJSONSchema
+            ),
+            session: OpenAICompatibleURLProtocol.makeSession()
+        )
+        var options = InferenceOptions.default
+        options.structuredOutput = StructuredOutputRequest(
+            format: .jsonSchema(name: "Status", schemaJSON: #"{"type":"object"}"#)
+        )
+        _ = try await provider.generateWithToolCalls(
+            messages: [.user("status")],
+            tools: [
+                ToolSchema(name: "echo", description: "Echo", parameters: []),
+            ],
+            options: options
+        )
+
+        let body = try OpenAICompatibleJSON.object(
+            from: #require(OpenAICompatibleURLProtocol.requests.first).body
+        )
+        #expect(body["tools"] != nil)
+        #expect(body["response_format"] == nil)
+    }
+
+    @Test("Correlates tool_call_id from the prior assistant call when the result omits it")
+    func correlatesToolCallIDFromAssistantCall() async throws {
+        OpenAICompatibleURLProtocol.reset()
+        defer { OpenAICompatibleURLProtocol.reset() }
+        OpenAICompatibleURLProtocol.enqueue(json: Self.completionJSON(content: "done"))
+
+        let provider = OpenAICompatibleProvider(
+            configuration: .init(baseURL: endpoint, model: "gpt-test"),
+            session: OpenAICompatibleURLProtocol.makeSession()
+        )
+        _ = try await provider.generateWithToolCalls(
+            messages: [
+                .user("add"),
+                .assistant(
+                    "",
+                    toolCalls: [
+                        InferenceMessage.ToolCall(
+                            id: "call_add",
+                            name: "add",
+                            arguments: ["a": .int(2)]
+                        ),
+                    ]
+                ),
+                .tool(name: "add", content: "5"),
+            ],
+            tools: [
+                ToolSchema(name: "add", description: "Add", parameters: []),
+            ],
+            options: .default
+        )
+
+        let body = try OpenAICompatibleJSON.object(
+            from: #require(OpenAICompatibleURLProtocol.requests.first).body
+        )
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        #expect(messages[2]["tool_call_id"] as? String == "call_add")
+        #expect(messages[2]["tool_call_id"] as? String != "add")
+    }
+
     @Test("Reports conversation, tool, streaming, and structured capabilities")
     func reportsExpectedCapabilities() {
         let provider = OpenAICompatibleProvider(

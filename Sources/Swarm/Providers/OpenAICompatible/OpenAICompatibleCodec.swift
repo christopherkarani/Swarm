@@ -89,7 +89,7 @@ enum OpenAICompatibleCodec: Sendable {
     ) throws -> [String: Any] {
         var body: [String: Any] = [
             "model": configuration.model,
-            "messages": messages.map(encodeMessage),
+            "messages": encodeMessages(messages),
             "temperature": options.temperature,
         ]
 
@@ -124,8 +124,12 @@ enum OpenAICompatibleCodec: Sendable {
             body["stream"] = true
             body["stream_options"] = ["include_usage": true]
         }
+        // Many OpenAI-compatible hosts reject `tools` + `response_format` on
+        // the same call. Native structured output is only advertised when this
+        // request is not also a tool-calling turn.
         if let structuredOutput,
-           configuration.structuredOutputMode == .nativeJSONSchema
+           configuration.structuredOutputMode == .nativeJSONSchema,
+           tools.isEmpty
         {
             body["response_format"] = try encodeResponseFormat(structuredOutput)
         }
@@ -133,7 +137,37 @@ enum OpenAICompatibleCodec: Sendable {
         return body
     }
 
-    static func encodeMessage(_ message: InferenceMessage) -> [String: Any] {
+    static func encodeMessages(_ messages: [InferenceMessage]) -> [[String: Any]] {
+        var pendingCallIDs: [String] = []
+        var pendingCallNames: [String] = []
+        var nextUnused = 0
+
+        return messages.map { message in
+            if message.role == .assistant, !message.toolCalls.isEmpty {
+                pendingCallIDs = message.toolCalls.enumerated().map { index, call in
+                    synthesizedToolCallID(call.id, index: index)
+                }
+                pendingCallNames = message.toolCalls.map(\.name)
+                nextUnused = 0
+            }
+
+            let toolCallID: String?
+            if message.role == .tool {
+                toolCallID = resolvedToolCallID(
+                    for: message,
+                    pendingIDs: pendingCallIDs,
+                    pendingNames: pendingCallNames,
+                    nextUnused: &nextUnused
+                )
+            } else {
+                toolCallID = message.toolCallID
+            }
+
+            return encodeMessage(message, toolCallID: toolCallID)
+        }
+    }
+
+    static func encodeMessage(_ message: InferenceMessage, toolCallID: String? = nil) -> [String: Any] {
         var object: [String: Any] = [
             "role": message.role.rawValue,
             "content": message.content,
@@ -142,7 +176,9 @@ enum OpenAICompatibleCodec: Sendable {
             object["name"] = name
         }
         if message.role == .tool {
-            object["tool_call_id"] = message.toolCallID ?? message.name ?? "tool_call"
+            if let toolCallID, !toolCallID.isEmpty {
+                object["tool_call_id"] = toolCallID
+            }
         }
         if !message.toolCalls.isEmpty {
             object["tool_calls"] = message.toolCalls.enumerated().map { index, call in
@@ -323,13 +359,48 @@ enum OpenAICompatibleCodec: Sendable {
         }
     }
 
+    static func synthesizedToolCallID(_ id: String?, index: Int) -> String {
+        let trimmed = id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "call_\(index)" : trimmed
+    }
+
+    private static func resolvedToolCallID(
+        for message: InferenceMessage,
+        pendingIDs: [String],
+        pendingNames: [String],
+        nextUnused: inout Int
+    ) -> String? {
+        if let explicit = message.toolCallID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !explicit.isEmpty
+        {
+            return explicit
+        }
+
+        if let name = message.name,
+           let match = pendingNames.enumerated().first(where: { index, callName in
+               index >= nextUnused && callName == name
+           })
+        {
+            nextUnused = match.offset + 1
+            return pendingIDs[match.offset]
+        }
+
+        if nextUnused < pendingIDs.count {
+            let id = pendingIDs[nextUnused]
+            nextUnused += 1
+            return id
+        }
+
+        return nil
+    }
+
     private static func encodeToolCall(_ call: InferenceMessage.ToolCall, index: Int) -> [String: Any] {
         let argumentsObject = SendableValue.dictionary(call.arguments).toJSONObject()
         let argumentsData = (try? JSONSerialization.data(withJSONObject: argumentsObject, options: [.sortedKeys]))
             ?? Data("{}".utf8)
         let arguments = String(data: argumentsData, encoding: .utf8) ?? "{}"
         return [
-            "id": call.id ?? "call_\(index)",
+            "id": synthesizedToolCallID(call.id, index: index),
             "type": "function",
             "function": [
                 "name": call.name,
@@ -382,11 +453,9 @@ struct OpenAICompatibleStreamAccumulator: Sendable {
                     )
                 )
             }
-            if let finish = choice.finishReason,
-               finish == "tool_calls" || finish == "function_call"
-            {
-                updates.append(contentsOf: completeToolCalls())
-            }
+            // Defer `.toolCallsCompleted` until `finish()` so a later usage
+            // chunk is still consumed. ``Agent`` stops the stream on completed
+            // calls.
         }
 
         if let usage = chunk.usage {
