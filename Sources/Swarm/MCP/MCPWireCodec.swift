@@ -114,19 +114,18 @@ enum MCPWireCodec {
             return result
         }
 
-        if resultDict["isError"]?.boolValue == true {
-            let detail = toolCallErrorMessage(from: resultDict)
-            throw MCPError(
-                code: MCPError.internalErrorCode,
-                message: "Remote MCP tool '\(toolName)' failed: \(detail)",
-                data: result
-            )
-        }
-
         switch style {
         case .rawEnvelope:
             return result
         case .unwrappedContent:
+            if resultDict["isError"]?.boolValue == true {
+                let detail = toolCallErrorMessage(from: resultDict)
+                throw MCPError(
+                    code: MCPError.internalErrorCode,
+                    message: "Remote MCP tool '\(toolName)' failed: \(detail)",
+                    data: result
+                )
+            }
             return unwrapContent(resultDict["content"])
         }
     }

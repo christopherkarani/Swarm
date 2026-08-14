@@ -400,3 +400,29 @@ struct MCPResourceTests {
         }
     }
 }
+
+@Suite("MCPWireCodec Tests")
+struct MCPWireCodecTests {
+    @Test("unwrapped isError envelopes throw")
+    func unwrappedIsErrorThrows() {
+        let envelope: SendableValue = .dictionary([
+            "content": .array([.dictionary(["type": .string("text"), "text": .string("boom")])]),
+            "isError": .bool(true)
+        ])
+
+        #expect(throws: MCPError.self) {
+            _ = try MCPWireCodec.toolCallResult(envelope, toolName: "explode", style: .unwrappedContent)
+        }
+    }
+
+    @Test("rawEnvelope returns isError envelopes")
+    func rawEnvelopeReturnsIsError() throws {
+        let envelope: SendableValue = .dictionary([
+            "content": .array([.dictionary(["type": .string("text"), "text": .string("boom")])]),
+            "isError": .bool(true)
+        ])
+
+        let raw = try MCPWireCodec.toolCallResult(envelope, toolName: "explode", style: .rawEnvelope)
+        #expect(raw == envelope)
+    }
+}

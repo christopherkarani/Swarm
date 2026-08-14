@@ -139,8 +139,8 @@ public actor HTTPMCPServer: MCPServerConnection {
 
         let version = try MCPWireCodec.negotiatedVersion(from: result)
         let capabilities = try MCPWireCodec.parseCapabilities(from: result)
-        try await sendNotification(try MCPNotification(method: "notifications/initialized"))
         cachedProtocolVersion = version
+        try await sendNotification(try MCPNotification(method: "notifications/initialized"))
         cachedCapabilities = capabilities
         return capabilities
     }
@@ -184,9 +184,9 @@ public actor HTTPMCPServer: MCPServerConnection {
     /// - Parameters:
     ///   - name: The name of the tool to call.
     ///   - arguments: A dictionary of argument names to values.
-    /// - Returns: The raw result object (`content`, `isError`, …).
-    /// - Throws: `MCPError` if the name is empty, the request fails, or the
-    ///   tool reports `isError`.
+    /// - Returns: The raw result object (`content`, `isError`, …), including
+    ///   envelopes where `isError` is `true`.
+    /// - Throws: `MCPError` if the name is empty or the request fails.
     public func callToolRaw(name: String, arguments: [String: SendableValue]) async throws -> SendableValue {
         try await invokeTool(name: name, arguments: arguments, style: .rawEnvelope)
     }
