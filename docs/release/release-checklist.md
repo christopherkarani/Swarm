@@ -106,6 +106,12 @@ swift run SwarmCapabilityShowcase smoke  # requires Foundation Models on host
 | `TAVILY_API_KEY` | Built-in web search tool | Live Tavily search | Not required for deterministic tests. |
 | `AISTACK_USE_LOCAL_DEPS=0` | Release verification script | Remote dependency graph proof | Ensures sibling checkouts are not required. |
 
+## Planned removals in 0.7.0
+
+- Remove the `SwarmMembrane` library product and `Sources/SwarmMembrane`
+  target. It is a hollow `@_exported import Swarm` re-export; import `Swarm`
+  and use the Membrane types on that product.
+
 ## Tagging Sequence
 
 1. Finalize the dependency graph in `Package.swift`.
