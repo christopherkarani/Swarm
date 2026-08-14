@@ -313,6 +313,11 @@ let workflow = Workflow()
 let resumed = try await workflow.durable.execute("watch", resumeFrom: "monitor-v1")
 ```
 
+A mid-step crash re-runs that whole step. File stores keep the newest 16
+checkpoints per run (configurable) and identify steps by kind, position, and
+optional `signature:` — not source line numbers. See
+[Durable Execution](docs/guide/durable-execution.md).
+
 #### Provider selection
 
 ```swift

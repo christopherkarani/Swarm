@@ -95,6 +95,8 @@ extension Workflow {
             }
         }
 
+        WorkflowDurableIdentity.warnIfUsingImplicitIdentity(self)
+
         let engine = WorkflowDurableEngine(
             workflow: self,
             checkpointing: checkpointing,
@@ -116,5 +118,59 @@ extension Workflow {
             try await executeDirect(input: input)
         }
         #endif
+    }
+}
+
+enum WorkflowDurableIdentity {
+    static let implicitIdentityWarning = """
+        Durable workflow uses implicit step identity (kind + position). \
+        Source fileID:line is no longer part of resume matching. Pass signature: \
+        on route, repeatUntil, and custom merge when those closures change.
+        """
+
+    static func warnIfUsingImplicitIdentity(_ workflow: Workflow) {
+        guard workflow.usesImplicitOpaqueIdentity else { return }
+        if WorkflowDurableIdentityRecorder.shared.record() {
+            Log.orchestration.warning("\(implicitIdentityWarning)")
+        }
+    }
+}
+
+enum WorkflowDurableIdentityTesting {
+    static var warningCount: Int {
+        WorkflowDurableIdentityRecorder.shared.count
+    }
+
+    static func reset() {
+        WorkflowDurableIdentityRecorder.shared.reset()
+    }
+}
+
+private final class WorkflowDurableIdentityRecorder: @unchecked Sendable {
+    static let shared = WorkflowDurableIdentityRecorder()
+    private let lock = NSLock()
+    private var didWarn = false
+    private var recordedCount = 0
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedCount
+    }
+
+    func record() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didWarn else { return false }
+        didWarn = true
+        recordedCount += 1
+        return true
+    }
+
+    func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        didWarn = false
+        recordedCount = 0
     }
 }

@@ -123,6 +123,9 @@ struct WorkflowDurableEngine: Sendable {
     let resume: Bool
 
     func run(startInput: String) async throws -> AgentResult {
+        if let controller = WorkflowDurableFaultInjection.controller {
+            await controller.beginAttempt()
+        }
         let graph = try makeGraph()
         let context = WorkflowDurableContext(
             workflow: workflow,
@@ -133,7 +136,7 @@ struct WorkflowDurableEngine: Sendable {
             context: context,
             clock: WorkflowDurableClock(),
             logger: WorkflowDurableLogger(),
-            checkpointStore: checkpointing.runtimeStore
+            checkpointStore: faultInjectingStore(wrapping: checkpointing.runtimeStore)
         )
 
         let runtime = try HiveRuntime(graph: graph, environment: environment)
@@ -168,6 +171,15 @@ struct WorkflowDurableEngine: Sendable {
         }
 
         return result
+    }
+
+    private func faultInjectingStore(
+        wrapping store: AnyHiveCheckpointStore<WorkflowDurableSchema>
+    ) -> AnyHiveCheckpointStore<WorkflowDurableSchema> {
+        guard WorkflowDurableFaultInjection.controller != nil else {
+            return store
+        }
+        return AnyHiveCheckpointStore(WorkflowFaultInjectingCheckpointStore(inner: store))
     }
 
     private func makeGraph() throws -> CompiledHiveGraph<WorkflowDurableSchema> {
@@ -249,10 +261,11 @@ private enum WorkflowNodeID {
 
 private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async throws -> HiveNodeOutput<WorkflowDurableSchema> {
     let checkpointSignature = try input.store.get(WorkflowDurableSchema.signatureKey)
-    if checkpointSignature != input.context.signature {
-        throw WorkflowError.resumeDefinitionMismatch(
-            reason: "Workflow signature mismatch between checkpoint and current definition"
-        )
+    if let mismatch = workflowDurableSignatureMismatch(
+        checkpointSignature: checkpointSignature,
+        currentSignature: input.context.signature
+    ) {
+        throw mismatch
     }
 
     let completed = try input.store.get(WorkflowDurableSchema.completedKey)
@@ -302,6 +315,9 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
     }
 
     let step = input.context.workflow.steps[stepCursor]
+    if let controller = WorkflowDurableFaultInjection.controller {
+        await controller.markWorkflowStepStarted()
+    }
     let result = try await input.context.workflow.execute(step: step, withInput: currentInput)
     let snapshot = WorkflowResultSnapshot(result)
 
@@ -328,5 +344,84 @@ private struct WorkflowDurableLogger: HiveLogger {
     func debug(_ message: String, metadata: [String: String]) {}
     func info(_ message: String, metadata: [String: String]) {}
     func error(_ message: String, metadata: [String: String]) {}
+}
+
+enum WorkflowDurableFaultPoint: Sendable, Equatable {
+    case beforeCheckpointWrite
+    case afterCheckpointWrite
+    case midStep
+}
+
+struct WorkflowDurableInjectedFault: Error, Sendable, Equatable {
+    let point: WorkflowDurableFaultPoint
+}
+
+enum WorkflowDurableFaultInjection {
+    @TaskLocal static var controller: WorkflowDurableFaultController?
+}
+
+actor WorkflowDurableFaultController {
+    private var queue: [WorkflowDurableFaultPoint]
+    private(set) var injected: [WorkflowDurableFaultPoint] = []
+    private var workflowStepStarted = false
+    private var injectedThisAttempt = false
+
+    init(queue: [WorkflowDurableFaultPoint]) {
+        self.queue = queue
+    }
+
+    func beginAttempt() {
+        workflowStepStarted = false
+        injectedThisAttempt = false
+    }
+
+    func markWorkflowStepStarted() {
+        workflowStepStarted = true
+    }
+
+    func consumeMidStep() throws {
+        try consume(.midStep, requireWorkflowStep: false)
+    }
+
+    func consumeBeforeWrite() throws {
+        try consume(.beforeCheckpointWrite, requireWorkflowStep: true)
+    }
+
+    func consumeAfterWrite() throws {
+        try consume(.afterCheckpointWrite, requireWorkflowStep: true)
+    }
+
+    private func consume(_ point: WorkflowDurableFaultPoint, requireWorkflowStep: Bool) throws {
+        guard !injectedThisAttempt, queue.first == point else { return }
+        if requireWorkflowStep, !workflowStepStarted { return }
+        queue.removeFirst()
+        injected.append(point)
+        injectedThisAttempt = true
+        throw WorkflowDurableInjectedFault(point: point)
+    }
+}
+
+actor WorkflowFaultInjectingCheckpointStore: HiveCheckpointStore {
+    typealias Schema = WorkflowDurableSchema
+
+    private let inner: AnyHiveCheckpointStore<WorkflowDurableSchema>
+
+    init(inner: AnyHiveCheckpointStore<WorkflowDurableSchema>) {
+        self.inner = inner
+    }
+
+    func save(_ checkpoint: HiveCheckpoint<WorkflowDurableSchema>) async throws {
+        if let controller = WorkflowDurableFaultInjection.controller {
+            try await controller.consumeBeforeWrite()
+        }
+        try await inner.save(checkpoint)
+        if let controller = WorkflowDurableFaultInjection.controller {
+            try await controller.consumeAfterWrite()
+        }
+    }
+
+    func loadLatest(threadID: HiveThreadID) async throws -> HiveCheckpoint<WorkflowDurableSchema>? {
+        try await inner.loadLatest(threadID: threadID)
+    }
 }
 #endif

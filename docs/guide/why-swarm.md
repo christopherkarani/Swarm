@@ -38,6 +38,10 @@ let result = try await Workflow()
     .execute("Create this week report")
 ```
 
+A mid-step crash re-runs that whole step; side effects must be idempotent.
+See [Durable Execution](./durable-execution.md) for signature stability and
+checkpoint pruning.
+
 ## Workflow Is Fluent
 
 Compose sequential, parallel, and routed flows with a small default API:
