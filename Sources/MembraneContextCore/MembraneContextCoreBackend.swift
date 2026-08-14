@@ -40,8 +40,6 @@ public actor MembraneContextCoreBackend: MembraneContextBackend {
         let backendState = try await checkpointData(for: context)
         let backendSnapshot = ContextSnapshot(
             budget: snapshot?.budget ?? .init(totalTokens: budget.totalTokens),
-            csoSummaries: [],
-            pagingCursor: nil,
             toolState: snapshot?.toolState ?? .init(mode: .allowAll, loadedToolNames: [], allowListToolNames: [], usageCounts: []),
             pointerIDs: snapshot?.pointerIDs ?? [],
             backendID: backendID,

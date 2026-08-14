@@ -199,7 +199,6 @@ public actor DefaultMembraneAgentAdapter: MembraneAgentAdapter {
             toolCount: toolSchemas.count
         )
 
-        try await syncCheckpointState(totalTokens: profile.budget.maxInputTokens)
         return MembranePlannedBoundary(
             prompt: distilledPrompt,
             toolSchemas: MembraneInternalTools.sortedSchemas(selectedSchemas),
@@ -224,13 +223,11 @@ public actor DefaultMembraneAgentAdapter: MembraneAgentAdapter {
         let decision = try await resolver.pointerizeIfNeeded(toolName: toolName, output: output)
         switch decision {
         case let .inline(text):
-            try await syncCheckpointState()
             return MembraneToolResultBoundary(textForConversation: text)
 
         case let .pointer(pointer, replacementText):
             pointerIDs.append(pointer.id)
             pointerIDs = Array(Set(pointerIDs)).sorted()
-            try await syncCheckpointState()
             return MembraneToolResultBoundary(
                 textForConversation: replacementText,
                 pointerID: pointer.id
@@ -257,7 +254,6 @@ public actor DefaultMembraneAgentAdapter: MembraneAgentAdapter {
 
             loadedToolNames.append(toolName)
             loadedToolNames = Array(Set(loadedToolNames)).sorted()
-            try await syncCheckpointState()
             return "Loaded tool schema: \(toolName)"
 
         case MembraneInternalToolName.addTools:
@@ -269,7 +265,6 @@ public actor DefaultMembraneAgentAdapter: MembraneAgentAdapter {
                 )
             }
             loadedToolNames = Array(Set(loadedToolNames + names)).sorted()
-            try await syncCheckpointState()
             return "Added tools: \(names.sorted().joined(separator: ", "))"
 
         case MembraneInternalToolName.removeTools:
@@ -283,7 +278,6 @@ public actor DefaultMembraneAgentAdapter: MembraneAgentAdapter {
             let removals = Set(names)
             loadedToolNames.removeAll { removals.contains($0) }
             loadedToolNames.sort()
-            try await syncCheckpointState()
             return "Removed tools: \(names.sorted().joined(separator: ", "))"
 
         case MembraneInternalToolName.resolvePointer:
@@ -400,10 +394,6 @@ public actor DefaultMembraneAgentAdapter: MembraneAgentAdapter {
 
         let adjustedHead = max(0, maxTokens - markerTokens)
         return await PromptTokenBudgeting.prefix(prompt, maxTokens: adjustedHead, using: counter) + marker
-    }
-
-    private func syncCheckpointState(totalTokens _: Int = 4_096) async throws {
-        _ = try await snapshotCheckpointData()
     }
 
     private struct CheckpointState: Codable, Sendable {

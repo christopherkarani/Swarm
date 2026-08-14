@@ -343,8 +343,6 @@ public actor MembraneSession {
                 kvMemoryBudgetBytes: budget.kvMemoryBudgetBytes,
                 maxSequenceLength: budget.maxSequenceLength
             ),
-            csoSummaries: backendSnapshot?.csoSummaries ?? snapshotState?.csoSummaries ?? [],
-            pagingCursor: backendSnapshot?.pagingCursor ?? snapshotState?.pagingCursor,
             toolState: .init(
                 mode: toolMode,
                 loadedToolNames: loadedToolNames,

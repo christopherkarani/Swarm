@@ -6,7 +6,6 @@ public struct ContextSnapshot: Sendable, Codable, Equatable {
         static let maxLoadedToolNames = 128
         static let maxAllowListToolNames = 128
         static let maxUsageCounts = 256
-        static let maxCSOSummaries = 256
         static let maxPointerIDs = 512
     }
 
@@ -39,16 +38,6 @@ public struct ContextSnapshot: Sendable, Codable, Equatable {
             self.kvBytesPerToken = kvBytesPerToken
             self.kvMemoryBudgetBytes = kvMemoryBudgetBytes
             self.maxSequenceLength = maxSequenceLength
-        }
-    }
-
-    public struct PagingCursor: Sendable, Codable, Equatable {
-        public let pageIndex: Int
-        public let lastEvictedFrameID: String?
-
-        public init(pageIndex: Int, lastEvictedFrameID: String?) {
-            self.pageIndex = pageIndex
-            self.lastEvictedFrameID = lastEvictedFrameID
         }
     }
 
@@ -88,8 +77,6 @@ public struct ContextSnapshot: Sendable, Codable, Equatable {
     }
 
     public let budget: BudgetSnapshot
-    public let csoSummaries: [String]
-    public let pagingCursor: PagingCursor?
     public let toolState: ToolState
     public let pointerIDs: [String]
     public let backendID: String?
@@ -97,16 +84,12 @@ public struct ContextSnapshot: Sendable, Codable, Equatable {
 
     public init(
         budget: BudgetSnapshot,
-        csoSummaries: [String] = [],
-        pagingCursor: PagingCursor? = nil,
         toolState: ToolState,
         pointerIDs: [String] = [],
         backendID: String? = nil,
         backendState: Data? = nil
     ) {
         self.budget = budget
-        self.csoSummaries = csoSummaries
-        self.pagingCursor = pagingCursor
         self.toolState = toolState
         self.pointerIDs = pointerIDs
         self.backendID = backendID
@@ -156,8 +139,6 @@ public struct ContextSnapshot: Sendable, Codable, Equatable {
                 kvMemoryBudgetBytes: budget.kvMemoryBudgetBytes,
                 maxSequenceLength: budget.maxSequenceLength
             ),
-            csoSummaries: Self.sortedUnique(csoSummaries, limit: Bounds.maxCSOSummaries),
-            pagingCursor: pagingCursor,
             toolState: normalizedToolState,
             pointerIDs: Self.sortedUnique(pointerIDs, limit: Bounds.maxPointerIDs),
             backendID: backendID,

@@ -24,7 +24,6 @@ public actor AgentContext {
     private let attentionEngine: AttentionEngine
     private let compressionEngine: CompressionEngine
     private let consolidationEngine: ConsolidationEngine
-    private let progressiveCompressor: ProgressiveCompressor
 
     private let windowPacker: WindowPacker
     private let chunkOrderer: ChunkOrderer
@@ -70,10 +69,6 @@ public actor AgentContext {
             embeddingProvider: provider
         )
 
-        self.progressiveCompressor = ProgressiveCompressor(
-            compressionEngine: self.compressionEngine,
-            tokenCounter: configuration.tokenCounter
-        )
         self.windowPacker = WindowPacker(
             compressionEngine: self.compressionEngine,
             tokenCounter: configuration.tokenCounter,

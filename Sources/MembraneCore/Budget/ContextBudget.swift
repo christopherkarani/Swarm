@@ -55,17 +55,6 @@ public struct ContextBudget: Sendable {
         buckets[bucket]?.allocated ?? 0
     }
 
-    private mutating func setKVSizing(kvBytesPerToken: Int?, kvMemoryBudgetBytes: Int?) {
-        self.kvBytesPerToken = kvBytesPerToken
-        self.kvMemoryBudgetBytes = kvMemoryBudgetBytes
-    }
-
-    public func withKVSizing(kvBytesPerToken: Int?, kvMemoryBudgetBytes: Int?) -> ContextBudget {
-        var copy = self
-        copy.setKVSizing(kvBytesPerToken: kvBytesPerToken, kvMemoryBudgetBytes: kvMemoryBudgetBytes)
-        return copy
-    }
-
     public var totalAllocated: Int {
         buckets.values.reduce(0) { partial, allocation in
             partial + allocation.allocated
