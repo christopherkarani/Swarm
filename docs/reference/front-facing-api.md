@@ -649,7 +649,7 @@ The package exports four public library products:
 | Product | Source surface | Public entry points |
 |---------|----------------|---------------------|
 | `Swarm` | `Sources/Swarm` | Agents, tools, workflows, memory, guardrails, providers, MCP client/bridge, workspace, resilience, observability, macros |
-| `SwarmOpenTelemetry` | `Sources/SwarmOpenTelemetry` | `OpenTelemetryInferenceProvider`, `InferenceProvider.instrumentedWithOpenTelemetry(...)`, `AgentRuntime.instrumentedWithOpenTelemetry(...)`, and `SwarmRuntimeTracer` |
+| `SwarmOpenTelemetry` | `Sources/SwarmOpenTelemetry` | `OpenTelemetryInferenceProvider`, `InferenceProvider.instrumentedWithOpenTelemetry(...)`, `AgentRuntime.instrumentedWithOpenTelemetry(...)`, `OTLPHTTPTraceExporter`, `OpenTelemetryTracing`, `OpenTelemetryTracePropagation`, and `SwarmRuntimeTracer` |
 | `SwarmMembrane` | `Sources/SwarmMembrane` | Re-export product for Swarm's Membrane integration. The target is `@_exported import Swarm`, so public Membrane symbols are the `MembraneEnvironment`, `MembraneFeatureConfiguration`, `MembraneAgentAdapter`, and `DefaultMembraneAgentAdapter` APIs cataloged under `Sources/Swarm/Integration/Membrane/`. |
 | `SwarmMCP` | `Sources/SwarmMCP` | `SwarmMCPServerService`, `SwarmMCPToolCatalog`, `SwarmMCPToolExecutor`, `SwarmMCPToolExecutionError`, and `SwarmMCPToolRegistryAdapter` |
 
@@ -659,16 +659,27 @@ The package exports four public library products:
 import Swarm
 import SwarmOpenTelemetry
 
+OpenTelemetryTracing.configureOTLPHTTPExport()
+
 let tracedAgent = try Agent(
     "Answer briefly.",
     inferenceProvider: .foundationModels()
 ).instrumentedWithOpenTelemetry()
 
 let tracedProvider = myCustomProvider.instrumentedWithOpenTelemetry()
+
+var request = URLRequest(url: endpoint)
+TraceContextHeaders.applyCurrent(to: &request)
 ```
 
-See [OpenTelemetry Tracing](../guide/opentelemetry-tracing.md) for SDK setup and
-URLSession instrumentation policy.
+`OTLPHTTPTraceExporter` posts OTLP/HTTP JSON to
+`http://localhost:4318/v1/traces` by default (no gRPC). Built-in Web tool
+requests inject W3C `traceparent` from the current span. See
+[OpenTelemetry Tracing](../guide/opentelemetry-tracing.md).
+
+`AgentConfiguration.autoAttachMetricsCollector(true)` attaches a
+`MetricsCollector` without passing a tracer; read
+`agent.metricsCollector?.snapshot()`. Default is off.
 
 ### MCP server adapter
 

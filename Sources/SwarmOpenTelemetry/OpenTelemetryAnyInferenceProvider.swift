@@ -283,14 +283,16 @@ private final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
     ) async throws -> T {
         let builder = makeSpanBuilder(operation: operation, inputLength: inputLength, options: options)
         return try await builder.withActiveSpan { span in
-            OpenTelemetryAttributes.applyMetadata(metadata, to: span)
-            do {
-                let result = try await body(span)
-                span.status = .ok
-                return result
-            } catch {
-                OpenTelemetryAttributes.recordError(error, on: span)
-                throw error
+            try await OpenTelemetryTracePropagation.withCurrentSpan(span) {
+                OpenTelemetryAttributes.applyMetadata(metadata, to: span)
+                do {
+                    let result = try await body(span)
+                    span.status = .ok
+                    return result
+                } catch {
+                    OpenTelemetryAttributes.recordError(error, on: span)
+                    throw error
+                }
             }
         }
     }

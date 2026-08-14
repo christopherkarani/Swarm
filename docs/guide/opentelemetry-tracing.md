@@ -1,8 +1,8 @@
 # OpenTelemetry Tracing
 
 Swarm ships OpenTelemetry support as an optional product named `SwarmOpenTelemetry`.
-Use it when you want LLM requests and their underlying HTTP calls to show up in
-the same distributed trace as the rest of your app.
+Use it when you want agent turns and LLM calls to export as OTLP spans and to
+propagate W3C `traceparent` on outbound HTTP.
 
 Swarm's OpenTelemetry integration is scoped to agent turns and the LLM calls made
 inside those turns:
@@ -11,18 +11,21 @@ inside those turns:
   user-facing agent operation.
 - During that operation, Swarm automatically wraps the resolved
   `InferenceProvider` and emits child GenAI spans for LLM calls.
+- `OTLPHTTPTraceExporter` posts those spans to an OTLP/HTTP collector as JSON.
+  There is no gRPC dependency.
+- W3C `traceparent` (and `tracestate` when present) is injected from the current
+  span into built-in Web tool HTTP requests. Custom providers call
+  `TraceContextHeaders.applyCurrent(to:)` or
+  `OpenTelemetryTracePropagation.applyCurrent(to:)`.
 
-If you also want HTTP spans or `traceparent` header propagation for the
-underlying LLM network requests, install OpenTelemetry Swift's
-`URLSessionInstrumentation` in your application telemetry bootstrap. Swarm does
-not install it for you because URLSession instrumentation is process-wide.
+## Add the Package Product
 
-## Add the Package Products
-
-If your app already configures OpenTelemetry, add only `SwarmOpenTelemetry` to the
-target that creates agents:
+If your app already configures OpenTelemetry, add `SwarmOpenTelemetry` to the
+target that creates agents. Swarm `0.6.0` is the current published tag:
 
 ```swift
+.package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.0")
+
 .target(
     name: "YourApp",
     dependencies: [
@@ -32,78 +35,99 @@ target that creates agents:
 )
 ```
 
-If the same target also configures an OTLP exporter, add the OpenTelemetry
-packages directly so SwiftPM lets the app import the SDK, exporter, and optional
-URLSession instrumentation modules:
+`SwarmOpenTelemetry` already depends on OpenTelemetry API + SDK
+(`opentelemetry-swift-core`). You do **not** need the first-party
+`OpenTelemetryProtocolExporterHTTP` package (that one pulls gRPC). Swarm's
+in-house exporter speaks OTLP/HTTP JSON over `URLSession`.
+
+## Configure export
+
+Register a tracer provider once during app startup. This example exports spans
+to a local OpenTelemetry Collector at the default OTLP/HTTP traces endpoint
+(`http://localhost:4318/v1/traces`):
 
 ```swift
-dependencies: [
-    .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.0"),
-    .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.3.0"),
-    .package(url: "https://github.com/open-telemetry/opentelemetry-swift.git", from: "2.3.0"),
-],
-targets: [
-    .target(
-        name: "YourApp",
-        dependencies: [
-            .product(name: "Swarm", package: "Swarm"),
-            .product(name: "SwarmOpenTelemetry", package: "Swarm"),
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
-            .product(name: "URLSessionInstrumentation", package: "opentelemetry-swift"),
-        ]
-    )
-]
-```
-
-## Configure OpenTelemetry
-
-Register your tracer provider once during app startup. This example exports spans
-to a local OpenTelemetry Collector using OTLP/HTTP.
-
-```swift
-import Foundation
-import OpenTelemetryApi
-import OpenTelemetryProtocolExporterHttp
-import OpenTelemetrySdk
-import URLSessionInstrumentation
 import SwarmOpenTelemetry
 
-private var urlSessionInstrumentation: URLSessionInstrumentation?
-
 func configureTracing() {
-    let exporter = OtlpHttpTraceExporter(
-        endpoint: URL(string: "http://localhost:4318/v1/traces")!
-    )
-
-    let processor = SimpleSpanProcessor(spanExporter: exporter)
-
-    OpenTelemetry.registerTracerProvider(
-        tracerProvider: TracerProviderBuilder()
-            .add(spanProcessor: processor)
-            .build()
-    )
-
-    urlSessionInstrumentation = URLSessionInstrumentation(
-        configuration: URLSessionInstrumentationConfiguration(
-            shouldInstrument: { request in
-                guard let host = request.url?.host else { return false }
-                return host == "api.openai.com" || host == "api.anthropic.com"
-            },
-            shouldInjectTracingHeaders: { request in
-                guard let host = request.url?.host else { return false }
-                return host == "api.openai.com" || host == "api.anthropic.com"
-            }
-        )
+    OpenTelemetryTracing.configureOTLPHTTPExport(
+        configuration: .default
+            .headers(["Authorization": "Bearer collector-token"])
     )
 }
 ```
 
-Keep the `URLSessionInstrumentation` instance alive for as long as you want
-URLSession requests to be instrumented. The filtering closures are application
-policy: decide where HTTP spans and propagated trace headers are allowed.
+Or wire the exporter yourself if you already own the tracer provider:
 
-## Trace an Agent Run
+```swift
+import OpenTelemetryApi
+import OpenTelemetrySdk
+import SwarmOpenTelemetry
+
+func configureTracing() {
+    let exporter = OTLPHTTPTraceExporter(
+        configuration: .default
+            .endpoint(URL(string: "http://localhost:4318/v1/traces")!)
+            .headers(["Authorization": "Bearer collector-token"])
+            .maxBatchSize(64)
+            .scheduleDelay(.seconds(5))
+    )
+
+    OpenTelemetry.registerTracerProvider(
+        tracerProvider: TracerProviderBuilder()
+            .add(spanProcessor: SimpleSpanProcessor(spanExporter: exporter))
+            .build()
+    )
+}
+```
+
+### What exports
+
+Each finished agent and LLM span is POSTed as OTLP/JSON `resourceSpans`. Resource
+attributes include `service.name` (default `swarm`) plus any values you set on
+`OTLPHTTPExporterConfiguration.resourceAttributes`. Span attributes include the
+fields Swarm already records:
+
+- Agent: `swarm.operation.name`, `swarm.agent.name`, `swarm.request.input_length`,
+  `swarm.response.output_length`, `swarm.iterations.count`, tool-call counts,
+  and `gen_ai.usage.*` when the provider reports tokens.
+- LLM: `gen_ai.operation.name`, `gen_ai.request.*`, `gen_ai.provider.name`,
+  `gen_ai.request.model`, `server.address` / `url.full` when metadata is present,
+  and `error.type` on failure.
+
+Batching is size- and timer-based. Transient failures (HTTP 5xx and network
+errors) retry once by default; HTTP 4xx is not retried.
+
+## Local collector
+
+A minimal Collector config that accepts OTLP/HTTP JSON and prints spans:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  batch: {}
+exporters:
+  debug:
+    verbosity: detailed
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+```
+
+```bash
+docker run --rm -p 4318:4318 \
+  -v "$(pwd)/otel-collector.yaml:/etc/otelcol/config.yaml" \
+  otel/opentelemetry-collector:latest
+```
+
+## Trace an agent run
 
 Wrap the agent once. Swarm will instrument whichever inference provider that
 agent resolves for the run.
@@ -129,39 +153,45 @@ print(result.output)
 This creates:
 
 - An agent parent span named like `swarm.agent.run support-agent`.
-- Inference child spans for provider calls.
-- URLSession HTTP spans for provider network requests, if your app installed URLSession instrumentation and the provider uses URLSession.
-- `traceparent` and `baggage` headers on instrumented URLSession requests, if your app enabled header injection.
+- Inference child spans for provider calls, sharing the agent trace.
+- An OTLP/HTTP JSON export of those spans to your collector.
+- `traceparent` (and `tracestate` when present) on built-in Web tool HTTP
+  requests made inside the active span.
 
-If one agent run makes multiple inference calls, those spans share the same
-trace as the agent span. With URLSession instrumentation enabled, provider HTTP
-requests made inside those spans inherit that same current trace context.
+## Propagate trace context
 
-## Control Header Injection
+Swarm injects W3C headers from the **current** span. The format is exactly
+`{version}-{trace-id}-{parent-id}-{flags}` (lowercase hex), for example
+`00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01`.
 
-URLSession instrumentation is global to the process, so configure it in the app
-instead of in Swarm. Restrict instrumentation and header injection to the hosts
-that should participate in distributed tracing:
+Built-in Web fetches and Tavily search apply `TraceContextHeaders.current`
+automatically. Custom providers — including a future remote OpenAI-compatible
+provider — should do the same:
 
 ```swift
-urlSessionInstrumentation = URLSessionInstrumentation(
-    configuration: URLSessionInstrumentationConfiguration(
-        shouldInstrument: { request in
-            guard let host = request.url?.host else { return false }
-            return host == "api.openai.com" || host == "api.anthropic.com"
-        },
-        shouldInjectTracingHeaders: { request in
-            guard let host = request.url?.host else { return false }
-            return host == "api.openai.com"
-        }
-    )
-)
+import Swarm
+
+var request = URLRequest(url: endpoint)
+TraceContextHeaders.applyCurrent(to: &request)
 ```
 
-Return `false` from `shouldInjectTracingHeaders` when you want local HTTP spans
-but do not want to propagate tracing headers to an upstream provider.
+If you already import `SwarmOpenTelemetry`, this is equivalent and also reads
+the active OTel span directly:
 
-## Capture Content
+```swift
+import SwarmOpenTelemetry
+
+var request = URLRequest(url: endpoint)
+OpenTelemetryTracePropagation.applyCurrent(to: &request)
+```
+
+Swarm does **not** install process-wide `URLSessionInstrumentation`. If you also
+want HTTP *spans* (not just header injection) for arbitrary `URLSession` traffic,
+add OpenTelemetry Swift's URLSession instrumentation in your app bootstrap and
+restrict it to the hosts you intend to trace. That module is optional and is
+not required for Swarm's own export or `traceparent` propagation.
+
+## Capture content
 
 LLM spans record request shape, provider metadata, token usage when the provider
 reports it (Foundation Models does not), output length,
@@ -180,10 +210,30 @@ let agent = try Agent(
 Keep prompt and response capture behind an explicit application-level policy
 before adding sensitive content to span attributes or events.
 
-## Platform Notes
+## Metrics without a manual tracer
 
-Agent and LLM span wrapping works anywhere the OpenTelemetry API and Swarm
-targets build.
-URLSession auto-instrumentation is available when the `URLSessionInstrumentation`
-module is importable by your application. On unsupported platforms, skip the
-URLSession instrumentation setup and keep only the Swarm agent wrapper.
+`MetricsCollector` can attach from configuration so execution counters flow
+without passing a tracer:
+
+```swift
+let config = AgentConfiguration.default
+    .autoAttachMetricsCollector(true)
+
+let agent = try Agent(
+    "Answer briefly.",
+    configuration: config,
+    inferenceProvider: .foundationModels()
+)
+
+_ = try await agent.run("Hello")
+let snapshot = await agent.metricsCollector?.snapshot()
+```
+
+The flag defaults to `false`.
+
+## Platform notes
+
+Agent and LLM span wrapping, OTLP/HTTP JSON export, and W3C header helpers work
+anywhere the OpenTelemetry API/SDK and Swarm targets build, including Linux.
+URLSession auto-instrumentation for extra HTTP spans remains an optional
+application concern and is not shipped by Swarm.

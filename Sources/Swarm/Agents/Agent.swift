@@ -187,6 +187,18 @@ public struct Agent: AgentRuntime, Sendable {
     /// See ``Tracer`` for the protocol definition and available implementations.
     public private(set) var tracer: (any Tracer)?
 
+    /// The auto-attached ``MetricsCollector``, when
+    /// ``AgentConfiguration/autoAttachMetricsCollector`` is `true`.
+    ///
+    /// `nil` when the configuration flag is off. When present, the collector
+    /// is composed into the tracer chain so execution metrics accumulate
+    /// without passing a tracer manually. Call ``MetricsCollector/snapshot()``
+    /// to read counters, durations, and token totals.
+    ///
+    /// - SeeAlso: ``AgentConfiguration/autoAttachMetricsCollector(_:)``,
+    ///   ``MetricsCollector``
+    public private(set) var metricsCollector: MetricsCollector?
+
     /// The configuration for the guardrail runner.
     ///
     /// This configuration controls how input and output guardrails are executed,
@@ -259,6 +271,9 @@ public struct Agent: AgentRuntime, Sendable {
         self.defaultMemory = try memory == nil ? Self.makeDefaultMemory() : nil
         self.inferenceProvider = inferenceProvider
         self.tracer = tracer
+        self.metricsCollector = configuration.autoAttachMetricsCollector
+            ? (tracer as? MetricsCollector ?? MetricsCollector())
+            : nil
         self.inputGuardrails = inputGuardrails
         self.outputGuardrails = outputGuardrails
         self.guardrailRunnerConfiguration = guardrailRunnerConfiguration
@@ -820,6 +835,26 @@ public struct Agent: AgentRuntime, Sendable {
         }
     }
 
+    private func resolvedActiveTracer() -> (any Tracer)? {
+        let configured = tracer ?? AgentEnvironmentValues.current.tracer
+        let fallback = configuration.defaultTracingEnabled
+            ? SwiftLogTracer(minimumLevel: .debug)
+            : nil
+        let base = configured ?? fallback
+
+        guard configuration.autoAttachMetricsCollector, let collector = metricsCollector else {
+            return base
+        }
+
+        if let base {
+            if let existing = base as? MetricsCollector, existing === collector {
+                return collector
+            }
+            return CompositeTracer(tracers: [base, collector])
+        }
+        return collector
+    }
+
     private func runInternal(
         _ input: String,
         session: (any Session)? = nil,
@@ -830,9 +865,7 @@ public struct Agent: AgentRuntime, Sendable {
             throw AgentError.invalidInput(reason: "Input cannot be empty")
         }
 
-        let activeTracer = tracer
-            ?? AgentEnvironmentValues.current.tracer
-            ?? (configuration.defaultTracingEnabled ? SwiftLogTracer(minimumLevel: .debug) : nil)
+        let activeTracer = resolvedActiveTracer()
         let activeMemory = resolvedMemory()
         let lifecycleMemory = activeMemory as? any MemorySessionLifecycle
         let trackedSessionMemory = activeMemory.flatMap(defaultSessionMemory)
@@ -3142,6 +3175,9 @@ public extension Agent {
     func withConfiguration(_ config: AgentConfiguration) -> Agent {
         var copy = self
         copy.configuration = config
+        if config.autoAttachMetricsCollector, copy.metricsCollector == nil {
+            copy.metricsCollector = copy.tracer as? MetricsCollector ?? MetricsCollector()
+        }
         return copy
     }
 

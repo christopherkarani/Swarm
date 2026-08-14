@@ -195,6 +195,7 @@ public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
 /// - ``previousResponseId(_:)`` - Set response continuation
 /// - ``autoPreviousResponseId(_:)`` - Set auto response tracking
 /// - ``defaultTracingEnabled(_:)`` - Set default tracing
+/// - ``autoAttachMetricsCollector(_:)`` - Auto-attach a ``MetricsCollector``
 /// - ``foundationModelsExecution(_:)`` - Set Foundation Models execution mode (experimental)
 /// - ``resilience(_:)`` - Set retry, circuit-breaker, and rate-limit policies for inference
 ///
@@ -589,6 +590,30 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   ``SwiftLogTracer``
     public var defaultTracingEnabled: Bool
 
+    /// Whether to auto-attach a ``MetricsCollector`` so execution metrics flow
+    /// without passing a tracer manually.
+    ///
+    /// When `true`, ``Agent`` creates a ``MetricsCollector`` at initialization
+    /// (or when this flag is enabled via ``Agent/withConfiguration(_:)``) and
+    /// composes it into the tracer chain. Read snapshots from
+    /// ``Agent/metricsCollector``.
+    ///
+    /// Default: `false` — metrics collection stays opt-in.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .autoAttachMetricsCollector(true)
+    /// let agent = try Agent("Be helpful.", configuration: config,
+    ///     inferenceProvider: provider)
+    /// _ = try await agent.run("Hello")
+    /// let snapshot = await agent.metricsCollector?.snapshot()
+    /// ```
+    ///
+    /// - SeeAlso: ``autoAttachMetricsCollector(_:)``, ``MetricsCollector``,
+    ///   ``Agent/metricsCollector``
+    public var autoAttachMetricsCollector: Bool
+
     // MARK: - Foundation Models Execution
 
     /// How Apple Foundation Models should execute tool-calling turns.
@@ -643,6 +668,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - previousResponseId: Previous response ID for continuation. Default: nil
     ///   - autoPreviousResponseId: Enable auto response ID tracking. Default: false
     ///   - defaultTracingEnabled: Enable default tracing when no tracer configured. Default: true
+    ///   - autoAttachMetricsCollector: Auto-attach a ``MetricsCollector``. Default: false
     ///   - foundationModelsExecution: Foundation Models tool-loop mode. Default: ``FoundationModelsExecutionMode/capture``
     ///   - resilience: Retry / circuit-breaker / rate-limit policies for inference. Default: ``ResilienceConfiguration/disabled``
     public init(
@@ -665,6 +691,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         previousResponseId: String? = nil,
         autoPreviousResponseId: Bool = false,
         defaultTracingEnabled: Bool = true,
+        autoAttachMetricsCollector: Bool = false,
         foundationModelsExecution: FoundationModelsExecutionMode = .capture,
         resilience: ResilienceConfiguration = .disabled
     ) {
@@ -697,6 +724,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.previousResponseId = previousResponseId
         self.autoPreviousResponseId = autoPreviousResponseId
         self.defaultTracingEnabled = defaultTracingEnabled
+        self.autoAttachMetricsCollector = autoAttachMetricsCollector
         self.foundationModelsExecution = foundationModelsExecution
         self.resilience = resilience
     }
@@ -1198,6 +1226,27 @@ extension AgentConfiguration {
         return copy
     }
 
+    /// Sets whether to auto-attach a ``MetricsCollector`` to the tracer chain.
+    ///
+    /// When `true`, the agent records execution metrics without requiring you
+    /// to construct and pass a collector as `tracer`. Default: `false`.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .autoAttachMetricsCollector(true)
+    /// ```
+    ///
+    /// - Parameter value: `true` to auto-attach a metrics collector
+    /// - Returns: A new configuration with the updated setting
+    /// - SeeAlso: ``autoAttachMetricsCollector``, ``MetricsCollector``,
+    ///   ``Agent/metricsCollector``
+    @discardableResult public func autoAttachMetricsCollector(_ value: Bool) -> AgentConfiguration {
+        var copy = self
+        copy.autoAttachMetricsCollector = value
+        return copy
+    }
+
     // MARK: Foundation Models Execution
 
     /// Sets how Apple Foundation Models should execute tool-calling turns.
@@ -1278,6 +1327,7 @@ extension AgentConfiguration: CustomStringConvertible {
             previousResponseId: \(previousResponseId.map { "\"\($0)\"" } ?? "nil"),
             autoPreviousResponseId: \(autoPreviousResponseId),
             defaultTracingEnabled: \(defaultTracingEnabled),
+            autoAttachMetricsCollector: \(autoAttachMetricsCollector),
             foundationModelsExecution: \(foundationModelsExecution),
             resilience: \(String(describing: resilience))
         )

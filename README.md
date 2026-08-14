@@ -387,7 +387,7 @@ The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only featur
 | | |
 |---|---|
 | [Getting Started](docs/guide/getting-started.md) | Installation, first agent, workflows |
-| [OpenTelemetry Tracing](docs/guide/opentelemetry-tracing.md) | Export agent and LLM spans, with optional trace header injection for provider HTTP requests |
+| [OpenTelemetry Tracing](docs/guide/opentelemetry-tracing.md) | OTLP/HTTP JSON export of agent and LLM spans, plus W3C `traceparent` on outbound HTTP |
 | [API Reference](docs/reference/api-catalog.md) | Every type, protocol, and API |
 | [Front-Facing API](docs/reference/front-facing-api.md) | Public API surface |
 | [Why Swarm?](docs/guide/why-swarm.md) | Design philosophy and architecture |

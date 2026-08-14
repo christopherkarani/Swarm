@@ -3,8 +3,8 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6).
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 165
-- Public/open symbols cataloged: 2464
+- Source files scanned: 166
+- Public/open symbols cataloged: 2481
 
 ## 1. Swarm (entry point)
 
@@ -49,6 +49,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 108 | func | public | AgentConfiguration.autoPreviousResponseId(_:) | `public @discardableResult func autoPreviousResponseId(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.contextMode(_:) | `public @discardableResult func contextMode(_ value: ContextMode) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.contextProfile(_:) | `public @discardableResult func contextProfile(_ value: ContextProfile) -> AgentConfiguration` |
+| 108 | func | public | AgentConfiguration.autoAttachMetricsCollector(_:) | `public @discardableResult func autoAttachMetricsCollector(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.defaultTracingEnabled(_:) | `public @discardableResult func defaultTracingEnabled(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.enableStreaming(_:) | `public @discardableResult func enableStreaming(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.foundationModelsExecution(_:) | `public @discardableResult func foundationModelsExecution(_ value: FoundationModelsExecutionMode) -> AgentConfiguration` |
@@ -87,12 +88,13 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 245 | var | public | AgentConfiguration.previousResponseId | `public var previousResponseId: String?` |
 | 253 | var | public | AgentConfiguration.autoPreviousResponseId | `public var autoPreviousResponseId: Bool` |
 | 264 | var | public | AgentConfiguration.defaultTracingEnabled | `public var defaultTracingEnabled: Bool` |
+| 265 | var | public | AgentConfiguration.autoAttachMetricsCollector | `public var autoAttachMetricsCollector: Bool` |
 | 126 | enum | public | FoundationModelsExecutionMode | `public enum FoundationModelsExecutionMode` |
 | 130 | case | public | FoundationModelsExecutionMode.capture | `public case capture` |
 | 139 | case | public | FoundationModelsExecutionMode.nativeSession | `public case nativeSession` |
 | 604 | var | public | AgentConfiguration.foundationModelsExecution | `public var foundationModelsExecution: FoundationModelsExecutionMode` |
 | 608 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
-| 630 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
+| 630 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
 | 108 | func | public | AgentConfiguration.resilience(_:) | `public @discardableResult func resilience(_ value: ResilienceConfiguration) -> AgentConfiguration` |
 | 345 | var | public | AgentConfiguration.description | `public var description: String { get }` |
 
@@ -1078,7 +1080,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 54 | var | public | Agent.inferenceProvider | `public let inferenceProvider: (any InferenceProvider)?` |
 | 55 | var | public | Agent.inputGuardrails | `public let inputGuardrails: [any InputGuardrail]` |
 | 56 | var | public | Agent.outputGuardrails | `public let outputGuardrails: [any OutputGuardrail]` |
-| 57 | var | public | Agent.tracer | `public let tracer: (any Tracer)?` |
+| 57 | var | public | Agent.tracer | `public private(set) var tracer: (any Tracer)?` |
+| 200 | var | public | Agent.metricsCollector | `public private(set) var metricsCollector: MetricsCollector?` |
 | 58 | var | public | Agent.guardrailRunnerConfiguration | `public let guardrailRunnerConfiguration: GuardrailRunnerConfiguration` |
 | 61 | var | public | Agent.handoffs | `public var handoffs: [AnyHandoffConfiguration] { get }` |
 | 80 | func | public | Agent.init(tools:instructions:configuration:memory:inferenceProvider:tracer:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:) | `public init(tools: [any AnyJSONTool] = [], instructions: String = "", configuration: AgentConfiguration = .default, memory: (any Memory)? = nil, inferenceProvider: (any InferenceProvider)? = nil, tracer: (any Tracer)? = nil, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffs: [AnyHandoffConfiguration] = []) throws` |
@@ -2170,6 +2173,25 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 240 | var | public | TraceContext.description | `public nonisolated var description: String { get }` |
 | 266 | func | public | TraceContext.withSpan(_:metadata:operation:) | `public func withSpan<T>(_ name: String, metadata: [String : SendableValue] = [:], operation: () async throws -> T) async rethrows -> T where T : Sendable` |
 
+### Observability/TraceContextHeaders.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 27 | struct | public | TraceContextHeaders | `public struct TraceContextHeaders` |
+| 29 | var | public | TraceContextHeaders.traceparentHeaderName | `public static let traceparentHeaderName: String` |
+| 32 | var | public | TraceContextHeaders.tracestateHeaderName | `public static let tracestateHeaderName: String` |
+| 35 | var | public | TraceContextHeaders.traceparentPattern | `public static let traceparentPattern: String` |
+| 38 | var | public | TraceContextHeaders.current | `public static var current: TraceContextHeaders? { get }` |
+| 43 | var | public | TraceContextHeaders.traceparent | `public let traceparent: String` |
+| 46 | var | public | TraceContextHeaders.tracestate | `public let tracestate: String?` |
+| 64 | var | public | TraceContextHeaders.httpHeaders | `public var httpHeaders: [String : String] { get }` |
+| 78 | func | public | TraceContextHeaders.init(traceparent:tracestate:) | `public init?(traceparent: String, tracestate: String? = nil)` |
+| 92 | func | public | TraceContextHeaders.init(traceId:spanId:sampled:tracestate:) | `public init?(traceId: String, spanId: String, sampled: Bool = true, tracestate: String? = nil)` |
+| 114 | func | public | TraceContextHeaders.withCurrent(_:operation:) | `public static func withCurrent<T>(_ headers: TraceContextHeaders?, operation: () async throws -> T) async rethrows -> T where T : Sendable` |
+| 124 | func | public | TraceContextHeaders.applyCurrent(to:) | `public static func applyCurrent(to request: inout URLRequest)` |
+| 129 | func | public | TraceContextHeaders.apply(to:) | `public func apply(to request: inout URLRequest)` |
+| 137 | func | public | TraceContextHeaders.isValidTraceparent(_:) | `public static func isValidTraceparent(_ value: String) -> Bool` |
+
 ### Observability/TraceEvent.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -2905,6 +2927,33 @@ exports companion products with small public entry surfaces.
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 210 | func | public | AgentRuntime.instrumentedWithOpenTelemetry(tracer:llmTracer:spanName:captureContent:) | `public func instrumentedWithOpenTelemetry(tracer: any OpenTelemetryApi.Tracer = OpenTelemetry.instance.tracerProvider.get(instrumentationName: "swarm.agent", instrumentationVersion: nil), llmTracer: any OpenTelemetryApi.Tracer = OpenTelemetry.instance.tracerProvider.get(instrumentationName: "swarm.llm", instrumentationVersion: nil), spanName: String? = nil, captureContent: Bool = false) -> some AgentRuntime` |
+
+#### Sources/SwarmOpenTelemetry/OTLPHTTPExporterConfiguration.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 30 | struct | public | OTLPHTTPExporterConfiguration | `public struct OTLPHTTPExporterConfiguration` |
+| 32 | var | public | OTLPHTTPExporterConfiguration.defaultEndpoint | `public static let defaultEndpoint: URL` |
+| 35 | var | public | OTLPHTTPExporterConfiguration.default | `public static let \`default\`: OTLPHTTPExporterConfiguration` |
+| 72 | func | public | OTLPHTTPExporterConfiguration.init(endpoint:headers:resourceAttributes:maxBatchSize:scheduleDelay:maxRetries:retryBackoff:) | `public init(endpoint: URL = defaultEndpoint, headers: [String : String] = [:], resourceAttributes: [String : String] = ["service.name": "swarm"], maxBatchSize: Int = 64, scheduleDelay: Duration = .seconds(5), maxRetries: Int = 1, retryBackoff: Duration = .milliseconds(200))` |
+
+#### Sources/SwarmOpenTelemetry/OTLPHTTPTraceExporter.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 30 | class | public | OTLPHTTPTraceExporter | `public final class OTLPHTTPTraceExporter` |
+| 40 | func | public | OTLPHTTPTraceExporter.init(configuration:session:) | `public init(configuration: OTLPHTTPExporterConfiguration = .default, session: URLSession = .shared)` |
+| 219 | enum | public | OpenTelemetryTracing | `public enum OpenTelemetryTracing` |
+| 230 | func | public | OpenTelemetryTracing.configureOTLPHTTPExport(configuration:session:) | `public static func configureOTLPHTTPExport(configuration: OTLPHTTPExporterConfiguration = .default, session: URLSession = .shared) -> OTLPHTTPTraceExporter` |
+
+#### Sources/SwarmOpenTelemetry/OpenTelemetryTracePropagation.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 22 | enum | public | OpenTelemetryTracePropagation | `public enum OpenTelemetryTracePropagation` |
+| 24 | var | public | OpenTelemetryTracePropagation.currentHeaders | `public static var currentHeaders: [String : String] { get }` |
+| 29 | var | public | OpenTelemetryTracePropagation.current | `public static var current: TraceContextHeaders? { get }` |
+| 39 | func | public | OpenTelemetryTracePropagation.applyCurrent(to:) | `public static func applyCurrent(to request: inout URLRequest)` |
 
 #### Sources/SwarmOpenTelemetry/SwarmTypeAliases.swift
 

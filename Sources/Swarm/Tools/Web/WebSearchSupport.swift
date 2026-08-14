@@ -1234,6 +1234,7 @@ internal struct TavilySearchBackend: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = configuration.fetchTimeout
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        TraceContextHeaders.applyCurrent(to: &request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -1288,6 +1289,7 @@ internal struct SafeWebFetcher: Sendable {
         request.timeoutInterval = configuration.fetchTimeout
         request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
+        TraceContextHeaders.applyCurrent(to: &request)
         if let conditionalEtag, !conditionalEtag.isEmpty {
             request.setValue(conditionalEtag, forHTTPHeaderField: "If-None-Match")
         }
@@ -1475,7 +1477,9 @@ private final class SafeWebFetchDelegate: NSObject, URLSessionDataDelegate, URLS
             completionHandler(nil)
             return
         }
-        completionHandler(request)
+        var redirected = request
+        TraceContextHeaders.applyCurrent(to: &redirected)
+        completionHandler(redirected)
     }
 }
 
