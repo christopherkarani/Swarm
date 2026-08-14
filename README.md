@@ -36,13 +36,13 @@ HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (i
 
 ```swift
 // Lean default link (recommended for most apps). Macros are on by default.
-.package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.0")
+.package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.2")
 
 // Full integrations: durable Hive workflows, ContextCore+Wax default memory,
 // Membrane adapters, and web helpers. Integrations also enables Macros.
 .package(
     url: "https://github.com/christopherkarani/Swarm.git",
-    from: "0.6.0",
+    from: "0.6.2",
     traits: ["Integrations"]
 )
 
@@ -50,7 +50,7 @@ HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (i
 // and @Traceable — use FunctionTool instead.
 .package(
     url: "https://github.com/christopherkarani/Swarm.git",
-    from: "0.6.0",
+    from: "0.6.2",
     traits: []
 )
 ```
