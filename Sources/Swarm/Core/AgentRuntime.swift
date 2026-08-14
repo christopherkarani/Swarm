@@ -262,7 +262,6 @@ public protocol InferenceProvider: Sendable {
 ///     .maxTokens(2000)
 ///     .stopSequences("END", "STOP")
 /// ```
-@Builder
 public struct InferenceOptions: Sendable, Equatable {
     /// Default inference options.
     public static let `default` = InferenceOptions()
@@ -402,6 +401,120 @@ public struct InferenceOptions: Sendable, Equatable {
         self.previousResponseId = previousResponseId
         self.structuredOutput = structuredOutput
         self.reasoning = reasoning
+    }
+
+    // MARK: - Fluent Builders
+
+    @discardableResult
+    public func temperature(_ value: Double) -> Self {
+        var copy = self
+        copy.temperature = value
+        return copy
+    }
+
+    @discardableResult
+    public func maxTokens(_ value: Int?) -> Self {
+        var copy = self
+        copy.maxTokens = value
+        return copy
+    }
+
+    @discardableResult
+    public func stopSequences(_ value: [String]) -> Self {
+        var copy = self
+        copy.stopSequences = value
+        return copy
+    }
+
+    @discardableResult
+    public func topP(_ value: Double?) -> Self {
+        var copy = self
+        copy.topP = value
+        return copy
+    }
+
+    @discardableResult
+    public func topK(_ value: Int?) -> Self {
+        var copy = self
+        copy.topK = value
+        return copy
+    }
+
+    @discardableResult
+    public func presencePenalty(_ value: Double?) -> Self {
+        var copy = self
+        copy.presencePenalty = value
+        return copy
+    }
+
+    @discardableResult
+    public func frequencyPenalty(_ value: Double?) -> Self {
+        var copy = self
+        copy.frequencyPenalty = value
+        return copy
+    }
+
+    @discardableResult
+    public func toolChoice(_ value: ToolChoice?) -> Self {
+        var copy = self
+        copy.toolChoice = value
+        return copy
+    }
+
+    @discardableResult
+    public func seed(_ value: Int?) -> Self {
+        var copy = self
+        copy.seed = value
+        return copy
+    }
+
+    @discardableResult
+    public func parallelToolCalls(_ value: Bool?) -> Self {
+        var copy = self
+        copy.parallelToolCalls = value
+        return copy
+    }
+
+    @discardableResult
+    public func truncation(_ value: TruncationStrategy?) -> Self {
+        var copy = self
+        copy.truncation = value
+        return copy
+    }
+
+    @discardableResult
+    public func verbosity(_ value: Verbosity?) -> Self {
+        var copy = self
+        copy.verbosity = value
+        return copy
+    }
+
+    @discardableResult
+    public func providerSettings(_ value: [String: SendableValue]?) -> Self {
+        var copy = self
+        copy.providerSettings = value
+        return copy
+    }
+
+    @discardableResult
+    public func previousResponseId(_ value: String?) -> Self {
+        var copy = self
+        copy.previousResponseId = value
+        return copy
+    }
+
+    @discardableResult
+    public func structuredOutput(_ value: StructuredOutputRequest?) -> Self {
+        var copy = self
+        copy.structuredOutput = value
+        return copy
+    }
+
+    @discardableResult
+    public func reasoning(_ value: ReasoningConfig?) -> Self {
+        var copy = self
+        copy.reasoning = value
+        return copy
     }
 
     // MARK: - Special Builder Methods

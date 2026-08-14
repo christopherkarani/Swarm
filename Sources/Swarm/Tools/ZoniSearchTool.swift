@@ -26,8 +26,10 @@ public struct ZoniSearchDocument: Sendable, Equatable {
 ///
 /// This tool allows an agent to query a knowledge base (PDFs, Markdown, Web pages)
 /// that has been indexed using Zoni's technical pipeline.
-@Tool("Searches a private knowledge base of documents to find specific, factual information.")
-public struct ZoniSearchTool {
+///
+/// Implemented as ``AnyJSONTool`` so it compiles without the Macros trait.
+/// Prefer ``FunctionTool`` or `@Tool` in application code.
+public struct ZoniSearchTool: AnyJSONTool, Sendable {
     public enum Error: Swift.Error, LocalizedError, Sendable {
         case pipelineNotConfigured
 
@@ -38,12 +40,29 @@ public struct ZoniSearchTool {
             }
         }
     }
-    
-    @Parameter("The specific question or information to look up in the documents")
-    var query: String
-    
-    @Parameter("Optional category or collection to limit the search to", default: nil)
-    var collection: String?
+
+    public let name = "zoni_search"
+    public let description =
+        "Searches a private knowledge base of documents to find specific, factual information."
+    public let parameters: [ToolParameter] = [
+        ToolParameter(
+            name: "query",
+            description: "The specific question or information to look up in the documents",
+            type: .string
+        ),
+        ToolParameter(
+            name: "collection",
+            description: "Optional category or collection to limit the search to",
+            type: .string,
+            isRequired: false
+        ),
+    ]
+
+    /// The specific question or information to look up in the documents.
+    public var query: String = ""
+
+    /// Optional category or collection to limit the search to.
+    public var collection: String?
 
     private let search: @Sendable (String, String?) async throws -> String
 
@@ -62,9 +81,22 @@ public struct ZoniSearchTool {
         self.collection = nil
         self.search = search
     }
-    
+
     public func execute() async throws -> String {
         try await search(query, collection)
+    }
+
+    public func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
+        guard let query = arguments["query"]?.stringValue else {
+            throw AgentError.invalidToolArguments(
+                toolName: name,
+                reason: "Missing required parameter 'query'"
+            )
+        }
+        var copy = self
+        copy.query = query
+        copy.collection = arguments["collection"]?.stringValue
+        return .string(try await copy.execute())
     }
 
     private static func searchDocuments(

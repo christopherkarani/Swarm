@@ -30,21 +30,43 @@ Two agents, one pipeline, compiled to a DAG. Crash recovery is opt-in — enable
 
 Default **link** is **lean**: core Swarm + on-device Foundation Models. Graph/memory/web/Hive paths are trait-gated (off by default) and are not linked into Swarm unless you enable Integrations.
 
-HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve never pulls Hive/Membrane/ContextCore/Conduit **package identities**, and (with trait-gated product edges) also does **not** pin Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, or SwiftSoup. Always-on remotes remain (swift-syntax, swift-log, MCP sdk, OTel, plus NIO transitives — including `swift-collections` via NIO). `SWARM_CORE_ONLY=1` drops the integration package block entirely. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML MiniLM model that is **not** bundled — call `SemanticEmbeddingAvailability.ensureModelAvailable()` to download it on demand. Without the model, ContextCore falls back to deterministic pseudo-embeddings, logs a once-per-process warning naming that API, and `DefaultAgentMemory.isSemanticMemoryAvailable` reports `false`.
+HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve never pulls Hive/Membrane/ContextCore/Conduit **package identities**, and (with trait-gated product edges) also does **not** pin Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, or SwiftSoup. Default remotes remain (swift-syntax via the default-on **Macros** trait, swift-log, MCP sdk, OTel, plus NIO transitives — including `swift-collections` via NIO). Disable Macros with `traits: []` to drop swift-syntax; use `FunctionTool` instead of `@Tool`. `SWARM_CORE_ONLY=1` drops the integration package block entirely. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML MiniLM model that is **not** bundled — call `SemanticEmbeddingAvailability.ensureModelAvailable()` to download it on demand. Without the model, ContextCore falls back to deterministic pseudo-embeddings, logs a once-per-process warning naming that API, and `DefaultAgentMemory.isSemanticMemoryAvailable` reports `false`.
 
 **Root-package note:** bare `swift build` / `swift test` on this repo compile every registered target, so integration modules need either `--traits Integrations` or the lean CI helper (`scripts/ci/lean-build-test.sh`). App consumers only build reachable targets and stay lean without that helper.
 
 ```swift
-// Lean default link (recommended for most apps)
+// Lean default link (recommended for most apps). Macros are on by default.
 .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.0")
 
 // Full integrations: durable Hive workflows, ContextCore+Wax default memory,
-// Membrane adapters, and web helpers
+// Membrane adapters, and web helpers. Integrations also enables Macros.
 .package(
     url: "https://github.com/christopherkarani/Swarm.git",
     from: "0.6.0",
     traits: ["Integrations"]
 )
+
+// Macro-free lean: drops swift-syntax. You lose @Tool, @Parameter, #Prompt,
+// and @Traceable — use FunctionTool instead.
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.0",
+    traits: []
+)
+```
+
+```swift
+// FunctionTool compiles without the Macros trait
+let echo = FunctionTool(
+    name: "echo",
+    description: "Echoes a message",
+    parameters: [
+        ToolParameter(name: "message", description: "Text to echo", type: .string)
+    ]
+) { args in
+    let message = try args.require("message", as: String.self)
+    return .string(message)
+}
 ```
 
 From a checkout of this package:

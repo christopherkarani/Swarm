@@ -4,6 +4,8 @@
 // Public macro declarations for Swarm.
 // These macros significantly reduce boilerplate when creating tools and agents.
 
+#if SWARM_MACROS
+
 // MARK: - @Tool Macro
 
 /// A macro that generates Tool protocol conformance for a struct.
@@ -322,6 +324,8 @@ public macro Prompt(_ content: String) -> PromptString = #externalMacro(
     type: "PromptMacro"
 )
 
+#endif
+
 // MARK: - PromptString
 
 /// A validated prompt string created by the #Prompt macro.
@@ -357,6 +361,8 @@ public struct PromptString: Sendable, ExpressibleByStringLiteral, ExpressibleByS
         interpolations = []
     }
 }
+
+#if SWARM_MACROS
 
 // MARK: - #Tool Macro (Inline Tool)
 
@@ -475,6 +481,7 @@ public macro Tool(
 @attached(member, names: arbitrary)
 public macro Builder() = #externalMacro(module: "SwarmMacros", type: "BuilderMacro")
 
+#endif
 
 // MARK: - PromptString String Interpolation
 

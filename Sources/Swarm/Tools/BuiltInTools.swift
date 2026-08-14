@@ -381,7 +381,7 @@ public enum BuiltInTools {
     /// - Apple platforms: calculator, dateTime, string, semanticCompactor
     /// - Linux: dateTime, string, semanticCompactor
     public static var all: [any AnyJSONTool] {
-        var tools: [any AnyJSONTool] = [dateTime, string, bridgeToolToAnyJSON(SemanticCompactorTool())]
+        var tools: [any AnyJSONTool] = [dateTime, string, semanticCompactor]
         #if canImport(Darwin)
         tools.append(calculator)
         #endif

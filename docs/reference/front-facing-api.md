@@ -28,8 +28,10 @@ HiveCore, Membrane, and ContextCore are native in-tree `Sources/` targets
 Wax remains a remote package + trait-gated product. Lean resolve never pulls
 Hive/Membrane/ContextCore/Conduit package identities, and trait-gated product
 edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, and SwiftSoup
-off the lean pin list. Always-on remotes remain (swift-syntax, swift-log, MCP
-sdk, OTel, plus NIO transitives including `swift-collections`).
+off the lean pin list. Default remotes remain (swift-syntax via the default-on
+**Macros** trait, swift-log, MCP sdk, OTel, plus NIO transitives including
+`swift-collections`). Disable Macros with `traits: []` to drop swift-syntax
+and use ``FunctionTool`` instead of `@Tool`.
 `SWARM_CORE_ONLY=1` drops the integration package block. ContextCore / full
 Membrane session stack are Apple-only (Metal/CoreML); Linux Integrations keeps
 Hive + MembraneCore + web helpers. `DefaultAgentMemory` (ContextCore + Wax)
