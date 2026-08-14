@@ -106,8 +106,8 @@ public actor StdioMCPServer: MCPServerConnection {
         let version = try MCPWireCodec.negotiatedVersion(from: result)
         let capabilities = try MCPWireCodec.parseCapabilities(from: result)
 
-        try await sendNotification(try MCPNotification(method: "notifications/initialized"))
         cachedProtocolVersion = version
+        try await sendNotification(try MCPNotification(method: "notifications/initialized"))
         cachedCapabilities = capabilities
         return capabilities
     }
@@ -338,7 +338,9 @@ public actor StdioMCPServer: MCPServerConnection {
                 )
                 throw MCPError.internalError("Timed out waiting for MCP stdio response to '\(request.method)'")
             }
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                throw MCPError.internalError("MCP stdio request produced no response")
+            }
             group.cancelAll()
             return result
         }

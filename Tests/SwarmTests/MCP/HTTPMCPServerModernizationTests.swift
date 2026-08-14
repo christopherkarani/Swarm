@@ -73,6 +73,69 @@ struct HTTPMCPServerModernizationTests {
         #expect(raw.dictionaryValue?["content"]?.arrayValue?.isEmpty == false)
     }
 
+    @Test("callToolRaw returns an isError envelope instead of throwing")
+    func callToolRawReturnsIsErrorEnvelope() async throws {
+        let session = try makeSession { _, body in
+            let request = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let id = request["id"] as? String ?? "1"
+            return try jsonResponse(
+                id: id,
+                result: [
+                    "content": [
+                        ["type": "text", "text": "remote tool failed"]
+                    ],
+                    "isError": true
+                ]
+            )
+        }
+        defer { ModernizationURLProtocol.reset() }
+
+        let server = try HTTPMCPServer(
+            url: URL(string: "https://mcp.example.com/api")!,
+            name: "raw-error-test",
+            maxRetries: 0,
+            session: session
+        )
+
+        let raw = try await server.callToolRaw(name: "explode", arguments: [:])
+        #expect(raw.dictionaryValue?["isError"]?.boolValue == true)
+        #expect(raw.dictionaryValue?["content"]?.arrayValue?.isEmpty == false)
+    }
+
+    @Test("Initialized notification uses the negotiated protocol version")
+    func initializedNotificationUsesNegotiatedVersion() async throws {
+        let session = try makeSession { request, body in
+            let object = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let method = object["method"] as? String
+            let id = object["id"] as? String ?? "1"
+            if method == "initialize" {
+                return try jsonResponse(
+                    id: id,
+                    result: [
+                        "protocolVersion": MCPProtocolVersion.legacy,
+                        "capabilities": ["tools": [:]]
+                    ]
+                )
+            }
+            if method == "notifications/initialized" {
+                #expect(request.value(forHTTPHeaderField: "MCP-Protocol-Version") == MCPProtocolVersion.legacy)
+                return emptyAccepted()
+            }
+            return try jsonResponse(id: id, result: ["tools": []])
+        }
+        defer { ModernizationURLProtocol.reset() }
+
+        let server = try HTTPMCPServer(
+            url: URL(string: "https://mcp.example.com/api")!,
+            name: "version-header-test",
+            maxRetries: 0,
+            session: session
+        )
+
+        _ = try await server.initialize()
+        #expect(await server.negotiatedProtocolVersion == MCPProtocolVersion.legacy)
+    }
+
     @Test("Empty tool name returns an error instead of trapping")
     func emptyToolNameReturnsError() async throws {
         let server = try HTTPMCPServer(
