@@ -139,7 +139,10 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         messages: [InferenceMessage],
         options: InferenceOptions
     ) -> AsyncThrowingStream<String, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        // Unbounded: `streamCompletions` already holds the full SSE body and
+        // yields every event before the consumer may start iterating. A
+        // newest-100 buffer would drop the oldest tokens on long replies.
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             do {
                 for try await update in self.streamWithToolCalls(
                     messages: messages,
@@ -162,7 +165,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         tools: [ToolSchema],
         options: InferenceOptions
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             do {
                 try await self.streamCompletions(
                     messages: messages,
