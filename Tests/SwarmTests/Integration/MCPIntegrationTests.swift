@@ -10,7 +10,7 @@ import Testing
 // MARK: - IntegrationTestMCPServer
 
 /// A mock MCP server for integration testing.
-actor IntegrationTestMCPServer: MCPServer {
+actor IntegrationTestMCPServer: MCPServerConnection {
     // MARK: Internal
 
     let name: String

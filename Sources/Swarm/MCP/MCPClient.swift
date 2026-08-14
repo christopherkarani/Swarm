@@ -96,7 +96,7 @@ public actor MCPClient {
     /// ## Note
     /// Adding a server with the same name as an existing server will replace
     /// the existing server after closing it.
-    public func addServer(_ server: any MCPServer) async throws {
+    public func addServer(_ server: any MCPServerConnection) async throws {
         // Close existing server with same name if present
         if let existing = servers[server.name] {
             try? await existing.close()
@@ -612,7 +612,7 @@ public actor MCPClient {
     // MARK: Private
 
     /// Registry of connected MCP servers, keyed by server name.
-    private var servers: [String: any MCPServer] = [:]
+    private var servers: [String: any MCPServerConnection] = [:]
 
     /// Cache of tools from all connected servers, keyed by client-visible tool name.
     private var toolCache: [String: any AnyJSONTool] = [:]
@@ -699,7 +699,7 @@ public actor MCPClient {
     private struct DiscoveredTool {
         let serverName: String
         let schema: ToolSchema
-        let server: any MCPServer
+        let server: any MCPServerConnection
     }
 
     private func reserveUniqueToolName(

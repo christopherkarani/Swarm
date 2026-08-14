@@ -41,7 +41,7 @@ public actor MCPToolBridge {
     /// Creates a new MCP tool bridge for the given server.
     ///
     /// - Parameter server: The MCP server to bridge tools from.
-    public init(server: any MCPServer) {
+    public init(server: any MCPServerConnection) {
         self.server = server
     }
 
@@ -76,7 +76,7 @@ public actor MCPToolBridge {
     // MARK: Private
 
     /// The MCP server providing the tools.
-    private let server: any MCPServer
+    private let server: any MCPServerConnection
 }
 
 // MARK: - MCPBridgedTool
@@ -91,12 +91,12 @@ public actor MCPToolBridge {
 ///
 /// MCPBridgedTool is `Sendable` and can be safely shared across async contexts.
 /// The underlying MCP server must also be `Sendable` (as required by the
-/// `MCPServer` protocol).
+/// `MCPServerConnection` protocol).
 ///
 /// ### Actor Isolation Contract
 ///
-/// This struct stores an existential reference (`any MCPServer`) to an actor-isolated
-/// server. While Swift's type system allows this because `MCPServer` requires `Sendable`
+/// This struct stores an existential reference (`any MCPServerConnection`) to an actor-isolated
+/// server. While Swift's type system allows this because `MCPServerConnection` requires `Sendable`
 /// conformance, the following guarantees apply:
 ///
 /// - **Execution Serialization**: All calls to `execute()` are automatically serialized
@@ -122,7 +122,7 @@ struct MCPBridgedTool: AnyJSONTool, Sendable {
     let schema: ToolSchema
 
     /// The MCP server to delegate execution to.
-    let server: any MCPServer
+    let server: any MCPServerConnection
 
     /// Optional display name used when this tool must be disambiguated.
     let displayNameOverride: String?
@@ -132,7 +132,7 @@ struct MCPBridgedTool: AnyJSONTool, Sendable {
 
     init(
         schema: ToolSchema,
-        server: any MCPServer,
+        server: any MCPServerConnection,
         displayName: String? = nil,
         serverToolName: String? = nil
     ) {

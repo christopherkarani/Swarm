@@ -152,9 +152,19 @@ struct HTTPMCPServerLifecycleTests {
         #expect(methods == ["initialize", "notifications/initialized"])
 
         let initializeParams = try #require(requestObjects[0]["params"] as? [String: Any])
+        #expect(initializeParams["protocolVersion"] as? String == MCPProtocolVersion.current)
         #expect(initializeParams["capabilities"] != nil)
         let clientInfo = try #require(initializeParams["clientInfo"] as? [String: Any])
         #expect(clientInfo["name"] as? String == "Swarm")
+        #expect(clientInfo["version"] as? String == Swarm.version)
+
+        let firstHeaders = try #require(HTTPMCPRecordingURLProtocol.requestHeaders.first)
+        #expect(firstHeaders["Accept"]?.contains("application/json") == true)
+        #expect(firstHeaders["Accept"]?.contains("text/event-stream") == true)
+        #expect(firstHeaders["MCP-Protocol-Version"] == MCPProtocolVersion.current)
+
+        #expect(await server.negotiatedProtocolVersion == "2024-11-05")
+        #expect(await server.sessionID == nil)
 
         if requestObjects.count > 1 {
             #expect(requestObjects[1]["id"] == nil)
@@ -211,8 +221,11 @@ private final class HTTPMCPRecordingURLProtocol: URLProtocol {
     nonisolated(unsafe) static var requestBodies: [Data] = []
     nonisolated(unsafe) static var handler: ((URLRequest, Data) throws -> (HTTPURLResponse, Data))?
 
+    nonisolated(unsafe) static var requestHeaders: [[String: String]] = []
+
     static func reset() {
         requestBodies = []
+        requestHeaders = []
         handler = nil
     }
 
@@ -232,6 +245,17 @@ private final class HTTPMCPRecordingURLProtocol: URLProtocol {
         do {
             let body = try bodyData(from: request)
             Self.requestBodies.append(body)
+            var headers: [String: String] = [:]
+            if let accept = request.value(forHTTPHeaderField: "Accept") {
+                headers["Accept"] = accept
+            }
+            if let version = request.value(forHTTPHeaderField: "MCP-Protocol-Version") {
+                headers["MCP-Protocol-Version"] = version
+            }
+            if let session = request.value(forHTTPHeaderField: "MCP-Session-Id") {
+                headers["MCP-Session-Id"] = session
+            }
+            Self.requestHeaders.append(headers)
             let (response, data) = try handler(request, body)
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)

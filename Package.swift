@@ -209,6 +209,7 @@ var packageTargets: [Target] = [
             }
             return dependencies
         }(),
+        exclude: ["MCP/Fixtures"],
         resources: [],
         swiftSettings: swarmSwiftSettings
     ),

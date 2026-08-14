@@ -47,7 +47,7 @@ Swarm/
 │   │   ├── Guardrails/            # Input/Output/Tool guardrail specs + runner
 │   │   ├── Resilience/            # Retry, circuit breaker, fallback, rate limit
 │   │   ├── Observability/         # AgentTracer, SwiftLog/OSLog tracers, metrics
-│   │   ├── MCP/                   # MCPClient, MCPServer, ToolBridge, capabilities
+│   │   ├── MCP/                   # MCPClient, MCPServerConnection, stdio/HTTP transports, ToolBridge
 │   │   ├── Workspace/             # AgentWorkspace (AGENTS.md, .swarm/ skills)
 │   │   ├── Macros/                # Public macro declarations
 │   │   ├── Integration/           # Membrane and Wax integrations

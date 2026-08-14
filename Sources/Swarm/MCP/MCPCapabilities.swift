@@ -44,16 +44,19 @@ public struct MCPCapabilities: Sendable, Codable, Equatable {
     /// such as files, databases, or external data sources.
     public let resources: Bool
 
-    /// Whether the server supports prompt templates.
+    /// Whether the remote server advertised prompt templates.
     ///
-    /// When `true`, the server can provide and manage
-    /// reusable prompt templates.
+    /// Swarm's client does not implement `prompts/list` or `prompts/get`.
+    /// Connection types always report `false` so this flag cannot be used
+    /// as a feature-detection signal for Swarm APIs. The stored property
+    /// remains for source compatibility.
     public let prompts: Bool
 
-    /// Whether the server supports sampling.
+    /// Whether the remote server advertised sampling.
     ///
-    /// When `true`, the server can perform sampling operations
-    /// for model generation.
+    /// Swarm's client does not implement sampling (a server-initiated
+    /// request that needs an inference provider). Connection types always
+    /// report `false`. The stored property remains for source compatibility.
     public let sampling: Bool
 
     // MARK: - Initialization
@@ -63,8 +66,10 @@ public struct MCPCapabilities: Sendable, Codable, Equatable {
     /// - Parameters:
     ///   - tools: Whether tool discovery and execution is supported. Default: `false`
     ///   - resources: Whether resource access is supported. Default: `false`
-    ///   - prompts: Whether prompt templates are supported. Default: `false`
-    ///   - sampling: Whether sampling is supported. Default: `false`
+    ///   - prompts: Unused by Swarm's client. Default: `false`. Prefer omitting
+    ///     this argument; the value is retained for source compatibility.
+    ///   - sampling: Unused by Swarm's client. Default: `false`. Prefer omitting
+    ///     this argument; the value is retained for source compatibility.
     public init(
         tools: Bool = false,
         resources: Bool = false,

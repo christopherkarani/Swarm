@@ -1118,7 +1118,7 @@ private actor AttemptCounter {
     }
 }
 
-private actor ShowcaseMCPServer: MCPServer {
+private actor ShowcaseMCPServer: MCPServerConnection {
     let name: String
     private var schemas: [ToolSchema] = []
     private var serverCapabilities: MCPCapabilities

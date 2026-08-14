@@ -1,18 +1,21 @@
 // MCPServer.swift
 // Swarm Framework
 //
-// Protocol defining the interface for Model Context Protocol (MCP) servers.
+// Protocol defining the interface for Model Context Protocol (MCP) server connections.
 
 import Foundation
 
-// MARK: - MCPServer
+// MARK: - MCPServerConnection
 
-/// A protocol defining the interface for Model Context Protocol (MCP) servers.
+/// A client-side connection to a Model Context Protocol (MCP) server.
 ///
-/// MCPServer provides a standardized interface for communicating with MCP-compliant
-/// servers that expose tools, resources, and other capabilities to agents. The protocol
-/// follows a lifecycle pattern where servers must be initialized before use and
-/// properly closed when no longer needed.
+/// `MCPServerConnection` is the interface Swarm uses to talk to a remote MCP
+/// process or HTTP endpoint. Implementations include ``HTTPMCPServer`` and
+/// ``StdioMCPServer``. The historical name `MCPServer` was easy to confuse
+/// with an actual server; it remains available as a deprecated typealias.
+///
+/// The protocol follows a lifecycle pattern where connections must be
+/// initialized before use and properly closed when no longer needed.
 ///
 /// ## Server Lifecycle
 ///
@@ -77,7 +80,7 @@ import Foundation
 ///
 /// ## Thread Safety
 ///
-/// Implementations of `MCPServer` must be `Sendable` to support concurrent access
+/// Implementations of `MCPServerConnection` must be `Sendable` to support concurrent access
 /// from multiple async contexts. Use actors or other synchronization primitives
 /// to protect mutable state.
 ///
@@ -86,7 +89,7 @@ import Foundation
 /// All methods throw `MCPError` for protocol-level errors. Implementations should
 /// map transport-specific errors to appropriate `MCPError` instances using the
 /// standard JSON-RPC 2.0 error codes.
-public protocol MCPServer: Sendable {
+public protocol MCPServerConnection: Sendable {
     /// The name of this MCP server.
     ///
     /// This name is used for identification and logging purposes.
@@ -185,12 +188,18 @@ public protocol MCPServer: Sendable {
     /// Executes the named tool with the provided arguments and returns the result.
     /// The tool must exist in the list returned by `listTools()`.
     ///
+    /// Built-in transports unwrap MCP `content` blocks by default (a single
+    /// text block becomes a `.string`). Use ``HTTPMCPServer/callToolRaw(name:arguments:)``
+    /// or ``StdioMCPServer/callToolRaw(name:arguments:)`` for the raw envelope.
+    /// An empty tool name throws ``MCPError/invalidParams(_:)`` instead of
+    /// trapping.
+    ///
     /// - Parameters:
     ///   - name: The name of the tool to call, as returned by `listTools()`.
     ///   - arguments: A dictionary of argument names to values. The arguments must
     ///                match the tool's parameter definitions.
     ///
-    /// - Returns: The result of the tool execution as a `SendableValue`.
+    /// - Returns: The unwrapped tool result as a `SendableValue`.
     ///
     /// - Throws: `MCPError.methodNotFound` if the tool does not exist.
     ///           `MCPError.invalidParams` if the arguments are invalid or missing.
@@ -264,9 +273,9 @@ public protocol MCPServer: Sendable {
     func readResource(uri: String) async throws -> MCPResourceContent
 }
 
-// MARK: - MCPServer Default Implementations
+// MARK: - MCPServerConnection Default Implementations
 
-public extension MCPServer {
+public extension MCPServerConnection {
     /// Checks whether tools are supported and throws if not.
     ///
     /// Helper method to validate tool capability before operations.
@@ -291,6 +300,14 @@ public extension MCPServer {
         }
     }
 }
+
+/// Deprecated name for ``MCPServerConnection``.
+///
+/// The historical `MCPServer` name described a *client* connection and was
+/// easy to confuse with an MCP server process. New code should conform to
+/// and refer to ``MCPServerConnection``.
+@available(*, deprecated, renamed: "MCPServerConnection")
+public typealias MCPServer = MCPServerConnection
 
 // MARK: - MCPServerState
 
