@@ -140,6 +140,7 @@ struct AgentConfigurationTests {
         #expect(config.foundationModelsExecution == .capture)
         #expect(config.resilience == .disabled)
         #expect(config.resilience.retryPolicy == .noRetry)
+        #expect(config.autoAttachMetricsCollector == false)
     }
 
     @Test("Native session execution is opt-in and does not mutate capture default")

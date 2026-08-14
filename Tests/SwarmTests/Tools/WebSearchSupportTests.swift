@@ -171,6 +171,42 @@ struct WebSearchSupportTests {
         #expect(RedirectWebFetchURLProtocol.didLoadBody == false)
     }
 
+    @Test("Safe web fetcher injects current W3C traceparent")
+    func fetcherInjectsTraceparent() async throws {
+        TraceparentWebFetchURLProtocol.reset()
+        defer { TraceparentWebFetchURLProtocol.reset() }
+
+        let headers = try #require(
+            TraceContextHeaders(
+                traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+                spanId: "00f067aa0ba902b7",
+                tracestate: "rojo=00f067aa0ba902b7"
+            )
+        )
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("swarm-web-traceparent-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+
+        let configuration = WebSearchTool.Configuration(
+            apiKey: nil,
+            persistFetchedArtifacts: false,
+            storeURL: root,
+            enabled: true
+        )
+        let sessionConfiguration = URLSessionConfiguration.ephemeral
+        sessionConfiguration.protocolClasses = [TraceparentWebFetchURLProtocol.self]
+        let fetcher = SafeWebFetcher(configuration: configuration, sessionConfiguration: sessionConfiguration)
+        let url = try #require(URL(string: "https://example.com/docs"))
+
+        _ = try await TraceContextHeaders.withCurrent(headers) {
+            try await fetcher.fetch(url: url, conditionalEtag: nil, conditionalLastModified: nil)
+        }
+
+        #expect(TraceparentWebFetchURLProtocol.traceparent == headers.traceparent)
+        #expect(TraceparentWebFetchURLProtocol.tracestate == "rojo=00f067aa0ba902b7")
+    }
+
     @Test("Safe web fetcher cancels URLSession task when caller cancels")
     func fetcherCancelsURLSessionTaskWhenCallerCancels() async throws {
         CancellableWebFetchURLProtocol.reset()
@@ -308,6 +344,66 @@ struct WebSearchSupportTests {
         let matches = try await store.searchSections(query: "updated instructions", topK: 10)
         #expect(matches.count == 1)
         #expect(matches.first?.section.text.contains("Updated instructions") == true)
+    }
+}
+
+private final class TraceparentWebFetchURLProtocol: URLProtocol {
+    private static let state = TraceHeaderState()
+
+    static var traceparent: String? { state.traceparent }
+    static var tracestate: String? { state.tracestate }
+
+    static func reset() {
+        state.reset()
+    }
+
+    override class func canInit(with _: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        Self.state.record(
+            traceparent: request.value(forHTTPHeaderField: "traceparent"),
+            tracestate: request.value(forHTTPHeaderField: "tracestate")
+        )
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "text/html"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("<html><body>ok</body></html>".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+private final class TraceHeaderState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedTraceparent: String?
+    private var recordedTracestate: String?
+
+    var traceparent: String? { lock.withLock { recordedTraceparent } }
+    var tracestate: String? { lock.withLock { recordedTracestate } }
+
+    func record(traceparent: String?, tracestate: String?) {
+        lock.withLock {
+            recordedTraceparent = traceparent
+            recordedTracestate = tracestate
+        }
+    }
+
+    func reset() {
+        lock.withLock {
+            recordedTraceparent = nil
+            recordedTracestate = nil
+        }
     }
 }
 
