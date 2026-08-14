@@ -119,7 +119,7 @@ struct WorkflowDurableTests {
 
         let original = Workflow()
             .step(MockAgentRuntime(response: "seed"))
-            .route { _ in nil as (any AgentRuntime)? }
+            .route({ _ in nil as (any AgentRuntime)? }, signature: "route-v1")
             .durable
             .checkpoint(id: "wf-route-closure-mismatch", policy: .everyStep)
             .durable
@@ -132,7 +132,7 @@ struct WorkflowDurableTests {
 
         let changed = Workflow()
             .step(MockAgentRuntime(response: "seed"))
-            .route { _ in MockAgentRuntime(response: "changed-route") }
+            .route({ _ in MockAgentRuntime(response: "changed-route") }, signature: "route-v2")
             .durable
             .checkpoint(id: "wf-route-closure-mismatch", policy: .everyStep)
             .durable
@@ -148,7 +148,11 @@ struct WorkflowDurableTests {
         let checkpointing = WorkflowCheckpointing.inMemory()
 
         let original = Workflow()
-            .parallel([MockAgentRuntime(response: "branch")], merge: .custom { _ in "original-merge" })
+            .parallel(
+                [MockAgentRuntime(response: "branch")],
+                merge: .custom { _ in "original-merge" },
+                customMergeSignature: "merge-v1"
+            )
             .durable
             .checkpoint(id: "wf-custom-merge-mismatch", policy: .everyStep)
             .durable
@@ -157,7 +161,11 @@ struct WorkflowDurableTests {
         _ = try await original.durable.execute("start")
 
         let changed = Workflow()
-            .parallel([MockAgentRuntime(response: "branch")], merge: .custom { _ in "changed-merge" })
+            .parallel(
+                [MockAgentRuntime(response: "branch")],
+                merge: .custom { _ in "changed-merge" },
+                customMergeSignature: "merge-v2"
+            )
             .durable
             .checkpoint(id: "wf-custom-merge-mismatch", policy: .everyStep)
             .durable
@@ -187,6 +195,25 @@ struct WorkflowDurableTests {
         await #expect(throws: WorkflowError.self) {
             _ = try await changed.durable.execute("resume", resumeFrom: "wf-repeat-closure-mismatch")
         }
+    }
+
+    @Test("durable execute warns once when implicit fileID:line identity would have been used")
+    func durableExecuteWarnsOnceForImplicitIdentity() async throws {
+        WorkflowDurableIdentityTesting.reset()
+        let checkpointing = WorkflowCheckpointing.inMemory()
+        let workflow = Workflow()
+            .step(MockAgentRuntime(response: "seed"))
+            .route { _ in MockAgentRuntime(response: "routed") }
+            .durable
+            .checkpoint(id: "wf-implicit-identity", policy: .everyStep)
+            .durable
+            .checkpointing(checkpointing)
+
+        _ = try await workflow.durable.execute("start")
+        #expect(WorkflowDurableIdentityTesting.warningCount == 1)
+
+        _ = try await workflow.durable.execute("again")
+        #expect(WorkflowDurableIdentityTesting.warningCount == 1)
     }
 
     @Test("durable fallback executes backup after retries exhausted")

@@ -373,6 +373,10 @@ let result = try await Workflow()
     .execute("Summarize the WWDC session", resumeFrom: nil)
 ```
 
+See [Durable Execution](./durable-execution.md) for step-granularity semantics
+(a mid-step crash re-runs the whole step), signature stability rules, and
+file-store pruning (keep-latest-16 per run by default).
+
 ## Choosing a Provider
 
 Built-in inference is **Apple Foundation Models only**. Pass a provider via the

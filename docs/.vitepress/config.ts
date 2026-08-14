@@ -70,6 +70,7 @@ export default defineConfig({
           text: 'Introduction',
           items: [
             { text: 'Getting Started', link: '/guide/getting-started' },
+            { text: 'Durable Execution', link: '/guide/durable-execution' },
             { text: 'Foundation Models', link: '/guide/foundation-models' },
             { text: 'Capability Showcase', link: '/guide/capability-showcase' },
             { text: 'Agent Workspace', link: '/guide/agent-workspace' },

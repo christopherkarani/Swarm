@@ -89,15 +89,17 @@ import Foundation
 public struct Workflow: Sendable {
     struct OpaqueBehaviorSignature: Sendable, Equatable {
         let value: String
+        let usesImplicitIdentity: Bool
 
-        init(kind: String, explicit: String?, fileID: StaticString, line: UInt) {
+        init(kind: String, explicit: String?, position: String) {
             let trimmed = explicit?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let identity = if let trimmed, !trimmed.isEmpty {
-                "explicit:\(workflowSignatureComponent(trimmed))"
+            if let trimmed, !trimmed.isEmpty {
+                value = "\(kind):explicit:\(workflowSignatureComponent(trimmed))"
+                usesImplicitIdentity = false
             } else {
-                "source:\(workflowSignatureComponent("\(fileID):\(line)"))"
+                value = "\(kind):stable:\(workflowSignatureComponent("\(kind)@\(position)"))"
+                usesImplicitIdentity = true
             }
-            value = "\(kind):\(identity)"
         }
     }
 
@@ -251,6 +253,8 @@ public struct Workflow: Sendable {
     ///   - agents: An array of agents to execute in parallel.
     ///   - merge: The strategy for combining results. Defaults to `.structured`.
     ///   - customMergeSignature: Optional stable durable identity to change when `.custom` merge behavior changes.
+    ///   - fileID: Retained for source compatibility; ignored for durable identity.
+    ///   - line: Retained for source compatibility; ignored for durable identity.
     /// - Returns: A new workflow with the added parallel step.
     ///
     /// ## Example
@@ -278,12 +282,12 @@ public struct Workflow: Sendable {
             mergeBehaviorSignature = OpaqueBehaviorSignature(
                 kind: "customMerge",
                 explicit: customMergeSignature,
-                fileID: fileID,
-                line: line
+                position: "\(copy.steps.count)"
             )
         } else {
             mergeBehaviorSignature = nil
         }
+        discardLegacySourceLocation(fileID, line)
         copy.steps.append(.parallel(
             agents,
             merge: merge,
@@ -300,6 +304,7 @@ public struct Workflow: Sendable {
     /// - Parameter condition: A closure that receives the current input string
     ///   and returns the agent to execute, or `nil` if routing fails.
     /// - Parameter signature: Optional stable durable identity to change when route behavior changes.
+    ///   When omitted, identity is the step kind plus position — not `fileID:line`.
     /// - Returns: A new workflow with the added routing step.
     ///
     /// ## Example
@@ -325,9 +330,10 @@ public struct Workflow: Sendable {
     ) -> Workflow {
         var copy = self
         copy.steps.append(.route(
-            OpaqueBehaviorSignature(kind: "route", explicit: signature, fileID: fileID, line: line),
+            OpaqueBehaviorSignature(kind: "route", explicit: signature, position: "\(copy.steps.count)"),
             condition
         ))
+        discardLegacySourceLocation(fileID, line)
         return copy
     }
 
@@ -353,6 +359,7 @@ public struct Workflow: Sendable {
     ///   - condition: A closure that receives the ``AgentResult`` from each
     ///     iteration and returns `true` when the workflow should stop.
     ///   - signature: Optional stable durable identity to change when repeat predicate behavior changes.
+    ///     When omitted, identity is the step kind plus a stable `repeat` position — not `fileID:line`.
     /// - Returns: A new workflow configured with the repeat condition.
     ///
     /// ## Example
@@ -379,9 +386,9 @@ public struct Workflow: Sendable {
         copy.repeatConditionSignature = OpaqueBehaviorSignature(
             kind: "repeat",
             explicit: signature,
-            fileID: fileID,
-            line: line
+            position: "repeat"
         )
+        discardLegacySourceLocation(fileID, line)
         copy.maxRepeatIterations = maxIterations
         return copy
     }
@@ -674,6 +681,49 @@ public struct Workflow: Sendable {
         }
         return (["workflowSignature:v2"] + parts + [repeatSignature]).joined(separator: "|")
     }
+
+    /// True when route, custom-merge, or repeat identity was derived from kind + position
+    /// instead of an explicit `signature:` / `customMergeSignature:`.
+    var usesImplicitOpaqueIdentity: Bool {
+        if repeatConditionSignature?.usesImplicitIdentity == true {
+            return true
+        }
+        return steps.contains { step in
+            switch step {
+            case .parallel(_, _, let mergeBehaviorSignature):
+                return mergeBehaviorSignature?.usesImplicitIdentity == true
+            case .route(let signature, _):
+                return signature.usesImplicitIdentity
+            case .single, .fallback:
+                return false
+            }
+        }
+    }
+}
+
+/// Compares a persisted durable signature with the current workflow definition.
+///
+/// Legacy checkpoints that still embed `fileID:line` (`:source:`) fail with a
+/// dedicated resume message rather than a generic mismatch.
+func workflowDurableSignatureMismatch(
+    checkpointSignature: String,
+    currentSignature: String
+) -> WorkflowError? {
+    guard checkpointSignature != currentSignature else {
+        return nil
+    }
+    if checkpointSignature.contains(":source:") {
+        return .resumeDefinitionMismatch(
+            reason: """
+            Checkpoint uses the legacy fileID:line workflow identity. Re-run this \
+            workflow from the start; Swarm now identifies steps by kind, position, \
+            and explicit signature: values, not source locations.
+            """
+        )
+    }
+    return .resumeDefinitionMismatch(
+        reason: "Workflow signature mismatch between checkpoint and current definition"
+    )
 }
 
 extension Workflow.MergeStrategy {
@@ -836,3 +886,7 @@ private func workflowOptionalTypeSignature(_ value: Any?) -> String {
 private func workflowSignatureComponent(_ value: String) -> String {
     "\(value.utf8.count)#\(value)"
 }
+
+/// `fileID` and `line` remain on the public builders for source compatibility.
+/// They are not part of durable identity.
+private func discardLegacySourceLocation(_: StaticString, _: UInt) {}

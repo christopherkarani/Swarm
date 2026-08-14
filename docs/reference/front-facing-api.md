@@ -405,8 +405,13 @@ public extension Workflow {
 // Durable engine requires Integrations at execute.
 WorkflowCheckpointing.isAvailable
 WorkflowCheckpointing.inMemory()
-WorkflowCheckpointing.fileSystem(directory: URL)
+WorkflowCheckpointing.fileSystem(directory: URL, retention: WorkflowCheckpointRetention = .default)
+WorkflowCheckpointRetention.default // keep-latest 16 per run
 ```
+
+File-backed stores prune to keep-latest-N per run and load through a directory
+manifest. Resume identity is step kind + position + explicit `signature:` —
+not `fileID:line`. See [Durable Execution](/guide/durable-execution).
 
 ## 8) InputGuard and OutputGuard
 

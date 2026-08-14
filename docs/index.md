@@ -29,7 +29,7 @@ features:
   - icon: "\U0001F4BE"
     title: Workflows Survive Crashes
     details: Advanced workflows can checkpoint and resume with explicit checkpoint stores and deterministic IDs.
-    link: /reference/overview
+    link: /guide/durable-execution
     linkText: Explore checkpointing
 
   - icon: "\U0001F9E0"
