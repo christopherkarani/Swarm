@@ -1,2 +1,2 @@
-// Membrane — 5-stage context management pipeline implementation.
+// Membrane — session façade over JIT tool planning, pointerization, and ContextCore.
 @_exported import MembraneCore

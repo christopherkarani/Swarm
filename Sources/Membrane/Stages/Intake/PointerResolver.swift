@@ -6,7 +6,7 @@ public struct PointerResolverConfig: Sendable, Equatable {
     public var pointerThresholdBytes: Int
     public var summaryMaxChars: Int
 
-    public init(pointerThresholdBytes: Int = 1024, summaryMaxChars: Int = 200) {
+    public init(pointerThresholdBytes: Int = 400, summaryMaxChars: Int = 240) {
         self.pointerThresholdBytes = pointerThresholdBytes
         self.summaryMaxChars = summaryMaxChars
     }
@@ -17,7 +17,7 @@ public enum PointerizationDecision: Sendable, Equatable {
     case pointer(MemoryPointer, replacementText: String)
 }
 
-public actor PointerResolver: Sendable {
+public actor PointerResolver {
     private let store: any PointerStore
     private let config: PointerResolverConfig
 

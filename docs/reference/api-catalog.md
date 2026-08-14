@@ -2787,7 +2787,7 @@ Experimental adapter wrapping a user `FoundationModels.Tool` as a Swarm `AnyJSON
 | 14 | var | public | MembraneFeatureConfiguration.pointerSummaryMaxChars | `public var pointerSummaryMaxChars: Int` |
 | 20 | var | public | MembraneFeatureConfiguration.runtimeFeatureFlags | `public var runtimeFeatureFlags: [String : Bool]` |
 | 22 | var | public | MembraneFeatureConfiguration.runtimeModelAllowlist | `public var runtimeModelAllowlist: [String]` |
-| 24 | func | public | MembraneFeatureConfiguration.init(jitMinToolCount:defaultJITLoadCount:pointerThresholdBytes:pointerSummaryMaxChars:runtimeFeatureFlags:runtimeModelAllowlist:) | `public init(jitMinToolCount: Int = 12, defaultJITLoadCount: Int = 6, pointerThresholdBytes: Int = 1024, pointerSummaryMaxChars: Int = 240, runtimeFeatureFlags: [String : Bool] = [:], runtimeModelAllowlist: [String] = [])` |
+| 24 | func | public | MembraneFeatureConfiguration.init(jitMinToolCount:defaultJITLoadCount:pointerThresholdBytes:pointerSummaryMaxChars:runtimeFeatureFlags:runtimeModelAllowlist:) | `public init(jitMinToolCount: Int = 12, defaultJITLoadCount: Int = 6, pointerThresholdBytes: Int = 400, pointerSummaryMaxChars: Int = 240, runtimeFeatureFlags: [String : Bool] = [:], runtimeModelAllowlist: [String] = [])` |
 | 41 | struct | public | MembraneEnvironment | `public struct MembraneEnvironment` |
 | 42 | var | public | MembraneEnvironment.isEnabled | `public var isEnabled: Bool` |
 | 43 | var | public | MembraneEnvironment.configuration | `public var configuration: MembraneFeatureConfiguration` |
@@ -2982,9 +2982,14 @@ exports companion products with small public entry surfaces.
 |------|------|--------|------|-----------|
 | 1 | export | public | SwarmMembrane | `@_exported import Swarm` |
 
-`SwarmMembrane` is a re-export product. Its user-facing symbols are the public
-Membrane integration APIs cataloged in section 12 under
-`Sources/Swarm/Integration/Membrane/`.
+`SwarmMembrane` is a **deprecated** hollow re-export (`@_exported import Swarm`).
+Import `Swarm` instead. Its user-facing symbols are the public Membrane
+integration APIs cataloged in section 12 under
+`Sources/Swarm/Integration/Membrane/`. The product will be removed in 0.7.0.
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 8 | enum | public | SwarmMembraneProduct | `@available(*, deprecated, message: "Import Swarm instead. SwarmMembrane is a hollow re-export and will be removed in 0.7.0.") public enum SwarmMembraneProduct: Sendable` |
 
 ### SwarmMCP
 

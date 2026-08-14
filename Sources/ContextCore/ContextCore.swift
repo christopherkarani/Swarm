@@ -2,8 +2,6 @@ import ContextCoreEngine
 
 /// Public alias for the engine embedding cache.
 public typealias EmbeddingCache = ContextCoreEngine.EmbeddingCache
-/// Public alias for CPU reference implementations.
-public typealias CPUReference = ContextCoreEngine.CPUReference
 /// Public alias for GPU relevance scoring engine.
 public typealias ScoringEngine = ContextCoreEngine.ScoringEngine
 /// Public alias for GPU attention scoring engine.
@@ -18,6 +16,3 @@ public typealias ConsolidationEngine = ContextCoreEngine.ConsolidationEngine
 public typealias ConsolidationResult = ContextCoreEngine.ConsolidationResult
 /// Public alias for background consolidation scheduler.
 public typealias ConsolidationScheduler = ContextCoreEngine.ConsolidationScheduler
-
-/// Namespace marker for the `ContextCore` module.
-public enum ContextCoreModule {}
