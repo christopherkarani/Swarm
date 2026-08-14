@@ -136,6 +136,51 @@ struct OpenAICompatibleProviderTests {
         #expect(streamOptions["include_usage"] as? Bool == true)
     }
 
+    @Test("Streaming a body larger than the default newest-100 buffer keeps every chunk")
+    func streamingLongSSEDoesNotDropOldestChunks() async throws {
+        OpenAICompatibleURLProtocol.reset()
+        defer { OpenAICompatibleURLProtocol.reset() }
+
+        let expected = (0 ..< 150).map { "c\($0)" }
+        var sse = expected.map { chunk in
+            #"data: {"choices":[{"delta":{"content":"\#(chunk)"}}]}"#
+        }.joined(separator: "\n\n")
+        sse += "\n\ndata: [DONE]\n\n"
+        OpenAICompatibleURLProtocol.enqueueSSE(sse)
+
+        let provider = OpenAICompatibleProvider(
+            configuration: .init(baseURL: endpoint, apiKey: "sk-test", model: "gpt-test"),
+            session: OpenAICompatibleURLProtocol.makeSession()
+        )
+
+        // The producer Task starts when the stream is created and dumps the
+        // already-downloaded SSE body. Delay iteration so a newest-100 buffer
+        // would drop the oldest chunks before the consumer starts.
+        let textStream = provider.stream(messages: [.user("Hi")], options: .default)
+        try await Task.sleep(for: .milliseconds(20))
+        var streamChunks: [String] = []
+        for try await chunk in textStream {
+            streamChunks.append(chunk)
+        }
+        #expect(streamChunks == expected)
+
+        OpenAICompatibleURLProtocol.reset()
+        OpenAICompatibleURLProtocol.enqueueSSE(sse)
+        let toolStream = provider.streamWithToolCalls(
+            messages: [.user("Hi")],
+            tools: [],
+            options: .default
+        )
+        try await Task.sleep(for: .milliseconds(20))
+        var toolStreamChunks: [String] = []
+        for try await update in toolStream {
+            if case let .outputChunk(text) = update {
+                toolStreamChunks.append(text)
+            }
+        }
+        #expect(toolStreamChunks == expected)
+    }
+
     @Test("Injects current W3C trace-context headers")
     func injectsTraceContextHeaders() async throws {
         OpenAICompatibleURLProtocol.reset()
