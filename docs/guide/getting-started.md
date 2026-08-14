@@ -11,7 +11,7 @@ Add Swarm to your `Package.swift`:
 ```swift
 // Lean default (core + Foundation Models). No Integrations trait.
 dependencies: [
-    .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.0")
+    .package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.2")
 ],
 targets: [
     .target(name: "YourApp", dependencies: ["Swarm"])
@@ -35,7 +35,7 @@ Enable Integrations when you need any of:
 ```swift
 .package(
     url: "https://github.com/christopherkarani/Swarm.git",
-    from: "0.6.0",
+    from: "0.6.2",
     traits: ["Integrations"]
 )
 ```
@@ -77,7 +77,7 @@ keeps macros (Integrations enables Macros). To drop `swift-syntax` entirely:
 ```swift
 .package(
     url: "https://github.com/christopherkarani/Swarm.git",
-    from: "0.6.0",
+    from: "0.6.2",
     traits: []
 )
 ```

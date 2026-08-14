@@ -11,7 +11,7 @@ memory, Membrane adapters, and web helpers:
 ```swift
 .package(
     url: "https://github.com/christopherkarani/Swarm.git",
-    from: "0.6.0",
+    from: "0.6.2",
     traits: ["Integrations"]
 )
 ```
