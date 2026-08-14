@@ -10,7 +10,9 @@ import Foundation
 enum DefaultInferenceProviderFactory {
     /// Returns an on-device Foundation Models provider when the system model is available.
     ///
-    /// This is the only built-in inference backend. Custom backends inject
+    /// Built-in default on Apple platforms. ``OpenAICompatibleProvider`` is the
+    /// remote alternative when Foundation Models is unavailable (Linux, CI,
+    /// or no Apple Intelligence). Custom backends still inject
     /// ``InferenceProvider`` explicitly or via `Swarm.configure(provider:)`.
     static func makeFoundationModelsProviderIfAvailable() -> (any InferenceProvider)? {
         #if canImport(FoundationModels)

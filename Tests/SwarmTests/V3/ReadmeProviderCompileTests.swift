@@ -52,6 +52,15 @@ struct ReadmeProviderCompileTests {
         _ = try Agent("Use a custom backend.", inferenceProvider: mock) {
             PublicCompileTool()
         }
+
+        _ = try Agent(
+            "Use a remote OpenAI-compatible backend.",
+            inferenceProvider: .openAICompatible(.ollama(model: "llama3.2"))
+        )
+        _ = try Agent(
+            "Use OpenAI.",
+            inferenceProvider: .openAICompatible(.openAI(apiKey: "sk-test", model: "gpt-4o"))
+        )
     }
 
     @Test("README dynamic tool examples compile through public import")
@@ -237,6 +246,11 @@ struct ReadmeProviderCompileTests {
 
         let agent = try Agent("Be helpful.", inferenceProvider: myCustomProvider)
         _ = agent.environment(\.inferenceProvider, myCustomProvider)
+
+        _ = try Agent(
+            "Be helpful.",
+            inferenceProvider: .openAICompatible(.ollama(model: "llama3.2"))
+        )
     }
 
     @Test("README Conversation sample compiles")
