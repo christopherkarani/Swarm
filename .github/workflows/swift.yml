@@ -144,4 +144,5 @@ jobs:
           test "$VERSION" = "0.58.7"
 
       - name: Run SwiftFormat (check mode)
-        run: "$HOME/.local/bin/swiftformat" Sources Tests --lint --config .swiftformat
+        run: |
+          "$HOME/.local/bin/swiftformat" Sources Tests --lint --config .swiftformat
