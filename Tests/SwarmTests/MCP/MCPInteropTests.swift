@@ -7,7 +7,7 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("MCP Interop Tests", .serialized)
+@Suite("MCP Interop Tests", .serialized, .timeLimit(.minutes(1)))
 struct MCPInteropTests {
     @Test("Stdio transport completes initialize, tools/list, and tools/call")
     func stdioHandshakeListAndCall() async throws {
