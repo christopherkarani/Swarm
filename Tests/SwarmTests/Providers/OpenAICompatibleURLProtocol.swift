@@ -84,7 +84,7 @@ final class OpenAICompatibleURLProtocol: URLProtocol {
         let recorded = RecordedRequest(
             url: request.url,
             method: request.httpMethod,
-            headers: request.allHTTPHeaderFields ?? [:],
+            headers: Self.recordedHeaders(from: request, task: task),
             body: body
         )
         let response = Self.state.record(recorded, request: request, body: body)
@@ -102,6 +102,35 @@ final class OpenAICompatibleURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+
+    /// Linux `URLRequest.allHTTPHeaderFields` is often empty even when
+    /// `setValue(_:forHTTPHeaderField:)` was used. Read both the dictionary
+    /// and the named accessors the product actually sets.
+    private static func recordedHeaders(from request: URLRequest, task: URLSessionTask?) -> [String: String] {
+        var headers: [String: String] = [:]
+        let sources = [request, task?.originalRequest, task?.currentRequest].compactMap { $0 }
+        let names = [
+            "Authorization",
+            "Accept",
+            "Content-Type",
+            "api-key",
+            "traceparent",
+            "tracestate",
+        ]
+        for source in sources {
+            if let fields = source.allHTTPHeaderFields {
+                for (key, value) in fields {
+                    headers[key] = value
+                }
+            }
+            for name in names {
+                if let value = source.value(forHTTPHeaderField: name) {
+                    headers[name] = value
+                }
+            }
+        }
+        return headers
+    }
 
     private static func readAll(from stream: InputStream) -> Data {
         stream.open()
