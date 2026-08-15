@@ -122,8 +122,19 @@ jobs:
       - name: Run SwiftLint
         run: swiftlint lint --strict --config .swiftlint.yml Sources Tests
 
-      - name: Install SwiftFormat
-        run: brew install swiftformat
+      # Pin SwiftFormat: brew latest enables new wrap*/redundant* rules that
+      # the tracked .swiftformat does not disable, and older 0.58.x rejects
+      # those rule names. 0.58.7 matches the last verified local check.
+      - name: Install SwiftFormat 0.58.7
+        run: |
+          curl -fsSL -o /tmp/swiftformat.zip \
+            https://github.com/nicklockwood/SwiftFormat/releases/download/0.58.7/swiftformat.zip
+          unzip -o /tmp/swiftformat.zip -d /tmp/swiftformat-bin
+          BIN="$(find /tmp/swiftformat-bin -type f -name swiftformat | head -n 1)"
+          chmod +x "$BIN"
+          sudo mkdir -p /usr/local/bin
+          sudo cp "$BIN" /usr/local/bin/swiftformat
+          swiftformat --version
 
       - name: Run SwiftFormat (check mode)
         run: swiftformat Sources Tests --lint --config .swiftformat

@@ -1,5 +1,4 @@
 #if SWARM_INTEGRATIONS
-import CryptoKit
 import Foundation
 import HiveCore
 
@@ -84,7 +83,7 @@ struct DefaultMessageIDFactory: MessageIDFactory {
             data.append(0x00)
             data.append(contentsOf: Array(role.utf8))
             data.append(contentsOf: Array(String(stepIndex).utf8))
-            return "msg:" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            return "msg:" + SwarmSHA256.hex(data)
         }
     }
 }
@@ -598,8 +597,7 @@ extension ChatGraph {
         }
 
         private static func sha256HexLower(_ data: Data) -> String {
-            let digest = SHA256.hash(data: data)
-            return digest.map { String(format: "%02x", $0) }.joined()
+            return SwarmSHA256.hex(data)
         }
     }
 

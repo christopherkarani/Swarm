@@ -1,5 +1,4 @@
 #if SWARM_INTEGRATIONS
-import CryptoKit
 import Foundation
 import MembraneCore
 import Wax
@@ -256,7 +255,7 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
     }
 
     private static func sha256Hex(_ payload: Data) -> String {
-        SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
+        SwarmSHA256.hex(payload)
     }
 
     private static func storedPointerDocument(
