@@ -76,11 +76,15 @@ if enableIntegrationModules {
         // throwing and breaks WaxMemory + WaxMembraneStorage. Revisit after
         // adapting to the throwing API.
         .package(url: "https://github.com/christopherkarani/Wax.git", "0.1.23"..<"0.1.24"),
-        .package(url: "https://github.com/christopherkarani/MetalANNS.git", from: "0.1.3"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.7.0"),
         .package(url: "https://github.com/swhitty/swift-mutex.git", from: "0.0.6"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
     ]
+    if registerAppleIntegrationTargets {
+        packageDependencies.append(
+            .package(url: "https://github.com/christopherkarani/MetalANNS.git", from: "0.1.3")
+        )
+    }
 }
 
 var swarmDependencies: [Target.Dependency] = [
