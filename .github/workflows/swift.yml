@@ -18,7 +18,10 @@ jobs:
   # macOS: lean default build + full Integrations matrix
   build-macos:
     name: Build & Test (macOS)
-    runs-on: macos-15
+    # macos-15 is billed; this account's $0 Actions budget + failed
+    # payment auth refuse to queue GitHub-hosted macOS jobs. Self-hosted
+    # still runs the same steps and produces hosted job records.
+    runs-on: [self-hosted, macOS]
 
     steps:
       - name: Checkout repository
@@ -111,7 +114,7 @@ jobs:
   # Code Quality (macOS only - SwiftLint/SwiftFormat)
   code-quality:
     name: Code Quality
-    runs-on: macos-15
+    runs-on: [self-hosted, macOS]
 
     steps:
       - name: Checkout repository
