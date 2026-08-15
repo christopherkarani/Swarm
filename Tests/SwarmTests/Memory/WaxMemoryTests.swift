@@ -5,6 +5,7 @@ import Testing
 
 @Suite("WaxMemory Tests")
 struct WaxMemoryTests {
+    #if canImport(SQLite3)
     @Test("clear resets persisted retrieval state and visibility methods")
     func clearResetsPersistedStateAndVisibility() async throws {
         let url = try makeTemporaryWaxURL()
@@ -124,6 +125,7 @@ struct WaxMemoryTests {
         #expect(context.contains("first-fit"))
         #expect(!context.contains("third-fit"))
     }
+    #endif
 
     @Test("distinctive search terms include four character words")
     func distinctiveSearchTermsIncludeFourCharacterWords() {
@@ -133,6 +135,7 @@ struct WaxMemoryTests {
         #expect(terms.contains("jumps"))
     }
 
+    #if canImport(SQLite3)
     @Test("fallback triggers when all RAG items exceed token limit individually")
     func fallbackTriggersWhenAllRAGItemsAreOversized() async throws {
         let url = try makeTemporaryWaxURL()
@@ -168,6 +171,7 @@ struct WaxMemoryTests {
 
         #expect(context.isEmpty)
     }
+    #endif
 
     @Test("distinctive search terms returns empty for stop words only")
     func distinctiveSearchTermsReturnsEmptyForStopWordsOnly() {

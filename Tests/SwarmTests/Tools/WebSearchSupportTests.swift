@@ -142,6 +142,9 @@ struct WebSearchSupportTests {
         }
     }
 
+    // FoundationNetworking on Linux asserts inside
+    // `urlProtocol(_:wasRedirectedTo:redirectResponse:)`.
+    #if !os(Linux)
     @Test("Safe web fetcher rejects private redirects before accepting body bytes")
     func fetcherRejectsPrivateRedirectBeforeBodyRead() async throws {
         RedirectWebFetchURLProtocol.reset()
@@ -173,6 +176,7 @@ struct WebSearchSupportTests {
         try await Task.sleep(for: .milliseconds(50))
         #expect(RedirectWebFetchURLProtocol.didLoadBody == false)
     }
+    #endif
 
     @Test("Safe web fetcher injects current W3C traceparent")
     func fetcherInjectsTraceparent() async throws {
