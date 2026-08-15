@@ -1673,7 +1673,7 @@ private enum ResolvedHostAddress: Sendable {
         var hints = addrinfo(
             ai_flags: AI_ADDRCONFIG,
             ai_family: AF_UNSPEC,
-            ai_socktype: SOCK_STREAM,
+            ai_socktype: numericCast(SOCK_STREAM.rawValue),
             ai_protocol: 0,
             ai_addrlen: 0,
             ai_addr: nil,
