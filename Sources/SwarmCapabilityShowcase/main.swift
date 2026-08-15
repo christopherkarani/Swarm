@@ -14,7 +14,7 @@ enum SwarmCapabilityShowcaseCLI {
             let exitCode = try await run(arguments: Array(CommandLine.arguments.dropFirst()))
             exit(exitCode)
         } catch {
-            fputs("error: \(error.localizedDescription)\n", stderr)
+            FileHandle.standardError.write(Data("error: \(error.localizedDescription)\n".utf8))
             exit(1)
         }
     }
