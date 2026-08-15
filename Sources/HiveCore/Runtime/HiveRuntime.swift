@@ -4,7 +4,7 @@ import Mutex
 // MARK: - HiveRuntime
 
 /// Deterministic runtime for executing a compiled graph.
-public actor HiveRuntime<Schema: HiveSchema>: Sendable {
+public actor HiveRuntime<Schema: HiveSchema> {
     public init(graph: CompiledHiveGraph<Schema>, environment: HiveEnvironment<Schema>) throws {
         self.graph = graph
         self.environment = environment
@@ -506,7 +506,7 @@ public actor HiveRuntime<Schema: HiveSchema>: Sendable {
                 return checkpoint
             } catch let queryError as HiveCheckpointQueryError {
                 switch queryError {
-                case .unsupported(operation: _):
+                case .unsupported:
                     throw HiveRuntimeError.forkCheckpointQueryUnsupported
                 }
             }
@@ -1271,7 +1271,7 @@ public actor HiveRuntime<Schema: HiveSchema>: Sendable {
                     attemptID: attemptID,
                     options: options,
                     emitter: emitter,
-                    resume: (!firstStepDone) ? firstStepResume : nil
+                    resume: !firstStepDone ? firstStepResume : nil
                 )
 
                 var nextState = stepOutcome.nextState

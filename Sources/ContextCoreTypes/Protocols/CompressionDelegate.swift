@@ -1,5 +1,5 @@
 /// Optional delegate for higher-level text compression and fact extraction.
-public protocol CompressionDelegate: Sendable {
+public protocol CompressionDelegate: AnyObject, Sendable {
     /// Compress text to fit within targetTokens.
     /// Implementations can be extractive or abstractive.
     ///

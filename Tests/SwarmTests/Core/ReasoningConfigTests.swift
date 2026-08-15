@@ -93,7 +93,7 @@ struct ReasoningConfigCodableTests {
 
     @Test("Decoding partial JSON with only effort set")
     func decodePartialJSON() throws {
-        let json = #"{"effort":"high"}"#.data(using: .utf8)!
+        let json = Data(#"{"effort":"high"}"#.utf8)
         let decoded = try JSONDecoder().decode(ReasoningConfig.self, from: json)
 
         #expect(decoded.effort == .high)
@@ -104,7 +104,7 @@ struct ReasoningConfigCodableTests {
 
     @Test("Decoding partial JSON with only maxTokens set")
     func decodePartialJSONMaxTokens() throws {
-        let json = #"{"maxTokens":2048}"#.data(using: .utf8)!
+        let json = Data(#"{"maxTokens":2048}"#.utf8)
         let decoded = try JSONDecoder().decode(ReasoningConfig.self, from: json)
 
         #expect(decoded.effort == nil)
