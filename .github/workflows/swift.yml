@@ -24,21 +24,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Swift 6.2
-        uses: swift-actions/setup-swift@v3
-        with:
-          swift-version: "6.2"
-
+      # Use the runner Xcode toolchain only. setup-swift 6.2 on macos-15
+      # can install 6.2.4 beside the image stdlib and crash tests with
+      # "Symbol not found: EnumeratedSequence".
       - name: Show Swift version
-        run: swift --version
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          swift --version
 
       - name: Cache Swift packages
         uses: actions/cache@v4
         with:
           path: .build
-          key: ${{ runner.os }}-swift-6.2-${{ hashFiles('Package.swift') }}
+          key: ${{ runner.os }}-swift-xcode-${{ hashFiles('Package.swift') }}
           restore-keys: |
-            ${{ runner.os }}-swift-6.2-
+            ${{ runner.os }}-swift-xcode-
 
       # Cold lean proof + product-scoped build + omit-target lean tests.
       # Wipes .build/Package.resolved so cache cannot hide a cold resolve.
