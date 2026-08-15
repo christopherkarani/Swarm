@@ -291,6 +291,7 @@ struct WebSearchSupportTests {
         #expect(merged.first?.artifactID == "artifact-1")
     }
 
+    #if canImport(SQLite3)
     @Test("Saving a fetched artifact replaces old indexed sections")
     func savingArtifactReplacesIndexedSections() async throws {
         let root = FileManager.default.temporaryDirectory
@@ -352,6 +353,7 @@ struct WebSearchSupportTests {
         #expect(matches.count == 1)
         #expect(matches.first?.section.text.contains("Updated instructions") == true)
     }
+    #endif
 }
 
 private final class TraceparentWebFetchURLProtocol: URLProtocol {
