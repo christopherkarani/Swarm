@@ -1669,6 +1669,18 @@ private enum ResolvedHostAddress: Sendable {
         }
 
         #if canImport(Darwin) || canImport(Glibc)
+        #if canImport(Glibc)
+        var hints = addrinfo(
+            ai_flags: AI_ADDRCONFIG,
+            ai_family: AF_UNSPEC,
+            ai_socktype: SOCK_STREAM,
+            ai_protocol: 0,
+            ai_addrlen: 0,
+            ai_addr: nil,
+            ai_canonname: nil,
+            ai_next: nil
+        )
+        #else
         var hints = addrinfo(
             ai_flags: AI_ADDRCONFIG,
             ai_family: AF_UNSPEC,
@@ -1679,6 +1691,7 @@ private enum ResolvedHostAddress: Sendable {
             ai_addr: nil,
             ai_next: nil
         )
+        #endif
         var result: UnsafeMutablePointer<addrinfo>?
         let status = getaddrinfo(normalizedHost, nil, &hints, &result)
         guard status == 0, let result else {
