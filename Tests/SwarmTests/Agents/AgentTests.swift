@@ -14,7 +14,7 @@ struct ReActAgentTests {
     @Test("makeDefaultMemory matches Integrations trait")
     func makeDefaultMemoryMatchesIntegrationsTrait() throws {
         let memory = try Agent.makeDefaultMemory()
-        #if SWARM_INTEGRATIONS
+        #if SWARM_INTEGRATIONS && canImport(ContextCore)
         #expect(memory is DefaultAgentMemory)
         #else
         #expect(memory is SlidingWindowMemory)
