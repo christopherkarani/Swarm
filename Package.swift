@@ -94,6 +94,7 @@ if enableIntegrationModules {
         // Portable Integrations modules (all platforms when trait is on).
         .target(name: "HiveCore", condition: .when(traits: [integrationTrait])),
         .target(name: "MembraneCore", condition: .when(traits: [integrationTrait])),
+#if !os(Linux)
         // Apple-only memory / Membrane session stack (Metal / CoreML / MetalANNS).
         .target(
             name: "Membrane",
@@ -107,6 +108,7 @@ if enableIntegrationModules {
             name: "ContextCore",
             condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
         ),
+#endif
         // Wax remains an external package + trait-gated product dependency.
         .product(name: "Wax", package: "Wax", condition: .when(traits: [integrationTrait])),
     ]
@@ -222,6 +224,7 @@ var packageTargets: [Target] = [
             if enableIntegrationModules {
                 dependencies += [
                     .target(name: "MembraneCore", condition: .when(traits: [integrationTrait])),
+#if !os(Linux)
                     .target(
                         name: "Membrane",
                         condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
@@ -230,6 +233,7 @@ var packageTargets: [Target] = [
                         name: "ContextCore",
                         condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
                     ),
+#endif
                 ]
             }
             return dependencies
@@ -323,6 +327,11 @@ if enableIntegrationModules {
             path: "Sources/MembraneCore",
             swiftSettings: integrationsTargetSwiftSettings
         ),
+        // Apple-only: Metal/CoreML ContextCore + full Membrane session.
+        // Root `swift build --traits Integrations` compiles every registered
+        // target; omit these on Linux so Integrations CI matches the documented
+        // Hive + MembraneCore + web graph.
+#if !os(Linux)
         .target(
             name: "MembraneContextCore",
             dependencies: [
@@ -392,6 +401,7 @@ if enableIntegrationModules {
                 .linkedFramework("Accelerate", .when(platforms: appleIntegrationPlatforms)),
             ]
         ),
+#endif
 
         .testTarget(
             name: "HiveSwarmTests",
