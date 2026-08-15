@@ -1,5 +1,8 @@
 #if SWARM_INTEGRATIONS
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import Swarm
 import Testing
 
