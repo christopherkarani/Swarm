@@ -20,7 +20,6 @@ coverage/
 .claude/
 .mcp.json
 .agent_context.md
-AGENTS.md
 
 # Internal development artifacts
 IMPLEMENTATION_PLAN.md

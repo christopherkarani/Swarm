@@ -4,6 +4,9 @@
 // Tests for HTTPMCPServer initialization, defaults, and property access.
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import Swarm
 import Testing
 

@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          clean: true
 
       # Use the runner Xcode toolchain only. setup-swift 6.2 on macos-15
       # can install 6.2.4 beside the image stdlib and crash tests with
@@ -74,6 +76,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          clean: true
 
       - name: Setup Swift 6.2
         uses: swift-actions/setup-swift@v3
@@ -119,12 +123,28 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          clean: true
 
-      - name: Install SwiftLint
-        run: brew install swiftlint
+      # Pin SwiftLint by path. brew on self-hosted (and image drift) is
+      # not the gate — the downloaded 0.62.2 binary is.
+      - name: Install SwiftLint 0.62.2
+        run: |
+          curl -fsSL -o /tmp/swiftlint.zip \
+            https://github.com/realm/SwiftLint/releases/download/0.62.2/portable_swiftlint.zip
+          unzip -o /tmp/swiftlint.zip -d /tmp/swiftlint-bin
+          BIN="$(find /tmp/swiftlint-bin -type f -name swiftlint | head -n 1)"
+          test -n "$BIN"
+          chmod +x "$BIN"
+          mkdir -p "$HOME/.local/bin"
+          cp "$BIN" "$HOME/.local/bin/swiftlint"
+          VERSION="$("$HOME/.local/bin/swiftlint" version)"
+          echo "pinned SwiftLint $VERSION"
+          test "$VERSION" = "0.62.2"
 
       - name: Run SwiftLint
-        run: swiftlint lint --strict --config .swiftlint.yml Sources Tests
+        run: |
+          "$HOME/.local/bin/swiftlint" lint --strict --config .swiftlint.yml Sources Tests
 
       # Pin SwiftFormat: brew / image latest enables wrap* and Swift Testing
       # name rules that this repo does not apply. Invoke the downloaded 0.58.7
