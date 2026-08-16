@@ -11,6 +11,11 @@ let coreOnly = ProcessInfo.processInfo.environment["SWARM_CORE_ONLY"] == "1"
 let omitIntegrationTargets =
     ProcessInfo.processInfo.environment["SWARM_OMIT_INTEGRATION_TARGETS"] == "1"
 let enableIntegrationModules = !coreOnly && !omitIntegrationTargets
+#if os(Linux)
+let registerAppleIntegrationTargets = false
+#else
+let registerAppleIntegrationTargets = true
+#endif
 
 var packageProducts: [Product] = [
     .library(name: "Swarm", targets: ["Swarm"]),
@@ -71,11 +76,15 @@ if enableIntegrationModules {
         // throwing and breaks WaxMemory + WaxMembraneStorage. Revisit after
         // adapting to the throwing API.
         .package(url: "https://github.com/christopherkarani/Wax.git", "0.1.23"..<"0.1.24"),
-        .package(url: "https://github.com/christopherkarani/MetalANNS.git", from: "0.1.3"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.7.0"),
         .package(url: "https://github.com/swhitty/swift-mutex.git", from: "0.0.6"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
     ]
+    if registerAppleIntegrationTargets {
+        packageDependencies.append(
+            .package(url: "https://github.com/christopherkarani/MetalANNS.git", from: "0.1.3")
+        )
+    }
 }
 
 var swarmDependencies: [Target.Dependency] = [
@@ -94,22 +103,25 @@ if enableIntegrationModules {
         // Portable Integrations modules (all platforms when trait is on).
         .target(name: "HiveCore", condition: .when(traits: [integrationTrait])),
         .target(name: "MembraneCore", condition: .when(traits: [integrationTrait])),
-        // Apple-only memory / Membrane session stack (Metal / CoreML / MetalANNS).
-        .target(
-            name: "Membrane",
-            condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
-        ),
-        .target(
-            name: "MembraneContextCore",
-            condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
-        ),
-        .target(
-            name: "ContextCore",
-            condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
-        ),
         // Wax remains an external package + trait-gated product dependency.
         .product(name: "Wax", package: "Wax", condition: .when(traits: [integrationTrait])),
     ]
+    if registerAppleIntegrationTargets {
+        swarmDependencies += [
+            .target(
+                name: "Membrane",
+                condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
+            ),
+            .target(
+                name: "MembraneContextCore",
+                condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
+            ),
+            .target(
+                name: "ContextCore",
+                condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
+            ),
+        ]
+    }
     swarmSwiftSettings.append(.define("SWARM_INTEGRATIONS", .when(traits: [integrationTrait])))
 }
 
@@ -222,15 +234,19 @@ var packageTargets: [Target] = [
             if enableIntegrationModules {
                 dependencies += [
                     .target(name: "MembraneCore", condition: .when(traits: [integrationTrait])),
-                    .target(
-                        name: "Membrane",
-                        condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
-                    ),
-                    .target(
-                        name: "ContextCore",
-                        condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
-                    ),
                 ]
+                if registerAppleIntegrationTargets {
+                    dependencies += [
+                        .target(
+                            name: "Membrane",
+                            condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
+                        ),
+                        .target(
+                            name: "ContextCore",
+                            condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
+                        ),
+                    ]
+                }
             }
             return dependencies
         }(),
@@ -323,75 +339,6 @@ if enableIntegrationModules {
             path: "Sources/MembraneCore",
             swiftSettings: integrationsTargetSwiftSettings
         ),
-        .target(
-            name: "MembraneContextCore",
-            dependencies: [
-                "MembraneCore",
-                "ContextCore",
-            ],
-            path: "Sources/MembraneContextCore",
-            swiftSettings: integrationsTargetSwiftSettings
-        ),
-        .target(
-            name: "Membrane",
-            dependencies: [
-                "MembraneCore",
-                "MembraneContextCore",
-            ],
-            path: "Sources/Membrane",
-            swiftSettings: integrationsTargetSwiftSettings
-        ),
-
-        // ContextCore stack (MetalANNS remains remote; Apple + Integrations only)
-        .target(
-            name: "ContextCoreTypes",
-            path: "Sources/ContextCoreTypes",
-            swiftSettings: integrationsTargetSwiftSettings
-        ),
-        .target(
-            name: "ContextCoreShaders",
-            path: "Sources/ContextCoreShaders",
-            resources: [.process("Shaders")],
-            swiftSettings: integrationsTargetSwiftSettings,
-            linkerSettings: [
-                .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
-            ]
-        ),
-        .target(
-            name: "ContextCoreEngine",
-            dependencies: [
-                "ContextCoreShaders",
-                "ContextCoreTypes",
-            ],
-            path: "Sources/ContextCoreEngine",
-            swiftSettings: integrationsTargetSwiftSettings,
-            linkerSettings: [
-                .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
-                .linkedFramework("CoreML", .when(platforms: appleIntegrationPlatforms)),
-                .linkedFramework("Accelerate", .when(platforms: appleIntegrationPlatforms)),
-            ]
-        ),
-        .target(
-            name: "ContextCore",
-            dependencies: [
-                "ContextCoreEngine",
-                "ContextCoreTypes",
-                .product(name: "Logging", package: "swift-log"),
-                .product(
-                    name: "MetalANNS",
-                    package: "MetalANNS",
-                    condition: integrationsAppleRemoteDepsActive
-                ),
-            ],
-            path: "Sources/ContextCore",
-            resources: [.process("Resources")],
-            swiftSettings: integrationsTargetSwiftSettings,
-            linkerSettings: [
-                .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
-                .linkedFramework("CoreML", .when(platforms: appleIntegrationPlatforms)),
-                .linkedFramework("Accelerate", .when(platforms: appleIntegrationPlatforms)),
-            ]
-        ),
 
         .testTarget(
             name: "HiveSwarmTests",
@@ -402,6 +349,78 @@ if enableIntegrationModules {
             swiftSettings: swarmSwiftSettings
         ),
     ]
+
+    if registerAppleIntegrationTargets {
+        packageTargets += [
+            .target(
+                name: "MembraneContextCore",
+                dependencies: [
+                    "MembraneCore",
+                    "ContextCore",
+                ],
+                path: "Sources/MembraneContextCore",
+                swiftSettings: integrationsTargetSwiftSettings
+            ),
+            .target(
+                name: "Membrane",
+                dependencies: [
+                    "MembraneCore",
+                    "MembraneContextCore",
+                ],
+                path: "Sources/Membrane",
+                swiftSettings: integrationsTargetSwiftSettings
+            ),
+            .target(
+                name: "ContextCoreTypes",
+                path: "Sources/ContextCoreTypes",
+                swiftSettings: integrationsTargetSwiftSettings
+            ),
+            .target(
+                name: "ContextCoreShaders",
+                path: "Sources/ContextCoreShaders",
+                resources: [.process("Shaders")],
+                swiftSettings: integrationsTargetSwiftSettings,
+                linkerSettings: [
+                    .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
+                ]
+            ),
+            .target(
+                name: "ContextCoreEngine",
+                dependencies: [
+                    "ContextCoreShaders",
+                    "ContextCoreTypes",
+                ],
+                path: "Sources/ContextCoreEngine",
+                swiftSettings: integrationsTargetSwiftSettings,
+                linkerSettings: [
+                    .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
+                    .linkedFramework("CoreML", .when(platforms: appleIntegrationPlatforms)),
+                    .linkedFramework("Accelerate", .when(platforms: appleIntegrationPlatforms)),
+                ]
+            ),
+            .target(
+                name: "ContextCore",
+                dependencies: [
+                    "ContextCoreEngine",
+                    "ContextCoreTypes",
+                    .product(name: "Logging", package: "swift-log"),
+                    .product(
+                        name: "MetalANNS",
+                        package: "MetalANNS",
+                        condition: integrationsAppleRemoteDepsActive
+                    ),
+                ],
+                path: "Sources/ContextCore",
+                resources: [.process("Resources")],
+                swiftSettings: integrationsTargetSwiftSettings,
+                linkerSettings: [
+                    .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
+                    .linkedFramework("CoreML", .when(platforms: appleIntegrationPlatforms)),
+                    .linkedFramework("Accelerate", .when(platforms: appleIntegrationPlatforms)),
+                ]
+            ),
+        ]
+    }
 }
 
 if includeDemo {

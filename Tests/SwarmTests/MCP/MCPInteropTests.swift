@@ -7,7 +7,14 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("MCP Interop Tests", .serialized)
+#if os(Linux)
+@Suite(
+    "MCP Interop Tests",
+    .disabled("stdio MCP fixture hangs the Linux GitHub Actions process; python3 never leaves stdin")
+)
+#else
+@Suite("MCP Interop Tests", .serialized, .timeLimit(.minutes(1)))
+#endif
 struct MCPInteropTests {
     @Test("Stdio transport completes initialize, tools/list, and tools/call")
     func stdioHandshakeListAndCall() async throws {

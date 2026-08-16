@@ -4,7 +4,6 @@
 //
 // Bridge adapter that exposes a Hive-native agent graph as a Swarm `AgentRuntime`.
 
-import CryptoKit
 import Foundation
 import HiveCore
 
@@ -368,8 +367,7 @@ struct GraphAgent: AgentRuntime, Sendable {
     }
 
     private static func stableUUID(for input: String) -> UUID {
-        let digest = SHA256.hash(data: Data(input.utf8))
-        let bytes = Array(digest)
+        let bytes = SwarmSHA256.hash(Data(input.utf8))
         precondition(bytes.count >= 16)
         return UUID(uuid: (
             bytes[0], bytes[1], bytes[2], bytes[3],

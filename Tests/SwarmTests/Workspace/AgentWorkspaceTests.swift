@@ -177,7 +177,7 @@ struct AgentWorkspaceTests {
         #expect(context.contains("violet-signal marker"))
     }
 
-    #if SWARM_INTEGRATIONS
+    #if SWARM_INTEGRATIONS && canImport(ContextCore)
     @Test("Workspace agents isolate default memory when switching sessions")
     func workspaceAgentsIsolateDefaultMemoryWhenSwitchingSessions() async throws {
         let workspaceRoot = try makeWorkspaceRoot()
@@ -274,7 +274,7 @@ struct AgentWorkspaceTests {
         #expect(prompt?.contains("refund window") == true)
     }
 
-    #if SWARM_INTEGRATIONS
+    #if SWARM_INTEGRATIONS && canImport(ContextCore)
     @Test("Workspace agents keep isolated default memory inside the workspace cache")
     func workspaceAgentsKeepIsolatedDefaultMemoryInsideWorkspaceCache() async throws {
         let workspaceRoot = try makeWorkspaceRoot()

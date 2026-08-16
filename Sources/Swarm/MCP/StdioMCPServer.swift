@@ -264,6 +264,28 @@ public actor StdioMCPServer: MCPServerConnection {
 
     private func makeDataStream(from handle: FileHandle) -> AsyncStream<Data> {
         AsyncStream { continuation in
+            #if os(Linux)
+            // FileHandle.readabilityHandler does not reliably deliver pipe
+            // bytes on Linux. A blocking read on a detached thread is the
+            // portable path; without it initialize() waits forever and the
+            // actor-isolated write/timeout cannot make progress.
+            Thread.detachNewThread {
+                while true {
+                    let data: Data
+                    do {
+                        data = try handle.read(upToCount: 4096) ?? Data()
+                    } catch {
+                        continuation.finish()
+                        break
+                    }
+                    if data.isEmpty {
+                        continuation.finish()
+                        break
+                    }
+                    continuation.yield(data)
+                }
+            }
+            #else
             handle.readabilityHandler = { fileHandle in
                 let data = fileHandle.availableData
                 if data.isEmpty {
@@ -273,6 +295,7 @@ public actor StdioMCPServer: MCPServerConnection {
                     continuation.yield(data)
                 }
             }
+            #endif
             continuation.onTermination = { _ in
                 handle.readabilityHandler = nil
             }

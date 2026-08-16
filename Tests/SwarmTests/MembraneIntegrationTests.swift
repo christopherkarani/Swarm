@@ -7,6 +7,7 @@ import Wax
 
 @Suite("Membrane Integration")
 struct MembraneIntegrationTests {
+    #if canImport(Membrane)
     @Test("strict4k_jitAvoidsPromptEnvelopeTruncation")
     func strict4k_jitAvoidsPromptEnvelopeTruncation() async throws {
         let provider = MockInferenceProvider()
@@ -57,6 +58,7 @@ struct MembraneIntegrationTests {
         #expect(schemaNames.contains("Remove_Tools"))
         #expect(schemaNames.contains("resolve_pointer"))
     }
+    #endif
 
     @Test("membraneRuntimeFeatureFlagsPropagateToProviderSettings")
     func membraneRuntimeFeatureFlagsPropagateToProviderSettings() async throws {
@@ -129,6 +131,7 @@ struct MembraneIntegrationTests {
         #expect(result.metadata["membrane.fallback.error"]?.stringValue?.contains("forced membrane failure") == true)
     }
 
+    #if canImport(Membrane)
     @Test("Pointerized structured tool output resolves as JSON")
     func pointerizedStructuredToolOutputResolvesAsJSON() async throws {
         let provider = PointerResolvingInferenceProvider()
@@ -163,6 +166,7 @@ struct MembraneIntegrationTests {
         #expect(dictionary["message"] as? String == "quoted \"value\" with newline\nsecond line")
         #expect(dictionary["count"] as? Int == 42)
     }
+    #endif
 
     // MARK: - one-8h1.10 characterization (OneWorkspace investigation)
     //
@@ -172,6 +176,7 @@ struct MembraneIntegrationTests {
     // (and forks consuming this adapter) can map the error correctly
     // without a magic-number lookup.
 
+    #if canImport(Membrane)
     @Test("Add_Tools called with missing tool_names argument throws invalidInternalToolArguments (`error 1`)")
     func addToolsMissingArgsThrowsErrorCase1() async throws {
         let adapter = DefaultMembraneAgentAdapter(
@@ -210,6 +215,7 @@ struct MembraneIntegrationTests {
             )
         }
     }
+    #endif
 
     @Test("MembraneAgentAdapterError.invalidInternalToolArguments is the second case (NSError code 1)")
     func errorCaseOrdinalIsOne() {
@@ -229,6 +235,7 @@ struct MembraneIntegrationTests {
         #expect(otherNS.code == 0)
     }
 
+    #if canImport(Membrane)
     @Test("Add_Tools with valid tool_names succeeds and returns confirmation message")
     func addToolsValidArgsSucceeds() async throws {
         let adapter = DefaultMembraneAgentAdapter(
@@ -287,6 +294,7 @@ struct MembraneIntegrationTests {
         )
         #expect(planned.toolSchemas.contains(where: { $0.name == "zzz_tool" }) == false)
     }
+    #endif
 
     @Test("strict4k planning does not drop tools when below jit threshold")
     func strict4kPlanningKeepsSmallToolSetsVisible() async throws {
@@ -311,6 +319,7 @@ struct MembraneIntegrationTests {
         #expect(names.contains("gamma"))
     }
 
+    #if canImport(Membrane)
     @Test("strict4k planning enters JIT at the lowered four-tool threshold")
     func strict4kPlanningUsesLoweredJITThreshold() async throws {
         let adapter = DefaultMembraneAgentAdapter(
@@ -340,7 +349,9 @@ struct MembraneIntegrationTests {
         #expect(names.contains(MembraneInternalToolName.removeTools))
         #expect(names.contains(MembraneInternalToolName.resolvePointer))
     }
+    #endif
 
+    #if canImport(SQLite3)
     @Test("Wax membrane pointer recall does not index private payload bytes")
     func waxMembranePointerRecallDoesNotIndexPrivatePayloadBytes() async throws {
         let storage = WaxMembraneStorage(url: temporaryWaxStoreURL())
@@ -382,6 +393,7 @@ struct MembraneIntegrationTests {
         let matches = try await storage.recall(query: "Delete me", limit: 5)
         #expect(matches.allSatisfy { $0.provenance.metadata["membrane.pointer.id"] != pointer.id })
     }
+    #endif
 
     @Test("Wax membrane pointer store rolls back payload frame when indexing fails")
     func waxMembranePointerStoreRollsBackPayloadFrameWhenIndexingFails() async throws {

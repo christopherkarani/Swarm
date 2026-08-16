@@ -1,5 +1,8 @@
 #if SWARM_INTEGRATIONS
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import Swarm
 import Testing
 
@@ -139,6 +142,9 @@ struct WebSearchSupportTests {
         }
     }
 
+    // FoundationNetworking on Linux asserts inside
+    // `urlProtocol(_:wasRedirectedTo:redirectResponse:)`.
+    #if !os(Linux)
     @Test("Safe web fetcher rejects private redirects before accepting body bytes")
     func fetcherRejectsPrivateRedirectBeforeBodyRead() async throws {
         RedirectWebFetchURLProtocol.reset()
@@ -170,6 +176,7 @@ struct WebSearchSupportTests {
         try await Task.sleep(for: .milliseconds(50))
         #expect(RedirectWebFetchURLProtocol.didLoadBody == false)
     }
+    #endif
 
     @Test("Safe web fetcher injects current W3C traceparent")
     func fetcherInjectsTraceparent() async throws {
@@ -284,6 +291,7 @@ struct WebSearchSupportTests {
         #expect(merged.first?.artifactID == "artifact-1")
     }
 
+    #if canImport(SQLite3)
     @Test("Saving a fetched artifact replaces old indexed sections")
     func savingArtifactReplacesIndexedSections() async throws {
         let root = FileManager.default.temporaryDirectory
@@ -345,6 +353,7 @@ struct WebSearchSupportTests {
         #expect(matches.count == 1)
         #expect(matches.first?.section.text.contains("Updated instructions") == true)
     }
+    #endif
 }
 
 private final class TraceparentWebFetchURLProtocol: URLProtocol {

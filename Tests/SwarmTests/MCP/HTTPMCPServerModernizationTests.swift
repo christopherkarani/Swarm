@@ -4,6 +4,9 @@
 // Version negotiation, envelope unwrap, empty tool names, and streamable HTTP.
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import Swarm
 import Testing
 

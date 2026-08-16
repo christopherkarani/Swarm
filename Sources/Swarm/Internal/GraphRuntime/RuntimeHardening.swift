@@ -1,5 +1,4 @@
 #if SWARM_INTEGRATIONS
-import CryptoKit
 import Foundation
 import HiveCore
 
@@ -635,7 +634,7 @@ enum HiveDeterminism {
     }
 
     private static func sha256Hex(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        SwarmSHA256.hex(data)
     }
 
     private static func diff<Value>(path: String, _ expected: Value, _ actual: Value) -> HiveDeterminismDiff {
@@ -1214,7 +1213,7 @@ private enum HiveStateSnapshotCodec {
 }
 
 private func stateSnapshotSHA256Hex(_ data: Data) -> String {
-    SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    SwarmSHA256.hex(data)
 }
 
 private func hexLower(_ data: Data) -> String {

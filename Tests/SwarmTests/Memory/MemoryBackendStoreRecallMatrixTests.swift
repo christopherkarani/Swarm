@@ -152,7 +152,7 @@ struct MemoryBackendStoreRecallMatrixTests {
     }
 #endif
 
-#if SWARM_INTEGRATIONS
+#if SWARM_INTEGRATIONS && canImport(ContextCore)
     @Suite("Memory backend store→recall matrix (DefaultAgentMemory)")
     struct DefaultAgentMemoryStoreRecallMatrixTests {
         @Test("DefaultAgentMemory store→recall preserves content")

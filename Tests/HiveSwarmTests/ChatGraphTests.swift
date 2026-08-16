@@ -1,5 +1,4 @@
 #if SWARM_INTEGRATIONS
-import CryptoKit
 import Foundation
 import HiveCore
 @_spi(ColonyInternal) @testable import Swarm
@@ -1669,9 +1668,7 @@ private func expectedRoleBasedMessageID(taskID: String, role: String) -> String 
     data.append(0x00)
     data.append(contentsOf: Array(role.utf8))
     data.append(contentsOf: [UInt8(0), UInt8(0), UInt8(0), UInt8(0)])
-    let digest = SHA256.hash(data: data)
-    let hex = digest.map { String(format: "%02x", $0) }.joined()
-    return "msg:" + hex
+    return "msg:" + SwarmSHA256.hex(data)
 }
 
 // MARK: - TestFailure

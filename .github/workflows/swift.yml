@@ -5,7 +5,7 @@ name: Swift CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "fix/ci-code-quality" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -18,27 +18,33 @@ jobs:
   # macOS: lean default build + full Integrations matrix
   build-macos:
     name: Build & Test (macOS)
-    runs-on: macos-15
+    # macos-15 is billed; this account's $0 Actions budget + failed
+    # payment auth refuse to queue GitHub-hosted macOS jobs. Self-hosted
+    # still runs the same steps and produces hosted job records.
+    runs-on: [self-hosted, macOS]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup Swift 6.2
-        uses: swift-actions/setup-swift@v3
         with:
-          swift-version: "6.2"
+          clean: true
 
+      # Use the runner Xcode toolchain only. setup-swift 6.2 on macos-15
+      # can install 6.2.4 beside the image stdlib and crash tests with
+      # "Symbol not found: EnumeratedSequence".
       - name: Show Swift version
-        run: swift --version
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          swift --version
 
       - name: Cache Swift packages
         uses: actions/cache@v4
         with:
           path: .build
-          key: ${{ runner.os }}-swift-6.2-${{ hashFiles('Package.swift') }}
+          key: ${{ runner.os }}-swift-xcode-${{ hashFiles('Package.swift') }}
           restore-keys: |
-            ${{ runner.os }}-swift-6.2-
+            ${{ runner.os }}-swift-xcode-
 
       # Cold lean proof + product-scoped build + omit-target lean tests.
       # Wipes .build/Package.resolved so cache cannot hide a cold resolve.
@@ -70,6 +76,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          clean: true
 
       - name: Setup Swift 6.2
         uses: swift-actions/setup-swift@v3
@@ -110,20 +118,51 @@ jobs:
   # Code Quality (macOS only - SwiftLint/SwiftFormat)
   code-quality:
     name: Code Quality
-    runs-on: macos-15
+    runs-on: [self-hosted, macOS]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          clean: true
 
-      - name: Install SwiftLint
-        run: brew install swiftlint
+      # Pin SwiftLint by path. brew on self-hosted (and image drift) is
+      # not the gate — the downloaded 0.62.2 binary is.
+      - name: Install SwiftLint 0.62.2
+        run: |
+          curl -fsSL -o /tmp/swiftlint.zip \
+            https://github.com/realm/SwiftLint/releases/download/0.62.2/portable_swiftlint.zip
+          unzip -o /tmp/swiftlint.zip -d /tmp/swiftlint-bin
+          BIN="$(find /tmp/swiftlint-bin -type f -name swiftlint | head -n 1)"
+          test -n "$BIN"
+          chmod +x "$BIN"
+          mkdir -p "$HOME/.local/bin"
+          cp "$BIN" "$HOME/.local/bin/swiftlint"
+          VERSION="$("$HOME/.local/bin/swiftlint" version)"
+          echo "pinned SwiftLint $VERSION"
+          test "$VERSION" = "0.62.2"
 
       - name: Run SwiftLint
-        run: swiftlint lint --strict --config .swiftlint.yml Sources Tests
+        run: |
+          "$HOME/.local/bin/swiftlint" lint --strict --config .swiftlint.yml Sources Tests
 
-      - name: Install SwiftFormat
-        run: brew install swiftformat
+      # Pin SwiftFormat: brew / image latest enables wrap* and Swift Testing
+      # name rules that this repo does not apply. Invoke the downloaded 0.58.7
+      # binary by path so a newer brew swiftformat cannot win PATH.
+      - name: Install SwiftFormat 0.58.7
+        run: |
+          curl -fsSL -o /tmp/swiftformat.zip \
+            https://github.com/nicklockwood/SwiftFormat/releases/download/0.58.7/swiftformat.zip
+          unzip -o /tmp/swiftformat.zip -d /tmp/swiftformat-bin
+          BIN="$(find /tmp/swiftformat-bin -type f -name swiftformat | head -n 1)"
+          test -n "$BIN"
+          chmod +x "$BIN"
+          mkdir -p "$HOME/.local/bin"
+          cp "$BIN" "$HOME/.local/bin/swiftformat"
+          VERSION="$("$HOME/.local/bin/swiftformat" --version)"
+          echo "pinned SwiftFormat $VERSION"
+          test "$VERSION" = "0.58.7"
 
       - name: Run SwiftFormat (check mode)
-        run: swiftformat Sources Tests --lint --config .swiftformat
+        run: |
+          "$HOME/.local/bin/swiftformat" Sources Tests --lint --config .swiftformat

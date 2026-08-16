@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 public enum SwarmTranscriptSchemaVersion: String, Codable, Sendable, Equatable {
@@ -114,8 +113,7 @@ public struct SwarmTranscript: Codable, Sendable, Equatable {
     }
 
     public func transcriptHash() throws -> String {
-        let digest = SHA256.hash(data: try stableData())
-        return digest.map { String(format: "%02x", $0) }.joined()
+        SwarmSHA256.hex(try stableData())
     }
 
     public func firstDiff(comparedTo other: SwarmTranscript) -> SwarmTranscriptDiff? {

@@ -1,4 +1,4 @@
-#if SWARM_INTEGRATIONS
+#if SWARM_INTEGRATIONS && canImport(ContextCore)
 import Foundation
 @testable import Swarm
 import Testing

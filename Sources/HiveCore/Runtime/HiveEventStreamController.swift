@@ -210,7 +210,6 @@ internal final class HiveEventStreamController: @unchecked Sendable {
                     switch continuation.yield(event) {
                     case .enqueued:
                         consumeFirst()
-                        break
                     case .dropped:
                         // `.bufferingOldest` reports `.dropped` when this event could not be delivered.
                         // Droppable events are intentionally discarded; non-droppable events must stay queued
@@ -221,13 +220,11 @@ internal final class HiveEventStreamController: @unchecked Sendable {
                         } else {
                             Thread.sleep(forTimeInterval: 0.00025)
                         }
-                        break
                     case .terminated:
                         terminateStreamAndUnblockProducers()
                         return
                     @unknown default:
                         consumeFirst()
-                        break
                     }
                 }
             case .finished:

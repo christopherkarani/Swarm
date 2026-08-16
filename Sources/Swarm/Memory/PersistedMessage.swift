@@ -155,7 +155,7 @@
     /// `VersionedSchema` and a ``MemoryMigrationPlan`` stage.
     @available(macOS 14.0, iOS 17.0, watchOS 10.0, tvOS 17.0, *)
     enum MemorySchemaV1: VersionedSchema {
-        static let versionIdentifier = Schema.Version(1, 0, 0)
+        static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
 
         static var models: [any PersistentModel.Type] {
             [PersistedMessage.self]
