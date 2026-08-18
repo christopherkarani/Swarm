@@ -21,8 +21,13 @@ let agent = try Agent(
 let result = try await agent.run("What's the weather in Tokyo?")
 ```
 
-Non-Foundation-Models providers **ignore** the flag. Capture-mode behavior does
-not change unless you set ``FoundationModelsExecutionMode/nativeSession``.
+Non-Foundation-Models providers **ignore** the flag. Agent always calls
+``generateWithToolCalls`` / ``streamWithToolCalls`` on ``InferenceProvider``;
+it does not type-cast the provider. The Foundation Models adapter reads the
+opt-in from the run environment and, when Apple Intelligence is available,
+executes a provider-owned tool loop that returns a finished turn. Capture-mode
+behavior does not change unless you set
+``FoundationModelsExecutionMode/nativeSession``.
 
 You can also register a user-authored `FoundationModels.Tool` next to `@Tool`
 macros and `FunctionTool` values:
@@ -39,7 +44,7 @@ let agent = try Agent("Be helpful.", configuration: config,
 
 | | Capture (default) | Native session (experimental) |
 |---|---|---|
-| Tool loop owner | Swarm agent loop | `LanguageModelSession` |
+| Tool loop owner | Swarm agent loop | InferenceProvider (Apple `LanguageModelSession`) |
 | Parallel tool calls | Yes (first `ToolCalls` group per turn) | Yes (Apple's session loop) |
 | Transcript / KV reuse | No (session rebuilt every Swarm iteration) | Transcript copied across `Agent.run` turns; Apple owns the inner loop |
 | Token streaming with tools | No | Yes (`Agent.stream` yields incremental tokens) |
@@ -62,8 +67,9 @@ When the requested JSON Schema maps onto `GenerationSchema`, capture-mode
 the result `.providerNative`. `.jsonObject` and unmappable schemas stay
 prompt-instruction + parse (`.promptFallback`).
 
-Under `strict4k`, native mode sends the same windowed/`PromptEnvelope` string
-capture uses — not the raw conversation history.
+Under `strict4k`, native mode still windows the conversation, but the provider
+seam is a role-tagged `[InferenceMessage]` array via
+`PromptEnvelope.enforce(messages:)`, not a flattened envelope string.
 
 ## What native mode cannot honor
 

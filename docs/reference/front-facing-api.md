@@ -508,31 +508,35 @@ let triage = try Agent(
 
 ```swift
 public protocol InferenceProvider: Sendable {
-    func generate(prompt: String, options: InferenceOptions) async throws -> String
+    var capabilities: InferenceProviderCapabilities { get }
+
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String
 
     func stream(
-        prompt: String,
+        messages: [InferenceMessage],
         options: InferenceOptions
     ) -> AsyncThrowingStream<String, Error>
 
     func generateWithToolCalls(
-        prompt: String,
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) async throws -> InferenceResponse
-}
-
-public protocol ConversationInferenceProvider: InferenceProvider {
-    func generate(
-        messages: [InferenceMessage],
-        options: InferenceOptions
-    ) async throws -> String
-
-    func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse
+
+    func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
+
+    func generateStructured(
+        messages: [InferenceMessage],
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult
+
+    // Prompt-string methods remain for one minor so existing backends compile.
+    // Agent and tests call the messages methods only.
 }
 ```
 
@@ -558,11 +562,17 @@ Built-in inference is Apple Foundation Models (on-device) and
 | `.openAICompatible(_:)` | `OpenAICompatibleProvider` | OpenAI / Azure / OpenRouter / Ollama / LM Studio over Chat Completions; Linux-first |
 | Custom `InferenceProvider` | your type | Implement the protocol for other backends |
 
-Opt in to experimental native session mode with
-``AgentConfiguration/foundationModelsExecution(_:)``. Capture remains the
-default and now recovers a full parallel tool-call group per turn. Structured
-outputs use guided generation when the JSON Schema maps; otherwise prompt+parse.
-See the [Foundation Models guide](/guide/foundation-models).
+Opt in to a provider-owned tool loop (experimental native session) with
+``AgentConfiguration/foundationModelsExecution(_:)``. Agent always calls
+``InferenceProvider/generateWithToolCalls(messages:tools:options:)`` (or
+``streamWithToolCalls``) and never type-casts the adapter to
+``FoundationModelsInferenceProvider``. When the flag is
+``FoundationModelsExecutionMode/nativeSession``, the Foundation Models adapter
+executes tools inside Apple's session and returns a finished turn (no pending
+tool calls). Non-FM providers ignore the flag and keep the Swarm tool loop.
+Capture remains the default and recovers a full parallel tool-call group per
+turn. Structured outputs use guided generation when the JSON Schema maps;
+otherwise prompt+parse. See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
 (wrapped as ``FoundationModelsNativeTool``).

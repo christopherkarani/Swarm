@@ -449,9 +449,10 @@ agent.environment(\.inferenceProvider, myCustomProvider)
 
 By default Swarm **captures** Foundation Models tool calls (including a parallel
 group in one turn) and executes them in the agent loop (guardrails, checkpoints,
-per-iteration memory). Opt in to experimental native session mode for Apple's
-inner tool loop and token streaming with tools — see
-[Foundation Models](foundation-models.md) for the trade-off table.
+per-iteration memory). Opt in to experimental native session mode for a
+provider-owned tool loop (Apple's session) and token streaming with tools —
+Agent still calls ``generateWithToolCalls`` and does not type-cast the
+provider. See [Foundation Models](foundation-models.md) for the trade-off table.
 
 ```swift
 let config = AgentConfiguration.default

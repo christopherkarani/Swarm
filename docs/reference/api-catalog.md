@@ -3,8 +3,8 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14. OpenAI-compatible provider rows added 2026-08-14.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 175
-- Public/open symbols cataloged: 2495
+- Source files scanned: 174
+- Public/open symbols cataloged: 2501
 
 ## 1. Swarm (entry point)
 
@@ -297,9 +297,15 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 164 | func | public | AgentRuntime.runWithResponse(_:session:observer:) | `public func runWithResponse(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
 | 205 | func | public | AgentRuntime.runWithResponse(_:observer:) | `public func runWithResponse(_ input: String, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
 | 221 | protocol | public | InferenceProvider | `public protocol InferenceProvider : Sendable` |
-| 228 | func | public | InferenceProvider.generate(prompt:options:) | `public func generate(prompt: String, options: InferenceOptions) async throws -> String` |
-| 235 | func | public | InferenceProvider.stream(prompt:options:) | `public func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
-| 244 | func | public | InferenceProvider.generateWithToolCalls(prompt:tools:options:) | `public func generateWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
+| 223 | var | public | InferenceProvider.capabilities | `public var capabilities: InferenceProviderCapabilities { get }` |
+| 229 | func | public | InferenceProvider.generate(prompt:options:) | `public func generate(prompt: String, options: InferenceOptions) async throws -> String` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 234 | func | public | InferenceProvider.stream(prompt:options:) | `public func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 239 | func | public | InferenceProvider.generateWithToolCalls(prompt:tools:options:) | `public func generateWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 246 | func | public | InferenceProvider.generate(messages:options:) | `public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String` |
+| 249 | func | public | InferenceProvider.stream(messages:options:) | `public func stream(messages: [InferenceMessage], options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
+| 255 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
+| 262 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
+| 269 | func | public | InferenceProvider.generateStructured(messages:request:options:) | `public func generateStructured(messages: [InferenceMessage], request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` |
 | 265 | func | public | InferenceOptions.frequencyPenalty(_:) | `public @discardableResult func frequencyPenalty(_ value: Double?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.maxTokens(_:) | `public @discardableResult func maxTokens(_ value: Int?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.parallelToolCalls(_:) | `public @discardableResult func parallelToolCalls(_ value: Bool?) -> InferenceOptions` |
@@ -356,8 +362,9 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 480 | var | public | InferenceResponse.toolCalls | `public let toolCalls: [InferenceResponse.ParsedToolCall]` |
 | 483 | var | public | InferenceResponse.finishReason | `public let finishReason: InferenceResponse.FinishReason` |
 | 486 | var | public | InferenceResponse.usage | `public let usage: TokenUsage?` |
-| 489 | var | public | InferenceResponse.hasToolCalls | `public var hasToolCalls: Bool { get }` |
-| 499 | func | public | InferenceResponse.init(content:toolCalls:finishReason:usage:) | `public init(content: String? = nil, toolCalls: [InferenceResponse.ParsedToolCall] = [], finishReason: InferenceResponse.FinishReason = .completed, usage: TokenUsage? = nil)` |
+| 489 | var | public | InferenceResponse.transcriptMessages | `public let transcriptMessages: [MemoryMessage]` |
+| 492 | var | public | InferenceResponse.hasToolCalls | `public var hasToolCalls: Bool { get }` |
+| 499 | func | public | InferenceResponse.init(content:toolCalls:finishReason:usage:transcriptMessages:) | `public init(content: String? = nil, toolCalls: [InferenceResponse.ParsedToolCall] = [], finishReason: InferenceResponse.FinishReason = .completed, usage: TokenUsage? = nil, transcriptMessages: [MemoryMessage] = [])` |
 
 ### Core/CircularBuffer.swift
 

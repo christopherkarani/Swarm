@@ -65,6 +65,54 @@ private actor NativeStructuredConversationProvider:
     }
 }
 
+/// Prompt-only structured backend: implements `generateStructured(prompt:)` and
+/// does not override `generateStructured(messages:)`.
+private actor NativeStructuredPromptOnlyProvider: InferenceProvider, StructuredOutputInferenceProvider {
+    nonisolated let capabilities: InferenceProviderCapabilities = [.conversationMessages, .structuredOutputs]
+
+    private let structuredResult: StructuredOutputResult
+    private var structuredPromptCalls: [(String, StructuredOutputRequest)] = []
+
+    init(structuredResult: StructuredOutputResult) {
+        self.structuredResult = structuredResult
+    }
+
+    func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+        structuredResult.rawJSON
+    }
+
+    func generate(messages _: [InferenceMessage], options _: InferenceOptions) async throws -> String {
+        structuredResult.rawJSON
+    }
+
+    func generateWithToolCalls(
+        messages _: [InferenceMessage],
+        tools _: [ToolSchema],
+        options _: InferenceOptions
+    ) async throws -> InferenceResponse {
+        InferenceResponse(content: structuredResult.rawJSON, finishReason: .completed)
+    }
+
+    nonisolated func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish(throwing: AgentError.internalError(reason: "Unexpected streaming call"))
+        }
+    }
+
+    func generateStructured(
+        prompt: String,
+        request: StructuredOutputRequest,
+        options _: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        structuredPromptCalls.append((prompt, request))
+        return structuredResult
+    }
+
+    func recordedStructuredPromptCalls() -> [(String, StructuredOutputRequest)] {
+        structuredPromptCalls
+    }
+}
+
 private func metadataString(
     _ key: String,
     from metadata: [String: SendableValue]
@@ -94,9 +142,11 @@ struct AgentTranscriptContractTests {
         #expect(metadataString("structured_output.format", from: result.agentResult.metadata) == "json_object")
         #expect(metadataString("swarm.transcript.schema_version", from: result.agentResult.metadata) == SwarmTranscriptSchemaVersion.current.rawValue)
 
-        let messageCalls = await provider.generateMessageCalls
-        #expect(messageCalls.count == 1)
-        #expect(messageCalls.first?.messages.last?.content.contains("Respond with valid JSON only.") == true)
+        let promptCalls = await provider.generateCalls
+        #expect(promptCalls.count == 1)
+        #expect(promptCalls.first?.prompt.contains("Return a JSON answer.") == true)
+        #expect(promptCalls.first?.prompt.contains("Respond with valid JSON only.") == true)
+        #expect(await provider.generateMessageCalls.isEmpty)
 
         let storedMessages = try await session.getAllItems()
         #expect(storedMessages.count == 2)
@@ -139,6 +189,43 @@ struct AgentTranscriptContractTests {
         let calls = await provider.recordedStructuredCalls()
         #expect(calls.count == 1)
         #expect(calls.first?.0.last == .user("Return native JSON."))
+
+        let transcript = SwarmTranscript(memoryMessages: try await session.getAllItems())
+        try transcript.validateReplayCompatibility()
+        #expect(transcript.entries.last?.structuredOutput?.result.source == .providerNative)
+    }
+
+    @Test("runStructured prefers native structured prompt providers")
+    func runStructuredPrefersNativeStructuredPromptProviders() async throws {
+        let structuredResult = StructuredOutputResult(
+            format: .jsonSchema(
+                name: "Answer",
+                schemaJSON: #"{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}"#
+            ),
+            rawJSON: #"{"answer":"native-prompt"}"#,
+            value: .dictionary(["answer": .string("native-prompt")]),
+            source: .providerNative
+        )
+        let provider = NativeStructuredPromptOnlyProvider(structuredResult: structuredResult)
+        let session = InMemorySession(sessionId: "structured-native-prompt")
+        let agent = try Agent(
+            instructions: "Return structured JSON.",
+            inferenceProvider: provider
+        )
+        let request = StructuredOutputRequest(format: structuredResult.format)
+
+        let result = try await agent.runStructured("Return native JSON.", request: request, session: session)
+
+        #expect(result.agentResult.output == structuredResult.rawJSON)
+        #expect(result.structuredOutput == structuredResult)
+        #expect(result.structuredOutput.source == .providerNative)
+        #expect(metadataString("structured_output.source", from: result.agentResult.metadata) == "provider_native")
+        #expect(metadataString("structured_output.format", from: result.agentResult.metadata) == "json_schema:Answer")
+
+        let calls = await provider.recordedStructuredPromptCalls()
+        #expect(calls.count == 1)
+        #expect(calls.first?.1 == request)
+        #expect(calls.first?.0.contains("[User]: Return native JSON.") == true)
 
         let transcript = SwarmTranscript(memoryMessages: try await session.getAllItems())
         try transcript.validateReplayCompatibility()

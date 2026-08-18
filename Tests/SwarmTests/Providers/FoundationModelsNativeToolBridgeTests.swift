@@ -503,7 +503,8 @@ struct FoundationModelsExecutingToolTests {
             observer: nil,
             tracing: nil,
             resultBuilder: AgentResult.Builder(),
-            stopOnToolError: false
+            stopOnToolError: false,
+            executionGate: ProviderOwnedLoopGate()
         )
         let schema = swarmTool.schema
         let tools = try FoundationModelsToolBridge.makeExecutingTools(from: [schema], runtime: runtime)
@@ -513,6 +514,33 @@ struct FoundationModelsExecutingToolTests {
             arguments: GeneratedContent(properties: ["text": "hello"])
         )
         #expect(output == "hello")
+    }
+
+    @Test("Executing tool refuses work after the owned-loop gate deactivates")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func executingToolRefusesAfterOwnedLoopGateDeactivates() async throws {
+        let swarmTool = MockTool(
+            name: "echo",
+            description: "Echo text",
+            parameters: [ToolParameter(name: "text", description: "Text", type: .string)],
+            result: .string("hello")
+        )
+        let registry = try ToolRegistry(tools: [swarmTool])
+        let gate = ProviderOwnedLoopGate()
+        let runtime = FoundationModelsNativeToolRuntime(
+            registry: registry,
+            agent: MockAgentRuntime(response: "ok"),
+            context: nil,
+            observer: nil,
+            tracing: nil,
+            resultBuilder: AgentResult.Builder(),
+            stopOnToolError: false,
+            executionGate: gate
+        )
+        gate.deactivate()
+        await #expect(throws: CancellationError.self) {
+            _ = try await runtime.execute(name: "echo", arguments: ["text": .string("hello")])
+        }
     }
 
     @Test("Executing tool fires observer hooks and input guardrails")
@@ -540,7 +568,8 @@ struct FoundationModelsExecutingToolTests {
             observer: observer,
             tracing: nil,
             resultBuilder: AgentResult.Builder(),
-            stopOnToolError: false
+            stopOnToolError: false,
+            executionGate: ProviderOwnedLoopGate()
         )
         let tools = try FoundationModelsToolBridge.makeExecutingTools(
             from: [swarmTool.schema],
@@ -575,7 +604,8 @@ struct FoundationModelsExecutingToolTests {
             observer: nil,
             tracing: nil,
             resultBuilder: AgentResult.Builder(),
-            stopOnToolError: false
+            stopOnToolError: false,
+            executionGate: ProviderOwnedLoopGate()
         )
         let tools = try FoundationModelsToolBridge.makeExecutingTools(
             from: [swarmTool.schema],
@@ -675,7 +705,8 @@ struct FoundationModelsNativeSessionLiveTests {
             observer: nil,
             tracing: nil,
             resultBuilder: AgentResult.Builder(),
-            stopOnToolError: false
+            stopOnToolError: false,
+            executionGate: ProviderOwnedLoopGate()
         )
         let fmTools = try FoundationModelsToolBridge.makeExecutingTools(
             from: [swarmTool.schema],

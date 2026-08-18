@@ -160,13 +160,8 @@ public protocol StructuredOutputInferenceProvider: InferenceProvider {
     ) async throws -> StructuredOutputResult
 }
 
-public protocol StructuredOutputConversationInferenceProvider: ConversationInferenceProvider {
-    func generateStructured(
-        messages: [InferenceMessage],
-        request: StructuredOutputRequest,
-        options: InferenceOptions
-    ) async throws -> StructuredOutputResult
-}
+@available(*, deprecated, renamed: "InferenceProvider")
+public protocol StructuredOutputConversationInferenceProvider: ConversationInferenceProvider {}
 
 public extension InferenceProvider {
     func generateStructured(
@@ -180,14 +175,4 @@ public extension InferenceProvider {
     }
 }
 
-public extension ConversationInferenceProvider {
-    func generateStructured(
-        messages: [InferenceMessage],
-        request: StructuredOutputRequest,
-        options: InferenceOptions
-    ) async throws -> StructuredOutputResult {
-        let structuredMessages = StructuredOutputPromptBuilder.appendInstruction(to: messages, request: request)
-        let text = try await generate(messages: structuredMessages, options: options)
-        return try StructuredOutputParser.parse(text, request: request, source: .promptFallback)
-    }
-}
+

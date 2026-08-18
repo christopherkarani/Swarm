@@ -30,47 +30,33 @@ public struct InferenceProviderCapabilities: OptionSet, Sendable, Hashable {
 
     /// Provider performs inference locally without sending prompt content to a remote model service.
     public static let privateInference = Self(rawValue: 1 << 5)
+
+    /// Provider executes Swarm tools inside `generateWithToolCalls` when a
+    /// provider-owned tool-loop hook is present. Agent skips inference retries
+    /// on that path so a side-effecting tool is not replayed. OpenAI-compatible
+    /// backends that only *return* tool calls must not advertise this bit.
+    public static let providerOwnedToolLoop = Self(rawValue: 1 << 6)
 }
 
 public extension InferenceProviderCapabilities {
-    /// Features implied by the provider's protocol conformances.
-    static func inferred(from provider: any InferenceProvider) -> Self {
-        var capabilities: Self = []
-        if provider is any ConversationInferenceProvider {
-            capabilities.insert(.conversationMessages)
-        }
-        if provider is any ToolCallStreamingConversationInferenceProvider
-            || provider is any ToolCallStreamingInferenceProvider
-        {
-            capabilities.insert(.streamingToolCalls)
-        }
-        if provider is any StructuredOutputConversationInferenceProvider
-            || provider is any StructuredOutputInferenceProvider
-        {
-            capabilities.insert(.structuredOutputs)
-        }
+    /// Effective provider capabilities. Conversation messages are always on;
+    /// other bits come from the adapter's advertised set.
+    static func resolved(for provider: any InferenceProvider) -> Self {
+        var capabilities = provider.capabilities
+        capabilities.insert(.conversationMessages)
         return capabilities
     }
 
-    /// Effective provider capabilities after merging explicit reporting with protocol inference.
-    static func resolved(for provider: any InferenceProvider) -> Self {
-        var capabilities: Self
-        if let reportingProvider = provider as? any CapabilityReportingInferenceProvider {
-            capabilities = reportingProvider.capabilities
-        } else {
-            capabilities = inferred(from: provider)
-        }
-        if provider is any ConversationInferenceProvider {
-            capabilities.insert(.conversationMessages)
-        }
-        return capabilities
+    /// Use ``resolved(for:)``.
+    @available(*, deprecated, message: "Use resolved(for:)")
+    static func inferred(from provider: any InferenceProvider) -> Self {
+        resolved(for: provider)
     }
 }
 
 /// Optional protocol for providers that can report which advanced features they actually support.
-public protocol CapabilityReportingInferenceProvider: InferenceProvider {
-    var capabilities: InferenceProviderCapabilities { get }
-}
+@available(*, deprecated, message: "Declare capabilities on InferenceProvider")
+public protocol CapabilityReportingInferenceProvider: InferenceProvider {}
 
 /// A provider-facing conversation message used by structured inference integrations.
 public struct InferenceMessage: Sendable, Equatable {
@@ -136,32 +122,16 @@ public struct InferenceMessage: Sendable, Equatable {
 }
 
 /// Optional protocol for providers that can consume structured conversation history directly.
-public protocol ConversationInferenceProvider: InferenceProvider {
-    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String
-
-    func generateWithToolCalls(
-        messages: [InferenceMessage],
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) async throws -> InferenceResponse
-}
+@available(*, deprecated, renamed: "InferenceProvider")
+public protocol ConversationInferenceProvider: InferenceProvider {}
 
 /// Structured conversation streaming for plain text responses.
-public protocol StreamingConversationInferenceProvider: ConversationInferenceProvider {
-    func stream(
-        messages: [InferenceMessage],
-        options: InferenceOptions
-    ) -> AsyncThrowingStream<String, Error>
-}
+@available(*, deprecated, renamed: "InferenceProvider")
+public protocol StreamingConversationInferenceProvider: ConversationInferenceProvider {}
 
 /// Structured conversation streaming for tool-call capable providers.
-public protocol ToolCallStreamingConversationInferenceProvider: ConversationInferenceProvider {
-    func streamWithToolCalls(
-        messages: [InferenceMessage],
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
-}
+@available(*, deprecated, renamed: "InferenceProvider")
+public protocol ToolCallStreamingConversationInferenceProvider: ConversationInferenceProvider {}
 
 extension InferenceMessage.ToolCall {
     init(_ parsed: InferenceResponse.ParsedToolCall) {
@@ -202,5 +172,80 @@ extension InferenceMessage {
     /// Flattening with role labels is reserved for text-only backends.
     package static func flattenPrompt(_ messages: [InferenceMessage]) -> String {
         messages.map(\.flattenedPromptLine).joined(separator: "\n\n")
+    }
+}
+
+public extension InferenceProvider {
+    var capabilities: InferenceProviderCapabilities { [.conversationMessages] }
+
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        try await generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    }
+
+    func stream(
+        messages: [InferenceMessage],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        stream(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    }
+
+    func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse {
+        try await generateWithToolCalls(
+            prompt: InferenceMessage.flattenPrompt(messages),
+            tools: tools,
+            options: options
+        )
+    }
+
+    func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        if let promptStreamer = self as? any ToolCallStreamingInferenceProvider {
+            return promptStreamer.streamWithToolCalls(
+                prompt: InferenceMessage.flattenPrompt(messages),
+                tools: tools,
+                options: options
+            )
+        }
+        return StreamHelper.makeTrackedStream { continuation in
+            let response = try await generateWithToolCalls(
+                messages: messages,
+                tools: tools,
+                options: options
+            )
+            if let content = response.content, !content.isEmpty {
+                continuation.yield(.outputChunk(content))
+            }
+            if !response.toolCalls.isEmpty {
+                continuation.yield(.toolCallsCompleted(response.toolCalls))
+            }
+            if let usage = response.usage {
+                continuation.yield(.usage(usage))
+            }
+            continuation.finish()
+        }
+    }
+
+    func generateStructured(
+        messages: [InferenceMessage],
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        let prompt = InferenceMessage.flattenPrompt(messages)
+        // Prompt structured output is a StructuredOutputInferenceProvider requirement, not InferenceProvider.
+        if let structuredProvider = self as? any StructuredOutputInferenceProvider {
+            return try await structuredProvider.generateStructured(
+                prompt: prompt,
+                request: request,
+                options: options
+            )
+        }
+        return try await generateStructured(prompt: prompt, request: request, options: options)
     }
 }

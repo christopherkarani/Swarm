@@ -30,16 +30,25 @@ struct Strict4kPromptEnvelopeTests {
 
         _ = try await agent.run("needle-user-input", session: session)
 
-        guard let prompt = await provider.lastGenerateCall?.prompt else {
-            Issue.record("Expected Agent to call generate() when no tools are configured")
+        #expect(await provider.generateCalls.isEmpty)
+        guard let messages = await provider.generateMessageCalls.last?.messages else {
+            Issue.record("Expected Agent to call generate(messages:) when no tools are configured")
             return
         }
 
-        #expect(prompt.contains("[Retrieved Context]"))
-        #expect(prompt.contains("[Current Conversation]"))
-        #expect(prompt.contains("needle-user-input"))
-        #expect(prompt.contains("instructions-0"))
-        #expect(prompt.contains("remembered-0"))
+        // Live provider payload is role-tagged history, not the unused flattened
+        // prompt that used to wrap ContextCore as [Retrieved Context].
+        #expect(messages.first?.role == .system)
+        #expect(messages.contains(where: { $0.role == .system && !$0.content.isEmpty }))
+        #expect(messages.contains(where: { $0.role == .system && $0.content.contains("instructions-0") }))
+        #expect(messages.contains(where: { $0.role == .user && $0.content.contains("needle-user-input") }))
+        #expect(messages.last?.role == .user)
+
+        let flattened = InferenceMessage.flattenPrompt(messages)
+        let tokenCount = try await provider.countTokens(in: flattened)
+        #expect(tokenCount <= ContextProfile.strict4k.budget.maxInputTokens)
+        #expect(!flattened.contains("[Retrieved Context]"))
+        #expect(!flattened.contains("[Current Conversation]"))
     }
 
     @Test("Agent caps prompt to strict4k max input budget")
@@ -58,15 +67,19 @@ struct Strict4kPromptEnvelopeTests {
 
         _ = try await agent.run("needle-user-input", session: session)
 
-        guard let prompt = await provider.lastGenerateCall?.prompt else {
-            Issue.record("Expected Agent to call generate() when no tools are configured")
+        #expect(await provider.generateCalls.isEmpty)
+        guard let messages = await provider.generateMessageCalls.last?.messages else {
+            Issue.record("Expected Agent to call generate(messages:) when no tools are configured")
             return
         }
 
+        let flattened = InferenceMessage.flattenPrompt(messages)
         let tokenCountCalls = await provider.tokenCountCalls.count
-        let tokenCount = try await provider.countTokens(in: prompt)
+        let tokenCount = try await provider.countTokens(in: flattened)
         #expect(tokenCount <= ContextProfile.strict4k.budget.maxInputTokens)
-        #expect(prompt.contains("needle-user-input"))
+        #expect(messages.contains(where: { $0.role == .system && !$0.content.isEmpty }))
+        #expect(messages.contains(where: { $0.role == .system && $0.content.contains("instructions-0") }))
+        #expect(messages.contains(where: { $0.role == .user && $0.content.contains("needle-user-input") }))
         #expect(tokenCountCalls > 0)
     }
 
@@ -86,15 +99,19 @@ struct Strict4kPromptEnvelopeTests {
 
         _ = try await agent.run("needle-user-input", session: session)
 
-        guard let prompt = await provider.lastGenerateCall?.prompt else {
-            Issue.record("Expected Agent to call generate() when no tools are configured")
+        #expect(await provider.generateCalls.isEmpty)
+        guard let messages = await provider.generateMessageCalls.last?.messages else {
+            Issue.record("Expected Agent to call generate(messages:) when no tools are configured")
             return
         }
 
+        let flattened = InferenceMessage.flattenPrompt(messages)
         let tokenCountCalls = await provider.tokenCountCalls.count
-        let tokenCount = try await provider.countTokens(in: prompt)
+        let tokenCount = try await provider.countTokens(in: flattened)
         #expect(tokenCount <= ContextProfile.strict4k.budget.maxInputTokens)
-        #expect(prompt.contains("needle-user-input"))
+        #expect(messages.contains(where: { $0.role == .system && !$0.content.isEmpty }))
+        #expect(messages.contains(where: { $0.role == .system && $0.content.contains("instructions-0") }))
+        #expect(messages.contains(where: { $0.role == .user && $0.content.contains("needle-user-input") }))
         #expect(tokenCountCalls > 0)
     }
 }
