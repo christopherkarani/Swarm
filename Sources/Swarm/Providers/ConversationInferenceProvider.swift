@@ -30,22 +30,27 @@ public struct InferenceProviderCapabilities: OptionSet, Sendable, Hashable {
 
     /// Provider performs inference locally without sending prompt content to a remote model service.
     public static let privateInference = Self(rawValue: 1 << 5)
+
+    /// Provider executes Swarm tools inside `generateWithToolCalls` when a
+    /// provider-owned tool-loop hook is present. Agent skips inference retries
+    /// on that path so a side-effecting tool is not replayed. OpenAI-compatible
+    /// backends that only *return* tool calls must not advertise this bit.
+    public static let providerOwnedToolLoop = Self(rawValue: 1 << 6)
 }
 
 public extension InferenceProviderCapabilities {
-    /// Features implied when a backend does not advertise any.
-    static func inferred(from provider: any InferenceProvider) -> Self {
-        var capabilities = provider.capabilities
-        capabilities.insert(.conversationMessages)
-        return capabilities
-    }
-
     /// Effective provider capabilities. Conversation messages are always on;
     /// other bits come from the adapter's advertised set.
     static func resolved(for provider: any InferenceProvider) -> Self {
         var capabilities = provider.capabilities
         capabilities.insert(.conversationMessages)
         return capabilities
+    }
+
+    /// Use ``resolved(for:)``.
+    @available(*, deprecated, message: "Use resolved(for:)")
+    static func inferred(from provider: any InferenceProvider) -> Self {
+        resolved(for: provider)
     }
 }
 

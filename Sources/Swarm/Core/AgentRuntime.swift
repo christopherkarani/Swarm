@@ -636,6 +636,12 @@ public struct InferenceResponse: Sendable, Equatable {
     /// Token usage statistics, if available.
     public let usage: TokenUsage?
 
+    /// Transcript of a provider-owned tool loop, if the provider finished the turn.
+    ///
+    /// Empty when the provider only returned text or tool-call requests. Agent
+    /// persists these messages instead of synthesizing a single assistant turn.
+    public let transcriptMessages: [MemoryMessage]
+
     /// Whether this response includes tool calls.
     public var hasToolCalls: Bool {
         !toolCalls.isEmpty
@@ -647,15 +653,18 @@ public struct InferenceResponse: Sendable, Equatable {
     ///   - toolCalls: Tool calls. Default: []
     ///   - finishReason: Finish reason. Default: .completed
     ///   - usage: Token usage statistics. Default: nil
+    ///   - transcriptMessages: Provider-owned turn transcript. Default: []
     public init(
         content: String? = nil,
         toolCalls: [ParsedToolCall] = [],
         finishReason: FinishReason = .completed,
-        usage: TokenUsage? = nil
+        usage: TokenUsage? = nil,
+        transcriptMessages: [MemoryMessage] = []
     ) {
         self.content = content
         self.toolCalls = toolCalls
         self.finishReason = finishReason
         self.usage = usage
+        self.transcriptMessages = transcriptMessages
     }
 }

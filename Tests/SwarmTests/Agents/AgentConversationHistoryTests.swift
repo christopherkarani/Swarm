@@ -102,6 +102,35 @@ struct AgentConversationHistoryTests {
         #expect(tokenCount <= ContextProfile.strict4k.budget.maxInputTokens)
     }
 
+    @Test("strict4k keeps a non-empty system when the latest user exceeds the input budget")
+    func strict4kPreservesSystemWhenLatestUserExceedsBudget() async throws {
+        let provider = MockInferenceProvider(responses: ["ok"])
+        let overBudget = String(repeating: "x", count: ContextProfile.strict4k.budget.maxInputTokens + 64)
+        let agent = try Agent(
+            tools: [],
+            instructions: "Stay concise.",
+            configuration: AgentConfiguration(contextMode: .strict4k, defaultTracingEnabled: false),
+            memory: MockAgentMemory(context: ""),
+            inferenceProvider: provider
+        )
+
+        _ = try await agent.run(overBudget)
+
+        let calls = await provider.generateMessageCalls
+        #expect(await provider.generateCalls.isEmpty)
+        guard let delivered = calls.first?.messages else {
+            Issue.record("Expected a messages generate call")
+            return
+        }
+
+        #expect(delivered.first?.role == .system)
+        #expect(delivered.contains(where: { $0.role == .system && !$0.content.isEmpty }))
+        #expect(delivered.contains(where: { $0.role == .user }))
+        let flattened = InferenceMessage.flattenPrompt(delivered)
+        let tokenCount = try await provider.countTokens(in: flattened)
+        #expect(tokenCount <= ContextProfile.strict4k.budget.maxInputTokens)
+    }
+
     @Test("Tool-loop history keeps assistant tool calls and tool results in order")
     func toolLoopPreservesAssistantAndToolResultMessages() async throws {
         let echo = MockTool(name: "echo", result: .string("pong"))

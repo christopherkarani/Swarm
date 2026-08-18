@@ -43,6 +43,7 @@ actor FoundationModelsNativeToolRuntime {
     private let tracing: TracingHelper?
     private let resultBuilder: AgentResult.Builder
     private let stopOnToolError: Bool
+    private let executionGate: ProviderOwnedLoopGate
 
     init(
         registry: ToolRegistry,
@@ -51,7 +52,8 @@ actor FoundationModelsNativeToolRuntime {
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
         resultBuilder: AgentResult.Builder,
-        stopOnToolError: Bool
+        stopOnToolError: Bool,
+        executionGate: ProviderOwnedLoopGate
     ) {
         self.registry = registry
         self.agent = agent
@@ -60,12 +62,16 @@ actor FoundationModelsNativeToolRuntime {
         self.tracing = tracing
         self.resultBuilder = resultBuilder
         self.stopOnToolError = stopOnToolError
+        self.executionGate = executionGate
     }
 
     /// Executes a Swarm tool and returns a string Foundation Models can feed back
     /// into the session. Recoverable failures become error strings; aborting
     /// failures throw ``FoundationModelsNativeToolError`` or `CancellationError`.
     func execute(name: String, arguments: [String: SendableValue]) async throws -> String {
+        guard executionGate.isActive, !Task.isCancelled else {
+            throw CancellationError()
+        }
         let call = ToolCall(toolName: name, arguments: arguments)
         _ = resultBuilder.addToolCall(call)
         await observer?.onToolStart(context: context, agent: agent, call: call)

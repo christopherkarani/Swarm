@@ -75,17 +75,7 @@ public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecke
         }
     }
 
-    fileprivate let base: Base
-    fileprivate let tracer: any OpenTelemetryApi.Tracer
-    fileprivate let captureContent: Bool
-
-    fileprivate var metadata: (any InferenceProviderMetadata)? {
-        base as? any InferenceProviderMetadata
-    }
-}
-
-extension OpenTelemetryInferenceProvider: ConversationInferenceProvider where Base: ConversationInferenceProvider {
-  public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+    public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
         try await withLLMSpan(operation: "chat", inputLength: Self.inputLength(messages), options: options) { span in
             span.setAttribute(key: "gen_ai.request.messages.count", value: messages.count)
             let response = try await base.generate(messages: messages, options: options)
@@ -94,7 +84,7 @@ extension OpenTelemetryInferenceProvider: ConversationInferenceProvider where Ba
         }
     }
 
-  public func generateWithToolCalls(
+    public func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions
@@ -107,10 +97,8 @@ extension OpenTelemetryInferenceProvider: ConversationInferenceProvider where Ba
             return response
         }
     }
-}
 
-extension OpenTelemetryInferenceProvider: StreamingConversationInferenceProvider where Base: StreamingConversationInferenceProvider {
-  public func stream(
+    public func stream(
         messages: [InferenceMessage],
         options: InferenceOptions
     ) -> AsyncThrowingStream<String, Error> {
@@ -124,7 +112,43 @@ extension OpenTelemetryInferenceProvider: StreamingConversationInferenceProvider
             span.setAttribute(key: "gen_ai.response.output_length", value: outputLength)
         }
     }
+
+    public func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        instrumentToolStream(inputLength: Self.inputLength(messages), toolCount: tools.count, options: options) {
+            base.streamWithToolCalls(messages: messages, tools: tools, options: options)
+        }
+    }
+
+    public func generateStructured(
+        messages: [InferenceMessage],
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        try await withLLMSpan(operation: "chat", inputLength: Self.inputLength(messages), options: options) { span in
+            span.setAttribute(key: "gen_ai.request.messages.count", value: messages.count)
+            span.setAttribute(key: "gen_ai.output.type", value: "json")
+            let result = try await base.generateStructured(messages: messages, request: request, options: options)
+            span.setAttribute(key: "gen_ai.response.output_length", value: result.rawJSON.count)
+            return result
+        }
+    }
+
+    fileprivate let base: Base
+    fileprivate let tracer: any OpenTelemetryApi.Tracer
+    fileprivate let captureContent: Bool
+
+    fileprivate var metadata: (any InferenceProviderMetadata)? {
+        base as? any InferenceProviderMetadata
+    }
 }
+
+extension OpenTelemetryInferenceProvider: ConversationInferenceProvider where Base: ConversationInferenceProvider {}
+
+extension OpenTelemetryInferenceProvider: StreamingConversationInferenceProvider where Base: StreamingConversationInferenceProvider {}
 
 extension OpenTelemetryInferenceProvider: ToolCallStreamingInferenceProvider where Base: ToolCallStreamingInferenceProvider {
   public func streamWithToolCalls(
@@ -139,17 +163,7 @@ extension OpenTelemetryInferenceProvider: ToolCallStreamingInferenceProvider whe
 }
 
 extension OpenTelemetryInferenceProvider: ToolCallStreamingConversationInferenceProvider
-where Base: ToolCallStreamingConversationInferenceProvider {
-  public func streamWithToolCalls(
-        messages: [InferenceMessage],
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        instrumentToolStream(inputLength: Self.inputLength(messages), toolCount: tools.count, options: options) {
-            base.streamWithToolCalls(messages: messages, tools: tools, options: options)
-        }
-    }
-}
+where Base: ToolCallStreamingConversationInferenceProvider {}
 
 extension OpenTelemetryInferenceProvider: StructuredOutputInferenceProvider where Base: StructuredOutputInferenceProvider {
   public func generateStructured(
@@ -167,21 +181,7 @@ extension OpenTelemetryInferenceProvider: StructuredOutputInferenceProvider wher
 }
 
 extension OpenTelemetryInferenceProvider: StructuredOutputConversationInferenceProvider
-where Base: StructuredOutputConversationInferenceProvider {
-  public func generateStructured(
-        messages: [InferenceMessage],
-        request: StructuredOutputRequest,
-        options: InferenceOptions
-    ) async throws -> StructuredOutputResult {
-        try await withLLMSpan(operation: "chat", inputLength: Self.inputLength(messages), options: options) { span in
-            span.setAttribute(key: "gen_ai.request.messages.count", value: messages.count)
-            span.setAttribute(key: "gen_ai.output.type", value: "json")
-            let result = try await base.generateStructured(messages: messages, request: request, options: options)
-            span.setAttribute(key: "gen_ai.response.output_length", value: result.rawJSON.count)
-            return result
-        }
-    }
-}
+where Base: StructuredOutputConversationInferenceProvider {}
 
 private extension OpenTelemetryInferenceProvider {
     static func inputLength(_ messages: [InferenceMessage]) -> Int {

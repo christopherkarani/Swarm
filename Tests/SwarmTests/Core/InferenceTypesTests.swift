@@ -301,6 +301,7 @@ struct InferenceResponseTests {
         #expect(response.toolCalls.isEmpty)
         #expect(response.finishReason == .completed)
         #expect(response.hasToolCalls == false)
+        #expect(response.transcriptMessages.isEmpty)
     }
 
     @Test("Initialization with content only")

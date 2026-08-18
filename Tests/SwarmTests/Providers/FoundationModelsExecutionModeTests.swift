@@ -60,42 +60,6 @@ struct FoundationModelsExecutionModeTests {
         #expect(recorded.count == 2)
     }
 
-    @Test("Native session uses the envelope prompt when structured messages are nil")
-    func nativeSessionUsesEnvelopeWhenStructuredMessagesNil() {
-        let envelope = """
-        [Retrieved Context]
-        windowed-memory
-        [Current Conversation]
-        User: needle-user-input
-        """
-        let history = [
-            InferenceMessage.user("stale-turn-1"),
-            InferenceMessage.assistant("stale-turn-2"),
-            InferenceMessage.user("needle-user-input"),
-        ]
-
-        let messages = FoundationModelsNativePrompt.messages(
-            structuredMessages: nil,
-            envelopePrompt: envelope
-        )
-
-        #expect(messages == [.user(envelope)])
-        #expect(!messages.contains(where: { $0.content == history[0].content }))
-    }
-
-    @Test("Native session keeps structured messages when the envelope was not rewritten")
-    func nativeSessionKeepsStructuredMessages() {
-        let structured = [
-            InferenceMessage.user("hello"),
-            InferenceMessage.assistant("hi"),
-        ]
-        let messages = FoundationModelsNativePrompt.messages(
-            structuredMessages: structured,
-            envelopePrompt: "STUFFED SHOULD BE IGNORED"
-        )
-        #expect(messages == structured)
-    }
-
     @Test("Native session with MockInferenceProvider records the messages seam")
     func nativeSessionWithMockRecordsMessageSeam() async throws {
         let spy = MockTool(
@@ -266,12 +230,12 @@ struct FoundationModelsExecutionModeTests {
         #expect(await mockProvider.recordedInferenceCallCount == 2)
     }
 
-    @Test("Provider-owned tool loop runs only in nativeSession when Apple is available")
-    func providerOwnedToolLoopDecision() {
-        #expect(ProviderOwnedToolLoop.shouldRun(mode: .nativeSession, appleAvailable: true))
-        #expect(!ProviderOwnedToolLoop.shouldRun(mode: .nativeSession, appleAvailable: false))
-        #expect(!ProviderOwnedToolLoop.shouldRun(mode: .capture, appleAvailable: true))
-        #expect(!ProviderOwnedToolLoop.shouldRun(mode: .capture, appleAvailable: false))
+    @Test("Owned-loop execution gate starts active and deactivates")
+    func ownedLoopExecutionGateDeactivates() {
+        let gate = ProviderOwnedLoopGate()
+        #expect(gate.isActive)
+        gate.deactivate()
+        #expect(gate.isActive == false)
     }
 
     @Test("FM provider-owned loop is skipped when Apple Intelligence is unavailable")

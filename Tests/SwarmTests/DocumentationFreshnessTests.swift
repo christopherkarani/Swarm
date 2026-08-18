@@ -121,16 +121,30 @@ struct DocumentationFreshnessTests {
         #expect(agentSource.contains("guardrails sequentially and stops on the first failure"))
     }
 
-    @Test("front-facing provider docs match the live base provider protocol")
-    func providerDocsUsePromptBasedBaseProtocol() throws {
+    @Test("front-facing provider docs match the live messages seam")
+    func providerDocsUseLiveMessagesSeam() throws {
         let docs = try readRepoFile("docs/reference/front-facing-api.md")
         let providerSource = try readRepoFile("Sources/Swarm/Core/AgentRuntime.swift")
-        let conversationSource = try readRepoFile("Sources/Swarm/Providers/ConversationInferenceProvider.swift")
 
+        #expect(providerSource.contains("var capabilities: InferenceProviderCapabilities { get }"))
+        #expect(providerSource.contains("func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String"))
+        #expect(providerSource.contains("func generateWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions\n    ) async throws -> InferenceResponse"))
+        #expect(providerSource.contains("func streamWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions\n    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>"))
+        #expect(providerSource.contains("func generateStructured(\n        messages: [InferenceMessage],\n        request: StructuredOutputRequest,\n        options: InferenceOptions\n    ) async throws -> StructuredOutputResult"))
+
+        #expect(docs.contains("var capabilities: InferenceProviderCapabilities { get }"))
+        #expect(docs.contains("func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String"))
+        #expect(docs.contains("func generateWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions\n    ) async throws -> InferenceResponse"))
+        #expect(docs.contains("func streamWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions\n    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>"))
+        #expect(docs.contains("func generateStructured(\n        messages: [InferenceMessage],\n        request: StructuredOutputRequest,\n        options: InferenceOptions\n    ) async throws -> StructuredOutputResult"))
+        #expect(docs.contains("func stream(\n        messages: [InferenceMessage],\n        options: InferenceOptions\n    ) -> AsyncThrowingStream<String, Error>"))
+
+        // Prompt-string methods still exist on the protocol as compile compatibility.
         #expect(providerSource.contains("func generate(prompt: String, options: InferenceOptions) async throws -> String"))
-        #expect(conversationSource.contains("public protocol ConversationInferenceProvider"))
-        #expect(docs.contains("func generate(prompt: String, options: InferenceOptions) async throws -> String"))
-        #expect(docs.contains("public protocol ConversationInferenceProvider: InferenceProvider"))
+        #expect(docs.contains("Prompt-string methods remain for one minor so existing backends compile."))
+        #expect(docs.contains("Agent and tests call the messages methods only."))
+        #expect(!docs.contains("func generate(prompt: String, options: InferenceOptions) async throws -> String"))
+        #expect(!docs.contains("public protocol ConversationInferenceProvider: InferenceProvider"))
         #expect(!docs.contains("public protocol InferenceStreamingProvider: InferenceProvider"))
     }
 

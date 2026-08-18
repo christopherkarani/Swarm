@@ -49,7 +49,8 @@ public struct AgentEnvironment: Sendable {
 ///
 /// Agent copies this onto ``AgentEnvironment`` for the duration of a run.
 /// ``FoundationModelsInferenceProvider`` reads it from the task-local
-/// environment. Non-FM providers ignore it.
+/// environment. Non-FM providers ignore it. The finished turn is returned on
+/// ``InferenceResponse/transcriptMessages``; this bag only supplies executors.
 struct ProviderOwnedToolLoop: Sendable {
     var executionMode: FoundationModelsExecutionMode
     var toolRegistry: ToolRegistry
@@ -61,24 +62,45 @@ struct ProviderOwnedToolLoop: Sendable {
     var stopOnToolError: Bool
     var conversationID: String
     var enableStreaming: Bool
-    let transcript = ProviderOwnedTurnTranscript()
+    let executionGate = ProviderOwnedLoopGate()
 
-    /// Whether the adapter should execute tools and return a finished turn.
-    static func shouldRun(mode: FoundationModelsExecutionMode, appleAvailable: Bool) -> Bool {
-        mode == .nativeSession && appleAvailable
+    /// False after Agent times out or cancels so Apple-side tool callbacks refuse.
+    var allowsToolExecution: Bool {
+        executionGate.isActive
+    }
+
+    func executeTool(
+        named name: String,
+        arguments: [String: SendableValue]
+    ) async throws -> SendableValue {
+        guard executionGate.isActive else {
+            throw CancellationError()
+        }
+        return try await toolRegistry.execute(
+            toolNamed: name,
+            arguments: arguments,
+            agent: agent,
+            context: context,
+            observer: observer
+        )
     }
 }
 
-/// Transcript produced by a provider-owned tool loop for Agent to persist.
-actor ProviderOwnedTurnTranscript {
-    private var messages: [MemoryMessage] = []
+/// Synchronous cancel flag shared by the timeout coordinator and native tools.
+final class ProviderOwnedLoopGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var active = true
 
-    func store(_ messages: [MemoryMessage]) {
-        self.messages = messages
+    func deactivate() {
+        lock.lock()
+        active = false
+        lock.unlock()
     }
 
-    func snapshot() -> [MemoryMessage] {
-        messages
+    var isActive: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return active
     }
 }
 

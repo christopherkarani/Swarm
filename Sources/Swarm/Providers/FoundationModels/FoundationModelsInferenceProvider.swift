@@ -168,6 +168,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         [
             .conversationMessages,
             .nativeToolCalling,
+            .providerOwnedToolLoop,
             .structuredOutputs,
             .privateInference,
         ]

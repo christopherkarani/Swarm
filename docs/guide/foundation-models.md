@@ -67,8 +67,9 @@ When the requested JSON Schema maps onto `GenerationSchema`, capture-mode
 the result `.providerNative`. `.jsonObject` and unmappable schemas stay
 prompt-instruction + parse (`.promptFallback`).
 
-Under `strict4k`, native mode sends the same windowed/`PromptEnvelope` string
-capture uses — not the raw conversation history.
+Under `strict4k`, native mode still windows the conversation, but the provider
+seam is a role-tagged `[InferenceMessage]` array via
+`PromptEnvelope.enforce(messages:)`, not a flattened envelope string.
 
 ## What native mode cannot honor
 
