@@ -42,13 +42,8 @@ import FoundationNetworking
 ///
 /// Inject a `URLSession` with a `URLProtocol` stub in tests.
 public struct OpenAICompatibleProvider: InferenceProvider,
-    ConversationInferenceProvider,
-    StreamingConversationInferenceProvider,
-    ToolCallStreamingConversationInferenceProvider,
     ToolCallStreamingInferenceProvider,
     StructuredOutputInferenceProvider,
-    StructuredOutputConversationInferenceProvider,
-    CapabilityReportingInferenceProvider,
     InferenceProviderMetadata
 {
     /// Provider configuration (endpoint, model, auth, structured-output mode).

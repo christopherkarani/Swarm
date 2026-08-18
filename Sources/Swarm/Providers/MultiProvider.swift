@@ -71,7 +71,7 @@ public enum MultiProviderError: Error, Sendable, LocalizedError, Equatable {
 ///
 /// MultiProvider is implemented as an actor, providing thread-safe access
 /// to mutable state including the provider registry and current model.
-public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, CapabilityReportingInferenceProvider {
+public actor MultiProvider: InferenceProvider {
     // MARK: Public
 
     /// Returns all registered prefixes.
@@ -242,11 +242,7 @@ public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, Ca
 
     public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
         let provider = resolveProvider(for: currentModel)
-        if let conversationProvider = provider as? any ConversationInferenceProvider {
-            return try await conversationProvider.generate(messages: messages, options: options)
-        }
-        return try await TextOnlyConversationInferenceProviderAdapter(base: provider)
-            .generate(messages: messages, options: options)
+        return try await provider.generate(messages: messages, options: options)
     }
 
     public func generateWithToolCalls(
@@ -255,15 +251,11 @@ public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, Ca
         options: InferenceOptions
     ) async throws -> InferenceResponse {
         let provider = resolveProvider(for: currentModel)
-        if let conversationProvider = provider as? any ConversationInferenceProvider {
-            return try await conversationProvider.generateWithToolCalls(
-                messages: messages,
-                tools: tools,
-                options: options
-            )
-        }
-        return try await TextOnlyConversationInferenceProviderAdapter(base: provider)
-            .generateWithToolCalls(messages: messages, tools: tools, options: options)
+        return try await provider.generateWithToolCalls(
+            messages: messages,
+            tools: tools,
+            options: options
+        )
     }
 
     /// Checks if a provider is registered for the given prefix.
@@ -326,13 +318,7 @@ public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, Ca
         options: InferenceOptions,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
-        let stream: AsyncThrowingStream<String, Error>
-        if let conversationProvider = provider as? any StreamingConversationInferenceProvider {
-            stream = conversationProvider.stream(messages: messages, options: options)
-        } else {
-            stream = TextOnlyConversationInferenceProviderAdapter(base: provider)
-                .stream(messages: messages, options: options)
-        }
+        let stream = provider.stream(messages: messages, options: options)
 
         for try await token in stream {
             try Task.checkCancellation()
@@ -368,18 +354,7 @@ public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, Ca
         options: InferenceOptions,
         continuation: AsyncThrowingStream<InferenceStreamUpdate, Error>.Continuation
     ) async throws {
-        let stream: AsyncThrowingStream<InferenceStreamUpdate, Error>
-        if let conversationProvider = provider as? any ToolCallStreamingConversationInferenceProvider {
-            stream = conversationProvider.streamWithToolCalls(messages: messages, tools: tools, options: options)
-        } else if let promptProvider = provider as? any ToolCallStreamingInferenceProvider {
-            stream = promptProvider.streamWithToolCalls(
-                prompt: TextOnlyConversationInferenceProviderAdapter.prompt(from: messages),
-                tools: tools,
-                options: options
-            )
-        } else {
-            throw AgentError.generationFailed(reason: "Resolved provider does not support tool-call streaming")
-        }
+        let stream = provider.streamWithToolCalls(messages: messages, tools: tools, options: options)
 
         for try await update in stream {
             try Task.checkCancellation()
@@ -449,7 +424,7 @@ public actor MultiProvider: InferenceProvider, ConversationInferenceProvider, Ca
     }
 }
 
-extension MultiProvider: StreamingConversationInferenceProvider {
+extension MultiProvider {
     nonisolated public func stream(
         messages: [InferenceMessage],
         options: InferenceOptions
@@ -509,7 +484,7 @@ extension MultiProvider: ToolCallStreamingInferenceProvider {
     }
 }
 
-extension MultiProvider: ToolCallStreamingConversationInferenceProvider {
+extension MultiProvider {
     nonisolated public func streamWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],

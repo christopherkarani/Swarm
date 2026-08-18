@@ -80,8 +80,10 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// outside that subset stay prompt-instruction + parse, labeled
 /// ``StructuredOutputResult/Source/promptFallback``.
 ///
-/// **Native session mode (experimental):** executing tools run inside Apple's
-/// session loop. Opt in with ``AgentConfiguration/foundationModelsExecution``.
+/// **Native session mode (experimental):** a provider-owned tool loop.
+/// Agent calls ``generateWithToolCalls(messages:tools:options:)``; this adapter
+/// executes tools inside Apple's session and returns a finished turn. Opt in
+/// with ``AgentConfiguration/foundationModelsExecution``.
 ///
 /// ## Dynamic profiles
 ///
@@ -115,11 +117,8 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
 public struct FoundationModelsInferenceProvider: InferenceProvider,
-    ConversationInferenceProvider,
-    CapabilityReportingInferenceProvider,
     InferenceProviderMetadata,
-    StructuredOutputInferenceProvider,
-    StructuredOutputConversationInferenceProvider
+    StructuredOutputInferenceProvider
 {
     private let configuration: FoundationModelsProviderConfiguration
     private let dynamicProfile: (any DynamicProfile)?
@@ -250,6 +249,14 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
+        if let finished = try await completeProviderOwnedToolLoopIfRequested(
+            messages: messages,
+            tools: tools,
+            options: options
+        ) {
+            return finished
+        }
+
         let resolved = resolveTurn(messages: messages, tools: tools, options: options)
 
         let effectiveTools: [ToolSchema]

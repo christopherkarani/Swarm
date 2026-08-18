@@ -58,4 +58,74 @@ enum PromptEnvelope {
 
         return await PromptTokenBudgeting.prefix(marker, maxTokens: maxTokens, using: counter)
     }
+
+    /// Drops oldest non-system messages until the conversation fits the profile budget.
+    /// Roles stay. The latest message is always kept.
+    static func enforce(messages: [InferenceMessage], profile: ContextProfile) async -> [InferenceMessage] {
+        guard profile.preset == .strict4k, !messages.isEmpty else {
+            return messages
+        }
+
+        let maxTokens = profile.budget.maxInputTokens
+        if await tokenCount(of: messages) <= maxTokens {
+            return messages
+        }
+
+        let systemCount = messages.prefix(while: { $0.role == .system }).count
+        let lastIndex = messages.count - 1
+        guard lastIndex > systemCount else {
+            var result = messages
+            while result.count > 1, await tokenCount(of: result) > maxTokens {
+                result.removeFirst()
+            }
+            return result
+        }
+        var middle = Array(messages[systemCount ..< lastIndex])
+        var keptMiddle: [InferenceMessage] = []
+
+        while let candidate = middle.popLast() {
+            let next = Array(messages.prefix(systemCount)) + [candidate] + keptMiddle + [messages[lastIndex]]
+            if await tokenCount(of: next) <= maxTokens {
+                keptMiddle.insert(candidate, at: 0)
+            } else {
+                break
+            }
+        }
+
+        var result = Array(messages.prefix(systemCount)) + keptMiddle + [messages[lastIndex]]
+        if result.count > 1, await tokenCount(of: result) > maxTokens, result[0].role == .system {
+            result = await truncatedSystemPreservingLast(result, maxTokens: maxTokens)
+        }
+        while result.count > 1, await tokenCount(of: result) > maxTokens {
+            result.removeFirst()
+        }
+        return result
+    }
+
+    private static func tokenCount(of messages: [InferenceMessage]) async -> Int {
+        await PromptTokenBudgeting.countTokens(in: InferenceMessage.flattenPrompt(messages))
+    }
+
+    private static func truncatedSystemPreservingLast(
+        _ messages: [InferenceMessage],
+        maxTokens: Int
+    ) async -> [InferenceMessage] {
+        guard let last = messages.last, messages[0].role == .system else {
+            return messages
+        }
+        let lastTokens = await tokenCount(of: [last])
+        // Flattening adds role labels; leave slack so the system role survives.
+        let budgetForSystem = max(0, maxTokens - lastTokens - 64)
+        let system = messages[0]
+        let clipped = await PromptTokenBudgeting.prefix(system.content, maxTokens: budgetForSystem)
+        var head = system
+        head = InferenceMessage(
+            role: .system,
+            content: clipped,
+            name: system.name,
+            toolCallID: system.toolCallID,
+            toolCalls: system.toolCalls
+        )
+        return [head, last]
+    }
 }

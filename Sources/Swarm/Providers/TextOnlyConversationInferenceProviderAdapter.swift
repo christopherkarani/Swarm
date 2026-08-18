@@ -21,12 +21,7 @@ import Foundation
 /// `[Tool Result - name]`). The conversion is lossless-by-construction — every
 /// message contributes one labeled block, including assistant tool-call metadata
 /// and tool-result bodies. Nothing is dropped.
-public struct TextOnlyConversationInferenceProviderAdapter:
-    InferenceProvider,
-    CapabilityReportingInferenceProvider,
-    ConversationInferenceProvider,
-    StreamingConversationInferenceProvider
-{
+public struct TextOnlyConversationInferenceProviderAdapter: InferenceProvider {
     public let base: any InferenceProvider
 
     public init(base: any InferenceProvider) {

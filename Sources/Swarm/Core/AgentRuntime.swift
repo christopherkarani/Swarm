@@ -219,33 +219,58 @@ public extension AgentRuntime {
 /// custom backends, or third-party SDKs).
 ///
 public protocol InferenceProvider: Sendable {
+    /// Advertised features. Callers read this bitset; they do not probe extra protocols.
+    var capabilities: InferenceProviderCapabilities { get }
+
     /// Generates a response for the given prompt.
-    /// - Parameters:
-    ///   - prompt: The input prompt.
-    ///   - options: Generation options.
-    /// - Returns: The generated text.
-    /// - Throws: `AgentError` if generation fails.
+    ///
+    /// Deprecated as the Agent seam. Prefer ``generate(messages:options:)``.
+    /// Kept required for one minor so existing backends still compile.
     func generate(prompt: String, options: InferenceOptions) async throws -> String
 
     /// Streams a response for the given prompt.
-    /// - Parameters:
-    ///   - prompt: The input prompt.
-    ///   - options: Generation options.
-    /// - Returns: An async stream of response tokens.
+    ///
+    /// Deprecated as the Agent seam. Prefer ``stream(messages:options:)``.
     func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error>
 
-    /// Generates a response with potential tool calls.
-    /// - Parameters:
-    ///   - prompt: The input prompt.
-    ///   - tools: Available tool schemas.
-    ///   - options: Generation options.
-    /// - Returns: The inference response which may include tool calls.
-    /// - Throws: `AgentError` if generation fails.
+    /// Generates a response with potential tool calls from a flattened prompt.
+    ///
+    /// Deprecated as the Agent seam. Prefer ``generateWithToolCalls(messages:tools:options:)``.
     func generateWithToolCalls(
         prompt: String,
         tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse
+
+    /// Generates a response from role-tagged conversation messages.
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String
+
+    /// Streams a response from role-tagged conversation messages.
+    func stream(
+        messages: [InferenceMessage],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error>
+
+    /// Generates a response with potential tool calls from role-tagged messages.
+    func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse
+
+    /// Streams text and tool-call updates from role-tagged messages.
+    func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
+
+    /// Generates structured output from role-tagged messages.
+    func generateStructured(
+        messages: [InferenceMessage],
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult
 }
 
 // MARK: - InferenceOptions

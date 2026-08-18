@@ -21,6 +21,10 @@ public struct AgentEnvironment: Sendable {
     public var membrane: MembraneEnvironment?
     public var webSearch: WebSearchTool.Configuration?
 
+    /// Live executors Agent copies for the run so an InferenceProvider can
+    /// execute a provider-owned tool loop and return a finished turn.
+    var providerOwnedToolLoop: ProviderOwnedToolLoop?
+
     public init(
         inferenceProvider: (any InferenceProvider)? = nil,
         inferenceProviderTransform: (@Sendable (any InferenceProvider) -> any InferenceProvider)? = nil,
@@ -37,6 +41,44 @@ public struct AgentEnvironment: Sendable {
         self.promptTokenCounter = promptTokenCounter
         self.membrane = membrane
         self.webSearch = webSearch
+        self.providerOwnedToolLoop = nil
+    }
+}
+
+/// Executors and mode for a provider-owned tool loop.
+///
+/// Agent copies this onto ``AgentEnvironment`` for the duration of a run.
+/// ``FoundationModelsInferenceProvider`` reads it from the task-local
+/// environment. Non-FM providers ignore it.
+struct ProviderOwnedToolLoop: Sendable {
+    var executionMode: FoundationModelsExecutionMode
+    var toolRegistry: ToolRegistry
+    var agent: any AgentRuntime
+    var context: AgentContext?
+    var observer: (any AgentObserver)?
+    var tracing: TracingHelper?
+    var resultBuilder: AgentResult.Builder
+    var stopOnToolError: Bool
+    var conversationID: String
+    var enableStreaming: Bool
+    let transcript = ProviderOwnedTurnTranscript()
+
+    /// Whether the adapter should execute tools and return a finished turn.
+    static func shouldRun(mode: FoundationModelsExecutionMode, appleAvailable: Bool) -> Bool {
+        mode == .nativeSession && appleAvailable
+    }
+}
+
+/// Transcript produced by a provider-owned tool loop for Agent to persist.
+actor ProviderOwnedTurnTranscript {
+    private var messages: [MemoryMessage] = []
+
+    func store(_ messages: [MemoryMessage]) {
+        self.messages = messages
+    }
+
+    func snapshot() -> [MemoryMessage] {
+        messages
     }
 }
 

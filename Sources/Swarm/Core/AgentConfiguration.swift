@@ -102,7 +102,7 @@ public struct InferencePolicy: Sendable, Equatable {
 ///
 /// | | ``capture`` (default) | ``nativeSession`` (experimental) |
 /// |---|---|---|
-/// | Tool loop owner | Swarm agent loop | `LanguageModelSession` |
+/// | Tool loop owner | Swarm agent loop | InferenceProvider (`LanguageModelSession`) |
 /// | Parallel tool calls | No (one captured call per turn) | Yes (Apple's session loop) |
 /// | Transcript / KV reuse | No (session rebuilt every turn) | Yes (session kept for the agent run) |
 /// | Token streaming with tools | No | Yes (`Agent.stream` yields incremental tokens) |
@@ -129,8 +129,8 @@ public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
     /// per-iteration memory injection. This is the default.
     case capture
 
-    /// Let Foundation Models run its own tool loop on a persistent
-    /// `LanguageModelSession`.
+    /// Let the Foundation Models adapter run a provider-owned tool loop on a
+    /// persistent `LanguageModelSession`.
     ///
     /// - Experiment: Opt-in. Unlocks parallel tool calls, transcript/KV reuse, and
     ///   real token streaming with tools. Loses per-iteration memory injection,

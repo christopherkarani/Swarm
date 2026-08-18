@@ -151,6 +151,80 @@ enum FoundationModelsNativeTranscriptMapper {
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
 extension FoundationModelsInferenceProvider {
+    /// Runs a provider-owned tool loop when Agent copied ``ProviderOwnedToolLoop``
+    /// with ``FoundationModelsExecutionMode/nativeSession``. Returns `nil` so
+    /// capture mode continues when the hook is absent, the mode is `.capture`,
+    /// or Apple Intelligence is unavailable.
+    func completeProviderOwnedToolLoopIfRequested(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse? {
+        let hook = AgentEnvironmentValues.current.providerOwnedToolLoop
+        guard let hook,
+              ProviderOwnedToolLoop.shouldRun(
+                mode: hook.executionMode,
+                appleAvailable: Self.isAvailable
+              )
+        else {
+            return nil
+        }
+
+        let requestedTools = options.toolChoice == ToolChoice.none ? [] : tools
+        let executingTools: [any FoundationModels.Tool]
+        if requestedTools.isEmpty {
+            executingTools = []
+        } else {
+            let runtime = FoundationModelsNativeToolRuntime(
+                registry: hook.toolRegistry,
+                agent: hook.agent,
+                context: hook.context,
+                observer: hook.observer,
+                tracing: hook.tracing,
+                resultBuilder: hook.resultBuilder,
+                stopOnToolError: hook.stopOnToolError
+            )
+            do {
+                executingTools = try FoundationModelsToolBridge.makeExecutingTools(
+                    from: requestedTools,
+                    runtime: runtime
+                )
+            } catch {
+                throw AgentError.generationFailed(
+                    reason: "Failed to bridge Swarm tools to FoundationModels.Tool: \(error)"
+                )
+            }
+        }
+
+        let streamObserver = hook.observer
+        let streamAgent = hook.agent
+        let onOutputChunk: (@Sendable (String) async -> Void)?
+        if hook.enableStreaming {
+            onOutputChunk = { chunk in
+                if let streamObserver {
+                    await streamObserver.onOutputToken(context: nil, agent: streamAgent, token: chunk)
+                }
+            }
+        } else {
+            onOutputChunk = nil
+        }
+
+        let native = try await respondUsingNativeSession(
+            messages: messages,
+            tools: executingTools,
+            toolSchemas: requestedTools,
+            options: options,
+            conversationID: hook.conversationID,
+            onOutputChunk: onOutputChunk
+        )
+        await hook.transcript.store(native.transcriptMessages)
+        return InferenceResponse(
+            content: native.content,
+            toolCalls: [],
+            finishReason: .completed
+        )
+    }
+
     /// Runs one native-session turn: Apple owns the tool loop; Swarm consumes the
     /// final response and maps new transcript entries into memory messages.
     ///
