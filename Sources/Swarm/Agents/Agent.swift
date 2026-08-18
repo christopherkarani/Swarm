@@ -965,7 +965,6 @@ public struct Agent: AgentRuntime, Sendable {
             var runtimeEnvironment = runtimeEnvironment(for: provider)
             if configuration.foundationModelsExecution == .nativeSession {
                 runtimeEnvironment.providerOwnedToolLoop = ProviderOwnedToolLoop(
-                    executionMode: .nativeSession,
                     toolRegistry: runtimeToolRegistry,
                     agent: self,
                     context: executionContext,
@@ -1476,7 +1475,7 @@ public struct Agent: AgentRuntime, Sendable {
                     messages: conversationHistory.map(\.inferenceMessage),
                     profile: configuration.effectiveContextProfile
                 )
-                let prompt = flattenedPrompt(from: structuredMessages)
+                let prompt = InferenceMessage.flattenPrompt(structuredMessages)
                 let useProviderOwnedToolLoop =
                     configuration.foundationModelsExecution == .nativeSession
 
@@ -2455,29 +2454,6 @@ public struct Agent: AgentRuntime, Sendable {
 
     private func buildPrompt(from history: [ConversationMessage]) -> String {
         history.map(\.formatted).joined(separator: "\n\n")
-    }
-
-    private func flattenedPrompt(from messages: [InferenceMessage]) -> String {
-        messages.map { message in
-            switch message.role {
-            case .system:
-                return "[System]: \(message.content)"
-            case .user:
-                return "[User]: \(message.content)"
-            case .assistant:
-                if message.toolCalls.isEmpty {
-                    return "[Assistant]: \(message.content)"
-                }
-                let summary = message.toolCalls.map { "Calling tool: \($0.name)" }.joined(separator: ", ")
-                if message.content.isEmpty {
-                    return "[Assistant]: \(summary)"
-                }
-                return "[Assistant]: \(message.content)\n[Assistant Tool Calls]: \(summary)"
-            case .tool:
-                let name = message.name ?? "previous"
-                return "[Tool Result - \(name)]: \(message.content)"
-            }
-        }.joined(separator: "\n\n")
     }
 
     // MARK: - Response Generation

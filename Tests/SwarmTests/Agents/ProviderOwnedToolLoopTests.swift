@@ -139,17 +139,26 @@ struct ProviderOwnedToolLoopTests {
             configuration: AgentConfiguration.default
                 .foundationModelsExecution(.nativeSession)
                 .enableStreaming(false)
-                .timeout(.milliseconds(40))
+                .timeout(.seconds(1))
                 .resilience(ResilienceConfiguration(retryPolicy: .noRetry))
                 .defaultTracingEnabled(false),
             inferenceProvider: provider
         )
 
+        let runTask = Task {
+            try await agent.run("use the tool")
+        }
+        for _ in 0..<200 {
+            if await provider.startedDelay { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await provider.startedDelay)
+
         do {
-            _ = try await agent.run("use the tool")
+            _ = try await runTask.value
             Issue.record("Expected timeout")
         } catch let error as AgentError {
-            #expect(error == .timeout(duration: .milliseconds(40)))
+            #expect(error == .timeout(duration: .seconds(1)))
         } catch {
             Issue.record("Expected AgentError.timeout, got \(error)")
         }
@@ -178,9 +187,9 @@ struct ProviderOwnedToolLoopTests {
         let runTask = Task {
             try await agent.run("use the tool")
         }
-        for _ in 0..<50 {
+        for _ in 0..<200 {
             if await provider.startedDelay { break }
-            try await Task.sleep(for: .milliseconds(5))
+            try await Task.sleep(for: .milliseconds(10))
         }
         #expect(await provider.startedDelay)
         await agent.cancel()
@@ -463,7 +472,7 @@ private actor HookHonoringLateToolProvider: InferenceProvider {
             throw AgentError.generationFailed(reason: "provider-owned tool loop hook missing")
         }
         startedDelay = true
-        try? await Task.sleep(for: .milliseconds(200))
+        try? await Task.sleep(for: .seconds(5))
         attemptedDetachedTool = true
         let name = toolName
         detachedToolRan = await Task.detached {

@@ -237,8 +237,15 @@ public extension InferenceProvider {
         request: StructuredOutputRequest,
         options: InferenceOptions
     ) async throws -> StructuredOutputResult {
-        let structuredMessages = StructuredOutputPromptBuilder.appendInstruction(to: messages, request: request)
-        let text = try await generate(messages: structuredMessages, options: options)
-        return try StructuredOutputParser.parse(text, request: request, source: .promptFallback)
+        let prompt = InferenceMessage.flattenPrompt(messages)
+        // Prompt structured output is a StructuredOutputInferenceProvider requirement, not InferenceProvider.
+        if let structuredProvider = self as? any StructuredOutputInferenceProvider {
+            return try await structuredProvider.generateStructured(
+                prompt: prompt,
+                request: request,
+                options: options
+            )
+        }
+        return try await generateStructured(prompt: prompt, request: request, options: options)
     }
 }

@@ -45,14 +45,13 @@ public struct AgentEnvironment: Sendable {
     }
 }
 
-/// Executors and mode for a provider-owned tool loop.
+/// Executors for a provider-owned tool loop.
 ///
 /// Agent copies this onto ``AgentEnvironment`` for the duration of a run.
 /// ``FoundationModelsInferenceProvider`` reads it from the task-local
 /// environment. Non-FM providers ignore it. The finished turn is returned on
 /// ``InferenceResponse/transcriptMessages``; this bag only supplies executors.
 struct ProviderOwnedToolLoop: Sendable {
-    var executionMode: FoundationModelsExecutionMode
     var toolRegistry: ToolRegistry
     var agent: any AgentRuntime
     var context: AgentContext?
@@ -63,11 +62,6 @@ struct ProviderOwnedToolLoop: Sendable {
     var conversationID: String
     var enableStreaming: Bool
     let executionGate = ProviderOwnedLoopGate()
-
-    /// False after Agent times out or cancels so Apple-side tool callbacks refuse.
-    var allowsToolExecution: Bool {
-        executionGate.isActive
-    }
 
     func executeTool(
         named name: String,

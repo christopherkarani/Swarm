@@ -177,7 +177,6 @@ struct FoundationModelsExecutionModeTests {
 
         _ = try await agent.run("Hello")
         #expect(await recorder.hookPresent)
-        #expect(await recorder.recordedMode == .nativeSession)
         #expect(await recorder.toolCallMessageCallCount == 1)
     }
 
@@ -255,7 +254,6 @@ struct FoundationModelsExecutionModeTests {
         )
         var env = AgentEnvironment()
         env.providerOwnedToolLoop = ProviderOwnedToolLoop(
-            executionMode: .nativeSession,
             toolRegistry: ToolRegistry(),
             agent: dummy,
             context: nil,
@@ -288,7 +286,6 @@ private actor EnvironmentRecordingProvider: InferenceProvider {
     ]
 
     let response: InferenceResponse
-    private(set) var recordedMode: FoundationModelsExecutionMode?
     private(set) var hookPresent = false
     private(set) var toolCallMessageCallCount = 0
 
@@ -325,7 +322,6 @@ private actor EnvironmentRecordingProvider: InferenceProvider {
         toolCallMessageCallCount += 1
         let hook = AgentEnvironmentValues.current.providerOwnedToolLoop
         hookPresent = hook != nil
-        recordedMode = hook?.executionMode
         return response
     }
 }
