@@ -1,19 +1,15 @@
-# Foundation Models: Capture vs Native Session
+# Foundation Models: Capture vs Provider-Owned Tool Loop
 
-Swarm's built-in inference path is Apple Foundation Models. Tool calling has two modes.
-**Capture is the default** and is unchanged. Native session mode is an **experimental
-opt-in**.
+Swarm's built-in inference path is Apple Foundation Models. Tool calling has two
+adapters on one type. **Capture is the default** (``.foundationModels()``).
+A provider-owned tool loop is a **separate factory**.
 
 ## How to opt in
 
 ```swift
-let config = AgentConfiguration.default
-    .foundationModelsExecution(.nativeSession)
-
 let agent = try Agent(
     "You are a private on-device assistant.",
-    configuration: config,
-    inferenceProvider: .foundationModels()
+    inferenceProvider: .foundationModelsOwningToolLoop()
 ) {
     WeatherTool()
 }
@@ -21,13 +17,9 @@ let agent = try Agent(
 let result = try await agent.run("What's the weather in Tokyo?")
 ```
 
-Non-Foundation-Models providers **ignore** the flag. Agent always calls
-``generateWithToolCalls`` / ``streamWithToolCalls`` on ``InferenceProvider``;
-it does not type-cast the provider. The Foundation Models adapter reads the
-opt-in from the run environment and, when Apple Intelligence is available,
-executes a provider-owned tool loop that returns a finished turn. Capture-mode
-behavior does not change unless you set
-``FoundationModelsExecutionMode/nativeSession``.
+Agent reads ``InferenceProviderCapabilities/providerOwnedToolLoop``. It does not
+choose the loop on ``AgentConfiguration``. Capture-mode behavior does not change
+unless you construct ``InferenceProvider/foundationModelsOwningToolLoop()``.
 
 You can also register a user-authored `FoundationModels.Tool` next to `@Tool`
 macros and `FunctionTool` values:

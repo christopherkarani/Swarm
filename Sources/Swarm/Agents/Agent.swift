@@ -963,19 +963,10 @@ public struct Agent: AgentRuntime, Sendable {
             let provider = try await resolvedInferenceProvider()
             let executionContext = AgentContext(input: input)
             var runtimeEnvironment = runtimeEnvironment(for: provider)
-            if configuration.foundationModelsExecution == .nativeSession {
-                runtimeEnvironment.providerOwnedToolLoop = ProviderOwnedToolLoop(
-                    toolRegistry: runtimeToolRegistry,
-                    agent: self,
-                    context: executionContext,
-                    observer: observer,
-                    tracing: tracing,
-                    resultBuilder: resultBuilder,
-                    stopOnToolError: configuration.stopOnToolError,
-                    conversationID: session?.sessionId ?? "agent:\(configuration.name)",
-                    enableStreaming: configuration.enableStreaming && observer != nil
-                )
-            }
+            let ownsToolLoop = provider.capabilities.contains(.providerOwnedToolLoop)
+            let executionGate = ownsToolLoop ? ProviderOwnedLoopGate() : nil
+            let pendingHandoff = OwnedLoopPendingHandoff()
+            configuration.warnIfDeprecatedNativeSessionFlag()
             let toolLoopOutcome = try await AgentEnvironmentValues.$current.withValue(runtimeEnvironment) {
                 try await executeToolCallingLoop(
                     input: input,
@@ -987,7 +978,9 @@ public struct Agent: AgentRuntime, Sendable {
                     observer: observer,
                     tracing: tracing,
                     structuredOutputRequest: structuredOutputRequest,
-                    executionContext: executionContext
+                    executionContext: executionContext,
+                    executionGate: executionGate,
+                    pendingHandoff: pendingHandoff
                 )
             }
 
@@ -1159,8 +1152,6 @@ public struct Agent: AgentRuntime, Sendable {
 
     private func runtimeEnvironment(for provider: any InferenceProvider) -> AgentEnvironment {
         var environment = AgentEnvironmentValues.current
-        // Nested Agent.run (handoff / AgentTool) must not inherit the parent's hook.
-        environment.providerOwnedToolLoop = nil
         if let tokenCounter = provider as? any PromptTokenCountingInferenceProvider {
             environment.promptTokenCounter = tokenCounter
         }
@@ -1387,7 +1378,9 @@ public struct Agent: AgentRuntime, Sendable {
         observer: (any AgentObserver)? = nil,
         tracing: TracingHelper? = nil,
         structuredOutputRequest: StructuredOutputRequest?,
-        executionContext: AgentContext
+        executionContext: AgentContext,
+        executionGate: ProviderOwnedLoopGate?,
+        pendingHandoff: OwnedLoopPendingHandoff
     ) async throws -> ToolLoopOutcome {
         var iteration = 0
         let startTime = ContinuousClock.now
@@ -1395,6 +1388,7 @@ public struct Agent: AgentRuntime, Sendable {
         if let structuredOutputRequest {
             inferenceOptions.structuredOutput = structuredOutputRequest
         }
+        inferenceOptions.conversationID = session?.sessionId ?? UUID().uuidString
 
         // Retrieve relevant context from memory (enables RAG for VectorMemory)
         let activeMemory = resolvedMemory()
@@ -1476,11 +1470,21 @@ public struct Agent: AgentRuntime, Sendable {
                     profile: configuration.effectiveContextProfile
                 )
                 let prompt = InferenceMessage.flattenPrompt(structuredMessages)
-                let useProviderOwnedToolLoop =
-                    configuration.foundationModelsExecution == .nativeSession
+                let useProviderOwnedToolLoop = provider.capabilities.contains(.providerOwnedToolLoop)
+                let toolExecutor = useProviderOwnedToolLoop
+                    ? makeToolCallExecutor(
+                        toolRegistry: toolRegistry,
+                        resultBuilder: resultBuilder,
+                        observer: observer,
+                        tracing: tracing,
+                        executionContext: executionContext,
+                        executionGate: executionGate ?? ProviderOwnedLoopGate(),
+                        pendingHandoff: pendingHandoff
+                    )
+                    : nil
 
                 // If no tools defined, generate without tool calling unless the
-                // caller asked for a provider-owned tool loop (empty tool list).
+                // adapter owns the tool loop (empty tool list).
                 if toolSchemas.isEmpty && !useProviderOwnedToolLoop {
                     let loopInferenceOptions = inferenceOptions
                     let response = try await executeProviderInference(
@@ -1517,50 +1521,107 @@ public struct Agent: AgentRuntime, Sendable {
                 // Generate response with tool calls
                 let loopInferenceOptions = inferenceOptions
                 // Owned-loop tools run inside inference; retrying would replay them.
-                // Non-FM providers ignore the hook and keep configured retries.
                 let ownedLoopInferenceRetryPolicy: RetryPolicy? =
-                    AgentEnvironmentValues.current.providerOwnedToolLoop != nil
-                    && !toolSchemas.isEmpty
-                    && provider.capabilities.contains(.providerOwnedToolLoop)
+                    useProviderOwnedToolLoop && !toolSchemas.isEmpty
                     ? .noRetry
                     : nil
-                let response = if useToolStreaming {
-                    try await executeProviderInference(
-                        startTime: startTime,
-                        observer: observer,
-                        tracing: tracing,
-                        retryPolicy: ownedLoopInferenceRetryPolicy
-                    ) {
-                        try await generateWithToolsStreaming(
-                            provider: provider,
-                            prompt: prompt,
-                            messages: structuredMessages,
-                            tools: toolSchemas,
-                            inferenceOptions: loopInferenceOptions,
-                            systemPrompt: systemMessage,
-                            observer: observer
-                        )
-                    }
-                } else {
-                    try await executeProviderInference(
-                        startTime: startTime,
-                        observer: observer,
-                        tracing: tracing,
-                        retryPolicy: ownedLoopInferenceRetryPolicy
-                    ) {
-                        try await generateWithTools(
-                            provider: provider,
-                            prompt: prompt,
-                            messages: structuredMessages,
-                            tools: toolSchemas,
-                            inferenceOptions: loopInferenceOptions,
-                            systemPrompt: systemMessage,
+                let response: InferenceResponse
+                do {
+                    response = if useToolStreaming {
+                        try await executeProviderInference(
+                            startTime: startTime,
                             observer: observer,
-                            emitOutputTokens: enableStreaming
-                        )
+                            tracing: tracing,
+                            retryPolicy: ownedLoopInferenceRetryPolicy,
+                            executionGate: executionGate
+                        ) {
+                            try await generateWithToolsStreaming(
+                                provider: provider,
+                                prompt: prompt,
+                                messages: structuredMessages,
+                                tools: toolSchemas,
+                                inferenceOptions: loopInferenceOptions,
+                                systemPrompt: systemMessage,
+                                observer: observer,
+                                toolExecutor: toolExecutor
+                            )
+                        }
+                    } else {
+                        try await executeProviderInference(
+                            startTime: startTime,
+                            observer: observer,
+                            tracing: tracing,
+                            retryPolicy: ownedLoopInferenceRetryPolicy,
+                            executionGate: executionGate
+                        ) {
+                            try await generateWithTools(
+                                provider: provider,
+                                prompt: prompt,
+                                messages: structuredMessages,
+                                tools: toolSchemas,
+                                inferenceOptions: loopInferenceOptions,
+                                systemPrompt: systemMessage,
+                                observer: observer,
+                                emitOutputTokens: enableStreaming,
+                                toolExecutor: toolExecutor
+                            )
+                        }
                     }
+                } catch {
+                    if let handoffOutcome = try await completeOwnedLoopHandoffIfNeeded(
+                        pendingHandoff: pendingHandoff,
+                        toolRegistry: toolRegistry,
+                        conversationHistory: conversationHistory,
+                        transcriptMessages: &transcriptMessages,
+                        resultBuilder: resultBuilder,
+                        observer: observer,
+                        tracing: tracing,
+                        context: executionContext,
+                        startTime: startTime
+                    ) {
+                        await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                        return handoffOutcome
+                    }
+                    throw error
                 }
                 recordUsage(response.usage, on: resultBuilder)
+
+                if let handoffOutcome = try await completeOwnedLoopHandoffIfNeeded(
+                    pendingHandoff: pendingHandoff,
+                    toolRegistry: toolRegistry,
+                    conversationHistory: conversationHistory,
+                    transcriptMessages: &transcriptMessages,
+                    resultBuilder: resultBuilder,
+                    observer: observer,
+                    tracing: tracing,
+                    context: executionContext,
+                    startTime: startTime
+                ) {
+                    await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                    return handoffOutcome
+                }
+
+                if useProviderOwnedToolLoop {
+                    guard let content = response.content else {
+                        throw AgentError.generationFailed(reason: "Model returned no content or tool calls")
+                    }
+                    let finalResponse = try finalizeAssistantResponse(
+                        content: content,
+                        request: structuredOutputRequest,
+                        provider: provider
+                    )
+                    appendOwnedLoopTranscript(
+                        response.transcriptMessages,
+                        finalized: finalResponse,
+                        to: &transcriptMessages
+                    )
+                    await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                    return ToolLoopOutcome(
+                        output: finalResponse.content,
+                        structuredOutput: finalResponse.structuredOutput,
+                        transcriptMessages: transcriptMessages
+                    )
+                }
 
                 if response.hasToolCalls {
                     let handoffResult = try await processToolCallsWithHandoffs(
@@ -1593,30 +1654,11 @@ public struct Agent: AgentRuntime, Sendable {
                         request: structuredOutputRequest,
                         provider: provider
                     )
-                    let ownedTranscript = response.transcriptMessages
-                    if ownedTranscript.isEmpty {
-                        transcriptMessages.append(
-                            SwarmTranscriptCodec.encodeMessage(
-                                role: .assistant,
-                                content: finalResponse.content,
-                                toolCalls: [],
-                                structuredOutput: finalResponse.structuredOutput
-                            )
-                        )
-                    } else {
-                        var owned = ownedTranscript
-                        if let structured = finalResponse.structuredOutput,
-                           let last = owned.indices.last,
-                           owned[last].role == MemoryMessage.Role.assistant
-                        {
-                            owned[last] = SwarmTranscriptCodec.encodeMessage(
-                                role: .assistant,
-                                content: finalResponse.content,
-                                structuredOutput: structured
-                            )
-                        }
-                        transcriptMessages.append(contentsOf: owned)
-                    }
+                    appendOwnedLoopTranscript(
+                        response.transcriptMessages,
+                        finalized: finalResponse,
+                        to: &transcriptMessages
+                    )
                     await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
                     return ToolLoopOutcome(
                         output: finalResponse.content,
@@ -1688,6 +1730,7 @@ public struct Agent: AgentRuntime, Sendable {
 
     func executeWithinRemainingTimeout<T: Sendable>(
         startTime: ContinuousClock.Instant,
+        executionGate: ProviderOwnedLoopGate? = nil,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         try Task.checkCancellation()
@@ -1697,9 +1740,8 @@ public struct Agent: AgentRuntime, Sendable {
             throw AgentError.timeout(duration: configuration.timeout)
         }
 
-        let ownedLoopGate = AgentEnvironmentValues.current.providerOwnedToolLoop?.executionGate
         let coordinator = TimedOperationCoordinator<T>()
-        coordinator.setOwnedLoopGate(ownedLoopGate)
+        coordinator.setOwnedLoopGate(executionGate)
 
         return try await withTaskCancellationHandler(
             operation: {
@@ -1718,7 +1760,6 @@ public struct Agent: AgentRuntime, Sendable {
                     let timeoutTask = Task { [timeout = configuration.timeout, remaining] in
                         do {
                             try await Task.sleep(for: remaining)
-                            ownedLoopGate?.deactivate()
                             operationTask.cancel()
                             coordinator.finish(throwing: AgentError.timeout(duration: timeout))
                         } catch is CancellationError {
@@ -1731,7 +1772,6 @@ public struct Agent: AgentRuntime, Sendable {
                 }
             },
             onCancel: {
-                ownedLoopGate?.deactivate()
                 coordinator.cancelPending(with: CancellationError())
             }
         )
@@ -2466,7 +2506,8 @@ public struct Agent: AgentRuntime, Sendable {
         inferenceOptions: InferenceOptions,
         systemPrompt: String,
         observer: (any AgentObserver)? = nil,
-        emitOutputTokens: Bool = false
+        emitOutputTokens: Bool = false,
+        toolExecutor: ToolCallExecutor? = nil
     ) async throws -> InferenceResponse {
         var options = inferenceOptions
         options = optionsWithMembraneRuntimeSettings(options)
@@ -2477,7 +2518,8 @@ public struct Agent: AgentRuntime, Sendable {
         let response = try await provider.generateWithToolCalls(
             messages: messages,
             tools: tools,
-            options: options
+            options: options,
+            toolExecutor: toolExecutor
         )
 
         if emitOutputTokens, response.transcriptMessages.isEmpty, response.toolCalls.isEmpty,
@@ -2500,7 +2542,8 @@ public struct Agent: AgentRuntime, Sendable {
         tools: [ToolSchema],
         inferenceOptions: InferenceOptions,
         systemPrompt: String,
-        observer: (any AgentObserver)? = nil
+        observer: (any AgentObserver)? = nil,
+        toolExecutor: ToolCallExecutor? = nil
     ) async throws -> InferenceResponse {
         var options = inferenceOptions
         options = optionsWithMembraneRuntimeSettings(options)
@@ -2512,11 +2555,13 @@ public struct Agent: AgentRuntime, Sendable {
         var parsedToolCalls: [InferenceResponse.ParsedToolCall] = []
         var usage: TokenUsage?
         var stopStreaming = false
+        var finishedTurn: InferenceResponse?
 
         let stream = provider.streamWithToolCalls(
             messages: messages,
             tools: tools,
-            options: options
+            options: options,
+            toolExecutor: toolExecutor
         )
 
         for try await update in stream {
@@ -2536,12 +2581,19 @@ public struct Agent: AgentRuntime, Sendable {
 
             case let .usage(u):
                 usage = u
+
+            case let .finishedTurn(response):
+                finishedTurn = response
             }
 
             if stopStreaming { break }
         }
 
         await observer?.onLLMEnd(context: nil, agent: self, response: content, usage: usage)
+
+        if let finishedTurn {
+            return finishedTurn
+        }
 
         return InferenceResponse(
             content: content.isEmpty ? nil : content,
@@ -2580,6 +2632,144 @@ public struct Agent: AgentRuntime, Sendable {
 
         updated.providerSettings = settings.isEmpty ? nil : settings
         return updated
+    }
+
+    private func makeToolCallExecutor(
+        toolRegistry: ToolRegistry,
+        resultBuilder: AgentResult.Builder,
+        observer: (any AgentObserver)?,
+        tracing: TracingHelper?,
+        executionContext: AgentContext,
+        executionGate: ProviderOwnedLoopGate,
+        pendingHandoff: OwnedLoopPendingHandoff
+    ) -> ToolCallExecutor {
+        let handoffNames = Set(_handoffs.map(\.effectiveToolName))
+        let stopOnToolError = configuration.stopOnToolError
+        let engine = ToolExecutionEngine()
+        return ToolCallExecutor { [self] name, arguments in
+            guard executionGate.isActive else {
+                throw CancellationError()
+            }
+            if handoffNames.contains(name) {
+                pendingHandoff.store(name: name, arguments: arguments)
+                executionGate.deactivate()
+                throw CancellationError()
+            }
+            let outcome = try await engine.execute(
+                toolName: name,
+                arguments: arguments,
+                registry: toolRegistry,
+                agent: self,
+                context: executionContext,
+                resultBuilder: resultBuilder,
+                observer: observer,
+                tracing: tracing,
+                stopOnToolError: stopOnToolError
+            )
+            if outcome.result.isSuccess {
+                return outcome.result.output
+            }
+            return .string(outcome.result.errorMessage ?? "Tool '\(name)' failed")
+        }
+    }
+
+    private func completeOwnedLoopHandoffIfNeeded(
+        pendingHandoff: OwnedLoopPendingHandoff,
+        toolRegistry: ToolRegistry,
+        conversationHistory: [ConversationMessage],
+        transcriptMessages: inout [MemoryMessage],
+        resultBuilder: AgentResult.Builder,
+        observer: (any AgentObserver)?,
+        tracing: TracingHelper?,
+        context: AgentContext,
+        startTime: ContinuousClock.Instant
+    ) async throws -> ToolLoopOutcome? {
+        guard let pending = pendingHandoff.take() else {
+            return nil
+        }
+        var history = conversationHistory
+        let response = InferenceResponse(
+            content: nil,
+            toolCalls: [
+                InferenceResponse.ParsedToolCall(
+                    id: nil,
+                    name: pending.name,
+                    arguments: pending.arguments
+                ),
+            ],
+            finishReason: .toolCall
+        )
+        let handoffOutput = try await processToolCallsWithHandoffs(
+            response: response,
+            toolRegistry: toolRegistry,
+            conversationHistory: &history,
+            transcriptMessages: &transcriptMessages,
+            resultBuilder: resultBuilder,
+            observer: observer,
+            tracing: tracing,
+            membraneAdapter: resolvedMembraneAdapter(),
+            context: context,
+            startTime: startTime
+        )
+        guard let handoffOutput else {
+            return nil
+        }
+        return ToolLoopOutcome(
+            output: handoffOutput.content,
+            structuredOutput: handoffOutput.structuredOutput,
+            transcriptMessages: transcriptMessages
+        )
+    }
+
+    private func appendOwnedLoopTranscript(
+        _ transcript: [InferenceMessage],
+        finalized: FinalAssistantResponse,
+        to transcriptMessages: inout [MemoryMessage]
+    ) {
+        if transcript.isEmpty {
+            transcriptMessages.append(
+                SwarmTranscriptCodec.encodeMessage(
+                    role: .assistant,
+                    content: finalized.content,
+                    toolCalls: [],
+                    structuredOutput: finalized.structuredOutput
+                )
+            )
+            return
+        }
+
+        var owned = transcript.map(SwarmTranscriptCodec.encode)
+        if let structured = finalized.structuredOutput,
+           let last = owned.indices.last,
+           owned[last].role == .assistant
+        {
+            owned[last] = SwarmTranscriptCodec.encodeMessage(
+                role: .assistant,
+                content: finalized.content,
+                structuredOutput: structured
+            )
+        }
+        transcriptMessages.append(contentsOf: owned)
+    }
+}
+
+/// Records a handoff requested from inside a provider-owned tool loop.
+final class OwnedLoopPendingHandoff: @unchecked Sendable {
+    private let lock = NSLock()
+    private var pending: (name: String, arguments: [String: SendableValue])?
+
+    func store(name: String, arguments: [String: SendableValue]) {
+        lock.lock()
+        pending = (name, arguments)
+        lock.unlock()
+    }
+
+    func take() -> (name: String, arguments: [String: SendableValue])? {
+        lock.lock()
+        defer { lock.unlock() }
+        let value = pending
+        pending = nil
+        return value
     }
 }
 

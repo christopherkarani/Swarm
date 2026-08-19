@@ -24,7 +24,7 @@ struct FoundationModelsNativeSessionIdentity: Hashable, Sendable {
 @available(watchOS, unavailable)
 struct FoundationModelsNativeTurnResult: Sendable {
     let content: String
-    let transcriptMessages: [MemoryMessage]
+    let transcriptMessages: [InferenceMessage]
 }
 
 /// Holds a `LanguageModelSession` so native mode can reuse Apple's transcript
@@ -152,42 +152,33 @@ enum FoundationModelsNativeTranscriptMapper {
     /// Instructions are omitted — they are session configuration, not history.
     static func turnTranscriptMessages<S: Sequence>(
         from entries: S
-    ) -> [MemoryMessage] where S.Element == Transcript.Entry {
-        var messages: [MemoryMessage] = []
+    ) -> [InferenceMessage] where S.Element == Transcript.Entry {
+        var messages: [InferenceMessage] = []
         for entry in entries {
             switch entry {
             case .instructions, .prompt:
                 continue
             case let .toolCalls(calls):
                 let parsed = calls.map { call in
-                    InferenceResponse.ParsedToolCall(
+                    InferenceMessage.ToolCall(
                         id: call.id,
                         name: call.toolName,
                         arguments: FoundationModelsSchemaConversion.argumentDictionary(from: call.arguments)
                     )
                 }
-                messages.append(
-                    SwarmTranscriptCodec.encodeMessage(
-                        role: .assistant,
-                        content: "",
-                        toolCalls: parsed
-                    )
-                )
+                messages.append(.assistant("", toolCalls: parsed))
             case let .toolOutput(output):
                 messages.append(
-                    SwarmTranscriptCodec.encodeMessage(
-                        role: .tool,
+                    .tool(
+                        name: output.toolName,
                         content: concatenatedText(output.segments),
-                        toolName: output.toolName,
                         toolCallID: output.id
                     )
                 )
             case let .response(response):
                 let text = concatenatedText(response.segments)
                 guard !text.isEmpty else { continue }
-                messages.append(
-                    SwarmTranscriptCodec.encodeMessage(role: .assistant, content: text)
-                )
+                messages.append(.assistant(text))
             @unknown default:
                 continue
             }
@@ -237,17 +228,15 @@ extension FoundationModelsInferenceProvider {
         toolChoice == ToolChoice.none ? [] : resolvedTools
     }
 
-    /// Runs a provider-owned tool loop when Agent copied ``ProviderOwnedToolLoop``
-    /// with ``FoundationModelsExecutionMode/nativeSession``. Returns `nil` so
-    /// capture mode continues when the hook is absent, the mode is `.capture`,
-    /// or Apple Intelligence is unavailable.
+    /// Runs a provider-owned tool loop using the call's ``ToolCallExecutor``.
+    /// Returns `nil` when Apple Intelligence is unavailable so capture can continue.
     func completeProviderOwnedToolLoopIfRequested(
         messages: [InferenceMessage],
         tools: [ToolSchema],
-        options: InferenceOptions
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor
     ) async throws -> InferenceResponse? {
-        let hook = AgentEnvironmentValues.current.providerOwnedToolLoop
-        guard let hook, Self.isAvailable else {
+        guard Self.isAvailable else {
             return nil
         }
 
@@ -262,20 +251,10 @@ extension FoundationModelsInferenceProvider {
         if requestedTools.isEmpty {
             executingTools = []
         } else {
-            let runtime = FoundationModelsNativeToolRuntime(
-                registry: hook.toolRegistry,
-                agent: hook.agent,
-                context: hook.context,
-                observer: hook.observer,
-                tracing: hook.tracing,
-                resultBuilder: hook.resultBuilder,
-                stopOnToolError: hook.stopOnToolError,
-                executionGate: hook.executionGate
-            )
             do {
                 executingTools = try FoundationModelsToolBridge.makeExecutingTools(
                     from: requestedTools,
-                    runtime: runtime
+                    executor: toolExecutor
                 )
             } catch {
                 throw AgentError.generationFailed(
@@ -284,26 +263,13 @@ extension FoundationModelsInferenceProvider {
             }
         }
 
-        let streamObserver = hook.observer
-        let streamAgent = hook.agent
-        let onOutputChunk: (@Sendable (String) async -> Void)?
-        if hook.enableStreaming {
-            onOutputChunk = { chunk in
-                if let streamObserver {
-                    await streamObserver.onOutputToken(context: nil, agent: streamAgent, token: chunk)
-                }
-            }
-        } else {
-            onOutputChunk = nil
-        }
-
         let native = try await respondUsingNativeSession(
             messages: messages,
             tools: executingTools,
             toolSchemas: requestedTools,
             options: options,
-            conversationID: hook.conversationID,
-            onOutputChunk: onOutputChunk
+            conversationID: options.conversationID ?? "foundation-models-owned-loop",
+            onOutputChunk: nil
         )
         return InferenceResponse(
             content: native.content,
@@ -409,7 +375,7 @@ extension FoundationModelsInferenceProvider {
             return FoundationModelsNativeTurnResult(
                 content: content,
                 transcriptMessages: transcriptMessages.isEmpty
-                    ? [SwarmTranscriptCodec.encodeMessage(role: .assistant, content: content)]
+                    ? [.assistant(content)]
                     : transcriptMessages
             )
         } catch is CancellationError {

@@ -124,6 +124,7 @@ struct OpenAICompatibleSSEParserTests {
             case .toolCallPartial: "partial"
             case .usage: "usage"
             case .toolCallsCompleted: "completed"
+            case .finishedTurn: "finished"
             }
         }
         #expect(kinds.contains("usage"))

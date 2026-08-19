@@ -445,18 +445,21 @@ Or using the `.environment()` modifier on any `AgentRuntime`:
 agent.environment(\.inferenceProvider, myCustomProvider)
 ```
 
-### Capture vs native session (experimental)
+### Capture vs provider-owned tool loop (experimental)
 
 By default Swarm **captures** Foundation Models tool calls (including a parallel
 group in one turn) and executes them in the agent loop (guardrails, checkpoints,
-per-iteration memory). Opt in to experimental native session mode for a
-provider-owned tool loop (Apple's session) and token streaming with tools —
-Agent still calls ``generateWithToolCalls`` and does not type-cast the
-provider. See [Foundation Models](foundation-models.md) for the trade-off table.
+per-iteration memory). Construct ``InferenceProvider/foundationModelsOwningToolLoop()``
+for a provider-owned tool loop — Agent reads Capabilities and does not type-cast
+the provider. See [Foundation Models](foundation-models.md) for the trade-off table.
 
 ```swift
-let config = AgentConfiguration.default
-    .foundationModelsExecution(.nativeSession)
+let agent = try Agent(
+    "Be helpful.",
+    inferenceProvider: .foundationModelsOwningToolLoop()
+) {
+    WeatherTool()
+}
 ```
 
 ### Resilience (opt-in)

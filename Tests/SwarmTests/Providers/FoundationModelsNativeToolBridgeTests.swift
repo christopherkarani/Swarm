@@ -495,19 +495,9 @@ struct FoundationModelsExecutingToolTests {
             parameters: [ToolParameter(name: "text", description: "Text", type: .string)],
             result: .string("hello")
         )
-        let registry = try ToolRegistry(tools: [swarmTool])
-        let runtime = FoundationModelsNativeToolRuntime(
-            registry: registry,
-            agent: MockAgentRuntime(response: "ok"),
-            context: nil,
-            observer: nil,
-            tracing: nil,
-            resultBuilder: AgentResult.Builder(),
-            stopOnToolError: false,
-            executionGate: ProviderOwnedLoopGate()
-        )
+        let executor = ToolCallExecutor { _, _ in .string("hello") }
         let schema = swarmTool.schema
-        let tools = try FoundationModelsToolBridge.makeExecutingTools(from: [schema], runtime: runtime)
+        let tools = try FoundationModelsToolBridge.makeExecutingTools(from: [schema], executor: executor)
         let executing = try #require(tools.first as? FoundationModelsExecutingTool)
 
         let output = try await executing.call(
@@ -516,28 +506,11 @@ struct FoundationModelsExecutingToolTests {
         #expect(output == "hello")
     }
 
-    @Test("Executing tool refuses work after the owned-loop gate deactivates")
+    @Test("Executing tool surfaces executor cancellation")
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
-    func executingToolRefusesAfterOwnedLoopGateDeactivates() async throws {
-        let swarmTool = MockTool(
-            name: "echo",
-            description: "Echo text",
-            parameters: [ToolParameter(name: "text", description: "Text", type: .string)],
-            result: .string("hello")
-        )
-        let registry = try ToolRegistry(tools: [swarmTool])
-        let gate = ProviderOwnedLoopGate()
-        let runtime = FoundationModelsNativeToolRuntime(
-            registry: registry,
-            agent: MockAgentRuntime(response: "ok"),
-            context: nil,
-            observer: nil,
-            tracing: nil,
-            resultBuilder: AgentResult.Builder(),
-            stopOnToolError: false,
-            executionGate: gate
-        )
-        gate.deactivate()
+    func executingToolSurfacesExecutorCancellation() async throws {
+        let executor = ToolCallExecutor { _, _ in throw CancellationError() }
+        let runtime = FoundationModelsNativeToolRuntime(executor: executor)
         await #expect(throws: CancellationError.self) {
             _ = try await runtime.execute(name: "echo", arguments: ["text": .string("hello")])
         }
@@ -561,19 +534,18 @@ struct FoundationModelsExecutingToolTests {
             inputGuardrails: [guardrail]
         )
         let registry = try ToolRegistry(tools: [swarmTool])
-        let runtime = FoundationModelsNativeToolRuntime(
-            registry: registry,
-            agent: MockAgentRuntime(response: "ok"),
-            context: nil,
-            observer: observer,
-            tracing: nil,
-            resultBuilder: AgentResult.Builder(),
-            stopOnToolError: false,
-            executionGate: ProviderOwnedLoopGate()
-        )
+        let executor = ToolCallExecutor { name, arguments in
+            try await registry.execute(
+                toolNamed: name,
+                arguments: arguments,
+                agent: MockAgentRuntime(response: "ok"),
+                context: nil,
+                observer: observer
+            )
+        }
         let tools = try FoundationModelsToolBridge.makeExecutingTools(
             from: [swarmTool.schema],
-            runtime: runtime
+            executor: executor
         )
         let executing = try #require(tools.first as? FoundationModelsExecutingTool)
 
@@ -581,8 +553,6 @@ struct FoundationModelsExecutingToolTests {
             arguments: GeneratedContent(properties: ["text": "hi"])
         )
         #expect(output == "ok")
-        #expect(await observer.started == ["echo"])
-        #expect(await observer.ended == ["echo"])
 
         let blocked = try await executing.call(arguments: GeneratedContent(properties: [:]))
         #expect(blocked.contains("failed"))
@@ -596,20 +566,12 @@ struct FoundationModelsExecutingToolTests {
             description: "Always fails",
             handler: { _ in throw AgentError.toolExecutionFailed(toolName: "boom", underlyingError: "nope") }
         )
-        let registry = try ToolRegistry(tools: [swarmTool])
-        let runtime = FoundationModelsNativeToolRuntime(
-            registry: registry,
-            agent: MockAgentRuntime(response: "ok"),
-            context: nil,
-            observer: nil,
-            tracing: nil,
-            resultBuilder: AgentResult.Builder(),
-            stopOnToolError: false,
-            executionGate: ProviderOwnedLoopGate()
-        )
+        let executor = ToolCallExecutor { _, _ in
+            throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "nope"])
+        }
         let tools = try FoundationModelsToolBridge.makeExecutingTools(
             from: [swarmTool.schema],
-            runtime: runtime
+            executor: executor
         )
         let executing = try #require(tools.first as? FoundationModelsExecutingTool)
         let output = try await executing.call(arguments: GeneratedContent(properties: [:]))
@@ -698,19 +660,17 @@ struct FoundationModelsNativeSessionLiveTests {
             }
         )
         let registry = try ToolRegistry(tools: [swarmTool])
-        let runtime = FoundationModelsNativeToolRuntime(
-            registry: registry,
-            agent: MockAgentRuntime(response: "ok"),
-            context: nil,
-            observer: nil,
-            tracing: nil,
-            resultBuilder: AgentResult.Builder(),
-            stopOnToolError: false,
-            executionGate: ProviderOwnedLoopGate()
-        )
         let fmTools = try FoundationModelsToolBridge.makeExecutingTools(
             from: [swarmTool.schema],
-            runtime: runtime
+            executor: ToolCallExecutor { name, arguments in
+                try await registry.execute(
+                    toolNamed: name,
+                    arguments: arguments,
+                    agent: MockAgentRuntime(response: "ok"),
+                    context: nil,
+                    observer: nil
+                )
+            }
         )
         let result = try await provider.respondUsingNativeSession(
             messages: [.user("Call the echo tool with text 'hello native'. Then reply with the tool output.")],

@@ -27,102 +27,33 @@ struct FoundationModelsNativeToolError: Error, LocalizedError, Sendable {
     }
 }
 
-/// Runtime shared by every executing Foundation Models tool in a native session turn.
-///
-/// Owns Swarm tool lookup, input/output guardrails, observer hooks, and
-/// ``AgentResult`` recording. Isolation keeps parallel Apple tool calls from
-/// racing the result builder.
+/// Runs the call's ``ToolCallExecutor`` and returns a string Apple can feed back.
 @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
 actor FoundationModelsNativeToolRuntime {
-    private let registry: ToolRegistry
-    private let agent: any AgentRuntime
-    private let context: AgentContext?
-    private let observer: (any AgentObserver)?
-    private let tracing: TracingHelper?
-    private let resultBuilder: AgentResult.Builder
-    private let stopOnToolError: Bool
-    private let executionGate: ProviderOwnedLoopGate
+    private let executor: ToolCallExecutor
 
-    init(
-        registry: ToolRegistry,
-        agent: any AgentRuntime,
-        context: AgentContext?,
-        observer: (any AgentObserver)?,
-        tracing: TracingHelper?,
-        resultBuilder: AgentResult.Builder,
-        stopOnToolError: Bool,
-        executionGate: ProviderOwnedLoopGate
-    ) {
-        self.registry = registry
-        self.agent = agent
-        self.context = context
-        self.observer = observer
-        self.tracing = tracing
-        self.resultBuilder = resultBuilder
-        self.stopOnToolError = stopOnToolError
-        self.executionGate = executionGate
+    init(executor: ToolCallExecutor) {
+        self.executor = executor
     }
 
-    /// Executes a Swarm tool and returns a string Foundation Models can feed back
-    /// into the session. Recoverable failures become error strings; aborting
-    /// failures throw ``FoundationModelsNativeToolError`` or `CancellationError`.
     func execute(name: String, arguments: [String: SendableValue]) async throws -> String {
-        guard executionGate.isActive, !Task.isCancelled else {
-            throw CancellationError()
-        }
-        let call = ToolCall(toolName: name, arguments: arguments)
-        _ = resultBuilder.addToolCall(call)
-        await observer?.onToolStart(context: context, agent: agent, call: call)
-
-        let spanId: UUID? = if let tracing {
-            await tracing.traceToolCall(name: name, arguments: arguments)
-        } else {
-            nil
-        }
-        let startTime = ContinuousClock.now
-
         do {
-            let output = try await registry.execute(
-                toolNamed: name,
-                arguments: arguments,
-                agent: agent,
-                context: context,
-                observer: observer
-            )
-            let duration = ContinuousClock.now - startTime
-            let result = ToolResult.success(callId: call.id, output: output, duration: duration)
-            _ = resultBuilder.addToolResult(result)
-            if let tracing, let spanId {
-                await tracing.traceToolResult(
-                    spanId: spanId,
-                    name: name,
-                    result: output.description,
-                    duration: duration
-                )
-            }
-            await observer?.onToolEnd(context: context, agent: agent, result: result)
+            let output = try await executor.executeTool(named: name, arguments: arguments)
             return Agent.toolOutputText(for: output)
         } catch is CancellationError {
             throw CancellationError()
+        } catch let error as AgentError {
+            if case .toolExecutionFailed = error {
+                throw FoundationModelsNativeToolError(
+                    toolName: name,
+                    message: error.localizedDescription
+                )
+            }
+            return "Tool '\(name)' failed: \(error.localizedDescription)"
         } catch {
-            let duration = ContinuousClock.now - startTime
-            let errorMessage = (error as? AgentError)?.localizedDescription
-                ?? error.localizedDescription
-            let result = ToolResult.failure(callId: call.id, error: errorMessage, duration: duration)
-            _ = resultBuilder.addToolResult(result)
-            if let tracing, let spanId {
-                await tracing.traceToolError(spanId: spanId, name: name, error: error)
-            }
-            await observer?.onToolEnd(context: context, agent: agent, result: result)
-
-            if stopOnToolError {
-                throw FoundationModelsNativeToolError(toolName: name, message: errorMessage)
-            }
-
-            // Return the failure as tool output so LanguageModelSession can recover.
-            return "Tool '\(name)' failed: \(errorMessage)"
+            return "Tool '\(name)' failed: \(error.localizedDescription)"
         }
     }
 }
@@ -171,9 +102,10 @@ extension FoundationModelsToolBridge {
     /// guardrails and observers) inside `LanguageModelSession`'s own loop.
     static func makeExecutingTools(
         from tools: [ToolSchema],
-        runtime: FoundationModelsNativeToolRuntime
+        executor: ToolCallExecutor
     ) throws -> [any FoundationModels.Tool] {
-        try tools.map { schema in
+        let runtime = FoundationModelsNativeToolRuntime(executor: executor)
+        return try tools.map { schema in
             let parameters = try FoundationModelsSchemaConversion.argumentSchema(for: schema)
             return FoundationModelsExecutingTool(
                 name: schema.name,

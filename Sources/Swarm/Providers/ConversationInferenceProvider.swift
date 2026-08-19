@@ -201,6 +201,18 @@ public extension InferenceProvider {
         )
     }
 
+    func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse {
+        if capabilities.contains(.providerOwnedToolLoop), toolExecutor == nil {
+            throw AgentError.providerOwnedToolLoopRequiresExecutor
+        }
+        return try await generateWithToolCalls(messages: messages, tools: tools, options: options)
+    }
+
     func streamWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
@@ -227,6 +239,41 @@ public extension InferenceProvider {
             }
             if let usage = response.usage {
                 continuation.yield(.usage(usage))
+            }
+            if !response.transcriptMessages.isEmpty {
+                continuation.yield(.finishedTurn(response))
+            }
+            continuation.finish()
+        }
+    }
+
+    func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        guard let toolExecutor else {
+            return streamWithToolCalls(messages: messages, tools: tools, options: options)
+        }
+        return StreamHelper.makeTrackedStream { continuation in
+            let response = try await generateWithToolCalls(
+                messages: messages,
+                tools: tools,
+                options: options,
+                toolExecutor: toolExecutor
+            )
+            if let content = response.content, !content.isEmpty {
+                continuation.yield(.outputChunk(content))
+            }
+            if !response.toolCalls.isEmpty {
+                continuation.yield(.toolCallsCompleted(response.toolCalls))
+            }
+            if let usage = response.usage {
+                continuation.yield(.usage(usage))
+            }
+            if !response.transcriptMessages.isEmpty {
+                continuation.yield(.finishedTurn(response))
             }
             continuation.finish()
         }

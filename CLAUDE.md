@@ -337,3 +337,17 @@ surface as semi-stable. The supported public reference documents are
 - The `README.md` quick-start, the `docs/guide/getting-started.md` tutorial,
   and `docs/guide/agent-workspace.md` are the user-facing canonical docs —
   keep code samples consistent with them when changing surface area.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `christopherkarani/Swarm` (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical roles map 1:1 to `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

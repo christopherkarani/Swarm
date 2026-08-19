@@ -557,21 +557,19 @@ Built-in inference is Apple Foundation Models (on-device) and
 
 | Factory family | Return type | Notes |
 |----------------|-------------|-------|
-| `.foundationModels()` | `FoundationModelsInferenceProvider` | Built-in on-device path; native tool calling via Apple's Tool protocol |
-| `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Same, driven by Swarm ``DynamicProfile`` (WWDC 2026–aligned; re-resolves each turn) |
+| `.foundationModels()` | `FoundationModelsInferenceProvider` | Built-in on-device path; Agent-owned tool loop (capture) |
+| `.foundationModelsOwningToolLoop()` | `FoundationModelsInferenceProvider` | Same type; advertises a provider-owned tool loop |
+| `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Capture adapter driven by Swarm ``DynamicProfile`` |
 | `.openAICompatible(_:)` | `OpenAICompatibleProvider` | OpenAI / Azure / OpenRouter / Ollama / LM Studio over Chat Completions; Linux-first |
 | Custom `InferenceProvider` | your type | Implement the protocol for other backends |
 
-Opt in to a provider-owned tool loop (experimental native session) with
-``AgentConfiguration/foundationModelsExecution(_:)``. Agent always calls
-``InferenceProvider/generateWithToolCalls(messages:tools:options:)`` (or
-``streamWithToolCalls``) and never type-casts the adapter to
-``FoundationModelsInferenceProvider``. When the flag is
-``FoundationModelsExecutionMode/nativeSession``, the Foundation Models adapter
-executes tools inside Apple's session and returns a finished turn (no pending
-tool calls). Non-FM providers ignore the flag and keep the Swarm tool loop.
-Capture remains the default and recovers a full parallel tool-call group per
-turn. Structured outputs use guided generation when the JSON Schema maps;
+Opt in to a provider-owned tool loop with
+``InferenceProvider/foundationModelsOwningToolLoop()``. Agent reads
+``InferenceProviderCapabilities/providerOwnedToolLoop`` and always calls
+``InferenceProvider/generateWithToolCalls(messages:tools:options:toolExecutor:)``
+(or the streaming counterpart). It never type-casts the adapter.
+``AgentConfiguration/foundationModelsExecution`` is ignored. Capture remains
+the default. Structured outputs use guided generation when the JSON Schema maps;
 otherwise prompt+parse. See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`

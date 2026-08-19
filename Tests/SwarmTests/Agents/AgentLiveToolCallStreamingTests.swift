@@ -22,6 +22,8 @@ struct AgentLiveToolCallStreamingTests {
         // is a synchronous protocol requirement, and calling it through an existential can bypass actor
         // isolation hops, triggering "Incorrect actor executor assumption" crashes at runtime.
         final class ScriptedStreamingProvider: ToolCallStreamingInferenceProvider, @unchecked Sendable {
+            nonisolated let capabilities: InferenceProviderCapabilities = [.streamingToolCalls]
+
             private let lock = NSLock()
             private var scripts: [[InferenceStreamUpdate]]
             private var index: Int = 0
@@ -169,6 +171,8 @@ struct AgentLiveToolCallStreamingTests {
 
         // See note in the test above: this must not be an actor.
         final class ScriptedStreamingProvider: ToolCallStreamingInferenceProvider, @unchecked Sendable {
+            nonisolated let capabilities: InferenceProviderCapabilities = [.streamingToolCalls]
+
             private let lock = NSLock()
             private var scripts: [[InferenceStreamUpdate]]
             private var index: Int = 0

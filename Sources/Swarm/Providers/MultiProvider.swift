@@ -258,6 +258,21 @@ public actor MultiProvider: InferenceProvider {
         )
     }
 
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse {
+        let provider = resolveProvider(for: currentModel)
+        return try await provider.generateWithToolCalls(
+            messages: messages,
+            tools: tools,
+            options: options,
+            toolExecutor: toolExecutor
+        )
+    }
+
     /// Checks if a provider is registered for the given prefix.
     ///
     /// - Parameter prefix: The prefix to check.
@@ -485,6 +500,21 @@ extension MultiProvider: ToolCallStreamingInferenceProvider {
 }
 
 extension MultiProvider {
+    nonisolated public func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        let provider = providerSnapshot.load()
+        return provider.streamWithToolCalls(
+            messages: messages,
+            tools: tools,
+            options: options,
+            toolExecutor: toolExecutor
+        )
+    }
+
     nonisolated public func streamWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
