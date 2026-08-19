@@ -962,7 +962,7 @@ public struct Agent: AgentRuntime, Sendable {
             // Execute the tool calling loop with session context
             let provider = try await resolvedInferenceProvider()
             let executionContext = AgentContext(input: input)
-            var runtimeEnvironment = runtimeEnvironment(for: provider)
+            let runtimeEnvironment = runtimeEnvironment(for: provider)
             let ownsToolLoop = provider.capabilities.contains(.providerOwnedToolLoop)
             let executionGate = ownsToolLoop ? ProviderOwnedLoopGate() : nil
             let pendingHandoff = OwnedLoopPendingHandoff()
@@ -1388,7 +1388,7 @@ public struct Agent: AgentRuntime, Sendable {
         if let structuredOutputRequest {
             inferenceOptions.structuredOutput = structuredOutputRequest
         }
-        inferenceOptions.conversationID = session?.sessionId ?? UUID().uuidString
+        inferenceOptions.conversationId = session?.sessionId ?? UUID().uuidString
 
         // Retrieve relevant context from memory (enables RAG for VectorMemory)
         let activeMemory = resolvedMemory()
@@ -1471,17 +1471,25 @@ public struct Agent: AgentRuntime, Sendable {
                 )
                 let prompt = InferenceMessage.flattenPrompt(structuredMessages)
                 let useProviderOwnedToolLoop = provider.capabilities.contains(.providerOwnedToolLoop)
-                let toolExecutor = useProviderOwnedToolLoop
-                    ? makeToolCallExecutor(
+                let toolExecutor: ToolCallExecutor?
+                if useProviderOwnedToolLoop {
+                    guard let executionGate else {
+                        throw AgentError.internalError(
+                            reason: "Provider-owned tool loop missing execution gate"
+                        )
+                    }
+                    toolExecutor = makeToolCallExecutor(
                         toolRegistry: toolRegistry,
                         resultBuilder: resultBuilder,
                         observer: observer,
                         tracing: tracing,
                         executionContext: executionContext,
-                        executionGate: executionGate ?? ProviderOwnedLoopGate(),
+                        executionGate: executionGate,
                         pendingHandoff: pendingHandoff
                     )
-                    : nil
+                } else {
+                    toolExecutor = nil
+                }
 
                 // If no tools defined, generate without tool calling unless the
                 // adapter owns the tool loop (empty tool list).
@@ -1567,9 +1575,10 @@ public struct Agent: AgentRuntime, Sendable {
                             )
                         }
                     }
-                } catch {
-                    if let handoffOutcome = try await completeOwnedLoopHandoffIfNeeded(
-                        pendingHandoff: pendingHandoff,
+                } catch let request as OwnedLoopHandoffRequest {
+                    pendingHandoff.take()
+                    let handoffOutcome = try await completeOwnedLoopHandoff(
+                        request,
                         toolRegistry: toolRegistry,
                         conversationHistory: conversationHistory,
                         transcriptMessages: &transcriptMessages,
@@ -1578,28 +1587,28 @@ public struct Agent: AgentRuntime, Sendable {
                         tracing: tracing,
                         context: executionContext,
                         startTime: startTime
-                    ) {
+                    )
+                    await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                    return handoffOutcome
+                } catch {
+                    if let pending = pendingHandoff.take() {
+                        let handoffOutcome = try await completeOwnedLoopHandoff(
+                            OwnedLoopHandoffRequest(name: pending.name, arguments: pending.arguments),
+                            toolRegistry: toolRegistry,
+                            conversationHistory: conversationHistory,
+                            transcriptMessages: &transcriptMessages,
+                            resultBuilder: resultBuilder,
+                            observer: observer,
+                            tracing: tracing,
+                            context: executionContext,
+                            startTime: startTime
+                        )
                         await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
                         return handoffOutcome
                     }
                     throw error
                 }
                 recordUsage(response.usage, on: resultBuilder)
-
-                if let handoffOutcome = try await completeOwnedLoopHandoffIfNeeded(
-                    pendingHandoff: pendingHandoff,
-                    toolRegistry: toolRegistry,
-                    conversationHistory: conversationHistory,
-                    transcriptMessages: &transcriptMessages,
-                    resultBuilder: resultBuilder,
-                    observer: observer,
-                    tracing: tracing,
-                    context: executionContext,
-                    startTime: startTime
-                ) {
-                    await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
-                    return handoffOutcome
-                }
 
                 if useProviderOwnedToolLoop {
                     guard let content = response.content else {
@@ -2575,9 +2584,12 @@ public struct Agent: AgentRuntime, Sendable {
 
             case let .toolCallsCompleted(calls):
                 parsedToolCalls = calls
-                // Tool call streaming is primarily used to reduce latency to tool execution.
-                // Once we have completed calls, stop consuming the stream and execute tools.
-                stopStreaming = true
+                // Capture stops here so Agent can run tools. An owned-loop adapter
+                // still has a finished turn to yield; keep reading when we passed
+                // an executor.
+                if toolExecutor == nil {
+                    stopStreaming = true
+                }
 
             case let .usage(u):
                 usage = u
@@ -2653,7 +2665,7 @@ public struct Agent: AgentRuntime, Sendable {
             if handoffNames.contains(name) {
                 pendingHandoff.store(name: name, arguments: arguments)
                 executionGate.deactivate()
-                throw CancellationError()
+                throw OwnedLoopHandoffRequest(name: name, arguments: arguments)
             }
             let outcome = try await engine.execute(
                 toolName: name,
@@ -2673,8 +2685,8 @@ public struct Agent: AgentRuntime, Sendable {
         }
     }
 
-    private func completeOwnedLoopHandoffIfNeeded(
-        pendingHandoff: OwnedLoopPendingHandoff,
+    private func completeOwnedLoopHandoff(
+        _ request: OwnedLoopHandoffRequest,
         toolRegistry: ToolRegistry,
         conversationHistory: [ConversationMessage],
         transcriptMessages: inout [MemoryMessage],
@@ -2683,18 +2695,15 @@ public struct Agent: AgentRuntime, Sendable {
         tracing: TracingHelper?,
         context: AgentContext,
         startTime: ContinuousClock.Instant
-    ) async throws -> ToolLoopOutcome? {
-        guard let pending = pendingHandoff.take() else {
-            return nil
-        }
+    ) async throws -> ToolLoopOutcome {
         var history = conversationHistory
         let response = InferenceResponse(
             content: nil,
             toolCalls: [
                 InferenceResponse.ParsedToolCall(
                     id: nil,
-                    name: pending.name,
-                    arguments: pending.arguments
+                    name: request.name,
+                    arguments: request.arguments
                 ),
             ],
             finishReason: .toolCall
@@ -2712,7 +2721,9 @@ public struct Agent: AgentRuntime, Sendable {
             startTime: startTime
         )
         guard let handoffOutput else {
-            return nil
+            throw AgentError.internalError(
+                reason: "Owned-loop handoff '\(request.name)' did not transfer control"
+            )
         }
         return ToolLoopOutcome(
             output: handoffOutput.content,
@@ -2753,7 +2764,13 @@ public struct Agent: AgentRuntime, Sendable {
     }
 }
 
-/// Records a handoff requested from inside a provider-owned tool loop.
+/// A handoff tool invoked inside a provider-owned tool loop.
+struct OwnedLoopHandoffRequest: Error, Sendable {
+    let name: String
+    let arguments: [String: SendableValue]
+}
+
+/// Backup if Apple's session remaps the typed handoff to cancellation.
 final class OwnedLoopPendingHandoff: @unchecked Sendable {
     private let lock = NSLock()
     private var pending: (name: String, arguments: [String: SendableValue])?

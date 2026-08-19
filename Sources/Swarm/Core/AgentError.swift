@@ -663,6 +663,8 @@ extension AgentError: LocalizedError {
         switch self {
         case .toolCallingUnsupported:
             "Pass a provider with native tool-calling support via `Agent(..., inferenceProvider:)` or `await Swarm.configure(provider:)`, or use Apple Foundation Models on a supported device."
+        case .providerOwnedToolLoopRequiresExecutor:
+            "Pass a ToolCallExecutor on generateWithToolCalls/streamWithToolCalls, implement that overload if this adapter advertises providerOwnedToolLoop, or construct a capture adapter (.foundationModels()) if Agent should own the loop."
         case .inferenceProviderUnavailable:
             "Configure an inference provider via `await Swarm.configure(provider:)` or use Apple Foundation Models on a supported device."
         case .rateLimitExceeded(let retryAfter):

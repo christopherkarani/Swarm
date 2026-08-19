@@ -118,10 +118,10 @@ public struct InferencePolicy: Sendable, Equatable {
 ///   memory injection) is the framework's differentiator.
 ///
 /// ```swift
-/// let config = AgentConfiguration.default
-///     .foundationModelsExecution(.nativeSession)
-/// let agent = try Agent("Be helpful.", configuration: config,
-///     inferenceProvider: .foundationModels()) {
+/// let agent = try Agent(
+///     "Be helpful.",
+///     inferenceProvider: .foundationModelsOwningToolLoop()
+/// ) {
 ///     WeatherTool()
 /// }
 /// ```
@@ -1324,17 +1324,29 @@ extension AgentConfiguration: CustomStringConvertible {
 }
 
 enum FoundationModelsExecutionModeNag {
-    private static let state = ProviderOwnedLoopGate()
+    private static let once = OnceFlag()
 
     static func warnIfNeeded(_ mode: FoundationModelsExecutionMode) {
         guard mode == .nativeSession else { return }
-        guard state.isActive else { return }
-        state.deactivate()
+        guard once.take() else { return }
         Log.agents.warning(
             """
             AgentConfiguration.foundationModelsExecution is ignored. \
             Construct .foundationModelsOwningToolLoop() for a provider-owned tool loop.
             """
         )
+    }
+}
+
+private final class OnceFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+
+    func take() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if done { return false }
+        done = true
+        return true
     }
 }

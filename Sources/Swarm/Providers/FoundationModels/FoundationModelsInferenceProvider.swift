@@ -39,12 +39,12 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// structured ``InferenceMessage`` history is serialized into that prompt with
 /// role labels (`System:`, `User:`, `Assistant:`, `Tool result`).
 ///
-/// **Native session mode** (``FoundationModelsExecutionMode/nativeSession``) keeps
+/// **Provider-owned tool loop** (``foundationModelsOwningToolLoop()``) keeps
 /// a `LanguageModelSession` for the agent run so Apple's transcript and KV cache
 /// can be reused. Memory is injected when that session is created, not on every
-/// inner tool iteration. See ``FoundationModelsExecutionMode`` for the trade-off
-/// table. The session is discarded when tools or instructions change, the
-/// conversation id changes, generation fails, or the provider is deallocated.
+/// inner tool iteration. The session is discarded when tools or instructions
+/// change, the conversation id changes, generation fails, or the provider is
+/// deallocated.
 ///
 /// ## Token usage
 ///
@@ -80,10 +80,11 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// outside that subset stay prompt-instruction + parse, labeled
 /// ``StructuredOutputResult/Source/promptFallback``.
 ///
-/// **Native session mode (experimental):** a provider-owned tool loop.
-/// Agent calls ``generateWithToolCalls(messages:tools:options:)``; this adapter
-/// executes tools inside Apple's session and returns a finished turn. Opt in
-/// with ``InferenceProvider/foundationModelsOwningToolLoop()``.
+/// **Provider-owned tool loop:** construct
+/// ``InferenceProvider/foundationModelsOwningToolLoop()``. Agent calls
+/// ``generateWithToolCalls(messages:tools:options:toolExecutor:)``; this
+/// adapter executes tools inside Apple's session and returns a finished turn.
+/// Capture remains ``foundationModels()``.
 ///
 /// ## Dynamic profiles
 ///
@@ -269,16 +270,43 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             guard let toolExecutor else {
                 throw AgentError.providerOwnedToolLoopRequiresExecutor
             }
-            if let finished = try await completeProviderOwnedToolLoopIfRequested(
+            return try await completeProviderOwnedToolLoop(
                 messages: messages,
                 tools: tools,
                 options: options,
                 toolExecutor: toolExecutor
-            ) {
-                return finished
-            }
+            )
         }
         return try await generateWithToolCalls(messages: messages, tools: tools, options: options)
+    }
+
+    public func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            let response = try await self.generateWithToolCalls(
+                messages: messages,
+                tools: tools,
+                options: options,
+                toolExecutor: toolExecutor
+            )
+            if let content = response.content, !content.isEmpty {
+                continuation.yield(.outputChunk(content))
+            }
+            if !response.toolCalls.isEmpty {
+                continuation.yield(.toolCallsCompleted(response.toolCalls))
+            }
+            if let usage = response.usage {
+                continuation.yield(.usage(usage))
+            }
+            if !response.transcriptMessages.isEmpty {
+                continuation.yield(.finishedTurn(response))
+            }
+            continuation.finish()
+        }
     }
 
     public func generateWithToolCalls(

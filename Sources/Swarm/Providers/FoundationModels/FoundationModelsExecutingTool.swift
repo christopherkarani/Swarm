@@ -44,6 +44,8 @@ actor FoundationModelsNativeToolRuntime {
             return Agent.toolOutputText(for: output)
         } catch is CancellationError {
             throw CancellationError()
+        } catch let request as OwnedLoopHandoffRequest {
+            throw request
         } catch let error as AgentError {
             if case .toolExecutionFailed = error {
                 throw FoundationModelsNativeToolError(

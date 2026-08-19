@@ -229,15 +229,17 @@ extension FoundationModelsInferenceProvider {
     }
 
     /// Runs a provider-owned tool loop using the call's ``ToolCallExecutor``.
-    /// Returns `nil` when Apple Intelligence is unavailable so capture can continue.
-    func completeProviderOwnedToolLoopIfRequested(
+    ///
+    /// - Throws: ``AgentError/modelNotAvailable(model:)`` when Apple Intelligence
+    ///   is unavailable. Owned-loop adapters do not fall back to capture.
+    func completeProviderOwnedToolLoop(
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions,
         toolExecutor: ToolCallExecutor
-    ) async throws -> InferenceResponse? {
+    ) async throws -> InferenceResponse {
         guard Self.isAvailable else {
-            return nil
+            throw AgentError.modelNotAvailable(model: "Apple Foundation Models")
         }
 
         // Resolve before bridging so DynamicProfile toolFilter / toolChoice.none
@@ -268,7 +270,7 @@ extension FoundationModelsInferenceProvider {
             tools: executingTools,
             toolSchemas: requestedTools,
             options: options,
-            conversationID: options.conversationID ?? "foundation-models-owned-loop",
+            conversationID: options.conversationId ?? "foundation-models-owned-loop",
             onOutputChunk: nil
         )
         return InferenceResponse(
@@ -378,6 +380,9 @@ extension FoundationModelsInferenceProvider {
                     ? [.assistant(content)]
                     : transcriptMessages
             )
+        } catch let request as OwnedLoopHandoffRequest {
+            await store.discard(lease)
+            throw request
         } catch is CancellationError {
             await store.discard(lease)
             throw AgentError.cancelled
@@ -388,6 +393,9 @@ extension FoundationModelsInferenceProvider {
                     toolName: native.toolName,
                     underlyingError: native.message
                 )
+            }
+            if let request = error.underlyingError as? OwnedLoopHandoffRequest {
+                throw request
             }
             if error.underlyingError is CancellationError {
                 throw AgentError.cancelled

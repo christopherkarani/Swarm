@@ -225,6 +225,35 @@ struct ProviderOwnedToolLoopTests {
         }
     }
 
+    @Test("Default 4-arg generate throws when the capability bit is set even if an executor is passed")
+    func defaultOwnedLoopGenerateDropsNothingItThrows() async throws {
+        let provider = DefaultWitnessOwnedLoopProvider()
+        let executor = ToolCallExecutor { _, _ in .string("unused") }
+        await #expect(throws: AgentError.providerOwnedToolLoopRequiresExecutor) {
+            _ = try await provider.generateWithToolCalls(
+                messages: [.user("hi")],
+                tools: [],
+                options: .default,
+                toolExecutor: executor
+            )
+        }
+    }
+
+    @Test("Default 4-arg stream throws when the capability bit is set")
+    func defaultOwnedLoopStreamThrows() async throws {
+        let provider = DefaultWitnessOwnedLoopProvider()
+        let executor = ToolCallExecutor { _, _ in .string("unused") }
+        let stream = provider.streamWithToolCalls(
+            messages: [.user("hi")],
+            tools: [],
+            options: .default,
+            toolExecutor: executor
+        )
+        await #expect(throws: AgentError.providerOwnedToolLoopRequiresExecutor) {
+            for try await _ in stream {}
+        }
+    }
+
     @Test("Owned-loop executor stops the loop so Agent can hand off")
     func ownedLoopExecutorStopsForHandoff() async throws {
         let targetProvider = MockInferenceProvider(responses: ["from target"])
@@ -253,6 +282,35 @@ struct ProviderOwnedToolLoopTests {
         let result = try await source.run("route")
         #expect(result.output == "from target")
         #expect(await provider.inferenceCallCount == 1)
+    }
+
+    @Test("Owned-loop handoff still completes when the adapter remaps it to cancellation")
+    func ownedLoopHandoffSurvivesCancellationRemap() async throws {
+        let targetProvider = MockInferenceProvider(responses: ["from target"])
+        let target = try Agent(
+            tools: [],
+            instructions: "Target",
+            configuration: AgentConfiguration(name: "target", defaultTracingEnabled: false),
+            inferenceProvider: targetProvider
+        )
+        let provider = ExecutorRemappingHandoffToCancellationProvider(toolName: "handoff_to_target")
+        let source = try Agent(
+            tools: [],
+            instructions: "Source",
+            configuration: AgentConfiguration(name: "source", defaultTracingEnabled: false),
+            inferenceProvider: provider,
+            handoffs: [
+                AnyHandoffConfiguration(
+                    HandoffConfiguration(
+                        targetAgent: target,
+                        toolNameOverride: "handoff_to_target"
+                    )
+                ),
+            ]
+        )
+
+        let result = try await source.run("route")
+        #expect(result.output == "from target")
     }
 
     @Test("Deprecated nativeSession flag does not stop Agent iterating a capture adapter")
@@ -310,6 +368,22 @@ struct FoundationModelsFactoryCapabilityTests {
     func ownedLoopFactoryAdvertisesBit() {
         let provider = FoundationModelsInferenceProvider(ownsToolLoop: true)
         #expect(provider.capabilities.contains(.providerOwnedToolLoop))
+    }
+
+    @Test("Owned-loop adapter throws modelNotAvailable when Apple Intelligence is off")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func ownedLoopUnavailableThrowsModelNotAvailable() async throws {
+        guard FoundationModelsInferenceProvider.isAvailable == false else { return }
+        let provider = FoundationModelsInferenceProvider(ownsToolLoop: true)
+        let executor = ToolCallExecutor { _, _ in .string("unused") }
+        await #expect(throws: AgentError.modelNotAvailable(model: "Apple Foundation Models")) {
+            _ = try await provider.generateWithToolCalls(
+                messages: [.user("hi")],
+                tools: [],
+                options: .default,
+                toolExecutor: executor
+            )
+        }
     }
 }
 #endif
@@ -472,6 +546,58 @@ private actor ExecutorHonoringCompletingProvider: InferenceProvider {
     }
 }
 
+private actor ExecutorRemappingHandoffToCancellationProvider: InferenceProvider {
+    nonisolated let capabilities: InferenceProviderCapabilities = [
+        .conversationMessages,
+        .nativeToolCalling,
+        .providerOwnedToolLoop,
+    ]
+
+    let toolName: String
+
+    init(toolName: String) {
+        self.toolName = toolName
+    }
+
+    func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+        throw AgentError.generationFailed(reason: "expected generateWithToolCalls")
+    }
+
+    nonisolated func stream(
+        prompt _: String,
+        options _: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish()
+        }
+    }
+
+    func generateWithToolCalls(
+        prompt _: String,
+        tools _: [ToolSchema],
+        options _: InferenceOptions
+    ) async throws -> InferenceResponse {
+        throw AgentError.generationFailed(reason: "expected messages seam")
+    }
+
+    func generateWithToolCalls(
+        messages _: [InferenceMessage],
+        tools _: [ToolSchema],
+        options _: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse {
+        guard let toolExecutor else {
+            throw AgentError.providerOwnedToolLoopRequiresExecutor
+        }
+        do {
+            _ = try await toolExecutor.executeTool(named: toolName, arguments: [:])
+        } catch {
+            throw CancellationError()
+        }
+        return InferenceResponse(content: "should-not-return", finishReason: .completed)
+    }
+}
+
 private actor ExecutorHonoringLateToolProvider: InferenceProvider {
     nonisolated let capabilities: InferenceProviderCapabilities = [
         .conversationMessages,
@@ -592,6 +718,41 @@ private actor MockOwnedLoopProvider: InferenceProvider {
             return "Mock response"
         }
         return responses.removeFirst()
+    }
+}
+
+/// Advertises the owned-loop bit but only implements the 3-arg witness.
+private struct DefaultWitnessOwnedLoopProvider: InferenceProvider {
+    nonisolated let capabilities: InferenceProviderCapabilities = [
+        .conversationMessages,
+        .providerOwnedToolLoop,
+    ]
+
+    func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+        "unused"
+    }
+
+    func stream(
+        prompt _: String,
+        options _: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+
+    func generateWithToolCalls(
+        prompt _: String,
+        tools _: [ToolSchema],
+        options _: InferenceOptions
+    ) async throws -> InferenceResponse {
+        InferenceResponse(content: "should-not-run")
+    }
+
+    func generateWithToolCalls(
+        messages _: [InferenceMessage],
+        tools _: [ToolSchema],
+        options _: InferenceOptions
+    ) async throws -> InferenceResponse {
+        InferenceResponse(content: "should-not-run")
     }
 }
 

@@ -9,13 +9,16 @@ import Foundation
 public struct ToolCallExecutor: Sendable {
     private let body: @Sendable (String, [String: SendableValue]) async throws -> SendableValue
 
-    /// Creates an executor that runs `body` for each tool the adapter invokes.
+    /// Creates an executor that runs `execute` for each tool the adapter invokes.
     ///
-    /// - Parameter body: Tool name and arguments in; tool output out.
+    /// - Parameter execute: Tool name and arguments in; tool output out.
     public init(
-        _ body: @escaping @Sendable (String, [String: SendableValue]) async throws -> SendableValue
+        _ execute: @escaping @Sendable (
+            _ name: String,
+            _ arguments: [String: SendableValue]
+        ) async throws -> SendableValue
     ) {
-        self.body = body
+        self.body = execute
     }
 
     /// Runs the named tool and returns its output.

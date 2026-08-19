@@ -262,7 +262,11 @@ public protocol InferenceProvider: Sendable {
     /// for a provider-owned tool loop.
     ///
     /// Capture adapters ignore `toolExecutor`. An adapter that advertises
-    /// ``InferenceProviderCapabilities/providerOwnedToolLoop`` requires it.
+    /// ``InferenceProviderCapabilities/providerOwnedToolLoop`` must implement
+    /// this overload and requires a non-nil executor. The protocol default
+    /// throws ``AgentError/providerOwnedToolLoopRequiresExecutor`` when the
+    /// bit is set, even if an executor was passed — override rather than
+    /// forwarding to the three-argument method.
     func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
@@ -279,6 +283,9 @@ public protocol InferenceProvider: Sendable {
 
     /// Streams text and tool-call updates, supplying tool execution for a
     /// provider-owned tool loop.
+    ///
+    /// Same contract as
+    /// ``generateWithToolCalls(messages:tools:options:toolExecutor:)``.
     func streamWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
@@ -398,8 +405,11 @@ public struct InferenceOptions: Sendable, Equatable {
 
     /// Conversation key for a provider-owned tool loop session store.
     ///
-    /// Agent sets this from the run's Session id. Capture adapters ignore it.
-    package var conversationID: String?
+    /// Agent sets this from the run's Session id, or a fresh identifier when
+    /// the run has no Session. Capture adapters ignore it. Direct callers of
+    /// an owned-loop adapter should set this so native sessions are not shared
+    /// across unrelated conversations.
+    public var conversationId: String?
 
     /// Creates inference options.
     /// - Parameters:
@@ -452,7 +462,7 @@ public struct InferenceOptions: Sendable, Equatable {
         self.previousResponseId = previousResponseId
         self.structuredOutput = structuredOutput
         self.reasoning = reasoning
-        self.conversationID = nil
+        self.conversationId = nil
     }
 
     // MARK: - Fluent Builders
@@ -552,6 +562,14 @@ public struct InferenceOptions: Sendable, Equatable {
     public func previousResponseId(_ value: String?) -> Self {
         var copy = self
         copy.previousResponseId = value
+        return copy
+    }
+
+    /// Sets the conversation key for a provider-owned tool loop session store.
+    @discardableResult
+    public func conversationId(_ value: String?) -> Self {
+        var copy = self
+        copy.conversationId = value
         return copy
     }
 
