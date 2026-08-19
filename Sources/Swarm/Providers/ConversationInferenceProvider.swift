@@ -31,10 +31,13 @@ public struct InferenceProviderCapabilities: OptionSet, Sendable, Hashable {
     /// Provider performs inference locally without sending prompt content to a remote model service.
     public static let privateInference = Self(rawValue: 1 << 5)
 
-    /// Provider executes Swarm tools inside `generateWithToolCalls` when a
-    /// provider-owned tool-loop hook is present. Agent skips inference retries
-    /// on that path so a side-effecting tool is not replayed. OpenAI-compatible
-    /// backends that only *return* tool calls must not advertise this bit.
+    /// Adapter owns the tool loop: it executes Swarm tools inside
+    /// `generateWithToolCalls` / `streamWithToolCalls` using the call's
+    /// ``ToolCallExecutor``. Agent skips inference retries on that path so a
+    /// side-effecting tool is not replayed. OpenAI-compatible backends that
+    /// only *return* tool calls must not advertise this bit. Conformers that
+    /// set this bit must implement the `toolExecutor` overloads; the protocol
+    /// default throws ``AgentError/providerOwnedToolLoopRequiresExecutor``.
     public static let providerOwnedToolLoop = Self(rawValue: 1 << 6)
 }
 
@@ -201,6 +204,19 @@ public extension InferenceProvider {
         )
     }
 
+    func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse {
+        if capabilities.contains(.providerOwnedToolLoop) {
+            throw AgentError.providerOwnedToolLoopRequiresExecutor
+        }
+        _ = toolExecutor
+        return try await generateWithToolCalls(messages: messages, tools: tools, options: options)
+    }
+
     func streamWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
@@ -213,23 +229,29 @@ public extension InferenceProvider {
                 options: options
             )
         }
-        return StreamHelper.makeTrackedStream { continuation in
-            let response = try await generateWithToolCalls(
-                messages: messages,
-                tools: tools,
-                options: options
-            )
-            if let content = response.content, !content.isEmpty {
-                continuation.yield(.outputChunk(content))
-            }
-            if !response.toolCalls.isEmpty {
-                continuation.yield(.toolCallsCompleted(response.toolCalls))
-            }
-            if let usage = response.usage {
-                continuation.yield(.usage(usage))
-            }
-            continuation.finish()
+        return streamFinishedToolTurn {
+            try await generateWithToolCalls(messages: messages, tools: tools, options: options)
         }
+    }
+
+    func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        if capabilities.contains(.providerOwnedToolLoop) {
+            return streamFinishedToolTurn {
+                try await generateWithToolCalls(
+                    messages: messages,
+                    tools: tools,
+                    options: options,
+                    toolExecutor: toolExecutor
+                )
+            }
+        }
+        _ = toolExecutor
+        return streamWithToolCalls(messages: messages, tools: tools, options: options)
     }
 
     func generateStructured(
@@ -247,5 +269,26 @@ public extension InferenceProvider {
             )
         }
         return try await generateStructured(prompt: prompt, request: request, options: options)
+    }
+}
+
+private func streamFinishedToolTurn(
+    _ generate: @escaping @Sendable () async throws -> InferenceResponse
+) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+    StreamHelper.makeTrackedStream { continuation in
+        let response = try await generate()
+        if let content = response.content, !content.isEmpty {
+            continuation.yield(.outputChunk(content))
+        }
+        if !response.toolCalls.isEmpty {
+            continuation.yield(.toolCallsCompleted(response.toolCalls))
+        }
+        if let usage = response.usage {
+            continuation.yield(.usage(usage))
+        }
+        if !response.transcriptMessages.isEmpty {
+            continuation.yield(.finishedTurn(response))
+        }
+        continuation.finish()
     }
 }

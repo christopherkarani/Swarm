@@ -1,19 +1,15 @@
-# Foundation Models: Capture vs Native Session
+# Foundation Models: Capture vs Provider-Owned Tool Loop
 
-Swarm's built-in inference path is Apple Foundation Models. Tool calling has two modes.
-**Capture is the default** and is unchanged. Native session mode is an **experimental
-opt-in**.
+Swarm's built-in inference path is Apple Foundation Models. Tool calling has two
+adapters on one type. **Capture is the default** (``.foundationModels()``).
+A provider-owned tool loop is a **separate factory**.
 
 ## How to opt in
 
 ```swift
-let config = AgentConfiguration.default
-    .foundationModelsExecution(.nativeSession)
-
 let agent = try Agent(
     "You are a private on-device assistant.",
-    configuration: config,
-    inferenceProvider: .foundationModels()
+    inferenceProvider: .foundationModelsOwningToolLoop()
 ) {
     WeatherTool()
 }
@@ -21,13 +17,9 @@ let agent = try Agent(
 let result = try await agent.run("What's the weather in Tokyo?")
 ```
 
-Non-Foundation-Models providers **ignore** the flag. Agent always calls
-``generateWithToolCalls`` / ``streamWithToolCalls`` on ``InferenceProvider``;
-it does not type-cast the provider. The Foundation Models adapter reads the
-opt-in from the run environment and, when Apple Intelligence is available,
-executes a provider-owned tool loop that returns a finished turn. Capture-mode
-behavior does not change unless you set
-``FoundationModelsExecutionMode/nativeSession``.
+Agent reads ``InferenceProviderCapabilities/providerOwnedToolLoop``. It does not
+choose the loop on ``AgentConfiguration``. Capture-mode behavior does not change
+unless you construct ``InferenceProvider/foundationModelsOwningToolLoop()``.
 
 You can also register a user-authored `FoundationModels.Tool` next to `@Tool`
 macros and `FunctionTool` values:
@@ -47,14 +39,14 @@ let agent = try Agent("Be helpful.", configuration: config,
 | Tool loop owner | Swarm agent loop | InferenceProvider (Apple `LanguageModelSession`) |
 | Parallel tool calls | Yes (first `ToolCalls` group per turn) | Yes (Apple's session loop) |
 | Transcript / KV reuse | No (session rebuilt every Swarm iteration) | Transcript copied across `Agent.run` turns; Apple owns the inner loop |
-| Token streaming with tools | No | Yes (`Agent.stream` yields incremental tokens) |
+| Token streaming with tools | No | Not yet — the owned-loop generate path returns a finished turn |
 | Per-iteration memory injection | Yes | **No** — memory is injected when the native session starts |
 | Swarm `maxIterations` cap | Yes | **No** — Apple owns the inner loop |
 | Mid-loop checkpoints | Yes | **No** |
 | Per-turn guardrail interception | Yes (wraps Swarm's loop) | **No** — input/tool guardrails run **inside** each tool body |
 
-Native mode exists so you can take Apple's session loop when you want multi-round
-tools and real streaming. Capture stays the default because Swarm-side control
+Native mode exists so you can take Apple's session loop for multi-round tools
+and transcript reuse. Capture stays the default because Swarm-side control
 (guardrails, checkpoints, memory injection) is the framework's differentiator.
 Capture now recovers every tool call in the first parallel group of a turn
 (previously only the first call) and keeps any assistant text that accompanied
@@ -83,7 +75,9 @@ checkpoints do not fire.
 
 Requires macOS/iOS 26+ with Apple Intelligence available. Linux and CI use
 ``OpenAICompatibleProvider`` (see [Remote Providers](remote-providers.md)) or
-capture-equivalent mock providers; the native-session flag is ignored there.
+capture-equivalent mock providers. ``.foundationModelsOwningToolLoop()`` still
+constructs; the first ``generateWithToolCalls`` / ``streamWithToolCalls``
+throws ``AgentError/modelNotAvailable(model:)`` if Apple Intelligence is off.
 
 Live on-device tests:
 

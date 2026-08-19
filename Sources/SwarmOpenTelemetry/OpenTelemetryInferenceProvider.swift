@@ -98,6 +98,26 @@ public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecke
         }
     }
 
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse {
+        try await withLLMSpan(operation: "chat", inputLength: Self.inputLength(messages), options: options) { span in
+            span.setAttribute(key: "gen_ai.request.messages.count", value: messages.count)
+            span.setAttribute(key: "gen_ai.request.tools.count", value: tools.count)
+            let response = try await base.generateWithToolCalls(
+                messages: messages,
+                tools: tools,
+                options: options,
+                toolExecutor: toolExecutor
+            )
+            apply(response: response, to: span)
+            return response
+        }
+    }
+
     public func stream(
         messages: [InferenceMessage],
         options: InferenceOptions
@@ -120,6 +140,22 @@ public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecke
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
         instrumentToolStream(inputLength: Self.inputLength(messages), toolCount: tools.count, options: options) {
             base.streamWithToolCalls(messages: messages, tools: tools, options: options)
+        }
+    }
+
+    public func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        instrumentToolStream(inputLength: Self.inputLength(messages), toolCount: tools.count, options: options) {
+            base.streamWithToolCalls(
+                messages: messages,
+                tools: tools,
+                options: options,
+                toolExecutor: toolExecutor
+            )
         }
     }
 
@@ -284,7 +320,7 @@ private extension OpenTelemetryInferenceProvider {
                                 completedToolCallCount = calls.count
                             case let .usage(tokenUsage):
                                 usage = tokenUsage
-                            case .toolCallPartial:
+                            case .toolCallPartial, .finishedTurn:
                                 break
                             }
                             continuation.yield(update)

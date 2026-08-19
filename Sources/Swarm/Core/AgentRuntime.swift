@@ -258,11 +258,39 @@ public protocol InferenceProvider: Sendable {
         options: InferenceOptions
     ) async throws -> InferenceResponse
 
+    /// Generates a response with potential tool calls, supplying tool execution
+    /// for a provider-owned tool loop.
+    ///
+    /// Capture adapters ignore `toolExecutor`. An adapter that advertises
+    /// ``InferenceProviderCapabilities/providerOwnedToolLoop`` must implement
+    /// this overload and requires a non-nil executor. The protocol default
+    /// throws ``AgentError/providerOwnedToolLoopRequiresExecutor`` when the
+    /// bit is set, even if an executor was passed — override rather than
+    /// forwarding to the three-argument method.
+    func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse
+
     /// Streams text and tool-call updates from role-tagged messages.
     func streamWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
+
+    /// Streams text and tool-call updates, supplying tool execution for a
+    /// provider-owned tool loop.
+    ///
+    /// Same contract as
+    /// ``generateWithToolCalls(messages:tools:options:toolExecutor:)``.
+    func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
 
     /// Generates structured output from role-tagged messages.
@@ -375,6 +403,14 @@ public struct InferenceOptions: Sendable, Equatable {
     /// unbounded — see one-fhx.
     public var reasoning: ReasoningConfig?
 
+    /// Conversation key for a provider-owned tool loop session store.
+    ///
+    /// Agent sets this from the run's Session id, or a fresh identifier when
+    /// the run has no Session. Capture adapters ignore it. Direct callers of
+    /// an owned-loop adapter should set this so native sessions are not shared
+    /// across unrelated conversations.
+    public var conversationId: String?
+
     /// Creates inference options.
     /// - Parameters:
     ///   - temperature: Generation temperature. Default: 1.0
@@ -426,6 +462,7 @@ public struct InferenceOptions: Sendable, Equatable {
         self.previousResponseId = previousResponseId
         self.structuredOutput = structuredOutput
         self.reasoning = reasoning
+        self.conversationId = nil
     }
 
     // MARK: - Fluent Builders
@@ -525,6 +562,14 @@ public struct InferenceOptions: Sendable, Equatable {
     public func previousResponseId(_ value: String?) -> Self {
         var copy = self
         copy.previousResponseId = value
+        return copy
+    }
+
+    /// Sets the conversation key for a provider-owned tool loop session store.
+    @discardableResult
+    public func conversationId(_ value: String?) -> Self {
+        var copy = self
+        copy.conversationId = value
         return copy
     }
 
@@ -636,11 +681,12 @@ public struct InferenceResponse: Sendable, Equatable {
     /// Token usage statistics, if available.
     public let usage: TokenUsage?
 
-    /// Transcript of a provider-owned tool loop, if the provider finished the turn.
+    /// Inner transcript of a finished provider-owned tool loop.
     ///
-    /// Empty when the provider only returned text or tool-call requests. Agent
-    /// persists these messages instead of synthesizing a single assistant turn.
-    public let transcriptMessages: [MemoryMessage]
+    /// Empty when the adapter only returned text or tool-call requests. Agent
+    /// maps these ``InferenceMessage`` values onto Session instead of
+    /// synthesizing a single assistant turn.
+    public let transcriptMessages: [InferenceMessage]
 
     /// Whether this response includes tool calls.
     public var hasToolCalls: Bool {
@@ -659,7 +705,7 @@ public struct InferenceResponse: Sendable, Equatable {
         toolCalls: [ParsedToolCall] = [],
         finishReason: FinishReason = .completed,
         usage: TokenUsage? = nil,
-        transcriptMessages: [MemoryMessage] = []
+        transcriptMessages: [InferenceMessage] = []
     ) {
         self.content = content
         self.toolCalls = toolCalls

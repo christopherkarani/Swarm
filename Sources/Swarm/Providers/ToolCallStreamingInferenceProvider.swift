@@ -18,6 +18,9 @@ public enum InferenceStreamUpdate: Sendable, Equatable {
 
     /// Token usage statistics (typically available at the end of streaming).
     case usage(TokenUsage)
+
+    /// A finished provider-owned turn, including the inner transcript.
+    case finishedTurn(InferenceResponse)
 }
 
 /// An inference provider that can stream tool-call assembly.

@@ -129,13 +129,17 @@ struct DocumentationFreshnessTests {
         #expect(providerSource.contains("var capabilities: InferenceProviderCapabilities { get }"))
         #expect(providerSource.contains("func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String"))
         #expect(providerSource.contains("func generateWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions\n    ) async throws -> InferenceResponse"))
+        #expect(providerSource.contains("func generateWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions,\n        toolExecutor: ToolCallExecutor?\n    ) async throws -> InferenceResponse"))
         #expect(providerSource.contains("func streamWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions\n    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>"))
+        #expect(providerSource.contains("func streamWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions,\n        toolExecutor: ToolCallExecutor?\n    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>"))
         #expect(providerSource.contains("func generateStructured(\n        messages: [InferenceMessage],\n        request: StructuredOutputRequest,\n        options: InferenceOptions\n    ) async throws -> StructuredOutputResult"))
 
         #expect(docs.contains("var capabilities: InferenceProviderCapabilities { get }"))
         #expect(docs.contains("func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String"))
         #expect(docs.contains("func generateWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions\n    ) async throws -> InferenceResponse"))
+        #expect(docs.contains("func generateWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions,\n        toolExecutor: ToolCallExecutor?\n    ) async throws -> InferenceResponse"))
         #expect(docs.contains("func streamWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions\n    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>"))
+        #expect(docs.contains("func streamWithToolCalls(\n        messages: [InferenceMessage],\n        tools: [ToolSchema],\n        options: InferenceOptions,\n        toolExecutor: ToolCallExecutor?\n    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>"))
         #expect(docs.contains("func generateStructured(\n        messages: [InferenceMessage],\n        request: StructuredOutputRequest,\n        options: InferenceOptions\n    ) async throws -> StructuredOutputResult"))
         #expect(docs.contains("func stream(\n        messages: [InferenceMessage],\n        options: InferenceOptions\n    ) -> AsyncThrowingStream<String, Error>"))
 

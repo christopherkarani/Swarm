@@ -26,10 +26,11 @@ extension Agent {
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
         retryPolicy: RetryPolicy? = nil,
+        executionGate: ProviderOwnedLoopGate? = nil,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         let policy = retryPolicy ?? configuration.resilience.retryPolicy
-        return try await executeWithinRemainingTimeout(startTime: startTime) {
+        return try await executeWithinRemainingTimeout(startTime: startTime, executionGate: executionGate) {
             try await self.performResilientInference(
                 retryPolicy: policy,
                 observer: observer,

@@ -95,8 +95,10 @@ public struct InferencePolicy: Sendable, Equatable {
 
 /// How Apple Foundation Models should run tool-calling turns.
 ///
-/// This option is **experimental** and only observed by
-/// ``FoundationModelsInferenceProvider``. Non-Foundation-Models providers ignore it.
+/// Ignored. Construct ``InferenceProvider/foundationModelsOwningToolLoop()``
+/// for a provider-owned tool loop. This flag does not choose the loop.
+///
+/// - Warning: Deprecated. Remove in the next minor.
 ///
 /// ## Capture vs native session
 ///
@@ -116,13 +118,14 @@ public struct InferencePolicy: Sendable, Equatable {
 ///   memory injection) is the framework's differentiator.
 ///
 /// ```swift
-/// let config = AgentConfiguration.default
-///     .foundationModelsExecution(.nativeSession)
-/// let agent = try Agent("Be helpful.", configuration: config,
-///     inferenceProvider: .foundationModels()) {
+/// let agent = try Agent(
+///     "Be helpful.",
+///     inferenceProvider: .foundationModelsOwningToolLoop()
+/// ) {
 ///     WeatherTool()
 /// }
 /// ```
+@available(*, deprecated, message: "Choose a provider-owned tool loop by constructing the InferenceProvider adapter (.foundationModelsOwningToolLoop()). This flag is ignored.")
 public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
     /// Swarm owns the tool loop. Foundation Models tools throw a capture error so
     /// Swarm can execute tools with guardrails, observers, retries, and
@@ -616,17 +619,12 @@ public struct AgentConfiguration: Sendable, Equatable {
 
     // MARK: - Foundation Models Execution
 
-    /// How Apple Foundation Models should execute tool-calling turns.
+    /// Ignored. Construct a provider-owned tool loop adapter instead of setting this flag.
     ///
     /// Default: ``FoundationModelsExecutionMode/capture``.
     ///
-    /// Non-Foundation-Models providers ignore this flag. Capture mode behavior
-    /// is unchanged when the value stays `.capture`.
-    ///
-    /// - Experiment: ``FoundationModelsExecutionMode/nativeSession`` is opt-in.
-    ///   See ``FoundationModelsExecutionMode`` for the full trade-off table.
-    ///
-    /// - SeeAlso: ``FoundationModelsExecutionMode``, ``foundationModelsExecution(_:)``
+    /// - SeeAlso: ``InferenceProvider/foundationModelsOwningToolLoop()``
+    @available(*, deprecated, message: "Choose a provider-owned tool loop by constructing the InferenceProvider adapter. This flag is ignored.")
     public var foundationModelsExecution: FoundationModelsExecutionMode
 
     // MARK: - Resilience Settings
@@ -1249,25 +1247,11 @@ extension AgentConfiguration {
 
     // MARK: Foundation Models Execution
 
-    /// Sets how Apple Foundation Models should execute tool-calling turns.
+    /// Ignored. Construct a provider-owned tool loop adapter instead of setting this flag.
     ///
-    /// Default: ``FoundationModelsExecutionMode/capture``.
-    ///
-    /// Non-Foundation-Models providers ignore this flag. See
-    /// ``FoundationModelsExecutionMode`` for the capture vs native trade-off table.
-    ///
-    /// - Experiment: ``FoundationModelsExecutionMode/nativeSession`` is opt-in and
-    ///   may change in a minor release.
-    ///
-    /// ## Example
-    /// ```swift
-    /// let config = AgentConfiguration.default
-    ///     .foundationModelsExecution(.nativeSession)
-    /// ```
-    ///
-    /// - Parameter value: The Foundation Models execution mode
-    /// - Returns: A new configuration with the updated execution mode
-    /// - SeeAlso: ``foundationModelsExecution``, ``FoundationModelsExecutionMode``
+    /// - Parameter value: Previously selected the Foundation Models tool loop. Ignored.
+    /// - Returns: A new configuration with the stored (ignored) flag.
+    @available(*, deprecated, message: "Choose a provider-owned tool loop by constructing the InferenceProvider adapter. This flag is ignored.")
     @discardableResult public func foundationModelsExecution(
         _ value: FoundationModelsExecutionMode
     ) -> AgentConfiguration {
@@ -1332,5 +1316,37 @@ extension AgentConfiguration: CustomStringConvertible {
             resilience: \(String(describing: resilience))
         )
         """
+    }
+
+    func warnIfDeprecatedNativeSessionFlag() {
+        FoundationModelsExecutionModeNag.warnIfNeeded(foundationModelsExecution)
+    }
+}
+
+enum FoundationModelsExecutionModeNag {
+    private static let once = OnceFlag()
+
+    static func warnIfNeeded(_ mode: FoundationModelsExecutionMode) {
+        guard mode == .nativeSession else { return }
+        guard once.take() else { return }
+        Log.agents.warning(
+            """
+            AgentConfiguration.foundationModelsExecution is ignored. \
+            Construct .foundationModelsOwningToolLoop() for a provider-owned tool loop.
+            """
+        )
+    }
+}
+
+private final class OnceFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+
+    func take() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if done { return false }
+        done = true
+        return true
     }
 }

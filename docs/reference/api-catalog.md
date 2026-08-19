@@ -3,8 +3,8 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14. OpenAI-compatible provider rows added 2026-08-14.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 174
-- Public/open symbols cataloged: 2501
+- Source files scanned: 175
+- Public/open symbols cataloged: 2510
 
 ## 1. Swarm (entry point)
 
@@ -136,6 +136,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 78 | case | public | AgentError.agentNotFound(name:) | `public case agentNotFound(name: String)` |
 | 81 | case | public | AgentError.internalError(reason:) | `public case internalError(reason: String)` |
 | 84 | case | public | AgentError.toolCallingUnsupported | `public case toolCallingUnsupported` |
+| 593 | case | public | AgentError.providerOwnedToolLoopRequiresExecutor | `public case providerOwnedToolLoopRequiresExecutor` |
 | 90 | var | public | AgentError.errorDescription | `public var errorDescription: String? { get }` |
 | 139 | var | public | AgentError.recoverySuggestion | `public var recoverySuggestion: String? { get }` |
 | 152 | var | public | AgentError.debugDescription | `public var debugDescription: String { get }` |
@@ -304,13 +305,16 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 246 | func | public | InferenceProvider.generate(messages:options:) | `public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String` |
 | 249 | func | public | InferenceProvider.stream(messages:options:) | `public func stream(messages: [InferenceMessage], options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
 | 255 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
+| 265 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:toolExecutor:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) async throws -> InferenceResponse` |
 | 262 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
+| 282 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:toolExecutor:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
 | 269 | func | public | InferenceProvider.generateStructured(messages:request:options:) | `public func generateStructured(messages: [InferenceMessage], request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` |
 | 265 | func | public | InferenceOptions.frequencyPenalty(_:) | `public @discardableResult func frequencyPenalty(_ value: Double?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.maxTokens(_:) | `public @discardableResult func maxTokens(_ value: Int?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.parallelToolCalls(_:) | `public @discardableResult func parallelToolCalls(_ value: Bool?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.presencePenalty(_:) | `public @discardableResult func presencePenalty(_ value: Double?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.previousResponseId(_:) | `public @discardableResult func previousResponseId(_ value: String?) -> InferenceOptions` |
+| 265 | func | public | InferenceOptions.conversationId(_:) | `public @discardableResult func conversationId(_ value: String?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.providerSettings(_:) | `public @discardableResult func providerSettings(_ value: [String : SendableValue]?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.seed(_:) | `public @discardableResult func seed(_ value: Int?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.stopSequences(_:) | `public @discardableResult func stopSequences(_ value: [String]) -> InferenceOptions` |
@@ -341,6 +345,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 338 | var | public | InferenceOptions.verbosity | `public var verbosity: Verbosity?` |
 | 341 | var | public | InferenceOptions.providerSettings | `public var providerSettings: [String : SendableValue]?` |
 | 344 | var | public | InferenceOptions.previousResponseId | `public var previousResponseId: String?` |
+| 402 | var | public | InferenceOptions.conversationId | `public var conversationId: String?` |
 | 362 | func | public | InferenceOptions.init(temperature:maxTokens:stopSequences:topP:topK:presencePenalty:frequencyPenalty:toolChoice:seed:parallelToolCalls:truncation:verbosity:providerSettings:previousResponseId:) | `public init(temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], topP: Double? = nil, topK: Int? = nil, presencePenalty: Double? = nil, frequencyPenalty: Double? = nil, toolChoice: ToolChoice? = nil, seed: Int? = nil, parallelToolCalls: Bool? = nil, truncation: TruncationStrategy? = nil, verbosity: Verbosity? = nil, providerSettings: [String : SendableValue]? = nil, previousResponseId: String? = nil)` |
 | 399 | func | public | InferenceOptions.stopSequences(_:) | `public func stopSequences(_ sequences: String...) -> InferenceOptions` |
 | 408 | func | public | InferenceOptions.addStopSequence(_:) | `public func addStopSequence(_ sequence: String) -> InferenceOptions` |
@@ -362,9 +367,9 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 480 | var | public | InferenceResponse.toolCalls | `public let toolCalls: [InferenceResponse.ParsedToolCall]` |
 | 483 | var | public | InferenceResponse.finishReason | `public let finishReason: InferenceResponse.FinishReason` |
 | 486 | var | public | InferenceResponse.usage | `public let usage: TokenUsage?` |
-| 489 | var | public | InferenceResponse.transcriptMessages | `public let transcriptMessages: [MemoryMessage]` |
+| 671 | var | public | InferenceResponse.transcriptMessages | `public let transcriptMessages: [InferenceMessage]` |
 | 492 | var | public | InferenceResponse.hasToolCalls | `public var hasToolCalls: Bool { get }` |
-| 499 | func | public | InferenceResponse.init(content:toolCalls:finishReason:usage:transcriptMessages:) | `public init(content: String? = nil, toolCalls: [InferenceResponse.ParsedToolCall] = [], finishReason: InferenceResponse.FinishReason = .completed, usage: TokenUsage? = nil, transcriptMessages: [MemoryMessage] = [])` |
+| 499 | func | public | InferenceResponse.init(content:toolCalls:finishReason:usage:transcriptMessages:) | `public init(content: String? = nil, toolCalls: [InferenceResponse.ParsedToolCall] = [], finishReason: InferenceResponse.FinishReason = .completed, usage: TokenUsage? = nil, transcriptMessages: [InferenceMessage] = [])` |
 
 ### Core/CircularBuffer.swift
 
@@ -2724,8 +2729,17 @@ First-class on-device Apple Foundation Models path. Gated by `#if canImport(Foun
 | 99 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider?` |
 | 112 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil)` |
 | 487 | func | public | InferenceProvider.foundationModels(configuration:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
+| 493 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
 | 493 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
 | 509 | func | public | InferenceProvider.foundationModels(profile:configuration:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
+
+### Providers/ToolCallExecutor.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 9 | struct | public | ToolCallExecutor | `public struct ToolCallExecutor : Sendable` |
+| 15 | func | public | ToolCallExecutor.init(_:) | `public init(_ execute: @escaping @Sendable (_ name: String, _ arguments: [String : SendableValue]) async throws -> SendableValue)` |
+| 29 | func | public | ToolCallExecutor.executeTool(named:arguments:) | `public func executeTool(named name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
 
 ### Providers/FoundationModels/FoundationModelsNativeTool.swift
 

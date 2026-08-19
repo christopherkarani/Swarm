@@ -152,6 +152,25 @@ public struct SwarmTranscript: Codable, Sendable, Equatable {
 }
 
 enum SwarmTranscriptCodec {
+    static func encode(_ message: InferenceMessage) -> MemoryMessage {
+        let role: MemoryMessage.Role = switch message.role {
+        case .system: .system
+        case .user: .user
+        case .assistant: .assistant
+        case .tool: .tool
+        }
+        let toolCalls = message.toolCalls.map {
+            InferenceResponse.ParsedToolCall(id: $0.id, name: $0.name, arguments: $0.arguments)
+        }
+        return encodeMessage(
+            role: role,
+            content: message.content,
+            toolName: message.name,
+            toolCallID: message.toolCallID,
+            toolCalls: toolCalls
+        )
+    }
+
     static let schemaVersionKey = "swarm.transcript.schema_version"
     static let entryIDKey = "swarm.transcript.entry_id"
     static let toolCallsKey = "swarm.transcript.tool_calls_json"

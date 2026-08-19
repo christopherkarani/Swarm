@@ -31,6 +31,7 @@ public struct TextOnlyConversationInferenceProviderAdapter: InferenceProvider {
     public var capabilities: InferenceProviderCapabilities {
         var capabilities = InferenceProviderCapabilities.resolved(for: base)
         capabilities.remove(.streamingToolCalls)
+        capabilities.remove(.providerOwnedToolLoop)
         capabilities.insert(.conversationMessages)
         return capabilities
     }

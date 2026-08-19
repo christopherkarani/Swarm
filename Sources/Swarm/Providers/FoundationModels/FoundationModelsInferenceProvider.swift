@@ -39,12 +39,12 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// structured ``InferenceMessage`` history is serialized into that prompt with
 /// role labels (`System:`, `User:`, `Assistant:`, `Tool result`).
 ///
-/// **Native session mode** (``FoundationModelsExecutionMode/nativeSession``) keeps
+/// **Provider-owned tool loop** (``foundationModelsOwningToolLoop()``) keeps
 /// a `LanguageModelSession` for the agent run so Apple's transcript and KV cache
 /// can be reused. Memory is injected when that session is created, not on every
-/// inner tool iteration. See ``FoundationModelsExecutionMode`` for the trade-off
-/// table. The session is discarded when tools or instructions change, the
-/// conversation id changes, generation fails, or the provider is deallocated.
+/// inner tool iteration. The session is discarded when tools or instructions
+/// change, the conversation id changes, generation fails, or the provider is
+/// deallocated.
 ///
 /// ## Token usage
 ///
@@ -80,10 +80,11 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// outside that subset stay prompt-instruction + parse, labeled
 /// ``StructuredOutputResult/Source/promptFallback``.
 ///
-/// **Native session mode (experimental):** a provider-owned tool loop.
-/// Agent calls ``generateWithToolCalls(messages:tools:options:)``; this adapter
-/// executes tools inside Apple's session and returns a finished turn. Opt in
-/// with ``AgentConfiguration/foundationModelsExecution``.
+/// **Provider-owned tool loop:** construct
+/// ``InferenceProvider/foundationModelsOwningToolLoop()``. Agent calls
+/// ``generateWithToolCalls(messages:tools:options:toolExecutor:)``; this
+/// adapter executes tools inside Apple's session and returns a finished turn.
+/// Capture remains ``foundationModels()``.
 ///
 /// ## Dynamic profiles
 ///
@@ -123,6 +124,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     private let configuration: FoundationModelsProviderConfiguration
     private let dynamicProfile: (any DynamicProfile)?
     private let model: SystemLanguageModel
+    private let ownsToolLoop: Bool
     let nativeSessionStore = FoundationModelsNativeSessionStore()
 
     /// Whether the system language model is currently available on this device.
@@ -133,10 +135,15 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     /// Creates a provider when Foundation Models are available; otherwise `nil`.
     public static func ifAvailable(
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil
+        profile: (any DynamicProfile)? = nil,
+        ownsToolLoop: Bool = false
     ) -> FoundationModelsInferenceProvider? {
         guard isAvailable else { return nil }
-        return FoundationModelsInferenceProvider(configuration: configuration, profile: profile)
+        return FoundationModelsInferenceProvider(
+            configuration: configuration,
+            profile: profile,
+            ownsToolLoop: ownsToolLoop
+        )
     }
 
     /// Creates a Foundation Models provider.
@@ -144,13 +151,17 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     /// - Parameters:
     ///   - configuration: Session configuration.
     ///   - profile: Optional dynamic profile resolved every generation turn.
+    ///   - ownsToolLoop: When true, this adapter advertises a provider-owned
+    ///     tool loop and executes tools via the call's ``ToolCallExecutor``.
     public init(
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil
+        profile: (any DynamicProfile)? = nil,
+        ownsToolLoop: Bool = false
     ) {
         self.configuration = configuration
         self.dynamicProfile = profile
         self.model = .default
+        self.ownsToolLoop = ownsToolLoop
     }
 
     // MARK: - Metadata
@@ -165,13 +176,16 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     public var endpointURL: URL? { nil }
 
     public var capabilities: InferenceProviderCapabilities {
-        [
+        var capabilities: InferenceProviderCapabilities = [
             .conversationMessages,
             .nativeToolCalling,
-            .providerOwnedToolLoop,
             .structuredOutputs,
             .privateInference,
         ]
+        if ownsToolLoop {
+            capabilities.insert(.providerOwnedToolLoop)
+        }
+        return capabilities
     }
 
     // MARK: - InferenceProvider
@@ -222,7 +236,8 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         try await generateWithToolCalls(
             messages: [.user(prompt)],
             tools: tools,
-            options: options
+            options: options,
+            toolExecutor: nil
         )
     }
 
@@ -248,14 +263,59 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     public func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse {
+        if ownsToolLoop {
+            guard let toolExecutor else {
+                throw AgentError.providerOwnedToolLoopRequiresExecutor
+            }
+            return try await completeProviderOwnedToolLoop(
+                messages: messages,
+                tools: tools,
+                options: options,
+                toolExecutor: toolExecutor
+            )
+        }
+        return try await generateWithToolCalls(messages: messages, tools: tools, options: options)
+    }
+
+    public func streamWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            let response = try await self.generateWithToolCalls(
+                messages: messages,
+                tools: tools,
+                options: options,
+                toolExecutor: toolExecutor
+            )
+            if let content = response.content, !content.isEmpty {
+                continuation.yield(.outputChunk(content))
+            }
+            if !response.toolCalls.isEmpty {
+                continuation.yield(.toolCallsCompleted(response.toolCalls))
+            }
+            if let usage = response.usage {
+                continuation.yield(.usage(usage))
+            }
+            if !response.transcriptMessages.isEmpty {
+                continuation.yield(.finishedTurn(response))
+            }
+            continuation.finish()
+        }
+    }
+
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
-        if let finished = try await completeProviderOwnedToolLoopIfRequested(
-            messages: messages,
-            tools: tools,
-            options: options
-        ) {
-            return finished
+        if ownsToolLoop {
+            throw AgentError.providerOwnedToolLoopRequiresExecutor
         }
 
         let resolved = resolveTurn(messages: messages, tools: tools, options: options)
@@ -606,6 +666,16 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
         FoundationModelsInferenceProvider(configuration: configuration)
     }
 
+    /// Creates an on-device adapter that owns the tool loop.
+    ///
+    /// Agent supplies a ``ToolCallExecutor`` on each tool-calling call and
+    /// does not iterate. Capture remains ``foundationModels()``.
+    static func foundationModelsOwningToolLoop(
+        configuration: FoundationModelsProviderConfiguration = .default
+    ) -> FoundationModelsInferenceProvider {
+        FoundationModelsInferenceProvider(configuration: configuration, ownsToolLoop: true)
+    }
+
     /// Creates an on-device Apple Foundation Models provider with instructions.
     static func foundationModels(
         instructions: String,
@@ -616,6 +686,20 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
                 instructions: instructions,
                 prewarmOnInit: prewarmOnInit
             )
+        )
+    }
+
+    /// Creates an on-device adapter that owns the tool loop, with instructions.
+    static func foundationModelsOwningToolLoop(
+        instructions: String,
+        prewarmOnInit: Bool = false
+    ) -> FoundationModelsInferenceProvider {
+        FoundationModelsInferenceProvider(
+            configuration: FoundationModelsProviderConfiguration(
+                instructions: instructions,
+                prewarmOnInit: prewarmOnInit
+            ),
+            ownsToolLoop: true
         )
     }
 
@@ -630,6 +714,18 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
         FoundationModelsInferenceProvider(
             configuration: configuration,
             profile: profile
+        )
+    }
+
+    /// Creates an on-device owned-loop adapter driven by a Swarm ``DynamicProfile``.
+    static func foundationModelsOwningToolLoop(
+        profile: some DynamicProfile,
+        configuration: FoundationModelsProviderConfiguration = .default
+    ) -> FoundationModelsInferenceProvider {
+        FoundationModelsInferenceProvider(
+            configuration: configuration,
+            profile: profile,
+            ownsToolLoop: true
         )
     }
 }

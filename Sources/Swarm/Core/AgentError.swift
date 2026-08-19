@@ -89,6 +89,7 @@ import Foundation
 /// - ``agentNotFound(name:)``
 /// - ``internalError(reason:)``
 /// - ``toolCallingUnsupported``
+/// - ``providerOwnedToolLoopRequiresExecutor``
 ///
 /// ## See Also
 /// - ``GuardrailError``
@@ -582,6 +583,14 @@ public enum AgentError: Error, Sendable, Equatable {
     /// ## Note
     /// See ``recoverySuggestion`` for the default recovery suggestion.
     case toolCallingUnsupported
+
+    /// The adapter was constructed to own the tool loop but the call omitted a tool executor.
+    ///
+    /// Agent always passes a ``ToolCallExecutor`` when Capabilities includes
+    /// ``InferenceProviderCapabilities/providerOwnedToolLoop``. Direct callers of
+    /// ``InferenceProvider/generateWithToolCalls(messages:tools:options:toolExecutor:)``
+    /// must do the same.
+    case providerOwnedToolLoopRequiresExecutor
 }
 
 // MARK: - LocalizedError
@@ -638,6 +647,8 @@ extension AgentError: LocalizedError {
             "Internal error: \(reason)"
         case .toolCallingUnsupported:
             "The selected provider could not satisfy this tool calling request."
+        case .providerOwnedToolLoopRequiresExecutor:
+            "This InferenceProvider owns the tool loop and requires a tool executor."
         }
     }
 
@@ -652,6 +663,8 @@ extension AgentError: LocalizedError {
         switch self {
         case .toolCallingUnsupported:
             "Pass a provider with native tool-calling support via `Agent(..., inferenceProvider:)` or `await Swarm.configure(provider:)`, or use Apple Foundation Models on a supported device."
+        case .providerOwnedToolLoopRequiresExecutor:
+            "Pass a ToolCallExecutor on generateWithToolCalls/streamWithToolCalls, implement that overload if this adapter advertises providerOwnedToolLoop, or construct a capture adapter (.foundationModels()) if Agent should own the loop."
         case .inferenceProviderUnavailable:
             "Configure an inference provider via `await Swarm.configure(provider:)` or use Apple Foundation Models on a supported device."
         case .rateLimitExceeded(let retryAfter):
@@ -728,6 +741,8 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.internalError(reason: \(reason))"
         case .toolCallingUnsupported:
             "AgentError.toolCallingUnsupported"
+        case .providerOwnedToolLoopRequiresExecutor:
+            "AgentError.providerOwnedToolLoopRequiresExecutor"
         }
     }
 }
@@ -761,7 +776,8 @@ extension AgentError {
              .modelNotAvailable,
              .agentNotFound,
              .internalError,
-             .toolCallingUnsupported:
+             .toolCallingUnsupported,
+             .providerOwnedToolLoopRequiresExecutor:
             false
         }
     }

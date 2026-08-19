@@ -21,10 +21,6 @@ public struct AgentEnvironment: Sendable {
     public var membrane: MembraneEnvironment?
     public var webSearch: WebSearchTool.Configuration?
 
-    /// Live executors Agent copies for the run so an InferenceProvider can
-    /// execute a provider-owned tool loop and return a finished turn.
-    var providerOwnedToolLoop: ProviderOwnedToolLoop?
-
     public init(
         inferenceProvider: (any InferenceProvider)? = nil,
         inferenceProviderTransform: (@Sendable (any InferenceProvider) -> any InferenceProvider)? = nil,
@@ -41,46 +37,10 @@ public struct AgentEnvironment: Sendable {
         self.promptTokenCounter = promptTokenCounter
         self.membrane = membrane
         self.webSearch = webSearch
-        self.providerOwnedToolLoop = nil
     }
 }
 
-/// Executors for a provider-owned tool loop.
-///
-/// Agent copies this onto ``AgentEnvironment`` for the duration of a run.
-/// ``FoundationModelsInferenceProvider`` reads it from the task-local
-/// environment. Non-FM providers ignore it. The finished turn is returned on
-/// ``InferenceResponse/transcriptMessages``; this bag only supplies executors.
-struct ProviderOwnedToolLoop: Sendable {
-    var toolRegistry: ToolRegistry
-    var agent: any AgentRuntime
-    var context: AgentContext?
-    var observer: (any AgentObserver)?
-    var tracing: TracingHelper?
-    var resultBuilder: AgentResult.Builder
-    var stopOnToolError: Bool
-    var conversationID: String
-    var enableStreaming: Bool
-    let executionGate = ProviderOwnedLoopGate()
-
-    func executeTool(
-        named name: String,
-        arguments: [String: SendableValue]
-    ) async throws -> SendableValue {
-        guard executionGate.isActive else {
-            throw CancellationError()
-        }
-        return try await toolRegistry.execute(
-            toolNamed: name,
-            arguments: arguments,
-            agent: agent,
-            context: context,
-            observer: observer
-        )
-    }
-}
-
-/// Synchronous cancel flag shared by the timeout coordinator and native tools.
+/// Synchronous cancel flag shared by the timeout coordinator and tool executor.
 final class ProviderOwnedLoopGate: @unchecked Sendable {
     private let lock = NSLock()
     private var active = true

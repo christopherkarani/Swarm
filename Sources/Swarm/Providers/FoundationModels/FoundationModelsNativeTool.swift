@@ -13,11 +13,9 @@ import FoundationModels
 /// Use this (or pass the Apple tool directly to `@ToolBuilder`) to register
 /// native Foundation Models tools alongside `@Tool` macros and ``FunctionTool``.
 ///
-/// - Experiment: Intended for ``FoundationModelsExecutionMode/nativeSession``.
+/// - Experiment: Intended for ``InferenceProvider/foundationModelsOwningToolLoop()``.
 ///   In capture mode the wrapper still executes via Swarm's loop, converting
-///   arguments through `GeneratedContent`. Full `@Generable` structured-output
-///   support is a later chunk — this adapter only needs argument round-trip
-///   for native session execution.
+///   arguments through `GeneratedContent`.
 ///
 /// ```swift
 /// struct LookupTool: FoundationModels.Tool {
@@ -26,9 +24,10 @@ import FoundationModels
 ///     // ...
 /// }
 ///
-/// let agent = try Agent("Be helpful.",
-///     configuration: .default.foundationModelsExecution(.nativeSession),
-///     inferenceProvider: .foundationModels()) {
+/// let agent = try Agent(
+///     "Be helpful.",
+///     inferenceProvider: .foundationModelsOwningToolLoop()
+/// ) {
 ///     WeatherTool()
 ///     LookupTool()
 /// }
