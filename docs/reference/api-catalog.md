@@ -1918,15 +1918,15 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 35 | struct | public | GuardrailResult | `public struct GuardrailResult` |
-| 38 | var | public | GuardrailResult.tripwireTriggered | `public let tripwireTriggered: Bool` |
-| 53 | var | public | GuardrailResult.outputInfo | `public let outputInfo: SendableValue?` |
-| 56 | var | public | GuardrailResult.message | `public let message: String?` |
-| 74 | var | public | GuardrailResult.metadata | `public let metadata: [String : SendableValue]` |
-| 85 | func | public | GuardrailResult.init(tripwireTriggered:outputInfo:message:metadata:) | `public init(tripwireTriggered: Bool, outputInfo: SendableValue? = nil, message: String? = nil, metadata: [String : SendableValue] = [:])` |
-| 106 | func | public | GuardrailResult.passed(message:outputInfo:metadata:) | `public static func passed(message: String? = nil, outputInfo: SendableValue? = nil, metadata: [String : SendableValue] = [:]) -> GuardrailResult` |
-| 126 | func | public | GuardrailResult.tripwire(message:outputInfo:metadata:) | `public static func tripwire(message: String, outputInfo: SendableValue? = nil, metadata: [String : SendableValue] = [:]) -> GuardrailResult` |
-| 143 | var | public | GuardrailResult.debugDescription | `public var debugDescription: String { get }` |
+| 45 | enum | public | GuardrailResult | `public enum GuardrailResult` |
+| 52 | case | public | GuardrailResult.passed | `case passed(message: String? = nil, outputInfo: SendableValue? = nil, metadata: [String : SendableValue] = [:])` |
+| 64 | case | public | GuardrailResult.tripwire | `case tripwire(message: String, outputInfo: SendableValue? = nil, metadata: [String : SendableValue] = [:])` |
+| 71 | var | public | GuardrailResult.tripwireTriggered | `public var tripwireTriggered: Bool { get }` |
+| 81 | var | public | GuardrailResult.outputInfo | `public var outputInfo: SendableValue? { get }` |
+| 92 | var | public | GuardrailResult.message | `public var message: String? { get }` |
+| 102 | var | public | GuardrailResult.metadata | `public var metadata: [String : SendableValue] { get }` |
+| 116 | func | public | GuardrailResult.init(tripwireTriggered:outputInfo:message:metadata:) | `public init(tripwireTriggered: Bool, outputInfo: SendableValue? = nil, message: String? = nil, metadata: [String : SendableValue] = [:])` |
+| 140 | var | public | GuardrailResult.debugDescription | `public var debugDescription: String { get }` |
 
 ### Guardrails/GuardrailRunner.swift
 
