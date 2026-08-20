@@ -113,7 +113,7 @@ struct AgentObserverDefaultImplementationTests {
             context: nil,
             guardrailName: "test",
             guardrailType: .input,
-            result: GuardrailResult(tripwireTriggered: false)
+            result: .passed()
         )
 
         // No assertions needed - if we get here, all methods completed successfully
@@ -249,7 +249,7 @@ struct CompositeAgentObserverTests {
             context: context,
             guardrailName: "pii_filter",
             guardrailType: .output,
-            result: GuardrailResult(tripwireTriggered: true, message: "PII detected")
+            result: .tripwire(message: "PII detected")
         )
 
         // Then: All events should be recorded
@@ -360,7 +360,7 @@ struct LoggingAgentObserverTests {
             context: nil,
             guardrailName: "content_filter",
             guardrailType: .input,
-            result: GuardrailResult(tripwireTriggered: true, message: "Inappropriate content detected")
+            result: .tripwire(message: "Inappropriate content detected")
         )
     }
 

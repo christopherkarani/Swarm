@@ -108,7 +108,7 @@ struct FullAPIScenarioTests {
         let mock = MockInferenceProvider()
         await mock.setResponses(["ok"])
         let guardrail = InputGuard("always_trip") { _, _ in
-            GuardrailResult(tripwireTriggered: true, message: "blocked")
+            .tripwire(message: "blocked")
         }
         let agent = try Agent(instructions: "Service", inferenceProvider: mock, inputGuardrails: [guardrail])
         await #expect(throws: Error.self) {

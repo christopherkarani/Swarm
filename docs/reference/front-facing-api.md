@@ -430,6 +430,8 @@ public struct OutputGuard: OutputGuardrail, Sendable {
 }
 ```
 
+`GuardrailResult` is a closed enum: `.passed(...)` or `.tripwire(message:)` (a tripwire always has a message). Compatibility accessors `tripwireTriggered`, `message`, `outputInfo`, and `metadata` remain for observers. `GuardrailRunner` switches on the enum cases and `GuardrailError` tripwire cases carry a required `message: String`.
+
 ### Guardrail protocols (for advanced use)
 
 ```swift

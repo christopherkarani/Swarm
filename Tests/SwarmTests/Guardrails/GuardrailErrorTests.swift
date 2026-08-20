@@ -63,22 +63,17 @@ struct GuardrailErrorTests {
         }
     }
 
-    @Test("Input tripwire error with nil message")
-    func inputTripwireWithNilMessage() {
-        // Given
-        let guardrailName = "Validator"
-
-        // When
+    @Test("Input tripwire error always includes a message")
+    func inputTripwireMessageIsRequired() {
         let error = GuardrailError.inputTripwireTriggered(
-            guardrailName: guardrailName,
-            message: nil,
+            guardrailName: "Validator",
+            message: "blocked",
             outputInfo: nil
         )
 
-        // Then
         if case let .inputTripwireTriggered(name, msg, _) = error {
-            #expect(name == guardrailName)
-            #expect(msg == nil)
+            #expect(name == "Validator")
+            #expect(msg == "blocked")
         } else {
             Issue.record("Expected inputTripwireTriggered case")
         }
@@ -315,21 +310,19 @@ struct GuardrailErrorTests {
         #expect(description!.contains("Input blocked"))
     }
 
-    @Test("Input tripwire error description with nil message")
-    func inputTripwireErrorDescriptionNilMessage() {
-        // Given
+    @Test("Input tripwire error description interpolates the required message")
+    func inputTripwireErrorDescriptionIncludesMessage() {
         let error = GuardrailError.inputTripwireTriggered(
             guardrailName: "TestGuard",
-            message: nil,
+            message: "blocked",
             outputInfo: nil
         )
 
-        // When
         let description = error.errorDescription
-
-        // Then
         #expect(description != nil)
         #expect(description!.contains("TestGuard"))
+        #expect(description!.contains("blocked"))
+        #expect(!(description!.contains("No message")))
     }
 
     @Test("Output tripwire error has descriptive errorDescription")
@@ -522,7 +515,7 @@ extension GuardrailErrorTests {
 
         // Then
         if case let .inputTripwireTriggered(_, msg, _) = error {
-            #expect(msg?.isEmpty == true)
+            #expect(msg.isEmpty)
         } else {
             Issue.record("Expected inputTripwireTriggered case")
         }

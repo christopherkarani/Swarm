@@ -74,4 +74,33 @@ struct AgentRunGuardrailBehaviorTests {
         #expect(try await session.getAllItems().isEmpty)
         #expect(await memory.addCalls.isEmpty)
     }
+
+    @Test("Deprecated nil tripwire message is forwarded on GuardrailError")
+    func deprecatedNilTripwireMessageReachesError() async throws {
+        let provider = MockInferenceProvider(responses: ["should not be used"])
+        let session = InMemorySession(sessionId: "legacy-tripwire")
+        let guardrail = InputGuard("legacy") { _ in
+            GuardrailResult(tripwireTriggered: true)
+        }
+        let agent = try Agent(
+            instructions: "Respond briefly.",
+            configuration: AgentConfiguration(defaultTracingEnabled: false),
+            inferenceProvider: provider,
+            inputGuardrails: [guardrail]
+        )
+
+        do {
+            _ = try await agent.run("blocked request", session: session)
+            Issue.record("Expected input guardrail tripwire")
+        } catch let error as GuardrailError {
+            guard case let .inputTripwireTriggered(guardrailName, message, _) = error else {
+                Issue.record("Expected inputTripwireTriggered, got \(error)")
+                return
+            }
+            #expect(guardrailName == "legacy")
+            #expect(message == "Tripwire triggered")
+        }
+
+        #expect(await provider.generateCallCount == 0)
+    }
 }

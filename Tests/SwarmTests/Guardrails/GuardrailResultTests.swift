@@ -336,4 +336,43 @@ struct GuardrailResultTests {
         #expect(result.outputInfo == complexInfo)
         #expect(result.tripwireTriggered == true)
     }
+
+    @Test("Tripwire case always carries a message on the enum")
+    func tripwireCaseMessageIsRequired() {
+        let result = GuardrailResult.tripwire(message: "blocked")
+        guard case let .tripwire(message, _, _) = result else {
+            Issue.record("expected tripwire case")
+            return
+        }
+        #expect(message == "blocked")
+        #expect(result.message == "blocked")
+    }
+
+    @Test("Deprecated tripwire initializer fills a default message when nil")
+    func deprecatedInitNilTripwireMessage() {
+        let tripwire = GuardrailResult(tripwireTriggered: true)
+        let passed = GuardrailResult(tripwireTriggered: false)
+        #expect(tripwire.message == "Tripwire triggered")
+        #expect(tripwire.tripwireTriggered)
+        #expect(passed.message == nil)
+        #expect(!passed.tripwireTriggered)
+    }
+
+    @Test("Passed and tripwire are distinct enum cases")
+    func enumCasesAreExhaustivePair() {
+        let passed = GuardrailResult.passed()
+        let tripwire = GuardrailResult.tripwire(message: "blocked")
+        var sawPassed = false
+        var sawTripwire = false
+        for result in [passed, tripwire] {
+            switch result {
+            case .passed:
+                sawPassed = true
+            case .tripwire:
+                sawTripwire = true
+            }
+        }
+        #expect(sawPassed)
+        #expect(sawTripwire)
+    }
 }

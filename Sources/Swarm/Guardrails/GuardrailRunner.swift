@@ -115,12 +115,22 @@ public struct GuardrailExecutionResult: Sendable, Equatable {
 
     /// Whether this execution triggered a tripwire.
     public var didTriggerTripwire: Bool {
-        result.tripwireTriggered
+        switch result {
+        case .passed:
+            false
+        case .tripwire:
+            true
+        }
     }
 
     /// Whether this execution passed without triggering.
     public var passed: Bool {
-        !result.tripwireTriggered
+        switch result {
+        case .passed:
+            true
+        case .tripwire:
+            false
+        }
     }
 
     // MARK: - Initialization
@@ -261,13 +271,87 @@ public actor GuardrailRunner {
         result: GuardrailResult,
         context: AgentContext?
     ) async {
-        guard result.tripwireTriggered else { return }
-        await observer?.onGuardrailTriggered(
-            context: context,
-            guardrailName: guardrailName,
-            guardrailType: guardrailType,
-            result: result
-        )
+        switch result {
+        case .passed:
+            return
+        case .tripwire:
+            await observer?.onGuardrailTriggered(
+                context: context,
+                guardrailName: guardrailName,
+                guardrailType: guardrailType,
+                result: result
+            )
+        }
+    }
+
+    private func inputTripwireError(
+        guardrailName: String,
+        result: GuardrailResult
+    ) -> GuardrailError? {
+        switch result {
+        case .passed:
+            nil
+        case let .tripwire(message, outputInfo, _):
+            .inputTripwireTriggered(
+                guardrailName: guardrailName,
+                message: message,
+                outputInfo: outputInfo
+            )
+        }
+    }
+
+    private func outputTripwireError(
+        guardrailName: String,
+        agentName: String,
+        result: GuardrailResult
+    ) -> GuardrailError? {
+        switch result {
+        case .passed:
+            nil
+        case let .tripwire(message, outputInfo, _):
+            .outputTripwireTriggered(
+                guardrailName: guardrailName,
+                agentName: agentName,
+                message: message,
+                outputInfo: outputInfo
+            )
+        }
+    }
+
+    private func toolInputTripwireError(
+        guardrailName: String,
+        toolName: String,
+        result: GuardrailResult
+    ) -> GuardrailError? {
+        switch result {
+        case .passed:
+            nil
+        case let .tripwire(message, outputInfo, _):
+            .toolInputTripwireTriggered(
+                guardrailName: guardrailName,
+                toolName: toolName,
+                message: message,
+                outputInfo: outputInfo
+            )
+        }
+    }
+
+    private func toolOutputTripwireError(
+        guardrailName: String,
+        toolName: String,
+        result: GuardrailResult
+    ) -> GuardrailError? {
+        switch result {
+        case .passed:
+            nil
+        case let .tripwire(message, outputInfo, _):
+            .toolOutputTripwireTriggered(
+                guardrailName: guardrailName,
+                toolName: toolName,
+                message: message,
+                outputInfo: outputInfo
+            )
+        }
     }
 
     private func validateWithTimeout<Result: Sendable>(
@@ -444,22 +528,16 @@ extension GuardrailRunner {
                 )
                 results.append(executionResult)
 
-                // Emit guardrail event if tripwire triggered
-                if result.tripwireTriggered {
+                if let error = inputTripwireError(guardrailName: guardrail.name, result: result) {
                     await emitGuardrailEvent(
                         guardrailName: guardrail.name,
                         guardrailType: .input,
                         result: result,
                         context: context
                     )
-                }
-
-                if result.tripwireTriggered, configuration.stopOnFirstTripwire {
-                    throw GuardrailError.inputTripwireTriggered(
-                        guardrailName: guardrail.name,
-                        message: result.message,
-                        outputInfo: result.outputInfo
-                    )
+                    if configuration.stopOnFirstTripwire {
+                        throw error
+                    }
                 }
             } catch let error as GuardrailError {
                 throw error
@@ -472,12 +550,12 @@ extension GuardrailRunner {
         }
 
         // Check if any tripwires were triggered (when not stopping on first)
-        if let tripwiredResult = results.first(where: { $0.result.tripwireTriggered }) {
-            throw GuardrailError.inputTripwireTriggered(
-                guardrailName: tripwiredResult.guardrailName,
-                message: tripwiredResult.result.message,
-                outputInfo: tripwiredResult.result.outputInfo
-            )
+        if let tripwiredResult = results.first(where: \.didTriggerTripwire),
+           let error = inputTripwireError(
+               guardrailName: tripwiredResult.guardrailName,
+               result: tripwiredResult.result
+           ) {
+            throw error
         }
 
         return results
@@ -504,23 +582,20 @@ extension GuardrailRunner {
                 )
                 results.append(executionResult)
 
-                // Emit guardrail event if tripwire triggered
-                if result.tripwireTriggered {
+                if let error = outputTripwireError(
+                    guardrailName: guardrail.name,
+                    agentName: agent.configuration.name,
+                    result: result
+                ) {
                     await emitGuardrailEvent(
                         guardrailName: guardrail.name,
                         guardrailType: .output,
                         result: result,
                         context: context
                     )
-                }
-
-                if result.tripwireTriggered, configuration.stopOnFirstTripwire {
-                    throw GuardrailError.outputTripwireTriggered(
-                        guardrailName: guardrail.name,
-                        agentName: agent.configuration.name,
-                        message: result.message,
-                        outputInfo: result.outputInfo
-                    )
+                    if configuration.stopOnFirstTripwire {
+                        throw error
+                    }
                 }
             } catch let error as GuardrailError {
                 throw error
@@ -533,13 +608,13 @@ extension GuardrailRunner {
         }
 
         // Check if any tripwires were triggered (when not stopping on first)
-        if let tripwiredResult = results.first(where: { $0.result.tripwireTriggered }) {
-            throw GuardrailError.outputTripwireTriggered(
-                guardrailName: tripwiredResult.guardrailName,
-                agentName: agent.configuration.name,
-                message: tripwiredResult.result.message,
-                outputInfo: tripwiredResult.result.outputInfo
-            )
+        if let tripwiredResult = results.first(where: \.didTriggerTripwire),
+           let error = outputTripwireError(
+               guardrailName: tripwiredResult.guardrailName,
+               agentName: agent.configuration.name,
+               result: tripwiredResult.result
+           ) {
+            throw error
         }
 
         return results
@@ -564,23 +639,20 @@ extension GuardrailRunner {
                 )
                 results.append(executionResult)
 
-                // Emit guardrail event if tripwire triggered
-                if result.tripwireTriggered {
+                if let error = toolInputTripwireError(
+                    guardrailName: guardrail.name,
+                    toolName: data.tool.name,
+                    result: result
+                ) {
                     await emitGuardrailEvent(
                         guardrailName: guardrail.name,
                         guardrailType: .toolInput,
                         result: result,
                         context: data.context
                     )
-                }
-
-                if result.tripwireTriggered, configuration.stopOnFirstTripwire {
-                    throw GuardrailError.toolInputTripwireTriggered(
-                        guardrailName: guardrail.name,
-                        toolName: data.tool.name,
-                        message: result.message,
-                        outputInfo: result.outputInfo
-                    )
+                    if configuration.stopOnFirstTripwire {
+                        throw error
+                    }
                 }
             } catch let error as GuardrailError {
                 throw error
@@ -593,13 +665,13 @@ extension GuardrailRunner {
         }
 
         // Check if any tripwires were triggered (when not stopping on first)
-        if let tripwiredResult = results.first(where: { $0.result.tripwireTriggered }) {
-            throw GuardrailError.toolInputTripwireTriggered(
-                guardrailName: tripwiredResult.guardrailName,
-                toolName: data.tool.name,
-                message: tripwiredResult.result.message,
-                outputInfo: tripwiredResult.result.outputInfo
-            )
+        if let tripwiredResult = results.first(where: \.didTriggerTripwire),
+           let error = toolInputTripwireError(
+               guardrailName: tripwiredResult.guardrailName,
+               toolName: data.tool.name,
+               result: tripwiredResult.result
+           ) {
+            throw error
         }
 
         return results
@@ -625,23 +697,20 @@ extension GuardrailRunner {
                 )
                 results.append(executionResult)
 
-                // Emit guardrail event if tripwire triggered
-                if result.tripwireTriggered {
+                if let error = toolOutputTripwireError(
+                    guardrailName: guardrail.name,
+                    toolName: data.tool.name,
+                    result: result
+                ) {
                     await emitGuardrailEvent(
                         guardrailName: guardrail.name,
                         guardrailType: .toolOutput,
                         result: result,
                         context: data.context
                     )
-                }
-
-                if result.tripwireTriggered, configuration.stopOnFirstTripwire {
-                    throw GuardrailError.toolOutputTripwireTriggered(
-                        guardrailName: guardrail.name,
-                        toolName: data.tool.name,
-                        message: result.message,
-                        outputInfo: result.outputInfo
-                    )
+                    if configuration.stopOnFirstTripwire {
+                        throw error
+                    }
                 }
             } catch let error as GuardrailError {
                 throw error
@@ -654,13 +723,13 @@ extension GuardrailRunner {
         }
 
         // Check if any tripwires were triggered (when not stopping on first)
-        if let tripwiredResult = results.first(where: { $0.result.tripwireTriggered }) {
-            throw GuardrailError.toolOutputTripwireTriggered(
-                guardrailName: tripwiredResult.guardrailName,
-                toolName: data.tool.name,
-                message: tripwiredResult.result.message,
-                outputInfo: tripwiredResult.result.outputInfo
-            )
+        if let tripwiredResult = results.first(where: \.didTriggerTripwire),
+           let error = toolOutputTripwireError(
+               guardrailName: tripwiredResult.guardrailName,
+               toolName: data.tool.name,
+               result: tripwiredResult.result
+           ) {
+            throw error
         }
 
         return results
@@ -705,7 +774,11 @@ extension GuardrailRunner {
 
             // Collect results
             for try await (index, executionResult) in group {
-                if executionResult.result.tripwireTriggered, configuration.stopOnFirstTripwire {
+                if configuration.stopOnFirstTripwire,
+                   let error = inputTripwireError(
+                       guardrailName: executionResult.guardrailName,
+                       result: executionResult.result
+                   ) {
                     await emitGuardrailEvent(
                         guardrailName: executionResult.guardrailName,
                         guardrailType: .input,
@@ -714,11 +787,7 @@ extension GuardrailRunner {
                     )
                     // Cancel remaining tasks
                     group.cancelAll()
-                    throw GuardrailError.inputTripwireTriggered(
-                        guardrailName: executionResult.guardrailName,
-                        message: executionResult.result.message,
-                        outputInfo: executionResult.result.outputInfo
-                    )
+                    throw error
                 }
                 indexedResults.append((index, executionResult))
             }
@@ -727,8 +796,12 @@ extension GuardrailRunner {
             let results = indexedResults.map(\.1)
 
             // Check if any tripwires were triggered (when not stopping on first)
-            if let tripwiredResult = results.first(where: { $0.result.tripwireTriggered }) {
-                for result in results where result.result.tripwireTriggered {
+            if let tripwiredResult = results.first(where: \.didTriggerTripwire),
+               let error = inputTripwireError(
+                   guardrailName: tripwiredResult.guardrailName,
+                   result: tripwiredResult.result
+               ) {
+                for result in results where result.didTriggerTripwire {
                     await emitGuardrailEvent(
                         guardrailName: result.guardrailName,
                         guardrailType: .input,
@@ -736,11 +809,7 @@ extension GuardrailRunner {
                         context: context
                     )
                 }
-                throw GuardrailError.inputTripwireTriggered(
-                    guardrailName: tripwiredResult.guardrailName,
-                    message: tripwiredResult.result.message,
-                    outputInfo: tripwiredResult.result.outputInfo
-                )
+                throw error
             }
 
             return results
@@ -785,7 +854,12 @@ extension GuardrailRunner {
 
             // Collect results
             for try await (index, executionResult) in group {
-                if executionResult.result.tripwireTriggered, configuration.stopOnFirstTripwire {
+                if configuration.stopOnFirstTripwire,
+                   let error = outputTripwireError(
+                       guardrailName: executionResult.guardrailName,
+                       agentName: agentName,
+                       result: executionResult.result
+                   ) {
                     await emitGuardrailEvent(
                         guardrailName: executionResult.guardrailName,
                         guardrailType: .output,
@@ -794,12 +868,7 @@ extension GuardrailRunner {
                     )
                     // Cancel remaining tasks
                     group.cancelAll()
-                    throw GuardrailError.outputTripwireTriggered(
-                        guardrailName: executionResult.guardrailName,
-                        agentName: agentName,
-                        message: executionResult.result.message,
-                        outputInfo: executionResult.result.outputInfo
-                    )
+                    throw error
                 }
                 indexedResults.append((index, executionResult))
             }
@@ -808,8 +877,13 @@ extension GuardrailRunner {
             let results = indexedResults.map(\.1)
 
             // Check if any tripwires were triggered (when not stopping on first)
-            if let tripwiredResult = results.first(where: { $0.result.tripwireTriggered }) {
-                for result in results where result.result.tripwireTriggered {
+            if let tripwiredResult = results.first(where: \.didTriggerTripwire),
+               let error = outputTripwireError(
+                   guardrailName: tripwiredResult.guardrailName,
+                   agentName: agentName,
+                   result: tripwiredResult.result
+               ) {
+                for result in results where result.didTriggerTripwire {
                     await emitGuardrailEvent(
                         guardrailName: result.guardrailName,
                         guardrailType: .output,
@@ -817,12 +891,7 @@ extension GuardrailRunner {
                         context: context
                     )
                 }
-                throw GuardrailError.outputTripwireTriggered(
-                    guardrailName: tripwiredResult.guardrailName,
-                    agentName: agentName,
-                    message: tripwiredResult.result.message,
-                    outputInfo: tripwiredResult.result.outputInfo
-                )
+                throw error
             }
 
             return results
@@ -865,7 +934,12 @@ extension GuardrailRunner {
 
             // Collect results
             for try await (index, executionResult) in group {
-                if executionResult.result.tripwireTriggered, configuration.stopOnFirstTripwire {
+                if configuration.stopOnFirstTripwire,
+                   let error = toolInputTripwireError(
+                       guardrailName: executionResult.guardrailName,
+                       toolName: toolName,
+                       result: executionResult.result
+                   ) {
                     await emitGuardrailEvent(
                         guardrailName: executionResult.guardrailName,
                         guardrailType: .toolInput,
@@ -874,12 +948,7 @@ extension GuardrailRunner {
                     )
                     // Cancel remaining tasks
                     group.cancelAll()
-                    throw GuardrailError.toolInputTripwireTriggered(
-                        guardrailName: executionResult.guardrailName,
-                        toolName: toolName,
-                        message: executionResult.result.message,
-                        outputInfo: executionResult.result.outputInfo
-                    )
+                    throw error
                 }
                 indexedResults.append((index, executionResult))
             }
@@ -888,8 +957,13 @@ extension GuardrailRunner {
             let results = indexedResults.map(\.1)
 
             // Check if any tripwires were triggered (when not stopping on first)
-            if let tripwiredResult = results.first(where: { $0.result.tripwireTriggered }) {
-                for result in results where result.result.tripwireTriggered {
+            if let tripwiredResult = results.first(where: \.didTriggerTripwire),
+               let error = toolInputTripwireError(
+                   guardrailName: tripwiredResult.guardrailName,
+                   toolName: toolName,
+                   result: tripwiredResult.result
+               ) {
+                for result in results where result.didTriggerTripwire {
                     await emitGuardrailEvent(
                         guardrailName: result.guardrailName,
                         guardrailType: .toolInput,
@@ -897,12 +971,7 @@ extension GuardrailRunner {
                         context: data.context
                     )
                 }
-                throw GuardrailError.toolInputTripwireTriggered(
-                    guardrailName: tripwiredResult.guardrailName,
-                    toolName: toolName,
-                    message: tripwiredResult.result.message,
-                    outputInfo: tripwiredResult.result.outputInfo
-                )
+                throw error
             }
 
             return results
@@ -946,7 +1015,12 @@ extension GuardrailRunner {
 
             // Collect results
             for try await (index, executionResult) in group {
-                if executionResult.result.tripwireTriggered, configuration.stopOnFirstTripwire {
+                if configuration.stopOnFirstTripwire,
+                   let error = toolOutputTripwireError(
+                       guardrailName: executionResult.guardrailName,
+                       toolName: toolName,
+                       result: executionResult.result
+                   ) {
                     await emitGuardrailEvent(
                         guardrailName: executionResult.guardrailName,
                         guardrailType: .toolOutput,
@@ -955,12 +1029,7 @@ extension GuardrailRunner {
                     )
                     // Cancel remaining tasks
                     group.cancelAll()
-                    throw GuardrailError.toolOutputTripwireTriggered(
-                        guardrailName: executionResult.guardrailName,
-                        toolName: toolName,
-                        message: executionResult.result.message,
-                        outputInfo: executionResult.result.outputInfo
-                    )
+                    throw error
                 }
                 indexedResults.append((index, executionResult))
             }
@@ -969,8 +1038,13 @@ extension GuardrailRunner {
             let results = indexedResults.map(\.1)
 
             // Check if any tripwires were triggered (when not stopping on first)
-            if let tripwiredResult = results.first(where: { $0.result.tripwireTriggered }) {
-                for result in results where result.result.tripwireTriggered {
+            if let tripwiredResult = results.first(where: \.didTriggerTripwire),
+               let error = toolOutputTripwireError(
+                   guardrailName: tripwiredResult.guardrailName,
+                   toolName: toolName,
+                   result: tripwiredResult.result
+               ) {
+                for result in results where result.didTriggerTripwire {
                     await emitGuardrailEvent(
                         guardrailName: result.guardrailName,
                         guardrailType: .toolOutput,
@@ -978,12 +1052,7 @@ extension GuardrailRunner {
                         context: data.context
                     )
                 }
-                throw GuardrailError.toolOutputTripwireTriggered(
-                    guardrailName: tripwiredResult.guardrailName,
-                    toolName: toolName,
-                    message: tripwiredResult.result.message,
-                    outputInfo: tripwiredResult.result.outputInfo
-                )
+                throw error
             }
 
             return results
