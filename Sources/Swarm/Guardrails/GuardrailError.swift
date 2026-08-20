@@ -14,13 +14,13 @@ public enum GuardrailError: Error, Sendable, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case let .inputTripwireTriggered(name, message, _):
-            "Input guardrail '\(name)' tripwire triggered: \(message ?? "No message")"
+            "Input guardrail '\(name)' tripwire triggered: \(message)"
         case let .outputTripwireTriggered(name, agentName, message, _):
-            "Output guardrail '\(name)' tripwire triggered for agent '\(agentName)': \(message ?? "No message")"
+            "Output guardrail '\(name)' tripwire triggered for agent '\(agentName)': \(message)"
         case let .toolInputTripwireTriggered(name, toolName, message, _):
-            "Tool input guardrail '\(name)' tripwire triggered for tool '\(toolName)': \(message ?? "No message")"
+            "Tool input guardrail '\(name)' tripwire triggered for tool '\(toolName)': \(message)"
         case let .toolOutputTripwireTriggered(name, toolName, message, _):
-            "Tool output guardrail '\(name)' tripwire triggered for tool '\(toolName)': \(message ?? "No message")"
+            "Tool output guardrail '\(name)' tripwire triggered for tool '\(toolName)': \(message)"
         case let .executionFailed(name, error):
             "Guardrail '\(name)' execution failed: \(error)"
         }
@@ -29,7 +29,7 @@ public enum GuardrailError: Error, Sendable, LocalizedError, Equatable {
     /// Input guardrail tripwire was triggered
     case inputTripwireTriggered(
         guardrailName: String,
-        message: String?,
+        message: String,
         outputInfo: SendableValue?
     )
 
@@ -37,7 +37,7 @@ public enum GuardrailError: Error, Sendable, LocalizedError, Equatable {
     case outputTripwireTriggered(
         guardrailName: String,
         agentName: String,
-        message: String?,
+        message: String,
         outputInfo: SendableValue?
     )
 
@@ -45,7 +45,7 @@ public enum GuardrailError: Error, Sendable, LocalizedError, Equatable {
     case toolInputTripwireTriggered(
         guardrailName: String,
         toolName: String,
-        message: String?,
+        message: String,
         outputInfo: SendableValue?
     )
 
@@ -53,7 +53,7 @@ public enum GuardrailError: Error, Sendable, LocalizedError, Equatable {
     case toolOutputTripwireTriggered(
         guardrailName: String,
         toolName: String,
-        message: String?,
+        message: String,
         outputInfo: SendableValue?
     )
 

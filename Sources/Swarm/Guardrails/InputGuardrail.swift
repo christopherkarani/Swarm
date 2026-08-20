@@ -123,7 +123,7 @@ public typealias InputValidationHandler = @Sendable (String, AgentContext?) asyn
 /// } catch let error as GuardrailError {
 ///     switch error {
 ///     case .inputTripwireTriggered(let name, let message, let info):
-///         print("Guardrail '\(name)' blocked input: \(message ?? "")")
+///         print("Guardrail '\(name)' blocked input: \(message)")
 ///     default:
 ///         break
 ///     }

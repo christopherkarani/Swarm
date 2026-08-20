@@ -1907,10 +1907,10 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 |------|------|--------|------|-----------|
 | 11 | enum | public | GuardrailError | `public enum GuardrailError` |
 | 14 | var | public | GuardrailError.errorDescription | `public var errorDescription: String? { get }` |
-| 30 | case | public | GuardrailError.inputTripwireTriggered(guardrailName:message:outputInfo:) | `public case inputTripwireTriggered(guardrailName: String, message: String?, outputInfo: SendableValue?)` |
-| 37 | case | public | GuardrailError.outputTripwireTriggered(guardrailName:agentName:message:outputInfo:) | `public case outputTripwireTriggered(guardrailName: String, agentName: String, message: String?, outputInfo: SendableValue?)` |
-| 45 | case | public | GuardrailError.toolInputTripwireTriggered(guardrailName:toolName:message:outputInfo:) | `public case toolInputTripwireTriggered(guardrailName: String, toolName: String, message: String?, outputInfo: SendableValue?)` |
-| 53 | case | public | GuardrailError.toolOutputTripwireTriggered(guardrailName:toolName:message:outputInfo:) | `public case toolOutputTripwireTriggered(guardrailName: String, toolName: String, message: String?, outputInfo: SendableValue?)` |
+| 30 | case | public | GuardrailError.inputTripwireTriggered(guardrailName:message:outputInfo:) | `public case inputTripwireTriggered(guardrailName: String, message: String, outputInfo: SendableValue?)` |
+| 37 | case | public | GuardrailError.outputTripwireTriggered(guardrailName:agentName:message:outputInfo:) | `public case outputTripwireTriggered(guardrailName: String, agentName: String, message: String, outputInfo: SendableValue?)` |
+| 45 | case | public | GuardrailError.toolInputTripwireTriggered(guardrailName:toolName:message:outputInfo:) | `public case toolInputTripwireTriggered(guardrailName: String, toolName: String, message: String, outputInfo: SendableValue?)` |
+| 53 | case | public | GuardrailError.toolOutputTripwireTriggered(guardrailName:toolName:message:outputInfo:) | `public case toolOutputTripwireTriggered(guardrailName: String, toolName: String, message: String, outputInfo: SendableValue?)` |
 | 61 | case | public | GuardrailError.executionFailed(guardrailName:underlyingError:) | `public case executionFailed(guardrailName: String, underlyingError: String)` |
 | 67 | var | public | GuardrailError.debugDescription | `public var debugDescription: String { get }` |
 

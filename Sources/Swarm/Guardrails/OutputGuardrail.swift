@@ -137,7 +137,7 @@ public typealias OutputValidationHandler = @Sendable (String, any AgentRuntime, 
 /// } catch let error as GuardrailError {
 ///     switch error {
 ///     case .outputTripwireTriggered(let name, let agentName, let message, _):
-///         print("Guardrail '\(name)' blocked output from '\(agentName)': \(message ?? "")")
+///         print("Guardrail '\(name)' blocked output from '\(agentName)': \(message)")
 ///     default:
 ///         break
 ///     }

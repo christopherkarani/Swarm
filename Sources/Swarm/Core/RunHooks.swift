@@ -559,7 +559,12 @@ public struct LoggingObserver: AgentObserver {
         } else {
             ""
         }
-        let message = result.message ?? "No message provided"
+        let message = switch result {
+        case let .passed(message, _, _):
+            message ?? "No message provided"
+        case let .tripwire(message, _, _):
+            message
+        }
         Log.agents.warning("Guardrail triggered\(contextId) - name: \(guardrailName), type: \(guardrailType.rawValue), message: \(message)")
     }
 
