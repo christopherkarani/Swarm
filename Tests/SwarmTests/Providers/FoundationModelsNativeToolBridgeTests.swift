@@ -516,6 +516,22 @@ struct FoundationModelsExecutingToolTests {
         }
     }
 
+    @Test("Executing tool surfaces registry toolFailure as a native tool error")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func executingToolSurfacesToolFailureAsNativeError() async throws {
+        struct Boom: Error {}
+        let executor = ToolCallExecutor { _, _ in
+            throw AgentError.toolFailure(toolName: "boom", message: nil, cause: Boom())
+        }
+        let runtime = FoundationModelsNativeToolRuntime(executor: executor)
+        do {
+            _ = try await runtime.execute(name: "boom", arguments: [:])
+            Issue.record("expected FoundationModelsNativeToolError")
+        } catch let error as FoundationModelsNativeToolError {
+            #expect(error.toolName == "boom")
+        }
+    }
+
     @Test("Executing tool fires observer hooks and input guardrails")
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
     func executingToolFiresObserverAndGuardrails() async throws {

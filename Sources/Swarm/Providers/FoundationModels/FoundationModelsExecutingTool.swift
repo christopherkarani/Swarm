@@ -47,13 +47,15 @@ actor FoundationModelsNativeToolRuntime {
         } catch let request as OwnedLoopHandoffRequest {
             throw request
         } catch let error as AgentError {
-            if case .toolExecutionFailed = error {
+            switch error {
+            case .toolFailure, .toolExecutionFailed:
                 throw FoundationModelsNativeToolError(
                     toolName: name,
                     message: error.localizedDescription
                 )
+            default:
+                return "Tool '\(name)' failed: \(error.localizedDescription)"
             }
-            return "Tool '\(name)' failed: \(error.localizedDescription)"
         } catch {
             return "Tool '\(name)' failed: \(error.localizedDescription)"
         }
