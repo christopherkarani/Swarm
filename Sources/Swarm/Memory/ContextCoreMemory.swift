@@ -57,11 +57,19 @@ public struct ContextCoreMemoryConfiguration: Sendable {
 ///
 /// Swarm uses this implementation as the primary working-memory layer inside
 /// its default composite memory stack.
-public actor ContextCoreMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, MemorySessionImportPolicy, MemorySessionReplayAware {
+public actor ContextCoreMemory: Memory {
     public nonisolated let memoryPromptTitle: String
     public nonisolated let memoryPromptGuidance: String?
     public nonisolated let memoryPriority: MemoryPriorityHint = .primary
     public nonisolated let allowsAutomaticSessionSeeding: Bool
+
+    public nonisolated var memoryPromptMetadata: MemoryPromptMetadata? {
+        MemoryPromptMetadata(
+            title: memoryPromptTitle,
+            guidance: memoryPromptGuidance,
+            priority: memoryPriority
+        )
+    }
 
     public var count: Int {
         messages.count

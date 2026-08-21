@@ -2,8 +2,10 @@ import Foundation
 
 /// Optional lifecycle observer for memory implementations that need session scoping.
 ///
-/// This is primarily used by persistent, single-file memories (e.g. Wax) to tag
-/// ingested content per agent run without exposing storage-specific APIs to agents.
+/// Session begin/end are now defaulted requirements on ``Memory``; implement
+/// ``Memory/beginMemorySession()`` and ``Memory/endMemorySession()`` directly
+/// instead of conforming to this protocol.
+@available(*, deprecated, message: "Implement beginMemorySession() and endMemorySession() on your Memory conformance instead.")
 public protocol MemorySessionLifecycle: Memory {
     /// Called at the beginning of an agent `run` / `stream`.
     func beginMemorySession() async
@@ -14,9 +16,43 @@ public protocol MemorySessionLifecycle: Memory {
 
 /// Optional hook for memories that want custom handling when session history is replayed
 /// into a fresh memory instance.
+///
+/// History import is now a defaulted requirement on ``Memory``; implement
+/// ``Memory/importSessionHistory(_:)`` directly instead of conforming to this
+/// protocol.
+@available(*, deprecated, message: "Implement importSessionHistory(_:) on your Memory conformance instead.")
 public protocol MemorySessionReplayAware: Memory {
     /// Imports a batch of session history messages using memory-specific logic.
     func importSessionHistory(_ messages: [MemoryMessage]) async
+}
+
+// MARK: - Defaulted capability implementations
+
+public extension Memory {
+    /// Default no-op: memories without session state do nothing at session start.
+    func beginMemorySession() async {}
+
+    /// Default no-op: memories without session state do nothing at session end.
+    func endMemorySession() async {}
+
+    /// Default replay: appends each replayed message through ``add(_:)``.
+    func importSessionHistory(_ messages: [MemoryMessage]) async {
+        for message in messages {
+            await add(message)
+        }
+    }
+
+    /// Default seed gate: only fresh (empty) memories accept automatic seeding,
+    /// which prevents duplicate imports into stores that already hold content.
+    func shouldImportSessionHistory() async -> Bool {
+        await isEmpty
+    }
+
+    /// Default tracking: single-layer memories own no separate tracked layer.
+    nonisolated var trackedSessionMemory: (any Memory)? { nil }
+
+    /// Default policy: automatic session seeding is allowed.
+    nonisolated var allowsAutomaticSessionSeeding: Bool { true }
 }
 
 public extension Memory {
@@ -26,40 +62,15 @@ public extension Memory {
             return
         }
 
-        let hooks = MemoryHooks.resolved(from: self)
-        guard hooks.allowsAutomaticSessionSeeding else {
+        guard allowsAutomaticSessionSeeding else {
             return
         }
 
-        let shouldSeed = if let shouldImport = hooks.shouldImportSessionHistory {
-            await shouldImport()
-        } else {
-            await isEmpty
-        }
+        let shouldSeed = await shouldImportSessionHistory()
         guard shouldSeed else {
             return
         }
 
-        if let importHistory = hooks.importSessionHistory {
-            await importHistory(messages)
-        } else {
-            for message in messages {
-                await add(message)
-            }
-        }
+        await importSessionHistory(messages)
     }
-}
-
-/// Internal hook for composite memories that contain the agent's default memory
-/// as one layer. The agent runtime uses this to preserve the default memory's
-/// per-session clearing and serialization behavior without clearing static
-/// memory layers such as workspace context.
-protocol MemorySessionTrackingProvider: Sendable {
-    var trackedSessionMemory: (any Memory)? { get }
-}
-
-/// Internal hook for memories that need per-layer control over when session
-/// replay should be imported.
-protocol MemorySessionSeedControlling: Memory {
-    func shouldImportSessionHistory() async -> Bool
 }

@@ -1,13 +1,13 @@
 import Foundation
 
-/// Package-internal optional memory behavior, resolved from public marker protocols.
+/// Package-internal snapshot of a memory's optional capabilities.
 ///
-/// Agent and ``CompositeMemory`` read this value instead of probing `as?` / `as AnyObject`.
-/// ``resolved(from:)`` is the compatibility shim: it is the only site that may cast the
-/// public marker protocols (and the package-internal tracking / seed controllers).
-///
-/// Memories that do not conform to a marker produce ``empty`` hooks for that capability
-/// (session begin/end is a no-op, retrieval falls back to ``Memory/context(for:tokenLimit:)``).
+/// Agent and ``CompositeMemory`` read this value instead of probing memory
+/// types at runtime. Every capability is a defaulted ``Memory`` requirement,
+/// so ``resolved(from:)`` is pure witness dispatch: memories that do not
+/// implement a capability resolve to hooks wrapping the protocol defaults
+/// (session begin/end is a no-op, retrieval falls back to
+/// ``Memory/context(for:tokenLimit:)``).
 ///
 /// - Note: `MemoryHooks` is not part of the public API. Generated `@AgentActor` `run()`
 ///   still uses ``MemorySessionLifecycle`` directly so consumer modules can compile.
@@ -51,51 +51,31 @@ package struct MemoryHooks: Sendable {
 package extension MemoryHooks {
     static let empty = MemoryHooks()
 
-    /// Fills hooks from public marker protocols and package-internal controllers.
+    /// Snapshots a memory's capabilities through defaulted `Memory` witnesses.
     ///
-    /// This is the only remaining `as?` pyramid for optional memory behavior.
+    /// Synchronously readable requirements (prompt metadata, tracking, seeding
+    /// policy) are captured eagerly; asynchronous ones are wrapped into
+    /// `@Sendable` closures that forward to the witness.
     static func resolved(from memory: any Memory) -> MemoryHooks {
         var hooks = MemoryHooks.empty
 
-        if let lifecycle = memory as? any MemorySessionLifecycle {
-            hooks.beginMemorySession = {
-                await lifecycle.beginMemorySession()
-            }
-            hooks.endMemorySession = {
-                await lifecycle.endMemorySession()
-            }
-        }
+        let metadata = memory.memoryPromptMetadata
+        hooks.memoryPromptTitle = metadata?.title
+        hooks.memoryPromptGuidance = metadata?.guidance
+        hooks.memoryPriority = metadata?.priority
+        hooks.trackedSessionMemory = memory.trackedSessionMemory
+        hooks.allowsAutomaticSessionSeeding = memory.allowsAutomaticSessionSeeding
 
-        if let policyAware = memory as? any MemoryRetrievalPolicyAware {
-            hooks.contextForQuery = { query in
-                await policyAware.context(for: query)
-            }
+        hooks.beginMemorySession = { await memory.beginMemorySession() }
+        hooks.endMemorySession = { await memory.endMemorySession() }
+        hooks.contextForQuery = { query in
+            await memory.context(for: query)
         }
-
-        if let descriptor = memory as? any MemoryPromptDescriptor {
-            hooks.memoryPromptTitle = descriptor.memoryPromptTitle
-            hooks.memoryPromptGuidance = descriptor.memoryPromptGuidance
-            hooks.memoryPriority = descriptor.memoryPriority
+        hooks.shouldImportSessionHistory = {
+            await memory.shouldImportSessionHistory()
         }
-
-        if let trackingProvider = memory as? any MemorySessionTrackingProvider {
-            hooks.trackedSessionMemory = trackingProvider.trackedSessionMemory
-        }
-
-        if let importPolicy = memory as? any MemorySessionImportPolicy {
-            hooks.allowsAutomaticSessionSeeding = importPolicy.allowsAutomaticSessionSeeding
-        }
-
-        if let seedController = memory as? any MemorySessionSeedControlling {
-            hooks.shouldImportSessionHistory = {
-                await seedController.shouldImportSessionHistory()
-            }
-        }
-
-        if let replayAware = memory as? any MemorySessionReplayAware {
-            hooks.importSessionHistory = { messages in
-                await replayAware.importSessionHistory(messages)
-            }
+        hooks.importSessionHistory = { messages in
+            await memory.importSessionHistory(messages)
         }
 
         return hooks
@@ -121,5 +101,5 @@ package func resolvedTrackedSessionMemory(
     if let defaultMemory, memoriesAreSameInstance(activeMemory, defaultMemory) {
         return defaultMemory
     }
-    return MemoryHooks.resolved(from: activeMemory).trackedSessionMemory
+    return activeMemory.trackedSessionMemory
 }

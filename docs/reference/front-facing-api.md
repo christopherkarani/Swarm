@@ -489,6 +489,50 @@ let vector: VectorMemory = .vector(
 )
 ```
 
+### Optional memory capabilities (`Memory` protocol)
+
+Custom `Memory` conformers opt into optional runtime behaviors by implementing
+defaulted `Memory` requirements — no marker protocol conformance is required or
+consulted. Implementing the member is the opt-in:
+
+```swift
+public protocol Memory: Actor, Sendable {
+    // ...required members...
+
+    // Session lifecycle (defaults: no-op)
+    func beginMemorySession() async
+    func endMemorySession() async
+
+    // Item-aware retrieval (default: falls back to context(for:tokenLimit:))
+    func context(for query: MemoryQuery) async -> String
+
+    // Session-history replay (default: appends each message via add(_:))
+    func importSessionHistory(_ messages: [MemoryMessage]) async
+
+    // Seed gate (default: isEmpty — only fresh memories accept seeding)
+    func shouldImportSessionHistory() async -> Bool
+
+    // Composite session layer (default: nil)
+    nonisolated var trackedSessionMemory: (any Memory)? { get }
+
+    // Automatic seeding policy (default: true)
+    nonisolated var allowsAutomaticSessionSeeding: Bool { get }
+
+    // Prompt labels for retrieved context (default: nil)
+    nonisolated var memoryPromptMetadata: MemoryPromptMetadata? { get }
+}
+```
+
+`MemoryPromptMetadata(title:guidance:priority:)` labels memory context in
+system prompts; `nil` renders under the generic "Relevant Context from Memory"
+heading with no guidance text.
+
+The former marker protocols are deprecated and still compile so existing
+conformances keep working: `MemorySessionLifecycle`,
+`MemorySessionReplayAware`, `MemoryRetrievalPolicyAware`,
+`MemorySessionImportPolicy`, and `MemoryPromptDescriptor`. Migrate by
+implementing the corresponding `Memory` requirement directly.
+
 ## 10) HandoffTool
 
 Agents passed via the `handoffs` or `handoffAgents` init parameters are automatically wrapped as tool calls. The LLM can invoke them to delegate control.

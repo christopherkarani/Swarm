@@ -20,8 +20,11 @@ struct AgentMemoryHooksTests {
         let result = try await agent.run("hello", session: session)
 
         #expect(result.output == "ok")
-        #expect(MemoryHooks.resolved(from: memory).beginMemorySession == nil)
-        #expect(MemoryHooks.resolved(from: memory).endMemorySession == nil)
+        // Witness-based dispatch: a memory without lifecycle implementations
+        // resolves hooks that wrap the protocol's no-op defaults, so the run
+        // above exercises begin/end harmlessly.
+        #expect(MemoryHooks.resolved(from: memory).beginMemorySession != nil)
+        #expect(MemoryHooks.resolved(from: memory).endMemorySession != nil)
     }
 
     @Test("Agent still invokes lifecycle through resolved hooks")
@@ -126,7 +129,7 @@ struct AgentMemoryHooksTests {
     }
 }
 
-private actor SessionLifecycleProbeMemory: Memory, MemorySessionLifecycle {
+private actor SessionLifecycleProbeMemory: Memory {
     private(set) var beginCount = 0
     private(set) var endCount = 0
 
@@ -155,10 +158,18 @@ private actor SessionLifecycleProbeMemory: Memory, MemorySessionLifecycle {
     }
 }
 
-private actor TitledMemory: Memory, MemoryPromptDescriptor {
+private actor TitledMemory: Memory {
     nonisolated let memoryPromptTitle = "Custom Hook Title"
     nonisolated let memoryPromptGuidance: String? = "Treat hooks as primary."
     nonisolated let memoryPriority: MemoryPriorityHint = .primary
+
+    nonisolated var memoryPromptMetadata: MemoryPromptMetadata? {
+        MemoryPromptMetadata(
+            title: memoryPromptTitle,
+            guidance: memoryPromptGuidance,
+            priority: memoryPriority
+        )
+    }
 
     private let contextText: String
 

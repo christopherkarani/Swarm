@@ -2,7 +2,7 @@ import Foundation
 
 /// A memory implementation that fans writes out to multiple memory layers and
 /// combines retrieved context from each layer.
-actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, MemorySessionReplayAware, MemoryRetrievalPolicyAware, MemorySessionImportPolicy, MemorySessionTrackingProvider, MemorySessionSeedControlling {
+actor CompositeMemory: Memory {
     nonisolated let memoryPromptTitle: String
     nonisolated let memoryPromptGuidance: String?
     nonisolated let memoryPriority: MemoryPriorityHint
@@ -31,6 +31,14 @@ actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, M
         self.trackedSessionMemory = trackedSessionMemory
         #endif
         self.allowsAutomaticSessionSeeding = memories.contains(where: Self.allowsSessionSeeding)
+    }
+
+    nonisolated var memoryPromptMetadata: MemoryPromptMetadata? {
+        MemoryPromptMetadata(
+            title: memoryPromptTitle,
+            guidance: memoryPromptGuidance,
+            priority: memoryPriority
+        )
     }
 
     var count: Int {
