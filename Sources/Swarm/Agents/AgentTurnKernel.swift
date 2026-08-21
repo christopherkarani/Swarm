@@ -101,6 +101,11 @@ enum AgentTurnKernel: Sendable {
     }
 
     /// Handoff names win so transfer tools are never treated as Membrane internals.
+    ///
+    /// Pass `isHandoffTool` only when a handoff configuration exists for the
+    /// name, and `isMembraneInternal` only when an adapter is present and the
+    /// name is a Membrane internal. Agent then switches this result exhaustively;
+    /// a missing handle is a `.regular` execution arm, never a remapped kind.
     static func hostToolCallKind(
         isHandoffTool: Bool,
         isMembraneInternal: Bool
@@ -112,26 +117,6 @@ enum AgentTurnKernel: Sendable {
             return .membraneInternal
         }
         return .regular
-    }
-
-    /// Maps a classified kind plus handle snapshots onto the arm Agent should run.
-    ///
-    /// Missing handoff configuration or a missing Membrane adapter becomes
-    /// `.regular`. Handoff never becomes `.membraneInternal`, even when an
-    /// adapter is present.
-    static func resolvedHostToolCallKind(
-        _ kind: HostToolCallKind,
-        hasHandoffConfiguration: Bool,
-        hasMembraneAdapter: Bool
-    ) -> HostToolCallKind {
-        switch kind {
-        case .handoff:
-            return hasHandoffConfiguration ? .handoff : .regular
-        case .membraneInternal:
-            return hasMembraneAdapter ? .membraneInternal : .regular
-        case .regular:
-            return .regular
-        }
     }
 
     /// Input passed to the target agent when a handoff tool fires.

@@ -1856,14 +1856,10 @@ public struct Agent: AgentRuntime, Sendable {
     ) async throws {
         let activeMemory = resolvedMemory()
 
-        // This function never runs handoff I/O; a stray `.handoff` kind becomes
-        // `.regular` so transfer tools cannot take the Membrane path.
-        let resolvedKind = AgentTurnKernel.resolvedHostToolCallKind(
-            kind,
-            hasHandoffConfiguration: false,
-            hasMembraneAdapter: membraneAdapter != nil
-        )
-        switch (resolvedKind, membraneAdapter) {
+        // Handoff I/O lives in `processToolCallsWithHandoffs`. A `.handoff` kind
+        // here is the missing-configuration fallback and must not take the
+        // Membrane internal path.
+        switch (kind, membraneAdapter) {
         case (.membraneInternal, let membraneAdapter?):
             let call = ToolCall(
                 providerCallId: parsedCall.id,
@@ -2154,14 +2150,10 @@ public struct Agent: AgentRuntime, Sendable {
         )
 
         for parsedCall in response.toolCalls {
-            let kind = AgentTurnKernel.resolvedHostToolCallKind(
-                AgentTurnKernel.hostToolCallKind(
-                    isHandoffTool: handoffMap[parsedCall.name] != nil,
-                    isMembraneInternal: membraneAdapter != nil
-                        && MembraneInternalTools.isInternalTool(parsedCall.name)
-                ),
-                hasHandoffConfiguration: handoffMap[parsedCall.name] != nil,
-                hasMembraneAdapter: membraneAdapter != nil
+            let kind = AgentTurnKernel.hostToolCallKind(
+                isHandoffTool: handoffMap[parsedCall.name] != nil,
+                isMembraneInternal: membraneAdapter != nil
+                    && MembraneInternalTools.isInternalTool(parsedCall.name)
             )
 
             switch kind {

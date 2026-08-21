@@ -178,38 +178,6 @@ struct AgentTurnKernelTests {
         )
     }
 
-    @Test(
-        "Resolved host-tool kind maps missing handles to regular, never Membrane for handoff",
-        arguments: [
-            (AgentTurnKernel.HostToolCallKind.handoff, true, true, AgentTurnKernel.HostToolCallKind.handoff),
-            (AgentTurnKernel.HostToolCallKind.handoff, true, false, AgentTurnKernel.HostToolCallKind.handoff),
-            (AgentTurnKernel.HostToolCallKind.handoff, false, true, AgentTurnKernel.HostToolCallKind.regular),
-            (AgentTurnKernel.HostToolCallKind.handoff, false, false, AgentTurnKernel.HostToolCallKind.regular),
-            (AgentTurnKernel.HostToolCallKind.membraneInternal, true, true, AgentTurnKernel.HostToolCallKind.membraneInternal),
-            (AgentTurnKernel.HostToolCallKind.membraneInternal, true, false, AgentTurnKernel.HostToolCallKind.regular),
-            (AgentTurnKernel.HostToolCallKind.membraneInternal, false, true, AgentTurnKernel.HostToolCallKind.membraneInternal),
-            (AgentTurnKernel.HostToolCallKind.membraneInternal, false, false, AgentTurnKernel.HostToolCallKind.regular),
-            (AgentTurnKernel.HostToolCallKind.regular, true, true, AgentTurnKernel.HostToolCallKind.regular),
-            (AgentTurnKernel.HostToolCallKind.regular, true, false, AgentTurnKernel.HostToolCallKind.regular),
-            (AgentTurnKernel.HostToolCallKind.regular, false, true, AgentTurnKernel.HostToolCallKind.regular),
-            (AgentTurnKernel.HostToolCallKind.regular, false, false, AgentTurnKernel.HostToolCallKind.regular),
-        ]
-    )
-    func resolvedHostToolCallKind(
-        kind: AgentTurnKernel.HostToolCallKind,
-        hasHandoffConfiguration: Bool,
-        hasMembraneAdapter: Bool,
-        expected: AgentTurnKernel.HostToolCallKind
-    ) {
-        #expect(
-            AgentTurnKernel.resolvedHostToolCallKind(
-                kind,
-                hasHandoffConfiguration: hasHandoffConfiguration,
-                hasMembraneAdapter: hasMembraneAdapter
-            ) == expected
-        )
-    }
-
     @Test("Handoff input uses the last user message, then reason, then a default")
     func handoffInput() {
         #expect(AgentTurnKernel.handoffInput(lastUserText: "summarize this", reason: "writer") == "summarize this")
