@@ -101,6 +101,11 @@ enum AgentTurnKernel: Sendable {
     }
 
     /// Handoff names win so transfer tools are never treated as Membrane internals.
+    ///
+    /// Pass `isHandoffTool` only when a handoff configuration exists for the
+    /// name, and `isMembraneInternal` only when an adapter is present and the
+    /// name is a Membrane internal. Agent then switches this result exhaustively;
+    /// a missing handle is a `.regular` execution arm, never a remapped kind.
     static func hostToolCallKind(
         isHandoffTool: Bool,
         isMembraneInternal: Bool

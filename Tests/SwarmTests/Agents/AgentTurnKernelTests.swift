@@ -156,25 +156,25 @@ struct AgentTurnKernelTests {
         )
     }
 
-    @Test("Host tool-call kind prefers handoff over membrane internals")
-    func hostToolCallKind() {
+    @Test(
+        "Host tool-call kind is exhaustive for Agent dispatch",
+        arguments: [
+            (true, true, AgentTurnKernel.HostToolCallKind.handoff),
+            (true, false, AgentTurnKernel.HostToolCallKind.handoff),
+            (false, true, AgentTurnKernel.HostToolCallKind.membraneInternal),
+            (false, false, AgentTurnKernel.HostToolCallKind.regular),
+        ]
+    )
+    func hostToolCallKind(
+        isHandoffTool: Bool,
+        isMembraneInternal: Bool,
+        expected: AgentTurnKernel.HostToolCallKind
+    ) {
         #expect(
             AgentTurnKernel.hostToolCallKind(
-                isHandoffTool: true,
-                isMembraneInternal: true
-            ) == .handoff
-        )
-        #expect(
-            AgentTurnKernel.hostToolCallKind(
-                isHandoffTool: false,
-                isMembraneInternal: true
-            ) == .membraneInternal
-        )
-        #expect(
-            AgentTurnKernel.hostToolCallKind(
-                isHandoffTool: false,
-                isMembraneInternal: false
-            ) == .regular
+                isHandoffTool: isHandoffTool,
+                isMembraneInternal: isMembraneInternal
+            ) == expected
         )
     }
 
