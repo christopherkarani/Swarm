@@ -183,6 +183,8 @@ public extension InferenceProvider {
 
     var promptTokenCounter: (any PromptTokenCounter)? { nil }
 
+    var metadata: (any InferenceProviderMetadata)? { nil }
+
     func generate(prompt: String, options: InferenceOptions) async throws -> String {
         try await generate(messages: [.user(prompt)], options: options)
     }

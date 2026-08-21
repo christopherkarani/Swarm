@@ -174,6 +174,47 @@ func erasedOpenTelemetryWrapperForwardsPromptToolStreamingWithoutLeftoverCasts()
     #expect(wrapped.promptTokenCounter == nil)
 }
 
+private struct MetadataSnapshotProvider: InferenceProvider {
+    let snapshot: InferenceProviderMetadataSnapshot
+
+    var metadata: (any InferenceProviderMetadata)? {
+        snapshot.providerName == nil && snapshot.modelName == nil && snapshot.endpointURL == nil ? nil : snapshot
+    }
+
+    func generate(messages _: [InferenceMessage], options _: InferenceOptions) async throws -> String {
+        "ok"
+    }
+}
+
+@Test("OTel wrappers forward provider metadata without casting")
+func openTelemetryWrappersForwardProviderMetadataWithoutCasting() {
+    let snapshot = InferenceProviderMetadataSnapshot(
+        providerName: "example",
+        modelName: "example-model",
+        endpointURL: URL(string: "https://api.example.com/v1")
+    )
+    let base = MetadataSnapshotProvider(snapshot: snapshot)
+
+    let genericProvider: any InferenceProvider = OpenTelemetryInferenceProvider(base)
+    let erasedProvider: any InferenceProvider = OpenTelemetryAnyInferenceProvider(
+        base,
+        tracer: OpenTelemetry.instance.tracerProvider.get(instrumentationName: "test.llm"),
+        captureContent: false
+    )
+
+    #expect(genericProvider.metadata?.providerName == "example")
+    #expect(genericProvider.metadata?.modelName == "example-model")
+    #expect(genericProvider.metadata?.endpointURL == URL(string: "https://api.example.com/v1"))
+    #expect(erasedProvider.metadata?.providerName == "example")
+    #expect(erasedProvider.metadata?.modelName == "example-model")
+    #expect(erasedProvider.metadata?.endpointURL == URL(string: "https://api.example.com/v1"))
+
+    let bare = MetadataSnapshotProvider(
+        snapshot: InferenceProviderMetadataSnapshot(providerName: nil, modelName: nil, endpointURL: nil)
+    )
+    #expect((OpenTelemetryInferenceProvider(bare) as any InferenceProvider).metadata == nil)
+}
+
 @Test("Agent OpenTelemetry wrapper creates one parent trace for multiple LLM calls")
 func agentOpenTelemetryWrapperCreatesOneParentTraceForMultipleLLMCalls() async throws {
     let exporter = RecordingSpanExporter()

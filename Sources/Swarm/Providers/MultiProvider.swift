@@ -97,6 +97,10 @@ public actor MultiProvider: InferenceProvider {
         providerSnapshot.load().promptTokenCounter
     }
 
+    nonisolated public var metadata: (any InferenceProviderMetadata)? {
+        providerSnapshot.load().metadata
+    }
+
     // MARK: - Initialization
 
     /// Creates a MultiProvider with a default provider for unmatched prefixes.

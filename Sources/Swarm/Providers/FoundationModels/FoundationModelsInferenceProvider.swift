@@ -174,6 +174,9 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     }
     public var endpointURL: URL? { nil }
 
+    /// This provider's own metadata, re-resolved per read (the profile can change).
+    public var metadata: (any InferenceProviderMetadata)? { self }
+
     public var capabilities: InferenceProviderCapabilities {
         var capabilities: InferenceProviderCapabilities = [
             .conversationMessages,

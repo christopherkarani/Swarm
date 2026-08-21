@@ -122,6 +122,55 @@ struct InferenceProviderCapabilityDispatchTests {
         #expect(provider.generateCallCount() == 2)
     }
 
+    @Test("Providers expose observability metadata through the defaulted requirement")
+    func providersSurfaceMetadataWithoutLeftoverCasts() throws {
+        let carrier = MetadataCarrierProvider(
+            metadata: InferenceProviderMetadataSnapshot(
+                providerName: "example",
+                modelName: "example-model",
+                endpointURL: URL(string: "https://api.example.com/v1")
+            )
+        )
+        let provider: any InferenceProvider = carrier
+
+        #expect(TextStubProvider().metadata == nil)
+
+        let resolvedMetadata = try #require(provider.metadata)
+        #expect(resolvedMetadata.providerName == "example")
+        #expect(resolvedMetadata.modelName == "example-model")
+        #expect(resolvedMetadata.endpointURL == URL(string: "https://api.example.com/v1"))
+    }
+
+    @Test("MultiProvider forwards the resolved child's metadata")
+    func multiProviderForwardsResolvedChildMetadata() async throws {
+        let defaultProvider = MetadataCarrierProvider(
+            metadata: InferenceProviderMetadataSnapshot(providerName: "default", modelName: nil, endpointURL: nil)
+        )
+        let childProvider = MetadataCarrierProvider(
+            metadata: InferenceProviderMetadataSnapshot(
+                providerName: "child",
+                modelName: "child-model",
+                endpointURL: nil
+            )
+        )
+
+        let multiProvider = MultiProvider(defaultProvider: defaultProvider)
+
+        let initialMetadata = try #require(await multiProvider.metadata)
+        #expect(initialMetadata.providerName == "default")
+
+        try await multiProvider.register(prefix: "child", provider: childProvider)
+        await multiProvider.setModel("child/child-model")
+
+        let routedMetadata = try #require(await multiProvider.metadata)
+        #expect(routedMetadata.providerName == "child")
+        #expect(routedMetadata.modelName == "child-model")
+
+        await multiProvider.clearModel()
+        let fallbackMetadata = try #require(await multiProvider.metadata)
+        #expect(fallbackMetadata.providerName == "default")
+    }
+
     private static let echoThenDoneResponses: [InferenceResponse] = [
         InferenceResponse(
             content: nil,
@@ -172,6 +221,21 @@ private struct TokenPropertyProvider: InferenceProvider, MessagesFromPromptInfer
     let counter: RecordingPromptTokenCounter
 
     var promptTokenCounter: (any PromptTokenCounter)? { counter }
+
+    func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+        "ok"
+    }
+
+    func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield("ok")
+            continuation.finish()
+        }
+    }
+}
+
+private struct MetadataCarrierProvider: InferenceProvider, MessagesFromPromptInference {
+    var metadata: (any InferenceProviderMetadata)?
 
     func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
         "ok"
