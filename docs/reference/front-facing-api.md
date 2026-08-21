@@ -511,6 +511,7 @@ let triage = try Agent(
 ```swift
 public protocol InferenceProvider: Sendable {
     var capabilities: InferenceProviderCapabilities { get }
+    var promptTokenCounter: (any PromptTokenCounter)? { get }
 
     func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String
 
@@ -556,6 +557,11 @@ public protocol InferenceProvider: Sendable {
 }
 ```
 
+Agent reads ``InferenceProviderCapabilities`` and ``InferenceProvider/promptTokenCounter``
+on ``InferenceProvider``. Deprecated leftover protocols
+(`ToolCallStreamingInferenceProvider`, `StructuredOutputInferenceProvider`,
+`PromptTokenCountingInferenceProvider`) are not the Agent seam.
+
 ### Provider factories (dot-syntax)
 
 Built-in inference is Apple Foundation Models (on-device) and
@@ -586,7 +592,8 @@ Opt in to a provider-owned tool loop with
 (or the streaming counterpart). It never type-casts the adapter.
 ``AgentConfiguration/foundationModelsExecution`` is ignored. Capture remains
 the default. Structured outputs use guided generation when the JSON Schema maps;
-otherwise prompt+parse. See the [Foundation Models guide](/guide/foundation-models).
+otherwise prompt+parse. Agent never type-casts leftover capability protocols.
+See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
 (wrapped as ``FoundationModelsNativeTool``).

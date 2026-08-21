@@ -181,6 +181,8 @@ extension InferenceMessage {
 public extension InferenceProvider {
     var capabilities: InferenceProviderCapabilities { [.conversationMessages] }
 
+    var promptTokenCounter: (any PromptTokenCounter)? { nil }
+
     func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
         try await generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
     }
@@ -218,20 +220,25 @@ public extension InferenceProvider {
     }
 
     func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        streamFinishedToolTurn {
+            try await generateWithToolCalls(prompt: prompt, tools: tools, options: options)
+        }
+    }
+
+    func streamWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        if let promptStreamer = self as? any ToolCallStreamingInferenceProvider {
-            return promptStreamer.streamWithToolCalls(
-                prompt: InferenceMessage.flattenPrompt(messages),
-                tools: tools,
-                options: options
-            )
-        }
-        return streamFinishedToolTurn {
-            try await generateWithToolCalls(messages: messages, tools: tools, options: options)
-        }
+        streamWithToolCalls(
+            prompt: InferenceMessage.flattenPrompt(messages),
+            tools: tools,
+            options: options
+        )
     }
 
     func streamWithToolCalls(
@@ -259,16 +266,11 @@ public extension InferenceProvider {
         request: StructuredOutputRequest,
         options: InferenceOptions
     ) async throws -> StructuredOutputResult {
-        let prompt = InferenceMessage.flattenPrompt(messages)
-        // Prompt structured output is a StructuredOutputInferenceProvider requirement, not InferenceProvider.
-        if let structuredProvider = self as? any StructuredOutputInferenceProvider {
-            return try await structuredProvider.generateStructured(
-                prompt: prompt,
-                request: request,
-                options: options
-            )
-        }
-        return try await generateStructured(prompt: prompt, request: request, options: options)
+        try await generateStructured(
+            prompt: InferenceMessage.flattenPrompt(messages),
+            request: request,
+            options: options
+        )
     }
 }
 

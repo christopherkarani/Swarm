@@ -36,6 +36,10 @@ public struct TextOnlyConversationInferenceProviderAdapter: InferenceProvider {
         return capabilities
     }
 
+    public var promptTokenCounter: (any PromptTokenCounter)? {
+        base.promptTokenCounter
+    }
+
     public func generate(prompt: String, options: InferenceOptions) async throws -> String {
         try await base.generate(prompt: prompt, options: options)
     }
@@ -100,14 +104,5 @@ public extension InferenceProvider {
         ) { toolPrompt, options in
             try await generate(prompt: toolPrompt, options: options)
         }
-    }
-}
-
-extension TextOnlyConversationInferenceProviderAdapter: PromptTokenCountingInferenceProvider {
-    public func countTokens(in text: String) async throws -> Int {
-        if let countingBase = base as? any PromptTokenCountingInferenceProvider {
-            return try await countingBase.countTokens(in: text)
-        }
-        return CharacterBasedTokenEstimator.shared.estimateTokens(for: text)
     }
 }

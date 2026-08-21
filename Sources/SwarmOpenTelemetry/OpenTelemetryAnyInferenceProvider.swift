@@ -73,6 +73,26 @@ protocol OpenTelemetryAnyForwarding: InferenceProvider {
 }
 
 extension OpenTelemetryAnyForwarding {
+    var promptTokenCounter: (any PromptTokenCounter)? {
+        core.promptTokenCounter
+    }
+
+    func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        core.streamWithToolCalls(prompt: prompt, tools: tools, options: options)
+    }
+
+    func generateStructured(
+        prompt: String,
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        try await core.generateStructured(prompt: prompt, request: request, options: options)
+    }
+
     func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
@@ -123,6 +143,10 @@ final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
 
     var capabilities: InferenceProviderCapabilities {
         InferenceProviderCapabilities.resolved(for: base)
+    }
+
+    var promptTokenCounter: (any PromptTokenCounter)? {
+        base.promptTokenCounter
     }
 
     func generate(prompt: String, options: InferenceOptions) async throws -> String {
@@ -223,16 +247,11 @@ final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
     ) async throws -> StructuredOutputResult {
         try await withLLMSpan(operation: "chat", inputLength: prompt.count, options: options) { span in
             span.setAttribute(key: "gen_ai.output.type", value: "json")
-            let result: StructuredOutputResult
-            if let structuredProvider = self.base as? any StructuredOutputInferenceProvider {
-                result = try await structuredProvider.generateStructured(
-                    prompt: prompt,
-                    request: request,
-                    options: options
-                )
-            } else {
-                result = try await self.base.generateStructured(prompt: prompt, request: request, options: options)
-            }
+            let result = try await self.base.generateStructured(
+                prompt: prompt,
+                request: request,
+                options: options
+            )
             span.setAttribute(key: "gen_ai.response.output_length", value: result.rawJSON.count)
             return result
         }
@@ -262,10 +281,7 @@ final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
         options: InferenceOptions
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
         instrumentToolStream(inputLength: prompt.count, toolCount: tools.count, options: options) {
-            guard let toolStreamingProvider = self.base as? any ToolCallStreamingInferenceProvider else {
-                throw AgentError.generationFailed(reason: "Provider does not support prompt tool-call streaming")
-            }
-            return toolStreamingProvider.streamWithToolCalls(prompt: prompt, tools: tools, options: options)
+            self.base.streamWithToolCalls(prompt: prompt, tools: tools, options: options)
         }
     }
 
