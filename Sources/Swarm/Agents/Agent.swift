@@ -1303,11 +1303,9 @@ public struct Agent: AgentRuntime, Sendable {
             return ToolCallRecord(
                 toolName: toolCall.toolName,
                 arguments: toolCall.arguments,
-                result: toolResult.output,
                 duration: toolResult.duration,
                 timestamp: toolCall.timestamp,
-                isSuccess: toolResult.isSuccess,
-                errorMessage: toolResult.errorMessage
+                outcome: ToolCallRecord.Outcome(toolResult.outcome)
             )
         }
 

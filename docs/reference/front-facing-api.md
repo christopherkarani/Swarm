@@ -656,7 +656,39 @@ public struct AgentResult: Sendable {
     /// (including Apple Foundation Models on the current SDK).
     public let tokenUsage: TokenUsage?
 }
+
+public struct ToolResult: Sendable {
+    public enum Outcome: Sendable {
+        case success(SendableValue)
+        case failure(message: String)
+    }
+
+    public let callId: UUID
+    public let duration: Duration
+    public let outcome: Outcome
+    public var isSuccess: Bool { get }
+    public var output: SendableValue { get }       // `.null` on failure
+    public var errorMessage: String? { get }      // `nil` on success
+}
+
+public struct ToolCallRecord: Sendable {
+    public enum Outcome: Sendable {
+        case success(SendableValue)
+        case failure(message: String)
+    }
+
+    public let toolName: String
+    public let arguments: [String: SendableValue]
+    public let duration: Duration
+    public let timestamp: Date
+    public let outcome: Outcome
+    public var result: SendableValue { get }      // `.null` on failure
+    public var isSuccess: Bool { get }
+    public var errorMessage: String? { get }      // `nil` on success
+}
 ```
+
+Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The independent `isSuccess` + `errorMessage` memberwise initializers remain as deprecated compatibility shims. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
 
 ## 13) Public macros
 
