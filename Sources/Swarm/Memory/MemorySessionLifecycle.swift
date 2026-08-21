@@ -26,13 +26,13 @@ public extension Memory {
             return
         }
 
-        let importPolicy = self as? any MemorySessionImportPolicy
-        guard importPolicy?.allowsAutomaticSessionSeeding ?? true else {
+        let hooks = MemoryHooks.resolved(from: self)
+        guard hooks.allowsAutomaticSessionSeeding else {
             return
         }
 
-        let shouldSeed = if let seedController = self as? any MemorySessionSeedControlling {
-            await seedController.shouldImportSessionHistory()
+        let shouldSeed = if let shouldImport = hooks.shouldImportSessionHistory {
+            await shouldImport()
         } else {
             await isEmpty
         }
@@ -40,8 +40,8 @@ public extension Memory {
             return
         }
 
-        if let replayAware = self as? any MemorySessionReplayAware {
-            await replayAware.importSessionHistory(messages)
+        if let importHistory = hooks.importSessionHistory {
+            await importHistory(messages)
         } else {
             for message in messages {
                 await add(message)

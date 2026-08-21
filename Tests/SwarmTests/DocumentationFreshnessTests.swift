@@ -86,6 +86,7 @@ struct DocumentationFreshnessTests {
 
         #expect(!catalog.contains("AnyMemory"))
         #expect(!catalog.contains("AgentRuntimeIdentifiable"))
+        #expect(!catalog.contains("MemoryHooks"))
         #expect(!catalog.contains("CallableAgent"))
         #expect(!catalog.contains("Tools/ToolChainBuilder.swift"))
         #expect(!catalog.contains("| ToolChain |"))

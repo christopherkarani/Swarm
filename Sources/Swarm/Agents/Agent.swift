@@ -896,15 +896,16 @@ public struct Agent: AgentRuntime, Sendable {
 
         let activeTracer = resolvedActiveTracer()
         let activeMemory = resolvedMemory()
-        let lifecycleMemory = activeMemory as? any MemorySessionLifecycle
-        let trackedSessionMemory = activeMemory.flatMap(defaultSessionMemory)
+        let memoryHooks = activeMemory.map { MemoryHooks.resolved(from: $0) } ?? .empty
+        let trackedSessionMemory = activeMemory.flatMap { memory in
+            resolvedTrackedSessionMemory(from: memory, defaultMemory: defaultMemory)
+        }
         var defaultMemoryRunKey: ObjectIdentifier?
 
         if let session,
            let trackedSessionMemory
         {
-            let trackedMemoryObject = trackedSessionMemory as AnyObject
-            let memoryKey = ObjectIdentifier(trackedMemoryObject)
+            let memoryKey = memoryObjectIdentifier(trackedSessionMemory)
             defaultMemoryRunKey = memoryKey
             if try await Self.defaultMemorySessionTracker.beginRun(for: memoryKey, sessionID: session.sessionId) {
                 await trackedSessionMemory.clear()
@@ -921,8 +922,8 @@ public struct Agent: AgentRuntime, Sendable {
         // Notify observer of agent start
         await observer?.onAgentStart(context: nil, agent: self, input: input)
 
-        if let lifecycleMemory {
-            await lifecycleMemory.beginMemorySession()
+        if let beginMemorySession = memoryHooks.beginMemorySession {
+            await beginMemorySession()
         }
 
         do {
@@ -1031,8 +1032,8 @@ public struct Agent: AgentRuntime, Sendable {
             // Notify observer of agent completion
             await observer?.onAgentEnd(context: nil, agent: self, result: result)
 
-            if let lifecycleMemory {
-                await lifecycleMemory.endMemorySession()
+            if let endMemorySession = memoryHooks.endMemorySession {
+                await endMemorySession()
             }
             if let defaultMemoryRunKey {
                 await Self.defaultMemorySessionTracker.endRun(for: defaultMemoryRunKey)
@@ -1043,8 +1044,8 @@ public struct Agent: AgentRuntime, Sendable {
             // Notify observer of error
             await observer?.onError(context: nil, agent: self, error: normalizedError)
             await tracing.traceError(normalizedError)
-            if let lifecycleMemory {
-                await lifecycleMemory.endMemorySession()
+            if let endMemorySession = memoryHooks.endMemorySession {
+                await endMemorySession()
             }
             if let defaultMemoryRunKey {
                 await Self.defaultMemorySessionTracker.endRun(for: defaultMemoryRunKey)
@@ -1162,28 +1163,12 @@ public struct Agent: AgentRuntime, Sendable {
         memory ?? AgentEnvironmentValues.current.memory ?? defaultMemory
     }
 
-    private func defaultSessionMemory(from activeMemory: any Memory) -> (any Memory)? {
-        if let defaultMemory {
-            let activeObject = activeMemory as AnyObject
-            let defaultObject = defaultMemory as AnyObject
-            if activeObject === defaultObject {
-                return defaultMemory
-            }
-        }
-
-        if let trackingProvider = activeMemory as? any MemorySessionTrackingProvider {
-            return trackingProvider.trackedSessionMemory
-        }
-
-        return nil
-    }
-
     private func shouldPersistNoSessionTurn(to activeMemory: any Memory) -> Bool {
         guard let defaultMemory else {
             return false
         }
 
-        return activeMemory as AnyObject === defaultMemory as AnyObject
+        return memoriesAreSameInstance(activeMemory, defaultMemory)
     }
 
     private func persistNoSessionTurn(
@@ -1395,9 +1380,10 @@ public struct Agent: AgentRuntime, Sendable {
             let contextProfile = configuration.effectiveContextProfile
             let tokenLimit = contextProfile.memoryTokenLimit
             memoryContext = try await executeWithinRemainingTimeout(startTime: startTime) {
-                if let policyAwareMemory = mem as? any MemoryRetrievalPolicyAware {
-                    return await policyAwareMemory.context(
-                        for: MemoryQuery(
+                let hooks = MemoryHooks.resolved(from: mem)
+                if let contextForQuery = hooks.contextForQuery {
+                    return await contextForQuery(
+                        MemoryQuery(
                             text: input,
                             tokenLimit: tokenLimit,
                             maxItems: contextProfile.maxRetrievedItems,
@@ -2470,10 +2456,10 @@ public struct Agent: AgentRuntime, Sendable {
             return baseInstructions
         }
 
-        let descriptor = memory as? any MemoryPromptDescriptor
-        let title = descriptor?.memoryPromptTitle ?? "Relevant Context from Memory"
-        let priority = descriptor?.memoryPriority
-        let guidance = descriptor?.memoryPromptGuidance ?? {
+        let hooks = memory.map { MemoryHooks.resolved(from: $0) } ?? .empty
+        let title = hooks.memoryPromptTitle ?? "Relevant Context from Memory"
+        let priority = hooks.memoryPriority
+        let guidance = hooks.memoryPromptGuidance ?? {
             guard priority == .primary else { return nil }
             return "Use the memory context as primary source of truth before calling tools."
         }()
