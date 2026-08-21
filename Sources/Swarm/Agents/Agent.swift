@@ -1471,13 +1471,12 @@ public struct Agent: AgentRuntime, Sendable {
                 )
                 let prompt = InferenceMessage.flattenPrompt(structuredMessages)
                 let useProviderOwnedToolLoop = provider.capabilities.contains(.providerOwnedToolLoop)
+                try AgentTurnKernel.requireOwnedLoopGate(
+                    useProviderOwnedToolLoop: useProviderOwnedToolLoop,
+                    hasExecutionGate: executionGate != nil
+                )
                 let toolExecutor: ToolCallExecutor?
-                if useProviderOwnedToolLoop {
-                    guard let executionGate else {
-                        throw AgentError.internalError(
-                            reason: "Provider-owned tool loop missing execution gate"
-                        )
-                    }
+                if useProviderOwnedToolLoop, let executionGate {
                     toolExecutor = makeToolCallExecutor(
                         toolRegistry: toolRegistry,
                         resultBuilder: resultBuilder,
@@ -1491,9 +1490,15 @@ public struct Agent: AgentRuntime, Sendable {
                     toolExecutor = nil
                 }
 
+                let inferenceKind = AgentTurnKernel.inferenceKind(
+                    toolSchemasEmpty: toolSchemas.isEmpty,
+                    useProviderOwnedToolLoop: useProviderOwnedToolLoop,
+                    streamingToolCalls: useToolStreaming
+                )
+
                 // If no tools defined, generate without tool calling unless the
                 // adapter owns the tool loop (empty tool list).
-                if toolSchemas.isEmpty && !useProviderOwnedToolLoop {
+                if inferenceKind == .withoutTools {
                     let loopInferenceOptions = inferenceOptions
                     let response = try await executeProviderInference(
                         startTime: startTime,
@@ -1529,13 +1534,14 @@ public struct Agent: AgentRuntime, Sendable {
                 // Generate response with tool calls
                 let loopInferenceOptions = inferenceOptions
                 // Owned-loop tools run inside inference; retrying would replay them.
-                let ownedLoopInferenceRetryPolicy: RetryPolicy? =
-                    useProviderOwnedToolLoop && !toolSchemas.isEmpty
-                    ? .noRetry
-                    : nil
+                let ownedLoopInferenceRetryPolicy = AgentTurnKernel.ownedLoopInferenceRetryPolicy(
+                    useProviderOwnedToolLoop: useProviderOwnedToolLoop,
+                    hasToolSchemas: !toolSchemas.isEmpty
+                )
                 let response: InferenceResponse
                 do {
-                    response = if useToolStreaming {
+                    let streamToolCalls = inferenceKind == .withTools(streaming: true)
+                    response = if streamToolCalls {
                         try await executeProviderInference(
                             startTime: startTime,
                             observer: observer,
@@ -1610,10 +1616,14 @@ public struct Agent: AgentRuntime, Sendable {
                 }
                 recordUsage(response.usage, on: resultBuilder)
 
-                if useProviderOwnedToolLoop {
-                    guard let content = response.content else {
-                        throw AgentError.generationFailed(reason: "Model returned no content or tool calls")
-                    }
+                switch AgentTurnKernel.afterInference(
+                    useProviderOwnedToolLoop: useProviderOwnedToolLoop,
+                    response: response
+                ) {
+                case .failMissingContent:
+                    throw AgentError.generationFailed(reason: "Model returned no content or tool calls")
+
+                case let .finishAssistant(content):
                     let finalResponse = try finalizeAssistantResponse(
                         content: content,
                         request: structuredOutputRequest,
@@ -1630,9 +1640,8 @@ public struct Agent: AgentRuntime, Sendable {
                         structuredOutput: finalResponse.structuredOutput,
                         transcriptMessages: transcriptMessages
                     )
-                }
 
-                if response.hasToolCalls {
+                case .processHostToolCalls:
                     let handoffResult = try await processToolCallsWithHandoffs(
                         response: response,
                         toolRegistry: toolRegistry,
@@ -1645,7 +1654,6 @@ public struct Agent: AgentRuntime, Sendable {
                         context: executionContext,
                         startTime: startTime
                     )
-                    // If a handoff occurred, return the target agent's result
                     if let handoffOutput = handoffResult {
                         await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
                         return ToolLoopOutcome(
@@ -1654,29 +1662,8 @@ public struct Agent: AgentRuntime, Sendable {
                             transcriptMessages: transcriptMessages
                         )
                     }
-                } else {
-                    guard let content = response.content else {
-                        throw AgentError.generationFailed(reason: "Model returned no content or tool calls")
-                    }
-                    let finalResponse = try finalizeAssistantResponse(
-                        content: content,
-                        request: structuredOutputRequest,
-                        provider: provider
-                    )
-                    appendOwnedLoopTranscript(
-                        response.transcriptMessages,
-                        finalized: finalResponse,
-                        to: &transcriptMessages
-                    )
                     await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
-                    return ToolLoopOutcome(
-                        output: finalResponse.content,
-                        structuredOutput: finalResponse.structuredOutput,
-                        transcriptMessages: transcriptMessages
-                    )
                 }
-
-                await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
             } catch {
                 await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
                 throw normalizeCancellation(error)
@@ -1854,43 +1841,6 @@ public struct Agent: AgentRuntime, Sendable {
         return FinalAssistantResponse(content: content, structuredOutput: structuredOutput)
     }
 
-    /// Processes tool calls from the model response.
-    private func processToolCalls(
-        response: InferenceResponse,
-        toolRegistry: ToolRegistry,
-        conversationHistory: inout [ConversationMessage],
-        transcriptMessages: inout [MemoryMessage],
-        resultBuilder: AgentResult.Builder,
-        observer: (any AgentObserver)?,
-        tracing: TracingHelper?,
-        membraneAdapter: (any MembraneAgentAdapter)?
-    ) async throws {
-        let toolCallSummary = response.toolCalls.map { "Calling tool: \($0.name)" }.joined(separator: ", ")
-        let assistantContent = response.content ?? toolCallSummary
-        conversationHistory.append(.assistant(assistantContent, toolCalls: response.toolCalls))
-        transcriptMessages.append(
-            SwarmTranscriptCodec.encodeMessage(
-                role: .assistant,
-                content: assistantContent,
-                toolCalls: response.toolCalls
-            )
-        )
-
-        for parsedCall in response.toolCalls {
-            try await executeSingleToolCall(
-                parsedCall: parsedCall,
-                toolRegistry: toolRegistry,
-                conversationHistory: &conversationHistory,
-                transcriptMessages: &transcriptMessages,
-                resultBuilder: resultBuilder,
-                observer: observer,
-                tracing: tracing,
-                membraneAdapter: membraneAdapter,
-                startTime: ContinuousClock.now
-            )
-        }
-    }
-
     /// Executes a single tool call and updates conversation history.
     private func executeSingleToolCall(
         parsedCall: InferenceResponse.ParsedToolCall,
@@ -1900,13 +1850,17 @@ public struct Agent: AgentRuntime, Sendable {
         resultBuilder: AgentResult.Builder,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
+        kind: AgentTurnKernel.HostToolCallKind,
         membraneAdapter: (any MembraneAgentAdapter)?,
         startTime: ContinuousClock.Instant
     ) async throws {
         let activeMemory = resolvedMemory()
 
-        if let membraneAdapter,
-           MembraneInternalTools.isInternalTool(parsedCall.name) {
+        // Handoff I/O lives in `processToolCallsWithHandoffs`. A `.handoff` kind
+        // here is the missing-configuration fallback and must not take the
+        // Membrane internal path.
+        switch (kind, membraneAdapter) {
+        case (.membraneInternal, let membraneAdapter?):
             let call = ToolCall(
                 providerCallId: parsedCall.id,
                 toolName: parsedCall.name,
@@ -1969,98 +1923,105 @@ public struct Agent: AgentRuntime, Sendable {
                 }
                 conversationHistory.append(.toolResult(
                     toolName: parsedCall.name,
-                    result: "[TOOL ERROR] Execution failed: \(message). Please try a different approach or tool.",
+                    result: AgentTurnKernel.toolFailureConversationText(message: message),
                     toolCallID: parsedCall.id
                 ))
                 transcriptMessages.append(
                     SwarmTranscriptCodec.encodeMessage(
                         role: .tool,
-                        content: "[TOOL ERROR] Execution failed: \(message). Please try a different approach or tool.",
+                        content: AgentTurnKernel.toolFailureConversationText(message: message),
                         toolName: parsedCall.name,
                         toolCallID: parsedCall.id
                     )
                 )
                 if let activeMemory {
-                    await activeMemory.add(.tool("Error - \(message)", toolName: parsedCall.name))
+                    await activeMemory.add(.tool(
+                        AgentTurnKernel.memoryToolErrorText(message: message),
+                        toolName: parsedCall.name
+                    ))
                 }
                 return
             }
-        }
 
-        let engine = ToolExecutionEngine()
-        let outcome = try await executeWithinRemainingTimeout(startTime: startTime) {
-            try await engine.execute(
-                parsedCall,
-                registry: toolRegistry,
-                agent: self,
-                context: nil,
-                resultBuilder: resultBuilder,
-                observer: observer,
-                tracing: tracing,
-                stopOnToolError: false
-            )
-        }
+        case (.handoff, _), (.regular, _), (.membraneInternal, nil):
+            let engine = ToolExecutionEngine()
+            let outcome = try await executeWithinRemainingTimeout(startTime: startTime) {
+                try await engine.execute(
+                    parsedCall,
+                    registry: toolRegistry,
+                    agent: self,
+                    context: nil,
+                    resultBuilder: resultBuilder,
+                    observer: observer,
+                    tracing: tracing,
+                    stopOnToolError: false
+                )
+            }
 
-        if outcome.result.isSuccess {
-            var toolOutputText = Self.toolOutputText(for: outcome.result.output)
-            if let membraneAdapter {
-                do {
-                    let currentToolOutput = toolOutputText
-                    let transformed = try await executeWithinRemainingTimeout(startTime: startTime) {
-                        try await membraneAdapter.transformToolResult(
-                            toolName: parsedCall.name,
-                            output: currentToolOutput,
-                            profile: configuration.effectiveContextProfile
-                        )
+            if outcome.result.isSuccess {
+                var toolOutputText = Self.toolOutputText(for: outcome.result.output)
+                if let membraneAdapter {
+                    do {
+                        let currentToolOutput = toolOutputText
+                        let transformed = try await executeWithinRemainingTimeout(startTime: startTime) {
+                            try await membraneAdapter.transformToolResult(
+                                toolName: parsedCall.name,
+                                output: currentToolOutput,
+                                profile: configuration.effectiveContextProfile
+                            )
+                        }
+                        toolOutputText = transformed.textForConversation
+                        if let pointerID = transformed.pointerID {
+                            _ = resultBuilder.setMetadata("membrane.pointerized", .bool(true))
+                            _ = resultBuilder.setMetadata("membrane.pointer.last_id", .string(pointerID))
+                        }
+                    } catch {
+                        _ = resultBuilder.setMetadata("membrane.fallback.used", .bool(true))
+                        _ = resultBuilder.setMetadata("membrane.fallback.error", .string(fallbackDiagnosticMessage(for: error)))
                     }
-                    toolOutputText = transformed.textForConversation
-                    if let pointerID = transformed.pointerID {
-                        _ = resultBuilder.setMetadata("membrane.pointerized", .bool(true))
-                        _ = resultBuilder.setMetadata("membrane.pointer.last_id", .string(pointerID))
-                    }
-                } catch {
-                    _ = resultBuilder.setMetadata("membrane.fallback.used", .bool(true))
-                    _ = resultBuilder.setMetadata("membrane.fallback.error", .string(fallbackDiagnosticMessage(for: error)))
                 }
-            }
 
-            conversationHistory.append(.toolResult(
-                toolName: parsedCall.name,
-                result: toolOutputText,
-                toolCallID: parsedCall.id
-            ))
-            transcriptMessages.append(
-                SwarmTranscriptCodec.encodeMessage(
-                    role: .tool,
-                    content: toolOutputText,
+                conversationHistory.append(.toolResult(
                     toolName: parsedCall.name,
+                    result: toolOutputText,
                     toolCallID: parsedCall.id
+                ))
+                transcriptMessages.append(
+                    SwarmTranscriptCodec.encodeMessage(
+                        role: .tool,
+                        content: toolOutputText,
+                        toolName: parsedCall.name,
+                        toolCallID: parsedCall.id
+                    )
                 )
-            )
-            if let activeMemory {
-                await activeMemory.add(.tool(toolOutputText, toolName: parsedCall.name))
-            }
-        } else {
-            let errorMessage = outcome.result.errorMessage ?? "Unknown error"
-            conversationHistory.append(.toolResult(
-                toolName: parsedCall.name,
-                result: "[TOOL ERROR] Execution failed: \(errorMessage). Please try a different approach or tool.",
-                toolCallID: parsedCall.id
-            ))
-            transcriptMessages.append(
-                SwarmTranscriptCodec.encodeMessage(
-                    role: .tool,
-                    content: "[TOOL ERROR] Execution failed: \(errorMessage). Please try a different approach or tool.",
+                if let activeMemory {
+                    await activeMemory.add(.tool(toolOutputText, toolName: parsedCall.name))
+                }
+            } else {
+                let errorMessage = outcome.result.errorMessage ?? "Unknown error"
+                conversationHistory.append(.toolResult(
                     toolName: parsedCall.name,
+                    result: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
                     toolCallID: parsedCall.id
+                ))
+                transcriptMessages.append(
+                    SwarmTranscriptCodec.encodeMessage(
+                        role: .tool,
+                        content: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
+                        toolName: parsedCall.name,
+                        toolCallID: parsedCall.id
+                    )
                 )
-            )
-            if let activeMemory {
-                await activeMemory.add(.tool("Error - \(errorMessage)", toolName: parsedCall.name))
-            }
+                if let activeMemory {
+                    await activeMemory.add(.tool(
+                        AgentTurnKernel.memoryToolErrorText(message: errorMessage),
+                        toolName: parsedCall.name
+                    ))
+                }
 
-            if configuration.stopOnToolError {
-                throw AgentError.toolExecutionFailed(toolName: parsedCall.name, underlyingError: errorMessage)
+                if configuration.stopOnToolError {
+                    throw AgentError.toolExecutionFailed(toolName: parsedCall.name, underlyingError: errorMessage)
+                }
             }
         }
     }
@@ -2178,8 +2139,7 @@ public struct Agent: AgentRuntime, Sendable {
             uniqueKeysWithValues: _handoffs.map { ($0.effectiveToolName, $0) }
         )
 
-        let toolCallSummary = response.toolCalls.map { "Calling tool: \($0.name)" }.joined(separator: ", ")
-        let assistantContent = response.content ?? toolCallSummary
+        let assistantContent = AgentTurnKernel.assistantContent(for: response)
         conversationHistory.append(.assistant(assistantContent, toolCalls: response.toolCalls))
         transcriptMessages.append(
             SwarmTranscriptCodec.encodeMessage(
@@ -2190,8 +2150,29 @@ public struct Agent: AgentRuntime, Sendable {
         )
 
         for parsedCall in response.toolCalls {
-            // Check if this is a handoff tool call
-            if let handoffConfig = handoffMap[parsedCall.name] {
+            let kind = AgentTurnKernel.hostToolCallKind(
+                isHandoffTool: handoffMap[parsedCall.name] != nil,
+                isMembraneInternal: membraneAdapter != nil
+                    && MembraneInternalTools.isInternalTool(parsedCall.name)
+            )
+
+            switch kind {
+            case .handoff:
+                guard let handoffConfig = handoffMap[parsedCall.name] else {
+                    try await executeSingleToolCall(
+                        parsedCall: parsedCall,
+                        toolRegistry: toolRegistry,
+                        conversationHistory: &conversationHistory,
+                        transcriptMessages: &transcriptMessages,
+                        resultBuilder: resultBuilder,
+                        observer: observer,
+                        tracing: tracing,
+                        kind: .regular,
+                        membraneAdapter: membraneAdapter,
+                        startTime: startTime
+                    )
+                    continue
+                }
                 if let when = handoffConfig.when, await !when(context, handoffConfig.targetAgent) {
                     let message = "Handoff is not enabled"
                     let handoffCall = ToolCall(
@@ -2207,7 +2188,7 @@ public struct Agent: AgentRuntime, Sendable {
                         throw AgentError.toolExecutionFailed(toolName: parsedCall.name, underlyingError: message)
                     }
 
-                    let toolError = "[TOOL ERROR] Execution failed: \(message). Please try a different approach or tool."
+                    let toolError = AgentTurnKernel.toolFailureConversationText(message: message)
                     conversationHistory.append(.toolResult(
                         toolName: parsedCall.name,
                         result: toolError,
@@ -2242,11 +2223,15 @@ public struct Agent: AgentRuntime, Sendable {
                     if case .user = $0 { return true }
                     return false
                 })
-                let handoffInput: String = if case let .user(content) = lastUserMessage {
+                let lastUserText: String? = if case let .user(content) = lastUserMessage {
                     content
                 } else {
-                    reason.isEmpty ? "Continue the conversation" : reason
+                    nil
                 }
+                let handoffInput = AgentTurnKernel.handoffInput(
+                    lastUserText: lastUserText,
+                    reason: reason
+                )
 
                 let initialHandoffData = HandoffInputData(
                     sourceAgentName: name,
@@ -2366,20 +2351,21 @@ public struct Agent: AgentRuntime, Sendable {
 
                 // Return the handoff output to be used as the final result
                 return FinalAssistantResponse(content: result.output, structuredOutput: nil)
-            }
 
-            // Regular tool call
-            try await executeSingleToolCall(
-                parsedCall: parsedCall,
-                toolRegistry: toolRegistry,
-                conversationHistory: &conversationHistory,
-                transcriptMessages: &transcriptMessages,
-                resultBuilder: resultBuilder,
-                observer: observer,
-                tracing: tracing,
-                membraneAdapter: membraneAdapter,
-                startTime: startTime
-            )
+            case .membraneInternal, .regular:
+                try await executeSingleToolCall(
+                    parsedCall: parsedCall,
+                    toolRegistry: toolRegistry,
+                    conversationHistory: &conversationHistory,
+                    transcriptMessages: &transcriptMessages,
+                    resultBuilder: resultBuilder,
+                    observer: observer,
+                    tracing: tracing,
+                    kind: kind,
+                    membraneAdapter: membraneAdapter,
+                    startTime: startTime
+                )
+            }
         }
 
         return nil
