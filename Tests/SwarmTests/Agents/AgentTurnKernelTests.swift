@@ -9,72 +9,68 @@ import Testing
 
 struct AgentTurnKernelTests {
     @Test(
-        "Inference kind matches empty-schema and owned-loop combinations",
+        "Mode resolution collapses the flag snapshot into one closed mode",
         arguments: [
-            (true, false, false, AgentTurnKernel.InferenceKind.withoutTools),
-            (true, false, true, AgentTurnKernel.InferenceKind.withoutTools),
-            (true, true, false, AgentTurnKernel.InferenceKind.withTools(streaming: false)),
-            (true, true, true, AgentTurnKernel.InferenceKind.withTools(streaming: true)),
-            (false, false, false, AgentTurnKernel.InferenceKind.withTools(streaming: false)),
-            (false, false, true, AgentTurnKernel.InferenceKind.withTools(streaming: true)),
-            (false, true, true, AgentTurnKernel.InferenceKind.withTools(streaming: true)),
+            (true, false, false, true, AgentTurnKernel.TurnMode.textOnly),
+            (true, false, true, true, AgentTurnKernel.TurnMode.textOnly),
+            (false, false, false, false, AgentTurnKernel.TurnMode.hostTools(streaming: false)),
+            (false, false, true, false, AgentTurnKernel.TurnMode.hostTools(streaming: true)),
+            (true, true, false, true, AgentTurnKernel.TurnMode.ownedLoopTools(streaming: false)),
+            (true, true, true, true, AgentTurnKernel.TurnMode.ownedLoopTools(streaming: true)),
+            (false, true, true, true, AgentTurnKernel.TurnMode.ownedLoopTools(streaming: true)),
         ]
     )
-    func inferenceKind(
+    func resolveMode(
         toolSchemasEmpty: Bool,
-        useProviderOwnedToolLoop: Bool,
-        streamingToolCalls: Bool,
-        expected: AgentTurnKernel.InferenceKind
-    ) {
-        let kind = AgentTurnKernel.inferenceKind(
+        providerOwnsToolLoop: Bool,
+        streamsToolCalls: Bool,
+        hasExecutionGate: Bool,
+        expected: AgentTurnKernel.TurnMode
+    ) throws {
+        let mode = try AgentTurnKernel.resolveMode(
             toolSchemasEmpty: toolSchemasEmpty,
-            useProviderOwnedToolLoop: useProviderOwnedToolLoop,
-            streamingToolCalls: streamingToolCalls
+            providerOwnsToolLoop: providerOwnsToolLoop,
+            streamsToolCalls: streamsToolCalls,
+            hasExecutionGate: hasExecutionGate
         )
-        #expect(kind == expected)
+        #expect(mode == expected)
+        #expect(mode.streamsToolCalls == streamsToolCalls || mode == .textOnly)
+    }
+
+    @Test("Owned loop without an execution gate fails mode resolution")
+    func ownedLoopRequiresGate() {
+        #expect(throws: AgentError.internalError(
+            reason: "Provider-owned tool loop missing execution gate"
+        )) {
+            _ = try AgentTurnKernel.resolveMode(
+                toolSchemasEmpty: false,
+                providerOwnsToolLoop: true,
+                streamsToolCalls: false,
+                hasExecutionGate: false
+            )
+        }
     }
 
     @Test("Owned-loop inference retries only when tool schemas are empty")
     func ownedLoopRetryPolicy() {
         #expect(
             AgentTurnKernel.ownedLoopInferenceRetryPolicy(
-                useProviderOwnedToolLoop: true,
+                mode: .ownedLoopTools(streaming: false),
                 hasToolSchemas: true
             ) == .noRetry
         )
         #expect(
             AgentTurnKernel.ownedLoopInferenceRetryPolicy(
-                useProviderOwnedToolLoop: true,
+                mode: .ownedLoopTools(streaming: false),
                 hasToolSchemas: false
             ) == nil
         )
         #expect(
             AgentTurnKernel.ownedLoopInferenceRetryPolicy(
-                useProviderOwnedToolLoop: false,
+                mode: .hostTools(streaming: false),
                 hasToolSchemas: true
             ) == nil
         )
-    }
-
-    @Test("Owned loop requires an execution gate")
-    func ownedLoopRequiresGate() throws {
-        try AgentTurnKernel.requireOwnedLoopGate(
-            useProviderOwnedToolLoop: true,
-            hasExecutionGate: true
-        )
-        try AgentTurnKernel.requireOwnedLoopGate(
-            useProviderOwnedToolLoop: false,
-            hasExecutionGate: false
-        )
-
-        #expect(throws: AgentError.internalError(
-            reason: "Provider-owned tool loop missing execution gate"
-        )) {
-            try AgentTurnKernel.requireOwnedLoopGate(
-                useProviderOwnedToolLoop: true,
-                hasExecutionGate: false
-            )
-        }
     }
 
     @Test("Owned-loop responses finish even when the model also listed tool calls")
@@ -87,7 +83,7 @@ struct AgentTurnKernelTests {
             finishReason: .toolCall
         )
         let decision = AgentTurnKernel.afterInference(
-            useProviderOwnedToolLoop: true,
+            mode: .ownedLoopTools(streaming: false),
             response: response
         )
         #expect(decision == .finishAssistant(content: "done"))
@@ -103,7 +99,7 @@ struct AgentTurnKernelTests {
             finishReason: .toolCall
         )
         let decision = AgentTurnKernel.afterInference(
-            useProviderOwnedToolLoop: false,
+            mode: .hostTools(streaming: false),
             response: response
         )
         #expect(decision == .processHostToolCalls)
@@ -113,11 +109,11 @@ struct AgentTurnKernelTests {
     func missingContentFails() {
         let empty = InferenceResponse(content: nil, toolCalls: [], finishReason: .completed)
         #expect(
-            AgentTurnKernel.afterInference(useProviderOwnedToolLoop: false, response: empty)
+            AgentTurnKernel.afterInference(mode: .hostTools(streaming: false), response: empty)
                 == .failMissingContent
         )
         #expect(
-            AgentTurnKernel.afterInference(useProviderOwnedToolLoop: true, response: empty)
+            AgentTurnKernel.afterInference(mode: .ownedLoopTools(streaming: false), response: empty)
                 == .failMissingContent
         )
     }
@@ -126,9 +122,161 @@ struct AgentTurnKernelTests {
     func hostLoopFinishesOnText() {
         let response = InferenceResponse(content: "42", finishReason: .completed)
         #expect(
-            AgentTurnKernel.afterInference(useProviderOwnedToolLoop: false, response: response)
+            AgentTurnKernel.afterInference(mode: .hostTools(streaming: false), response: response)
                 == .finishAssistant(content: "42")
         )
+    }
+
+    // MARK: - Transition (REQ-004)
+
+    private let toolCallResponse = InferenceResponse(
+        content: nil,
+        toolCalls: [
+            InferenceResponse.ParsedToolCall(id: "1", name: "search", arguments: [:]),
+        ],
+        finishReason: .toolCall
+    )
+
+    private func state(
+        iteration: Int = 0,
+        maxIterations: Int = 3,
+        mode: AgentTurnKernel.TurnMode? = nil,
+        hasToolSchemas: Bool = true
+    ) -> AgentTurnKernel.TurnState {
+        AgentTurnKernel.TurnState(
+            iteration: iteration,
+            maxIterations: maxIterations,
+            mode: mode,
+            hasToolSchemas: hasToolSchemas
+        )
+    }
+
+    @Test("Admission increments the iteration and clears the per-iteration mode")
+    func admissionIncrementsIteration() {
+        let result = AgentTurnKernel.transition(
+            state(iteration: 1, maxIterations: 3, mode: .hostTools(streaming: false)),
+            .startNextIteration
+        )
+        #expect(result == .performInference(state(iteration: 2, maxIterations: 3, mode: nil)))
+    }
+
+    @Test("Admission at the cap fails with maxIterationsExceeded")
+    func admissionAtCapFails() {
+        let result = AgentTurnKernel.transition(
+            state(iteration: 3, maxIterations: 3),
+            .startNextIteration
+        )
+        #expect(result == .fail(.maxIterationsExceeded(iterations: 3)))
+    }
+
+    @Test("Inference completion with pending host tool calls executes tools")
+    func inferenceCompletionExecutesTools() {
+        let current = state(iteration: 1, mode: .hostTools(streaming: false))
+        let result = AgentTurnKernel.transition(current, .inferenceCompleted(toolCallResponse))
+        #expect(result == .executeTools(current))
+    }
+
+    @Test("Inference completion with assistant content finishes")
+    func inferenceCompletionFinishes() {
+        let response = InferenceResponse(content: "42", finishReason: .completed)
+        let result = AgentTurnKernel.transition(
+            state(iteration: 1, mode: .hostTools(streaming: false)),
+            .inferenceCompleted(response)
+        )
+        #expect(result == .finish(content: "42"))
+    }
+
+    @Test("Owned-loop inference completion finishes even with tool calls")
+    func ownedLoopInferenceCompletionFinishes() {
+        let response = InferenceResponse(
+            content: "done",
+            toolCalls: [
+                InferenceResponse.ParsedToolCall(id: "1", name: "search", arguments: [:]),
+            ],
+            finishReason: .toolCall
+        )
+        let result = AgentTurnKernel.transition(
+            state(iteration: 1, mode: .ownedLoopTools(streaming: false)),
+            .inferenceCompleted(response)
+        )
+        #expect(result == .finish(content: "done"))
+    }
+
+    @Test("Inference completion without content fails like the loop did")
+    func inferenceCompletionWithoutContentFails() {
+        let empty = InferenceResponse(content: nil, toolCalls: [], finishReason: .completed)
+        let result = AgentTurnKernel.transition(
+            state(iteration: 1, mode: .hostTools(streaming: false)),
+            .inferenceCompleted(empty)
+        )
+        #expect(result == .fail(.generationFailed(reason: "Model returned no content or tool calls")))
+    }
+
+    @Test("Inference completion before mode resolution fails closed")
+    func inferenceCompletionWithoutModeFails() {
+        let result = AgentTurnKernel.transition(
+            state(iteration: 1, mode: nil),
+            .inferenceCompleted(toolCallResponse)
+        )
+        #expect(result == .fail(.internalError(reason: "Turn mode not resolved before inference")))
+    }
+
+    @Test("Completed tools continue to the next admission, respecting the cap")
+    func toolsCompletedContinuesLoop() {
+        let continuing = AgentTurnKernel.transition(
+            state(iteration: 1, mode: .hostTools(streaming: false)),
+            .toolsCompleted
+        )
+        #expect(continuing == .performInference(state(iteration: 2, maxIterations: 3, mode: nil)))
+
+        let capped = AgentTurnKernel.transition(
+            state(iteration: 3, maxIterations: 3, mode: .hostTools(streaming: false)),
+            .toolsCompleted
+        )
+        #expect(capped == .fail(.maxIterationsExceeded(iterations: 3)))
+    }
+
+    @Test("Owned-loop inference failure retries only with an empty tool list")
+    func ownedLoopInferenceFailureRetryDecision() {
+        let transient = AgentError.generationFailed(reason: "transient 503")
+
+        let emptySchemasState = state(iteration: 1, mode: .ownedLoopTools(streaming: false), hasToolSchemas: false)
+        let emptySchemas = AgentTurnKernel.transition(
+            emptySchemasState,
+            .ownedLoopInferenceFailed(transient)
+        )
+        #expect(emptySchemas == .retryOwnedLoopInference(emptySchemasState))
+
+        let withSchemas = AgentTurnKernel.transition(
+            state(iteration: 1, mode: .ownedLoopTools(streaming: false), hasToolSchemas: true),
+            .ownedLoopInferenceFailed(transient)
+        )
+        #expect(withSchemas == .fail(transient))
+
+        let hostLoop = AgentTurnKernel.transition(
+            state(iteration: 1, mode: .hostTools(streaming: false), hasToolSchemas: true),
+            .ownedLoopInferenceFailed(transient)
+        )
+        #expect(hostLoop == .fail(transient))
+    }
+
+    @Test("Max iterations reached while tool calls are pending fails identically to the loop")
+    func maxIterationsWithPendingToolCalls() {
+        // Edge from the spec: the cap wins even though tool calls are pending;
+        // the failing admission happens at the next loop head.
+        let afterTools = AgentTurnKernel.transition(
+            state(iteration: 2, maxIterations: 3, mode: .hostTools(streaming: false)),
+            .toolsCompleted
+        )
+        guard case .performInference = afterTools else {
+            Issue.record("Expected the loop to continue under the cap")
+            return
+        }
+        let nextAdmission = AgentTurnKernel.transition(
+            state(iteration: 3, maxIterations: 3, mode: .hostTools(streaming: false)),
+            .startNextIteration
+        )
+        #expect(nextAdmission == .fail(.maxIterationsExceeded(iterations: 3)))
     }
 
     @Test("Assistant tool-turn content prefers model text, then a call summary")
