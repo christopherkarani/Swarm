@@ -135,6 +135,14 @@ enum AgentTurnKernel: Sendable {
     }
 
     /// Facts the shell reports to the kernel after executing an effect.
+    ///
+    /// `Agent.executeToolCallingLoop` currently feeds only
+    /// `.startNextIteration` (loop head) and `.inferenceCompleted`. The
+    /// remaining actions are modeled but not yet wired into the shell:
+    /// `.toolsCompleted` is equivalent to the shell re-entering
+    /// `.startNextIteration` at the loop head, and `.ownedLoopInferenceFailed`
+    /// corresponds to failures the shell currently handles through
+    /// `ownedLoopInferenceRetryPolicy` inside `executeProviderInference`.
     enum TurnAction: Equatable, Sendable {
         /// Loop head: request admission of the next iteration.
         case startNextIteration
