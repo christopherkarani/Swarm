@@ -166,6 +166,10 @@ struct InferenceProviderCapabilityDispatchTests {
         #expect(routedMetadata.providerName == "child")
         #expect(routedMetadata.modelName == "child-model")
 
+        await multiProvider.unregister(prefix: "child")
+        let afterUnregisterMetadata = try #require(await multiProvider.metadata)
+        #expect(afterUnregisterMetadata.providerName == "default")
+
         await multiProvider.clearModel()
         let fallbackMetadata = try #require(await multiProvider.metadata)
         #expect(fallbackMetadata.providerName == "default")
