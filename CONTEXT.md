@@ -28,6 +28,10 @@ _Avoid_: native session, Apple loop, Foundation Models execution mode, AgentConf
 Cutting `[InferenceMessage]` down to a token budget. Roles stay. This is not a flatten to one user string.
 _Avoid_: prompt stuffing, envelope rewrite (as what the provider sees)
 
+**Text-only backend**:
+A prompt-shaped inner type: generate, stream, and tool-calling on a `String`. It cannot take `InferenceMessage` roles. Production string models and test fakes are adapters at this seam.
+_Avoid_: prompt provider, string provider, PromptInferenceProvider
+
 **Text-only adapter**:
-An InferenceProvider adapter that flattens `[InferenceMessage]` into a string for backends that cannot take roles.
+The InferenceProvider adapter that flattens `[InferenceMessage]` into a string and forwards to a text-only backend. Agent never sees the backend directly; callers wrap via a factory.
 _Avoid_: prompt path, string provider

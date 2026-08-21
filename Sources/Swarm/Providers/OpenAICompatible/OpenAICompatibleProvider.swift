@@ -42,8 +42,6 @@ import FoundationNetworking
 ///
 /// Inject a `URLSession` with a `URLProtocol` stub in tests.
 public struct OpenAICompatibleProvider: InferenceProvider,
-    ToolCallStreamingInferenceProvider,
-    StructuredOutputInferenceProvider,
     InferenceProviderMetadata
 {
     /// Provider configuration (endpoint, model, auth, structured-output mode).
@@ -97,7 +95,12 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
-        try await generateWithToolCalls(messages: [.user(prompt)], tools: tools, options: options)
+        try await generateWithToolCalls(
+            messages: [.user(prompt)],
+            tools: tools,
+            options: options,
+            toolExecutor: nil
+        )
     }
 
     public func streamWithToolCalls(
@@ -111,7 +114,12 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     // MARK: - ConversationInferenceProvider
 
     public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
-        let response = try await generateWithToolCalls(messages: messages, tools: [], options: options)
+        let response = try await generateWithToolCalls(
+            messages: messages,
+            tools: [],
+            options: options,
+            toolExecutor: nil
+        )
         return response.content ?? ""
     }
 
@@ -120,7 +128,22 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
-        try await complete(
+        try await generateWithToolCalls(
+            messages: messages,
+            tools: tools,
+            options: options,
+            toolExecutor: nil
+        )
+    }
+
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse {
+        _ = toolExecutor
+        return try await complete(
             messages: messages,
             tools: tools,
             options: options,
@@ -158,9 +181,11 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     public func streamWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
-        options: InferenceOptions
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
+        _ = toolExecutor
+        return StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             do {
                 try await self.streamCompletions(
                     messages: messages,

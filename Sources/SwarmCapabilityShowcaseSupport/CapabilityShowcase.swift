@@ -1037,6 +1037,10 @@ actor ScriptedInferenceProvider: InferenceProvider {
         return nextTextResponse()
     }
 
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        try await generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    }
+
     nonisolated func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
         let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
         Task {
@@ -1065,6 +1069,20 @@ actor ScriptedInferenceProvider: InferenceProvider {
             return response
         }
         return InferenceResponse(content: nextTextResponse(), finishReason: .completed)
+    }
+
+    func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse {
+        _ = toolExecutor
+        return try await generateWithToolCalls(
+            prompt: InferenceMessage.flattenPrompt(messages),
+            tools: tools,
+            options: options
+        )
     }
 
     func generatePrompts() -> [String] {

@@ -2771,11 +2771,7 @@ Experimental adapter wrapping a user `FoundationModels.Tool` as a Swarm `AnyJSON
 
 ### Providers/LanguageModelSession.swift
 
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 16 | func | public | LanguageModelSession.generate(prompt:options:) | `public func generate(prompt: String, options: InferenceOptions) async throws -> String` _(Availability: macOS 26.0+, watchOS 26.0+, iOS 26.0+, visionOS 26.0+, tvOS 26.0+; Requires FoundationModels (`#if canImport(FoundationModels)`))_ |
-| 38 | func | public | LanguageModelSession.stream(prompt:options:) | `public func stream(prompt: String, options _: InferenceOptions) -> AsyncThrowingStream<String, any Error>` _(Availability: macOS 26.0+, watchOS 26.0+, iOS 26.0+, visionOS 26.0+, tvOS 26.0+; Requires FoundationModels (`#if canImport(FoundationModels)`))_ |
-| 52 | func | public | LanguageModelSession.generateWithToolCalls(prompt:tools:options:) | `public func generateWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` _(Availability: macOS 26.0+, watchOS 26.0+, iOS 26.0+, visionOS 26.0+, tvOS 26.0+; Requires FoundationModels (`#if canImport(FoundationModels)`))_ |
+Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationModelsInferenceProvider``.
 
 ### Providers/MultiProvider.swift
 
@@ -2802,6 +2798,14 @@ Experimental adapter wrapping a user `FoundationModels.Tool` as a Swarm `AnyJSON
 | 231 | func | public | MultiProvider.provider(for:) | `public func provider(for prefix: String) -> (any InferenceProvider)?` |
 | 317 | var | public | MultiProvider.description | `public nonisolated var description: String { get }` |
 
+### Providers/TextOnlyConversationInferenceProviderAdapter.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 13 | protocol | public | TextOnlyBackend | `public protocol TextOnlyBackend : Sendable` |
+| 68 | struct | public | TextOnlyConversationInferenceProviderAdapter | `public struct TextOnlyConversationInferenceProviderAdapter` |
+| 72 | func | public | TextOnlyConversationInferenceProviderAdapter.textOnly(_:) | `public static func textOnly(_ backend: some TextOnlyBackend) -> TextOnlyConversationInferenceProviderAdapter` |
+
 ### Providers/ToolCallStreamingInferenceProvider.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -2811,8 +2815,7 @@ Experimental adapter wrapping a user `FoundationModels.Tool` as a Swarm `AnyJSON
 | 14 | case | public | InferenceStreamUpdate.toolCallPartial(_:) | `public case toolCallPartial(PartialToolCallUpdate)` |
 | 17 | case | public | InferenceStreamUpdate.toolCallsCompleted(_:) | `public case toolCallsCompleted([InferenceResponse.ParsedToolCall])` |
 | 20 | case | public | InferenceStreamUpdate.usage(_:) | `public case usage(TokenUsage)` |
-| 26 | protocol | public | ToolCallStreamingInferenceProvider | `public protocol ToolCallStreamingInferenceProvider : InferenceProvider` |
-| 28 | func | public | ToolCallStreamingInferenceProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
+| 23 | case | public | InferenceStreamUpdate.finishedTurn(_:) | `public case finishedTurn(InferenceResponse)` |
 
 ## 12. Integration (Membrane + Wax)
 

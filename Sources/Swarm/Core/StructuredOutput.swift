@@ -152,27 +152,7 @@ enum StructuredOutputParser {
     }
 }
 
-public protocol StructuredOutputInferenceProvider: InferenceProvider {
-    func generateStructured(
-        prompt: String,
-        request: StructuredOutputRequest,
-        options: InferenceOptions
-    ) async throws -> StructuredOutputResult
-}
-
 @available(*, deprecated, renamed: "InferenceProvider")
 public protocol StructuredOutputConversationInferenceProvider: ConversationInferenceProvider {}
-
-public extension InferenceProvider {
-    func generateStructured(
-        prompt: String,
-        request: StructuredOutputRequest,
-        options: InferenceOptions
-    ) async throws -> StructuredOutputResult {
-        let structuredPrompt = StructuredOutputPromptBuilder.appendInstruction(to: prompt, request: request)
-        let text = try await generate(prompt: structuredPrompt, options: options)
-        return try StructuredOutputParser.parse(text, request: request, source: .promptFallback)
-    }
-}
 
 

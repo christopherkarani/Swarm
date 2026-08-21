@@ -153,7 +153,7 @@ private actor IterationRecordingObserver: AgentObserver {
     }
 }
 
-private actor HangingInferenceProvider: InferenceProvider {
+private actor HangingInferenceProvider: InferenceProvider, MessagesFromPromptInference {
     let delay: Duration
 
     init(delay: Duration) {

@@ -3,23 +3,18 @@ import Swarm
 import SwarmOpenTelemetry
 
 private struct PublicAPIPromptOnlyProvider: InferenceProvider {
-    func generate(prompt: String, options: InferenceOptions) async throws -> String {
-        prompt
-    }
-
-    func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            continuation.yield(prompt)
-            continuation.finish()
-        }
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        messages.map(\.content).joined(separator: "\n")
     }
 
     func generateWithToolCalls(
-        prompt: String,
+        messages: [InferenceMessage],
         tools: [ToolSchema],
-        options: InferenceOptions
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
     ) async throws -> InferenceResponse {
-        InferenceResponse(content: prompt)
+        _ = toolExecutor
+        return InferenceResponse(content: try await generate(messages: messages, options: options))
     }
 }
 

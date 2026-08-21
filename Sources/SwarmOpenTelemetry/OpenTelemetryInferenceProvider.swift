@@ -7,9 +7,8 @@ import Swarm
 
 /// An inference-provider wrapper that emits OpenTelemetry GenAI spans.
 ///
-/// Advanced provider protocols are exposed through conditional conformances, so
-/// wrapping a provider does not advertise capabilities the underlying provider
-/// cannot actually satisfy.
+/// Capabilities are forwarded from the inner adapter. Callers read the bitset;
+/// they do not probe extra protocols.
 public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecked Sendable,
     CapabilityReportingInferenceProvider,
     InferenceProviderMetadata
@@ -186,35 +185,8 @@ extension OpenTelemetryInferenceProvider: ConversationInferenceProvider where Ba
 
 extension OpenTelemetryInferenceProvider: StreamingConversationInferenceProvider where Base: StreamingConversationInferenceProvider {}
 
-extension OpenTelemetryInferenceProvider: ToolCallStreamingInferenceProvider where Base: ToolCallStreamingInferenceProvider {
-  public func streamWithToolCalls(
-        prompt: String,
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        instrumentToolStream(inputLength: prompt.count, toolCount: tools.count, options: options) {
-            base.streamWithToolCalls(prompt: prompt, tools: tools, options: options)
-        }
-    }
-}
-
 extension OpenTelemetryInferenceProvider: ToolCallStreamingConversationInferenceProvider
 where Base: ToolCallStreamingConversationInferenceProvider {}
-
-extension OpenTelemetryInferenceProvider: StructuredOutputInferenceProvider where Base: StructuredOutputInferenceProvider {
-  public func generateStructured(
-        prompt: String,
-        request: StructuredOutputRequest,
-        options: InferenceOptions
-    ) async throws -> StructuredOutputResult {
-        try await withLLMSpan(operation: "chat", inputLength: prompt.count, options: options) { span in
-            span.setAttribute(key: "gen_ai.output.type", value: "json")
-            let result = try await base.generateStructured(prompt: prompt, request: request, options: options)
-            span.setAttribute(key: "gen_ai.response.output_length", value: result.rawJSON.count)
-            return result
-        }
-    }
-}
 
 extension OpenTelemetryInferenceProvider: StructuredOutputConversationInferenceProvider
 where Base: StructuredOutputConversationInferenceProvider {}

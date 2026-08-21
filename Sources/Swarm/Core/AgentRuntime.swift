@@ -224,18 +224,21 @@ public protocol InferenceProvider: Sendable {
 
     /// Generates a response for the given prompt.
     ///
-    /// Deprecated as the Agent seam. Prefer ``generate(messages:options:)``.
-    /// Kept required for one minor so existing backends still compile.
+    /// Deprecated as the Agent seam. The protocol default wraps `prompt` as
+    /// ``InferenceMessage/user(_:)``. Prefer ``generate(messages:options:)``.
     func generate(prompt: String, options: InferenceOptions) async throws -> String
 
     /// Streams a response for the given prompt.
     ///
-    /// Deprecated as the Agent seam. Prefer ``stream(messages:options:)``.
+    /// Deprecated as the Agent seam. The protocol default wraps `prompt` as
+    /// ``InferenceMessage/user(_:)``. Prefer ``stream(messages:options:)``.
     func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error>
 
     /// Generates a response with potential tool calls from a flattened prompt.
     ///
-    /// Deprecated as the Agent seam. Prefer ``generateWithToolCalls(messages:tools:options:)``.
+    /// Deprecated as the Agent seam. The protocol default wraps `prompt` as
+    /// ``InferenceMessage/user(_:)``. Prefer
+    /// ``generateWithToolCalls(messages:tools:options:toolExecutor:)``.
     func generateWithToolCalls(
         prompt: String,
         tools: [ToolSchema],
@@ -252,6 +255,15 @@ public protocol InferenceProvider: Sendable {
     ) -> AsyncThrowingStream<String, Error>
 
     /// Generates a response with potential tool calls from role-tagged messages.
+    ///
+    /// Generates a response with potential tool calls from role-tagged messages.
+    ///
+    /// The protocol default emulates tool calling via
+    /// ``generate(messages:options:)``. Adapters with native tool calling
+    /// override this method. If the native path is the four-argument method,
+    /// forward this overload to it — otherwise three-argument callers hit
+    /// emulation. Do not implement this default by calling the four-argument
+    /// overload; that pair recurses when neither is overridden.
     func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
@@ -275,6 +287,10 @@ public protocol InferenceProvider: Sendable {
     ) async throws -> InferenceResponse
 
     /// Streams text and tool-call updates from role-tagged messages.
+    ///
+    /// The protocol default calls
+    /// ``streamWithToolCalls(messages:tools:options:toolExecutor:)`` with
+    /// `toolExecutor` `nil`.
     func streamWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],

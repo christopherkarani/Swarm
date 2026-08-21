@@ -10,50 +10,47 @@ private struct PromptOnlyProvider: InferenceProvider {
         prompt
     }
 
-    func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            continuation.yield(prompt)
-            continuation.finish()
-        }
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        try await generate(prompt: messages.map(\.content).joined(separator: "\n"), options: options)
     }
 
     func generateWithToolCalls(
-        prompt: String,
+        messages: [InferenceMessage],
         tools: [ToolSchema],
-        options: InferenceOptions
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
     ) async throws -> InferenceResponse {
-        InferenceResponse(content: prompt)
+        _ = toolExecutor
+        return InferenceResponse(content: try await generate(messages: messages, options: options))
     }
 }
 
-private struct ToolStreamingProvider: InferenceProvider, ToolCallStreamingInferenceProvider {
+private struct ToolStreamingProvider: InferenceProvider {
     var capabilities: InferenceProviderCapabilities { [.streamingToolCalls] }
 
-    func generate(prompt: String, options: InferenceOptions) async throws -> String {
-        prompt
-    }
-
-    func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            continuation.yield(prompt)
-            continuation.finish()
-        }
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        messages.map(\.content).joined(separator: "\n")
     }
 
     func generateWithToolCalls(
-        prompt: String,
+        messages: [InferenceMessage],
         tools: [ToolSchema],
-        options: InferenceOptions
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
     ) async throws -> InferenceResponse {
-        InferenceResponse(content: prompt)
+        _ = toolExecutor
+        return InferenceResponse(content: try await generate(messages: messages, options: options))
     }
 
     func streamWithToolCalls(
-        prompt: String,
+        messages: [InferenceMessage],
         tools: [ToolSchema],
-        options: InferenceOptions
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        AsyncThrowingStream { continuation in
+        _ = toolExecutor
+        let prompt = messages.map(\.content).joined(separator: "\n")
+        return AsyncThrowingStream { continuation in
             continuation.yield(.outputChunk(prompt))
             continuation.finish()
         }
@@ -120,7 +117,6 @@ private final class RecordingSpanExporter: SpanExporter, @unchecked Sendable {
 func openTelemetryWrapperDoesNotAddUnsupportedToolStreaming() {
     let wrapped = OpenTelemetryInferenceProvider(PromptOnlyProvider())
 
-    #expect(!(wrapped is any ToolCallStreamingInferenceProvider))
     #expect(!wrapped.capabilities.contains(.streamingToolCalls))
 }
 
@@ -129,7 +125,7 @@ func openTelemetryWrapperPreservesSupportedToolStreaming() {
     let wrapped = OpenTelemetryInferenceProvider(ToolStreamingProvider())
     let provider: any InferenceProvider = wrapped
 
-    #expect(provider is any ToolCallStreamingInferenceProvider)
+    #expect(provider.capabilities.contains(.streamingToolCalls))
     #expect(wrapped.capabilities.contains(.streamingToolCalls))
 }
 
@@ -150,7 +146,7 @@ func erasedOpenTelemetryWrapperPreservesPromptOnlyToolStreamingShape() {
         captureContent: false
     )
 
-    #expect(wrapped is any ToolCallStreamingInferenceProvider)
+    #expect(wrapped.capabilities.contains(.streamingToolCalls))
     #expect(!(wrapped is any ConversationInferenceProvider))
     #expect(!(wrapped is any ToolCallStreamingConversationInferenceProvider))
     #expect(InferenceProviderCapabilities.resolved(for: wrapped).contains(.conversationMessages))
@@ -219,7 +215,6 @@ func erasedOpenTelemetryWrapperForwardsStructuredMessagesWithoutConversationMark
     )
 
     #expect(!(provider is any ConversationInferenceProvider))
-    #expect(provider is any StructuredOutputInferenceProvider)
     try await assertRoleTaggedHistoryReachesBase(provider)
     #expect(recorded.all.allSatisfy { $0 == sampleConversationHistory })
 }
@@ -234,7 +229,7 @@ func erasedOpenTelemetryWrapperForwardsToolStreamingMessagesWithoutConversationM
     )
 
     #expect(!(provider is any ConversationInferenceProvider))
-    #expect(provider is any ToolCallStreamingInferenceProvider)
+    #expect(provider.capabilities.contains(.streamingToolCalls))
     try await assertRoleTaggedHistoryReachesBase(provider)
     #expect(recorded.all.allSatisfy { $0 == sampleConversationHistory })
 }
@@ -371,7 +366,7 @@ private struct RolePreservingProvider: InferenceProvider {
     }
 }
 
-private struct RolePreservingStructuredProvider: InferenceProvider, StructuredOutputInferenceProvider {
+private struct RolePreservingStructuredProvider: InferenceProvider {
     let inner: RolePreservingProvider
 
     init(recorded: RecordedMessageCalls) {
@@ -438,7 +433,8 @@ private struct RolePreservingStructuredProvider: InferenceProvider, StructuredOu
     }
 }
 
-private struct RolePreservingToolStreamingProvider: InferenceProvider, ToolCallStreamingInferenceProvider {
+private struct RolePreservingToolStreamingProvider: InferenceProvider {
+    var capabilities: InferenceProviderCapabilities { [.streamingToolCalls] }
     let inner: RolePreservingProvider
 
     init(recorded: RecordedMessageCalls) {
