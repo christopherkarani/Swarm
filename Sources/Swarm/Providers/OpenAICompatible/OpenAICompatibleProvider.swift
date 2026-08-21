@@ -95,7 +95,12 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
-        try await generateWithToolCalls(messages: [.user(prompt)], tools: tools, options: options)
+        try await generateWithToolCalls(
+            messages: [.user(prompt)],
+            tools: tools,
+            options: options,
+            toolExecutor: nil
+        )
     }
 
     public func streamWithToolCalls(
@@ -109,8 +114,26 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     // MARK: - ConversationInferenceProvider
 
     public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
-        let response = try await generateWithToolCalls(messages: messages, tools: [], options: options)
+        let response = try await generateWithToolCalls(
+            messages: messages,
+            tools: [],
+            options: options,
+            toolExecutor: nil
+        )
         return response.content ?? ""
+    }
+
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse {
+        try await generateWithToolCalls(
+            messages: messages,
+            tools: tools,
+            options: options,
+            toolExecutor: nil
+        )
     }
 
     public func generateWithToolCalls(

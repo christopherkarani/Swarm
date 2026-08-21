@@ -81,22 +81,38 @@ struct TextOnlyConversationInferenceProviderAdapterTests {
         #expect(capabilities.contains(.streamingToolCalls) == false)
     }
 
-    @Test("Agent completes tool loops with text-only providers")
-    func agentCompletesToolLoopsWithTextOnlyProviders() async throws {
-        let provider = CertifiedTextOnlyProvider(mode: .toolThenAnswer)
+    @Test("Messages-only providers emulate tool calling without flattening history")
+    func messagesOnlyProvidersEmulateToolCallingWithoutFlattening() async throws {
+        let provider = MessagesOnlyEmulationProvider()
         let agent = try Agent(
             tools: [StringTool()],
             instructions: "Use tools when helpful.",
-            inferenceProvider: .textOnly(provider)
+            inferenceProvider: provider
         )
 
         let result = try await agent.run("Uppercase hello.")
 
         #expect(result.output == "Final answer: HELLO")
-        let prompts = await provider.recordedPrompts()
-        #expect(prompts.count == 2)
-        #expect(prompts[0].contains("\"swarm_tool_call\""))
-        #expect(prompts[1].contains("[Tool Result - string]: HELLO"))
+        let calls = await provider.recordedMessageCalls()
+        #expect(calls.count == 2)
+        #expect(calls[0].contains { $0.role == .user && $0.content.contains("Uppercase") })
+        #expect(calls[0].contains { $0.role == .system && $0.content.contains("\"swarm_tool_call\"") })
+        #expect(calls[1].contains { $0.role == .tool })
+        #expect(calls.allSatisfy { turn in
+            !turn.contains { $0.content.contains("[User]:") }
+        })
+    }
+
+    @Test("Four-argument default still forwards to a native three-argument override")
+    func fourArgumentDefaultForwardsToNativeThreeArgumentOverride() async throws {
+        let provider = NativeThreeArgProvider()
+        let response = try await provider.generateWithToolCalls(
+            messages: [.user("hi")],
+            tools: [StringTool().schema],
+            options: .default,
+            toolExecutor: ToolCallExecutor { _, _ in .string("unused") }
+        )
+        #expect(response.content == "native")
     }
 }
 
@@ -105,5 +121,53 @@ private struct ReportingTextBackend: TextOnlyBackend {
 
     func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
         "ok"
+    }
+}
+
+private actor MessagesOnlyEmulationProvider: InferenceProvider {
+    private var invocationCount = 0
+    private var calls: [[InferenceMessage]] = []
+
+    func recordedMessageCalls() -> [[InferenceMessage]] {
+        calls
+    }
+
+    func generate(messages: [InferenceMessage], options _: InferenceOptions) async throws -> String {
+        calls.append(messages)
+        invocationCount += 1
+        if invocationCount == 1 {
+            let blob = messages.map(\.content).joined(separator: "\n")
+            let nonce = extractNonce(from: blob) ?? "missing-nonce"
+            return """
+            {"swarm_tool_call": {"nonce": "\(nonce)", "tool": "string", "arguments": {"operation": "uppercase", "input": "hello"}}}
+            """
+        }
+        return "Final answer: HELLO"
+    }
+
+    private func extractNonce(from prompt: String) -> String? {
+        let marker = #""swarm_tool_call": {"nonce": ""#
+        guard let range = prompt.range(of: marker) else {
+            return nil
+        }
+        let nonceStart = range.upperBound
+        guard let nonceEnd = prompt[nonceStart...].firstIndex(of: "\"") else {
+            return nil
+        }
+        return String(prompt[nonceStart..<nonceEnd])
+    }
+}
+
+private struct NativeThreeArgProvider: InferenceProvider {
+    func generate(messages _: [InferenceMessage], options _: InferenceOptions) async throws -> String {
+        "should-not-run"
+    }
+
+    func generateWithToolCalls(
+        messages _: [InferenceMessage],
+        tools _: [ToolSchema],
+        options _: InferenceOptions
+    ) async throws -> InferenceResponse {
+        InferenceResponse(content: "native", finishReason: .completed)
     }
 }

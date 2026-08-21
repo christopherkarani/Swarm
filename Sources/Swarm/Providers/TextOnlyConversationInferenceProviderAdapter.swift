@@ -100,6 +100,19 @@ public struct TextOnlyConversationInferenceProviderAdapter: InferenceProvider {
     public func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse {
+        try await generateWithToolCalls(
+            messages: messages,
+            tools: tools,
+            options: options,
+            toolExecutor: nil
+        )
+    }
+
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
         options: InferenceOptions,
         toolExecutor: ToolCallExecutor?
     ) async throws -> InferenceResponse {

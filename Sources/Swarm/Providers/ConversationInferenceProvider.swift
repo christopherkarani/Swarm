@@ -222,12 +222,13 @@ public extension InferenceProvider {
         tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
-        try await generateWithToolCalls(
+        try await LanguageModelSessionToolCallingEmulation.generateResponse(
             messages: messages,
             tools: tools,
-            options: options,
-            toolExecutor: nil
-        )
+            options: options
+        ) { messages, options in
+            try await generate(messages: messages, options: options)
+        }
     }
 
     func generateWithToolCalls(

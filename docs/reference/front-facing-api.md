@@ -549,8 +549,7 @@ public protocol InferenceProvider: Sendable {
         options: InferenceOptions
     ) async throws -> StructuredOutputResult
 
-    // Prompt-string methods remain for one minor so existing backends compile.
-    // Agent and tests call the messages methods only.
+    // Prompt-string methods default to wrapping `prompt` as a user message.
 }
 ```
 

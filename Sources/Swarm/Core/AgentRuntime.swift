@@ -256,9 +256,14 @@ public protocol InferenceProvider: Sendable {
 
     /// Generates a response with potential tool calls from role-tagged messages.
     ///
-    /// The protocol default calls
-    /// ``generateWithToolCalls(messages:tools:options:toolExecutor:)`` with
-    /// `toolExecutor` `nil`.
+    /// Generates a response with potential tool calls from role-tagged messages.
+    ///
+    /// The protocol default emulates tool calling via
+    /// ``generate(messages:options:)``. Adapters with native tool calling
+    /// override this method. If the native path is the four-argument method,
+    /// forward this overload to it — otherwise three-argument callers hit
+    /// emulation. Do not implement this default by calling the four-argument
+    /// overload; that pair recurses when neither is overridden.
     func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
