@@ -891,7 +891,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 106 | class | public | ResponseTracker | `public actor ResponseTracker` |
 | 115 | var | public | ResponseTracker.maxHistorySize | `public nonisolated let maxHistorySize: Int` |
 | 125 | var | public | ResponseTracker.maxSessions | `public nonisolated let maxSessions: Int?` |
-| 153 | func | public | ResponseTracker.init(maxHistorySize:maxSessions:) | `public init(maxHistorySize: Int = 100, maxSessions: Int? = 1000)` |
+| 156 | func | public | ResponseTracker.init(maxHistorySize:maxSessions:now:) | `public init(maxHistorySize: Int = 100, maxSessions: Int? = 1000, now: @escaping @Sendable () -> Date = { TurnEnvironment.live.now() })` |
 | 194 | func | public | ResponseTracker.recordResponse(_:sessionId:) | `public func recordResponse(_ response: AgentResponse, sessionId: String)` |
 | 248 | func | public | ResponseTracker.getLatestResponseId(for:) | `public func getLatestResponseId(for sessionId: String) -> String?` |
 | 272 | func | public | ResponseTracker.getResponse(responseId:sessionId:) | `public func getResponse(responseId: String, sessionId: String) -> AgentResponse?` |
