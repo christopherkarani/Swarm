@@ -492,7 +492,7 @@ private actor BlockingWorkflowAgent: AgentRuntime {
     }
 }
 
-private actor StreamingNameProvider: InferenceProvider {
+private actor StreamingNameProvider: InferenceProvider, MessagesFromPromptInference {
     let name: String
 
     init(name: String) {

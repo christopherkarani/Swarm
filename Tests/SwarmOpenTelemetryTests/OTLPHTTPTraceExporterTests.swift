@@ -283,6 +283,10 @@ private final class HeaderCapturingProvider: InferenceProvider, @unchecked Senda
         return prompt
     }
 
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        try await generate(prompt: messages.map(\.content).joined(separator: "\n"), options: options)
+    }
+
     func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             continuation.yield(prompt)

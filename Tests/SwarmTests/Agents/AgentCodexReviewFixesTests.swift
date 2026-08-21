@@ -174,7 +174,7 @@ struct AgentCodexReviewFixesTests {
 /// A mock provider that blocks inside `generate` until a continuation is
 /// resumed. Used to gate test timing so cancellation can be observed
 /// deterministically.
-private actor SlowMockProvider: InferenceProvider {
+private actor SlowMockProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = []
     private var entered = false
     private var enteredWaiters: [CheckedContinuation<Void, Never>] = []

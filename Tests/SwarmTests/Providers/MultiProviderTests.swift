@@ -23,6 +23,10 @@ actor SimpleMockProvider: InferenceProvider {
         return "Response from \(name)"
     }
 
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        try await generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    }
+
     nonisolated func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
         let providerName = name
         return AsyncThrowingStream { continuation in
@@ -40,6 +44,20 @@ actor SimpleMockProvider: InferenceProvider {
     ) async throws -> InferenceResponse {
         generateCalls.append(prompt)
         return InferenceResponse(content: "Tool response from \(name)", finishReason: .completed)
+    }
+
+    func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse {
+        _ = toolExecutor
+        return try await generateWithToolCalls(
+            prompt: InferenceMessage.flattenPrompt(messages),
+            tools: tools,
+            options: options
+        )
     }
 }
 

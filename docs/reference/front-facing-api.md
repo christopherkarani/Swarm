@@ -566,6 +566,7 @@ Built-in inference is Apple Foundation Models (on-device) and
 .foundationModels(profile: profile) // Dynamic profile re-resolved each turn
 .openAICompatible(.ollama(model: "llama3.2"))
 .openAICompatible(.openAI(apiKey: "sk-...", model: "gpt-4o"))
+.textOnly(stringBackend)            // TextOnlyBackend → flatten adapter
 // Custom: pass any InferenceProvider value
 ```
 
@@ -575,6 +576,7 @@ Built-in inference is Apple Foundation Models (on-device) and
 | `.foundationModelsOwningToolLoop()` | `FoundationModelsInferenceProvider` | Same type; advertises a provider-owned tool loop |
 | `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Capture adapter driven by Swarm ``DynamicProfile`` |
 | `.openAICompatible(_:)` | `OpenAICompatibleProvider` | OpenAI / Azure / OpenRouter / Ollama / LM Studio over Chat Completions; Linux-first |
+| `.textOnly(_:)` | `TextOnlyConversationInferenceProviderAdapter` | Wraps a ``TextOnlyBackend``; only flatten site |
 | Custom `InferenceProvider` | your type | Implement the protocol for other backends |
 
 Opt in to a provider-owned tool loop with

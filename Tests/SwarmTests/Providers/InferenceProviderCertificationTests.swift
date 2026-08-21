@@ -17,11 +17,9 @@ struct InferenceProviderCapabilityContractTests {
 
     @Test("Text-only conversation adapter strips streaming tool-call capability")
     func textOnlyAdapterStripsStreamingToolCalls() {
-        let base = CertifiedPromptToolStreamingProvider(
-            scripts: [[]],
-            capabilities: [.streamingToolCalls, .responseContinuation]
+        let adapter = TextOnlyConversationInferenceProviderAdapter.textOnly(
+            CapabilityReportingTextBackend(capabilities: [.streamingToolCalls, .responseContinuation])
         )
-        let adapter = TextOnlyConversationInferenceProviderAdapter(base: base)
 
         #expect(adapter.capabilities.contains(.conversationMessages))
         #expect(adapter.capabilities.contains(.streamingToolCalls) == false)
@@ -43,7 +41,9 @@ struct InferenceProviderCapabilityContractTests {
 
     @Test("MultiProvider capabilities follow the selected route while preserving wrapper conversation support")
     func multiProviderCapabilitiesFollowSelectedRoute() async throws {
-        let defaultProvider = CertifiedTextOnlyProvider(mode: .finalAnswer("ok"))
+        let defaultProvider = TextOnlyConversationInferenceProviderAdapter.textOnly(
+            CertifiedTextOnlyProvider(mode: .finalAnswer("ok"))
+        )
         let continuationProvider = MockInferenceProvider(
             responses: ["first", "second"],
             capabilities: [.responseContinuation]
@@ -66,7 +66,9 @@ struct InferenceProviderCertificationTests {
     func mockProviderCertifiesTextOnlyToolEmulation() async throws {
         let provider = CertifiedTextOnlyProvider(mode: .toolThenAnswer)
 
-        _ = try await ProviderCertificationHarness.certifyTextOnlyToolLoop(using: provider)
+        _ = try await ProviderCertificationHarness.certifyTextOnlyToolLoop(
+            using: .textOnly(provider)
+        )
 
         let prompts = await provider.recordedPrompts()
         #expect(prompts.count == 2)
@@ -76,11 +78,16 @@ struct InferenceProviderCertificationTests {
 
     @Test("MultiProvider selected route passes text-only tool emulation certification")
     func multiProviderCertifiesSelectedTextOnlyToolEmulation() async throws {
-        let defaultProvider = CertifiedTextOnlyProvider(mode: .finalAnswer("default"))
+        let defaultProvider = TextOnlyConversationInferenceProviderAdapter.textOnly(
+            CertifiedTextOnlyProvider(mode: .finalAnswer("default"))
+        )
         let selectedProvider = CertifiedTextOnlyProvider(mode: .toolThenAnswer)
         let multiProvider = MultiProvider(defaultProvider: defaultProvider)
 
-        try await multiProvider.register(prefix: "local", provider: selectedProvider)
+        try await multiProvider.register(
+            prefix: "local",
+            provider: .textOnly(selectedProvider)
+        )
         await multiProvider.setModel("local/mock")
 
         _ = try await ProviderCertificationHarness.certifyTextOnlyToolLoop(using: multiProvider)
@@ -110,7 +117,9 @@ struct InferenceProviderCertificationTests {
 
     @Test("MultiProvider selected route forwards auto continuation")
     func multiProviderForwardsAutoContinuationOnSelectedRoute() async throws {
-        let defaultProvider = CertifiedTextOnlyProvider(mode: .finalAnswer("default"))
+        let defaultProvider = TextOnlyConversationInferenceProviderAdapter.textOnly(
+            CertifiedTextOnlyProvider(mode: .finalAnswer("default"))
+        )
         let selectedProvider = MockInferenceProvider(
             responses: ["first reply", "second reply"],
             capabilities: [.responseContinuation]
@@ -168,7 +177,9 @@ struct InferenceProviderCertificationTests {
             )
         ]
 
-        let defaultProvider = CertifiedTextOnlyProvider(mode: .finalAnswer("default"))
+        let defaultProvider = TextOnlyConversationInferenceProviderAdapter.textOnly(
+            CertifiedTextOnlyProvider(mode: .finalAnswer("default"))
+        )
         let selectedProvider = CertifiedPromptToolStreamingProvider(scripts: [
             [
                 .toolCallPartial(partial),
@@ -217,7 +228,9 @@ struct InferenceProviderCertificationTests {
 
     @Test("MultiProvider selected route preserves transcript replay compatibility")
     func multiProviderCertifiesTranscriptReplay() async throws {
-        let defaultProvider = CertifiedTextOnlyProvider(mode: .finalAnswer("default"))
+        let defaultProvider = TextOnlyConversationInferenceProviderAdapter.textOnly(
+            CertifiedTextOnlyProvider(mode: .finalAnswer("default"))
+        )
         let selectedProvider = MockInferenceProvider()
         let multiProvider = MultiProvider(defaultProvider: defaultProvider)
         try await multiProvider.register(prefix: "mock", provider: selectedProvider)
@@ -253,7 +266,9 @@ struct InferenceProviderCertificationTests {
 
     @Test("MultiProvider selected route surfaces cancellation through wrapped provider")
     func multiProviderCancelsSafely() async throws {
-        let defaultProvider = CertifiedTextOnlyProvider(mode: .finalAnswer("default"))
+        let defaultProvider = TextOnlyConversationInferenceProviderAdapter.textOnly(
+            CertifiedTextOnlyProvider(mode: .finalAnswer("default"))
+        )
         let selectedProvider = MockInferenceProvider(responses: ["slow reply"])
         await selectedProvider.setDelay(.milliseconds(200))
 

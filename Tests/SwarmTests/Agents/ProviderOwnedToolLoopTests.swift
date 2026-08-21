@@ -390,7 +390,7 @@ struct FoundationModelsFactoryCapabilityTests {
 
 // MARK: - Owned-loop test adapters
 
-private actor ExecutorHonoringThenFailingProvider: InferenceProvider {
+private actor ExecutorHonoringThenFailingProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = [
         .conversationMessages,
         .nativeToolCalling,
@@ -440,7 +440,7 @@ private actor ExecutorHonoringThenFailingProvider: InferenceProvider {
     }
 }
 
-private actor CaptureCallCountingProvider: InferenceProvider {
+private actor CaptureCallCountingProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = [
         .conversationMessages,
         .nativeToolCalling,
@@ -483,7 +483,7 @@ private actor CaptureCallCountingProvider: InferenceProvider {
     }
 }
 
-private actor ExecutorHonoringCompletingProvider: InferenceProvider {
+private actor ExecutorHonoringCompletingProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = [
         .conversationMessages,
         .nativeToolCalling,
@@ -546,7 +546,7 @@ private actor ExecutorHonoringCompletingProvider: InferenceProvider {
     }
 }
 
-private actor ExecutorRemappingHandoffToCancellationProvider: InferenceProvider {
+private actor ExecutorRemappingHandoffToCancellationProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = [
         .conversationMessages,
         .nativeToolCalling,
@@ -598,7 +598,7 @@ private actor ExecutorRemappingHandoffToCancellationProvider: InferenceProvider 
     }
 }
 
-private actor ExecutorHonoringLateToolProvider: InferenceProvider {
+private actor ExecutorHonoringLateToolProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = [
         .conversationMessages,
         .nativeToolCalling,
@@ -661,7 +661,7 @@ private actor ExecutorHonoringLateToolProvider: InferenceProvider {
 }
 
 /// Capture-style mock that advertises the owned-loop bit and implements the 4-arg call.
-private actor MockOwnedLoopProvider: InferenceProvider {
+private actor MockOwnedLoopProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = [
         .conversationMessages,
         .providerOwnedToolLoop,
@@ -722,7 +722,7 @@ private actor MockOwnedLoopProvider: InferenceProvider {
 }
 
 /// Advertises the owned-loop bit but only implements the 3-arg witness.
-private struct DefaultWitnessOwnedLoopProvider: InferenceProvider {
+private struct DefaultWitnessOwnedLoopProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = [
         .conversationMessages,
         .providerOwnedToolLoop,
@@ -756,7 +756,7 @@ private struct DefaultWitnessOwnedLoopProvider: InferenceProvider {
     }
 }
 
-private struct FoundationModelsStyleOwnedProvider: InferenceProvider {
+private struct FoundationModelsStyleOwnedProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = [
         .conversationMessages,
         .providerOwnedToolLoop,

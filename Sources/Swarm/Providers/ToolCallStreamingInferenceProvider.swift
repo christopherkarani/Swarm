@@ -1,7 +1,7 @@
 // ToolCallStreamingInferenceProvider.swift
 // Swarm Framework
 //
-// Provider capability protocol for streaming tool call assembly (partial arguments + completed calls).
+// Streaming tool-call updates on the InferenceProvider seam.
 
 import Foundation
 
@@ -22,16 +22,3 @@ public enum InferenceStreamUpdate: Sendable, Equatable {
     /// A finished provider-owned turn, including the inner transcript.
     case finishedTurn(InferenceResponse)
 }
-
-/// An inference provider that can stream tool-call assembly.
-///
-/// This allows agents to surface partial tool arguments to clients before tool execution begins.
-public protocol ToolCallStreamingInferenceProvider: InferenceProvider {
-    /// Streams a response with potential tool calls, yielding partial tool-call updates as they arrive.
-    func streamWithToolCalls(
-        prompt: String,
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
-}
-

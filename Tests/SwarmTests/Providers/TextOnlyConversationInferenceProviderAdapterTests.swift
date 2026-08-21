@@ -24,7 +24,7 @@ struct TextOnlyConversationInferenceProviderAdapterTests {
     @Test("Text-only conversation adapter flattens structured history for plain providers")
     func textOnlyConversationAdapterFlattensStructuredHistory() async throws {
         let provider = CertifiedTextOnlyProvider(mode: .finalAnswer("ok"))
-        let adapter = TextOnlyConversationInferenceProviderAdapter(base: provider)
+        let adapter = TextOnlyConversationInferenceProviderAdapter.textOnly(provider)
 
         let output = try await adapter.generate(
             messages: [
@@ -71,8 +71,8 @@ struct TextOnlyConversationInferenceProviderAdapterTests {
 
     @Test("Text-only conversation adapter strips streaming tool-call capability")
     func textOnlyConversationAdapterStripsStreamingToolCallCapability() {
-        let provider = ReportingTextProvider(capabilities: [.streamingToolCalls, .responseContinuation])
-        let adapter = TextOnlyConversationInferenceProviderAdapter(base: provider)
+        let provider = ReportingTextBackend(capabilities: [.streamingToolCalls, .responseContinuation])
+        let adapter = TextOnlyConversationInferenceProviderAdapter.textOnly(provider)
 
         let capabilities = adapter.capabilities
 
@@ -87,7 +87,7 @@ struct TextOnlyConversationInferenceProviderAdapterTests {
         let agent = try Agent(
             tools: [StringTool()],
             instructions: "Use tools when helpful.",
-            inferenceProvider: provider
+            inferenceProvider: .textOnly(provider)
         )
 
         let result = try await agent.run("Uppercase hello.")
@@ -100,17 +100,10 @@ struct TextOnlyConversationInferenceProviderAdapterTests {
     }
 }
 
-private struct ReportingTextProvider: InferenceProvider, CapabilityReportingInferenceProvider {
+private struct ReportingTextBackend: TextOnlyBackend {
     let capabilities: InferenceProviderCapabilities
 
     func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
         "ok"
-    }
-
-    func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            continuation.yield("ok")
-            continuation.finish()
-        }
     }
 }

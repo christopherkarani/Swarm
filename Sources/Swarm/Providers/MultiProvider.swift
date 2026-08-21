@@ -350,11 +350,11 @@ public actor MultiProvider: InferenceProvider {
         options: InferenceOptions,
         continuation: AsyncThrowingStream<InferenceStreamUpdate, Error>.Continuation
     ) async throws {
-        guard let streamingProvider = provider as? any ToolCallStreamingInferenceProvider else {
-            throw AgentError.generationFailed(reason: "Resolved provider does not support tool-call streaming")
-        }
-
-        for try await update in streamingProvider.streamWithToolCalls(prompt: prompt, tools: tools, options: options) {
+        for try await update in provider.streamWithToolCalls(
+            messages: [.user(prompt)],
+            tools: tools,
+            options: options
+        ) {
             try Task.checkCancellation()
             continuation.yield(update)
         }
@@ -468,7 +468,7 @@ extension MultiProvider {
     }
 }
 
-extension MultiProvider: ToolCallStreamingInferenceProvider {
+extension MultiProvider {
     nonisolated public func streamWithToolCalls(
         prompt: String,
         tools: [ToolSchema],

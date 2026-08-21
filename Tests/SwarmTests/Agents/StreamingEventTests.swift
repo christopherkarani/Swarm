@@ -182,7 +182,7 @@ struct StreamingEventTests {
 }
 
 private final class CapabilityOptOutToolStreamingProvider:
-    ToolCallStreamingInferenceProvider,
+    InferenceProvider,
     CapabilityReportingInferenceProvider,
     @unchecked Sendable
 {
@@ -202,21 +202,15 @@ private final class CapabilityOptOutToolStreamingProvider:
     private var generateWithToolCallsCountStorage = 0
     private var streamWithToolCallsCountStorage = 0
 
-    func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+    func generate(messages _: [InferenceMessage], options _: InferenceOptions) async throws -> String {
         "Done"
     }
 
-    func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            continuation.yield("Done")
-            continuation.finish()
-        }
-    }
-
     func generateWithToolCalls(
-        prompt _: String,
+        messages _: [InferenceMessage],
         tools _: [ToolSchema],
-        options _: InferenceOptions
+        options _: InferenceOptions,
+        toolExecutor _: ToolCallExecutor?
     ) async throws -> InferenceResponse {
         withLock {
             generateWithToolCallsCountStorage += 1
@@ -225,9 +219,10 @@ private final class CapabilityOptOutToolStreamingProvider:
     }
 
     func streamWithToolCalls(
-        prompt _: String,
+        messages _: [InferenceMessage],
         tools _: [ToolSchema],
-        options _: InferenceOptions
+        options _: InferenceOptions,
+        toolExecutor _: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
         withLock {
             streamWithToolCallsCountStorage += 1
@@ -245,7 +240,7 @@ private final class CapabilityOptOutToolStreamingProvider:
 }
 
 private final class CapabilityOptInToolStreamingProvider:
-    ToolCallStreamingInferenceProvider,
+    InferenceProvider,
     CapabilityReportingInferenceProvider,
     @unchecked Sendable
 {
@@ -265,21 +260,15 @@ private final class CapabilityOptInToolStreamingProvider:
     private var generateWithToolCallsCountStorage = 0
     private var streamWithToolCallsCountStorage = 0
 
-    func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+    func generate(messages _: [InferenceMessage], options _: InferenceOptions) async throws -> String {
         "Done"
     }
 
-    func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            continuation.yield("Done")
-            continuation.finish()
-        }
-    }
-
     func generateWithToolCalls(
-        prompt _: String,
+        messages _: [InferenceMessage],
         tools _: [ToolSchema],
-        options _: InferenceOptions
+        options _: InferenceOptions,
+        toolExecutor _: ToolCallExecutor?
     ) async throws -> InferenceResponse {
         withLock {
             generateWithToolCallsCountStorage += 1
@@ -288,9 +277,10 @@ private final class CapabilityOptInToolStreamingProvider:
     }
 
     func streamWithToolCalls(
-        prompt _: String,
+        messages _: [InferenceMessage],
         tools _: [ToolSchema],
-        options _: InferenceOptions
+        options _: InferenceOptions,
+        toolExecutor _: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
         withLock {
             streamWithToolCallsCountStorage += 1

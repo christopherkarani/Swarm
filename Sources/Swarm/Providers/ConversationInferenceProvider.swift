@@ -36,7 +36,7 @@ public struct InferenceProviderCapabilities: OptionSet, Sendable, Hashable {
     /// ``ToolCallExecutor``. Agent skips inference retries on that path so a
     /// side-effecting tool is not replayed. OpenAI-compatible backends that
     /// only *return* tool calls must not advertise this bit. Conformers that
-    /// set this bit must implement the `toolExecutor` overloads; the protocol
+    /// set this bit must implement the `toolExecutor` method; the protocol
     /// default throws ``AgentError/providerOwnedToolLoopRequiresExecutor``.
     public static let providerOwnedToolLoop = Self(rawValue: 1 << 6)
 }
@@ -181,15 +181,40 @@ extension InferenceMessage {
 public extension InferenceProvider {
     var capabilities: InferenceProviderCapabilities { [.conversationMessages] }
 
-    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
-        try await generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    func generate(prompt: String, options: InferenceOptions) async throws -> String {
+        try await generate(messages: [.user(prompt)], options: options)
+    }
+
+    func stream(
+        prompt: String,
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        stream(messages: [.user(prompt)], options: options)
     }
 
     func stream(
         messages: [InferenceMessage],
         options: InferenceOptions
     ) -> AsyncThrowingStream<String, Error> {
-        stream(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+        StreamHelper.makeTrackedStream { continuation in
+            let text = try await generate(messages: messages, options: options)
+            if !text.isEmpty {
+                continuation.yield(text)
+            }
+            continuation.finish()
+        }
+    }
+
+    func generateWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) async throws -> InferenceResponse {
+        try await generateWithToolCalls(
+            messages: [.user(prompt)],
+            tools: tools,
+            options: options
+        )
     }
 
     func generateWithToolCalls(
@@ -198,9 +223,10 @@ public extension InferenceProvider {
         options: InferenceOptions
     ) async throws -> InferenceResponse {
         try await generateWithToolCalls(
-            prompt: InferenceMessage.flattenPrompt(messages),
+            messages: messages,
             tools: tools,
-            options: options
+            options: options,
+            toolExecutor: nil
         )
     }
 
@@ -222,16 +248,12 @@ public extension InferenceProvider {
         tools: [ToolSchema],
         options: InferenceOptions
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        if let promptStreamer = self as? any ToolCallStreamingInferenceProvider {
-            return promptStreamer.streamWithToolCalls(
-                prompt: InferenceMessage.flattenPrompt(messages),
-                tools: tools,
-                options: options
-            )
-        }
-        return streamFinishedToolTurn {
-            try await generateWithToolCalls(messages: messages, tools: tools, options: options)
-        }
+        streamWithToolCalls(
+            messages: messages,
+            tools: tools,
+            options: options,
+            toolExecutor: nil
+        )
     }
 
     func streamWithToolCalls(
@@ -240,18 +262,14 @@ public extension InferenceProvider {
         options: InferenceOptions,
         toolExecutor: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        if capabilities.contains(.providerOwnedToolLoop) {
-            return streamFinishedToolTurn {
-                try await generateWithToolCalls(
-                    messages: messages,
-                    tools: tools,
-                    options: options,
-                    toolExecutor: toolExecutor
-                )
-            }
+        streamFinishedToolTurn {
+            try await generateWithToolCalls(
+                messages: messages,
+                tools: tools,
+                options: options,
+                toolExecutor: toolExecutor
+            )
         }
-        _ = toolExecutor
-        return streamWithToolCalls(messages: messages, tools: tools, options: options)
     }
 
     func generateStructured(
@@ -259,16 +277,24 @@ public extension InferenceProvider {
         request: StructuredOutputRequest,
         options: InferenceOptions
     ) async throws -> StructuredOutputResult {
-        let prompt = InferenceMessage.flattenPrompt(messages)
-        // Prompt structured output is a StructuredOutputInferenceProvider requirement, not InferenceProvider.
-        if let structuredProvider = self as? any StructuredOutputInferenceProvider {
-            return try await structuredProvider.generateStructured(
-                prompt: prompt,
-                request: request,
-                options: options
-            )
-        }
-        return try await generateStructured(prompt: prompt, request: request, options: options)
+        let instructed = StructuredOutputPromptBuilder.appendInstruction(
+            to: messages,
+            request: request
+        )
+        let text = try await generate(messages: instructed, options: options)
+        return try StructuredOutputParser.parse(text, request: request, source: .promptFallback)
+    }
+
+    func generateStructured(
+        prompt: String,
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        try await generateStructured(
+            messages: [.user(prompt)],
+            request: request,
+            options: options
+        )
     }
 }
 

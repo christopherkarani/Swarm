@@ -23,6 +23,27 @@ public actor DemoScriptedProvider: InferenceProvider {
         "ok"
     }
 
+    public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        try await generate(
+            prompt: TextOnlyConversationInferenceProviderAdapter.prompt(from: messages),
+            options: options
+        )
+    }
+
+    public func generateWithToolCalls(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
+    ) async throws -> InferenceResponse {
+        _ = toolExecutor
+        return try await generateWithToolCalls(
+            prompt: TextOnlyConversationInferenceProviderAdapter.prompt(from: messages),
+            tools: tools,
+            options: options
+        )
+    }
+
     public nonisolated func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             for token in DemoMarkers.primaryStreamTokens {

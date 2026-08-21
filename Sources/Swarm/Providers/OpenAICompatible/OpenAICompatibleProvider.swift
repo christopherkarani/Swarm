@@ -42,8 +42,6 @@ import FoundationNetworking
 ///
 /// Inject a `URLSession` with a `URLProtocol` stub in tests.
 public struct OpenAICompatibleProvider: InferenceProvider,
-    ToolCallStreamingInferenceProvider,
-    StructuredOutputInferenceProvider,
     InferenceProviderMetadata
 {
     /// Provider configuration (endpoint, model, auth, structured-output mode).
@@ -118,9 +116,11 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     public func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
-        options: InferenceOptions
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
     ) async throws -> InferenceResponse {
-        try await complete(
+        _ = toolExecutor
+        return try await complete(
             messages: messages,
             tools: tools,
             options: options,
@@ -158,9 +158,11 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     public func streamWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
-        options: InferenceOptions
+        options: InferenceOptions,
+        toolExecutor: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
+        _ = toolExecutor
+        return StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             do {
                 try await self.streamCompletions(
                     messages: messages,

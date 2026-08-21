@@ -190,6 +190,13 @@ private actor ScriptedTextProvider: InferenceProvider {
         next()
     }
 
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        try await generate(
+            prompt: TextOnlyConversationInferenceProviderAdapter.prompt(from: messages),
+            options: options
+        )
+    }
+
     nonisolated func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             Task {
