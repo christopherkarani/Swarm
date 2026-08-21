@@ -372,23 +372,9 @@ public protocol InferenceProvider: Sendable {
         toolExecutor: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
 
-    /// Streams text and tool-call updates from a flattened prompt.
-    func streamWithToolCalls(
-        prompt: String,
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
-
     /// Generates structured output from role-tagged messages.
     func generateStructured(
         messages: [InferenceMessage],
-        request: StructuredOutputRequest,
-        options: InferenceOptions
-    ) async throws -> StructuredOutputResult
-
-    /// Generates structured output from a flattened prompt.
-    func generateStructured(
-        prompt: String,
         request: StructuredOutputRequest,
         options: InferenceOptions
     ) async throws -> StructuredOutputResult
