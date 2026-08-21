@@ -1,7 +1,7 @@
 import Foundation
 
 /// Declares the side-effect profile of a tool.
-public enum ToolSideEffectLevel: String, Codable, Sendable, Equatable {
+enum ToolSideEffectLevel: String, Codable, Sendable, Equatable {
     case unspecified
     case readOnly = "read_only"
     case localMutation = "local_mutation"
@@ -9,7 +9,7 @@ public enum ToolSideEffectLevel: String, Codable, Sendable, Equatable {
 }
 
 /// Declares whether a tool call may be retried safely by an orchestrator.
-public enum ToolRetryPolicy: String, Codable, Sendable, Equatable {
+enum ToolRetryPolicy: String, Codable, Sendable, Equatable {
     case automatic
     case safe
     case unsafe
@@ -17,14 +17,14 @@ public enum ToolRetryPolicy: String, Codable, Sendable, Equatable {
 }
 
 /// Declares whether a tool call should require approval independently of runtime defaults.
-public enum ToolApprovalRequirement: String, Codable, Sendable, Equatable {
+enum ToolApprovalRequirement: String, Codable, Sendable, Equatable {
     case automatic
     case never
     case always
 }
 
 /// Declares how durable a tool result is expected to be outside the live transcript.
-public enum ToolResultDurability: String, Codable, Sendable, Equatable {
+enum ToolResultDurability: String, Codable, Sendable, Equatable {
     case unspecified
     case transcriptOnly = "transcript_only"
     case artifactBacked = "artifact_backed"
@@ -32,13 +32,17 @@ public enum ToolResultDurability: String, Codable, Sendable, Equatable {
 }
 
 /// Swarm-owned execution semantics that higher layers can use for governance decisions.
+///
+/// The struct remains public because it appears in public signatures outside
+/// this file (`Tool.executionSemantics`, `FunctionTool`, `WebSearchTool`);
+/// its payload enums are internal.
 public struct ToolExecutionSemantics: Codable, Sendable, Equatable {
-    public var sideEffectLevel: ToolSideEffectLevel
-    public var retryPolicy: ToolRetryPolicy
-    public var approvalRequirement: ToolApprovalRequirement
-    public var resultDurability: ToolResultDurability
+    var sideEffectLevel: ToolSideEffectLevel
+    var retryPolicy: ToolRetryPolicy
+    var approvalRequirement: ToolApprovalRequirement
+    var resultDurability: ToolResultDurability
 
-    public init(
+    init(
         sideEffectLevel: ToolSideEffectLevel = .unspecified,
         retryPolicy: ToolRetryPolicy = .automatic,
         approvalRequirement: ToolApprovalRequirement = .automatic,
@@ -50,5 +54,9 @@ public struct ToolExecutionSemantics: Codable, Sendable, Equatable {
         self.resultDurability = resultDurability
     }
 
-    public static let automatic = ToolExecutionSemantics()
+    /// Default semantics used across public tool initializers. Kept
+    /// `@usableFromInline` so existing default arguments in public
+    /// initializers keep compiling without re-exposing the payload enums.
+    @usableFromInline
+    static let automatic = ToolExecutionSemantics()
 }

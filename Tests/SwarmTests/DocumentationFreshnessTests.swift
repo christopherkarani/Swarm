@@ -93,6 +93,48 @@ struct DocumentationFreshnessTests {
         #expect(!catalog.contains("| ToolChain |"))
     }
 
+    @Test("API catalog excludes symbols removed or demoted by the T1 surface shrink")
+    func apiCatalogExcludesT1ShrunkSymbols() throws {
+        let catalog = try readRepoFile("docs/reference/api-catalog.md")
+
+        // Deleted outright.
+        #expect(!catalog.contains("| HandoffBuilder |"))
+        #expect(!catalog.contains("public func handoff<T>"))
+        #expect(!catalog.contains("| AgentEventStream |"))
+        #expect(!catalog.contains("| MCPServerState |"))
+        #expect(!catalog.contains("| SwarmEmbeddingProviderAdapter |"))
+        #expect(!catalog.contains("| InferenceStreamingProvider |"))
+        #expect(!catalog.contains("| MetricsReporter |"))
+    }
+
+    @Test("T1 surface shrink leaves demoted declarations internal in source")
+    func t1SurfaceShrinkStaysInternalInSource() throws {
+        let streamOperations = try readRepoFile("Sources/Swarm/Core/StreamOperations.swift")
+        let mcpServer = try readRepoFile("Sources/Swarm/MCP/MCPServer.swift")
+        let inferenceStreamEvent = try readRepoFile("Sources/Swarm/Core/InferenceStreamEvent.swift")
+        let webSearchSupport = try readRepoFile("Sources/Swarm/Tools/Web/WebSearchSupport.swift")
+        let swarmTranscript = try readRepoFile("Sources/Swarm/Core/SwarmTranscript.swift")
+        let toolSemantics = try readRepoFile("Sources/Swarm/Tools/ToolExecutionSemantics.swift")
+        let metricsCollector = try readRepoFile("Sources/Swarm/Observability/MetricsCollector.swift")
+
+        // Deleted dead types stay gone; surviving neighbors keep their access level.
+        #expect(!streamOperations.contains("enum AgentEventStream"))
+        #expect(streamOperations.contains("public enum MergeErrorStrategy"))
+        #expect(!mcpServer.contains("MCPServerState"))
+        #expect(inferenceStreamEvent.contains("public enum InferenceStreamEvent"))
+        #expect(!inferenceStreamEvent.contains("protocol InferenceStreamingProvider"))
+
+        // Demoted types are no longer public at their declaration site.
+        #expect(webSearchSupport.contains("struct WebSearchEnvelope: Codable, Sendable, Equatable"))
+        #expect(webSearchSupport.contains("enum WebPageType: String, Codable, Sendable, Equatable"))
+        #expect(swarmTranscript.contains("struct SwarmTranscript: Codable, Sendable, Equatable"))
+        #expect(toolSemantics.contains("enum ToolRetryPolicy: String, Codable, Sendable, Equatable"))
+        #expect(metricsCollector.contains("\nprotocol MetricsReporter: Sendable {"))
+
+        // The load-bearing struct keeps its escape-hatched public status.
+        #expect(toolSemantics.contains("public struct ToolExecutionSemantics"))
+    }
+
     @Test("public memory docs do not advertise removed builder APIs")
     func publicMemoryDocsDoNotAdvertiseRemovedBuilderAPIs() throws {
         let checkedFiles = [

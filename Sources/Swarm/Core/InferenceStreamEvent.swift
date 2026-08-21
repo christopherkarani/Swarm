@@ -33,20 +33,3 @@ public enum InferenceStreamEvent: Sendable, Equatable {
     case done
 }
 
-// MARK: - InferenceStreamingProvider
-
-/// Optional protocol for providers that can stream tool-call deltas.
-public protocol InferenceStreamingProvider: Sendable {
-    /// Streams a response that may contain tool call deltas.
-    ///
-    /// - Parameters:
-    ///   - prompt: The input prompt.
-    ///   - tools: The available tool schemas.
-    ///   - options: Generation options.
-    /// - Returns: An async stream of inference events.
-    func streamWithToolCalls(
-        prompt: String,
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) -> AsyncThrowingStream<InferenceStreamEvent, Error>
-}

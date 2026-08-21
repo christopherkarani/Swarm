@@ -109,4 +109,30 @@ struct V2SurfaceAuditTests {
         )
         #expect(result.runtimeEngine == "graph")
     }
+
+    // MARK: - AnyHandoffConfiguration (retained after HandoffBuilder removal)
+
+    @Test("AnyHandoffConfiguration stays public at module level")
+    func anyHandoffConfigurationPublic() {
+        let erased = AnyHandoffConfiguration(
+            targetAgent: MockAgentRuntime(),
+            toolNameOverride: nil,
+            toolDescription: nil,
+            onTransfer: nil,
+            transform: nil,
+            when: nil,
+            nestHandoffHistory: false
+        )
+        #expect(erased.nestHandoffHistory == false)
+        #expect(!erased.effectiveToolName.isEmpty)
+    }
+
+    @Test("AnyHandoffConfiguration erases a typed configuration")
+    func anyHandoffConfigurationTypeErasurePublic() {
+        let erased = AnyHandoffConfiguration(
+            targetAgent: MockAgentRuntime(instructions: "Specialist")
+        )
+        #expect(erased.effectiveToolName == "handoff_to_mock_agent_runtime")
+        #expect(erased.effectiveToolDescription.contains("MockAgentRuntime"))
+    }
 }

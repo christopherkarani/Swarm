@@ -521,7 +521,7 @@ public actor MetricsCollector: Tracer {
 ///     }
 /// }
 /// ```
-public protocol MetricsReporter: Sendable {
+protocol MetricsReporter: Sendable {
     /// Reports a metrics snapshot.
     ///
     /// - Parameter snapshot: The metrics snapshot to report.
