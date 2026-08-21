@@ -37,7 +37,7 @@ struct InferenceProviderCapabilityDispatchTests {
         #expect(provider.promptTokenCounter == nil)
     }
 
-    @Test("Native generateStructured(prompt:) works without StructuredOutputInferenceProvider")
+    @Test("Native generateStructured(messages:) works without StructuredOutputInferenceProvider")
     func nativeStructuredPromptOverrideDoesNotNeedLeftoverProtocol() async throws {
         let structuredResult = StructuredOutputResult(
             format: .jsonObject,
@@ -56,7 +56,7 @@ struct InferenceProviderCapabilityDispatchTests {
 
         #expect(result.structuredOutput.source == .providerNative)
         #expect(result.structuredOutput.rawJSON == structuredResult.rawJSON)
-        #expect(await provider.promptCallCount() == 1)
+        #expect(await provider.structuredCallCount() == 1)
         #expect(!(provider is any StructuredOutputInferenceProvider))
     }
 
@@ -154,7 +154,7 @@ private actor RecordingPromptTokenCounter: PromptTokenCounter {
     }
 }
 
-private struct TextStubProvider: InferenceProvider {
+private struct TextStubProvider: InferenceProvider, MessagesFromPromptInference {
     func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
         "ok"
     }
@@ -167,7 +167,7 @@ private struct TextStubProvider: InferenceProvider {
     }
 }
 
-private struct TokenPropertyProvider: InferenceProvider {
+private struct TokenPropertyProvider: InferenceProvider, MessagesFromPromptInference {
     let counter: RecordingPromptTokenCounter
 
     var promptTokenCounter: (any PromptTokenCounter)? { counter }
@@ -184,10 +184,10 @@ private struct TokenPropertyProvider: InferenceProvider {
     }
 }
 
-private actor NativeStructuredPromptProvider: InferenceProvider {
+private actor NativeStructuredPromptProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = [.structuredOutputs]
     private let result: StructuredOutputResult
-    private var promptCalls = 0
+    private var structuredCalls = 0
 
     init(result: StructuredOutputResult) {
         self.result = result
@@ -204,20 +204,20 @@ private actor NativeStructuredPromptProvider: InferenceProvider {
     }
 
     func generateStructured(
-        prompt _: String,
+        messages _: [InferenceMessage],
         request _: StructuredOutputRequest,
         options _: InferenceOptions
     ) async throws -> StructuredOutputResult {
-        promptCalls += 1
+        structuredCalls += 1
         return result
     }
 
-    func promptCallCount() -> Int {
-        promptCalls
+    func structuredCallCount() -> Int {
+        structuredCalls
     }
 }
 
-private struct StructuredBitWithoutOverrideProvider: InferenceProvider {
+private struct StructuredBitWithoutOverrideProvider: InferenceProvider, MessagesFromPromptInference {
     var capabilities: InferenceProviderCapabilities { [.structuredOutputs] }
 
     func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
@@ -269,7 +269,7 @@ private final class GenerateScriptBox: @unchecked Sendable {
     }
 }
 
-private struct LeftoverStreamingWithoutBitProvider: ToolCallStreamingInferenceProvider {
+private struct LeftoverStreamingWithoutBitProvider: ToolCallStreamingInferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = []
     private let script: GenerateScriptBox
 
@@ -285,6 +285,14 @@ private struct LeftoverStreamingWithoutBitProvider: ToolCallStreamingInferencePr
         StreamHelper.makeTrackedStream { continuation in
             continuation.finish(throwing: AgentError.generationFailed(reason: "Unexpected stream()"))
         }
+    }
+
+    func generateWithToolCalls(
+        messages _: [InferenceMessage],
+        tools _: [ToolSchema],
+        options _: InferenceOptions
+    ) async throws -> InferenceResponse {
+        script.nextGenerateResponse()
     }
 
     func generateWithToolCalls(
@@ -330,7 +338,7 @@ private struct LeftoverStreamingWithoutBitProvider: ToolCallStreamingInferencePr
     }
 }
 
-private struct StreamingBitWithoutOverrideProvider: InferenceProvider {
+private struct StreamingBitWithoutOverrideProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = [.streamingToolCalls]
     private let script: GenerateScriptBox
 
@@ -349,7 +357,7 @@ private struct StreamingBitWithoutOverrideProvider: InferenceProvider {
     }
 
     func generateWithToolCalls(
-        prompt _: String,
+        messages _: [InferenceMessage],
         tools _: [ToolSchema],
         options _: InferenceOptions
     ) async throws -> InferenceResponse {

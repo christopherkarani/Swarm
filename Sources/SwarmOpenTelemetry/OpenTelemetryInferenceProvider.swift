@@ -10,7 +10,8 @@ import Swarm
 /// The wrapper forwards ``InferenceProvider`` methods, ``promptTokenCounter``,
 /// and advertised capability bits. Leftover capability protocols remain as
 /// deprecated identities for native backends; this wrapper does not dispatch
-/// through those identities.
+/// through those identities. Callers read the bitset; they do not probe extra
+/// protocols.
 public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecked Sendable,
     CapabilityReportingInferenceProvider,
     InferenceProviderMetadata

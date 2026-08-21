@@ -18,10 +18,10 @@ struct AgentLiveToolCallStreamingTests {
             }
         }
 
-        // NOTE: Do not implement this as an actor. `ToolCallStreamingInferenceProvider.streamWithToolCalls`
+        // NOTE: Do not implement this as an actor. `streamWithToolCalls`
         // is a synchronous protocol requirement, and calling it through an existential can bypass actor
         // isolation hops, triggering "Incorrect actor executor assumption" crashes at runtime.
-        final class ScriptedStreamingProvider: ToolCallStreamingInferenceProvider, @unchecked Sendable {
+        final class ScriptedStreamingProvider: InferenceProvider, @unchecked Sendable {
             nonisolated let capabilities: InferenceProviderCapabilities = [.streamingToolCalls]
 
             private let lock = NSLock()
@@ -39,28 +39,24 @@ struct AgentLiveToolCallStreamingTests {
                 return scripts[min(index, scripts.count - 1)]
             }
 
-            func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+            func generate(messages _: [InferenceMessage], options _: InferenceOptions) async throws -> String {
                 throw AgentError.generationFailed(reason: "Unexpected call to generate() in streaming test")
             }
 
-            func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
-                StreamHelper.makeTrackedStream { continuation in
-                    continuation.finish(throwing: AgentError.generationFailed(reason: "Unexpected call to stream() in streaming test"))
-                }
-            }
-
             func generateWithToolCalls(
-                prompt _: String,
+                messages _: [InferenceMessage],
                 tools _: [ToolSchema],
-                options _: InferenceOptions
+                options _: InferenceOptions,
+                toolExecutor _: ToolCallExecutor?
             ) async throws -> InferenceResponse {
                 throw AgentError.generationFailed(reason: "Unexpected call to generateWithToolCalls() in streaming test")
             }
 
             func streamWithToolCalls(
-                prompt _: String,
+                messages _: [InferenceMessage],
                 tools _: [ToolSchema],
-                options _: InferenceOptions
+                options _: InferenceOptions,
+                toolExecutor _: ToolCallExecutor?
             ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
                 StreamHelper.makeTrackedStream { continuation in
                     let updates = self.nextScript()
@@ -155,7 +151,7 @@ struct AgentLiveToolCallStreamingTests {
         #expect(count == 2)
     }
 
-    @Test("Uses tool-call streaming when inferenceProvider conforms to ToolCallStreamingInferenceProvider")
+    @Test("Uses tool-call streaming when the InferenceProvider advertises streamingToolCalls")
     func usesToolCallStreamingThroughStreamingProvider() async throws {
         struct EchoTool: AnyJSONTool, Sendable {
             let name = "echo"
@@ -170,7 +166,7 @@ struct AgentLiveToolCallStreamingTests {
         }
 
         // See note in the test above: this must not be an actor.
-        final class ScriptedStreamingProvider: ToolCallStreamingInferenceProvider, @unchecked Sendable {
+        final class ScriptedStreamingProvider: InferenceProvider, @unchecked Sendable {
             nonisolated let capabilities: InferenceProviderCapabilities = [.streamingToolCalls]
 
             private let lock = NSLock()
@@ -188,29 +184,24 @@ struct AgentLiveToolCallStreamingTests {
                 return scripts[min(index, scripts.count - 1)]
             }
 
-            func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+            func generate(messages _: [InferenceMessage], options _: InferenceOptions) async throws -> String {
                 throw AgentError.generationFailed(reason: "Unexpected call to generate() in streaming test")
             }
 
-            func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
-                StreamHelper.makeTrackedStream { continuation in
-                    continuation.finish(throwing: AgentError.generationFailed(reason: "Unexpected call to stream() in streaming test"))
-                }
-            }
-
             func generateWithToolCalls(
-                prompt _: String,
+                messages _: [InferenceMessage],
                 tools _: [ToolSchema],
-                options _: InferenceOptions
+                options _: InferenceOptions,
+                toolExecutor _: ToolCallExecutor?
             ) async throws -> InferenceResponse {
-                // If Agent falls back to the non-streaming path, this is called (and the test should fail).
                 throw AgentError.generationFailed(reason: "Expected Agent to use streamWithToolCalls(), but it called generateWithToolCalls()")
             }
 
             func streamWithToolCalls(
-                prompt _: String,
+                messages _: [InferenceMessage],
                 tools _: [ToolSchema],
-                options _: InferenceOptions
+                options _: InferenceOptions,
+                toolExecutor _: ToolCallExecutor?
             ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
                 StreamHelper.makeTrackedStream { continuation in
                     let updates = self.nextScript()

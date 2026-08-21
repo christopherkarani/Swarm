@@ -6,7 +6,7 @@ import Testing
 
 @Suite("FoundationModels Tool Calling Tests")
 struct FoundationModelsToolCallingTests {
-    @Test("LanguageModelSession delegates tool requests to native bridge")
+    @Test("FoundationModelsInferenceProvider accepts tool requests")
     func languageModelSessionAcceptsToolRequests() async throws {
         guard ProcessInfo.processInfo.environment["SWARM_RUN_LIVE_FOUNDATION_MODELS_TESTS"] == "1" else {
             return
@@ -19,7 +19,7 @@ struct FoundationModelsToolCallingTests {
             return
         }
 
-        let session = LanguageModelSession()
+        let provider = FoundationModelsInferenceProvider()
         let tools = [
             ToolSchema(
                 name: "lookup",
@@ -30,8 +30,8 @@ struct FoundationModelsToolCallingTests {
             ),
         ]
 
-        let response = try await session.generateWithToolCalls(
-            prompt: "Use the lookup tool to search for Swift concurrency right now.",
+        let response = try await provider.generateWithToolCalls(
+            messages: [.user("Use the lookup tool to search for Swift concurrency right now.")],
             tools: tools,
             options: InferenceOptions(toolChoice: .required)
         )

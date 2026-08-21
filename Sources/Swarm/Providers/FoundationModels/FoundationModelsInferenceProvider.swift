@@ -118,8 +118,7 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
 public struct FoundationModelsInferenceProvider: InferenceProvider,
-    InferenceProviderMetadata,
-    StructuredOutputInferenceProvider
+    InferenceProviderMetadata
 {
     private let configuration: FoundationModelsProviderConfiguration
     private let dynamicProfile: (any DynamicProfile)?
@@ -194,8 +193,11 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         try await generate(messages: [.user(prompt)], options: options)
     }
 
-    public func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
-        let resolved = resolveTurn(messages: [.user(prompt)], tools: [], options: options)
+    public func stream(
+        messages: [InferenceMessage],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        let resolved = resolveTurn(messages: messages, tools: [], options: options)
         let session = makeSession(tools: [], instructions: resolved.instructions)
         let generationOptions = makeGenerationOptions(from: resolved.options)
         let promptText = flattenPrompt(

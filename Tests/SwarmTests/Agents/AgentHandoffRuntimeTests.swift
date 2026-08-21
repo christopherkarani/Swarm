@@ -335,7 +335,7 @@ private actor HandoffPredicateGate {
     }
 }
 
-private actor GateDisablingToolCallProvider: InferenceProvider {
+private actor GateDisablingToolCallProvider: InferenceProvider, MessagesFromPromptInference {
     private let gate: HandoffPredicateGate
 
     init(gate: HandoffPredicateGate) {

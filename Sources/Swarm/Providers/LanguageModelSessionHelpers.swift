@@ -36,7 +36,7 @@ enum LanguageModelSessionToolPromptBuilder {
         tools: [ToolSchema],
         context: LanguageModelSessionToolCallingContext,
         structuredOutput: StructuredOutputRequest? = nil,
-        maxToolDefTokens: Int = 200
+        maxToolDefTokens _: Int = 200
     ) -> String {
         guard !tools.isEmpty else {
             if let structuredOutput {
@@ -45,6 +45,30 @@ enum LanguageModelSessionToolPromptBuilder {
             return basePrompt
         }
 
+        return """
+            \(basePrompt)
+
+            \(toolCallingInstructions(
+                tools: tools,
+                context: context,
+                structuredOutput: structuredOutput
+            ))
+            """
+    }
+
+    static func toolCallingInstructions(
+        tools: [ToolSchema],
+        context: LanguageModelSessionToolCallingContext,
+        structuredOutput: StructuredOutputRequest? = nil
+    ) -> String {
+        toolCallingInstructions(
+            toolDefsText: formattedToolDefinitions(tools),
+            context: context,
+            structuredOutput: structuredOutput
+        )
+    }
+
+    private static func formattedToolDefinitions(_ tools: [ToolSchema]) -> String {
         var toolDefinitions: [String] = []
         for tool in tools {
             let params: String = tool.parameters.map { (param: ToolParameter) -> String in
@@ -66,9 +90,6 @@ enum LanguageModelSessionToolPromptBuilder {
 
         var toolDefsText = toolDefinitions.joined(separator: "\n\n")
 
-        // Truncate tool definitions to fit within budget (Foundation Models 4096-token window).
-        // Tool defs for WebSearchTool alone are ~800 tokens. Cap at 400 to leave room for
-        // conversation history, system prompt, and tool results.
         let maxToolDefTokens = 400
         let estimatedToolTokens = toolDefsText.count / 4
         if estimatedToolTokens > maxToolDefTokens {
@@ -78,9 +99,15 @@ enum LanguageModelSessionToolPromptBuilder {
             }
         }
 
-        var prompt = """
-            \(basePrompt)
+        return toolDefsText
+    }
 
+    private static func toolCallingInstructions(
+        toolDefsText: String,
+        context: LanguageModelSessionToolCallingContext,
+        structuredOutput: StructuredOutputRequest?
+    ) -> String {
+        var prompt = """
             Available tools:
             \(toolDefsText)
 
@@ -325,6 +352,36 @@ enum LanguageModelSessionToolCallingEmulation {
         )
 
         let generatedText = try await generateText(promptToGenerate, options)
+        return makeInferenceResponse(from: generatedText, availableTools: tools, context: context)
+    }
+
+    /// Generates a tool-aware response without flattening role-tagged history.
+    static func generateResponse(
+        messages: [InferenceMessage],
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        generateText: @Sendable ([InferenceMessage], InferenceOptions) async throws -> String
+    ) async throws -> InferenceResponse {
+        let context = LanguageModelSessionToolCallingContext.make()
+        var outgoing = messages
+        if tools.isEmpty {
+            if let structuredOutput = options.structuredOutput {
+                outgoing = StructuredOutputPromptBuilder.appendInstruction(
+                    to: outgoing,
+                    request: structuredOutput
+                )
+            }
+        } else {
+            outgoing.append(.system(
+                LanguageModelSessionToolPromptBuilder.toolCallingInstructions(
+                    tools: tools,
+                    context: context,
+                    structuredOutput: options.structuredOutput
+                )
+            ))
+        }
+
+        let generatedText = try await generateText(outgoing, options)
         return makeInferenceResponse(from: generatedText, availableTools: tools, context: context)
     }
 

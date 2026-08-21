@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Swarm
 
-actor CertifiedTextOnlyProvider: InferenceProvider {
+actor CertifiedTextOnlyProvider: TextOnlyBackend {
     enum Mode: Sendable {
         case alwaysToolEnvelope
         case toolThenAnswer
@@ -82,7 +82,15 @@ actor CertifiedTextOnlyProvider: InferenceProvider {
     }
 }
 
-final class CertifiedPromptToolStreamingProvider: ToolCallStreamingInferenceProvider,
+struct CapabilityReportingTextBackend: TextOnlyBackend {
+    let capabilities: InferenceProviderCapabilities
+
+    func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+        "ok"
+    }
+}
+
+final class CertifiedPromptToolStreamingProvider: InferenceProvider,
     CapabilityReportingInferenceProvider,
     @unchecked Sendable
 {
@@ -118,10 +126,15 @@ final class CertifiedPromptToolStreamingProvider: ToolCallStreamingInferenceProv
         throw AgentError.generationFailed(reason: "Expected streaming tool-call path in certification fixture")
     }
 
+    func generate(messages _: [InferenceMessage], options _: InferenceOptions) async throws -> String {
+        throw AgentError.generationFailed(reason: "Unexpected call to generate(messages:) in certification fixture")
+    }
+
     func streamWithToolCalls(
-        prompt _: String,
+        messages _: [InferenceMessage],
         tools _: [ToolSchema],
-        options _: InferenceOptions
+        options _: InferenceOptions,
+        toolExecutor _: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
         StreamHelper.makeTrackedStream { continuation in
             let updates = self.nextScript()

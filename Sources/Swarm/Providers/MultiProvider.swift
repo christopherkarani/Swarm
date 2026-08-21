@@ -354,7 +354,11 @@ public actor MultiProvider: InferenceProvider {
         options: InferenceOptions,
         continuation: AsyncThrowingStream<InferenceStreamUpdate, Error>.Continuation
     ) async throws {
-        for try await update in provider.streamWithToolCalls(prompt: prompt, tools: tools, options: options) {
+        for try await update in provider.streamWithToolCalls(
+            messages: [.user(prompt)],
+            tools: tools,
+            options: options
+        ) {
             try Task.checkCancellation()
             continuation.yield(update)
         }
@@ -468,7 +472,7 @@ extension MultiProvider {
     }
 }
 
-extension MultiProvider: ToolCallStreamingInferenceProvider {
+extension MultiProvider {
     nonisolated public func streamWithToolCalls(
         prompt: String,
         tools: [ToolSchema],

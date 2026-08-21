@@ -146,11 +146,12 @@ struct DocumentationFreshnessTests {
         #expect(docs.contains("func generateStructured(\n        messages: [InferenceMessage],\n        request: StructuredOutputRequest,\n        options: InferenceOptions\n    ) async throws -> StructuredOutputResult"))
         #expect(docs.contains("func stream(\n        messages: [InferenceMessage],\n        options: InferenceOptions\n    ) -> AsyncThrowingStream<String, Error>"))
 
-        // Prompt-string methods still exist on the protocol as compile compatibility.
+        // Prompt-string methods still exist; defaults wrap `prompt` as a user message.
         #expect(providerSource.contains("func generate(prompt: String, options: InferenceOptions) async throws -> String"))
         #expect(docs.contains("Prompt-string methods remain for one minor so existing backends compile."))
         #expect(docs.contains("Agent and tests call the messages methods only."))
         #expect(docs.contains("not the Agent seam"))
+        #expect(docs.contains("Prompt-string methods default to wrapping `prompt` as a user message."))
         #expect(!docs.contains("func generate(prompt: String, options: InferenceOptions) async throws -> String"))
         #expect(!docs.contains("public protocol ConversationInferenceProvider: InferenceProvider"))
         #expect(!docs.contains("public protocol InferenceStreamingProvider: InferenceProvider"))

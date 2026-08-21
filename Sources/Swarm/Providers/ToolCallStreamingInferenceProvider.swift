@@ -1,7 +1,7 @@
 // ToolCallStreamingInferenceProvider.swift
 // Swarm Framework
 //
-// Provider capability protocol for streaming tool call assembly (partial arguments + completed calls).
+// Streaming tool-call updates on the InferenceProvider seam.
 
 import Foundation
 
@@ -39,4 +39,3 @@ public protocol ToolCallStreamingInferenceProvider: InferenceProvider {
         options: InferenceOptions
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
 }
-

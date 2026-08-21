@@ -10,62 +10,13 @@ func OpenTelemetryAnyInferenceProvider(
     tracer: any OpenTelemetryApi.Tracer,
     captureContent: Bool
 ) -> any InferenceProvider {
-    let core = OpenTelemetryAnyInferenceProviderCore(
-        base: base,
-        tracer: tracer,
-        captureContent: captureContent
+    OpenTelemetryAnyBaseInferenceProvider(
+        core: OpenTelemetryAnyInferenceProviderCore(
+            base: base,
+            tracer: tracer,
+            captureContent: captureContent
+        )
     )
-
-    if base is any ToolCallStreamingConversationInferenceProvider,
-       base is any StreamingConversationInferenceProvider,
-       base is any StructuredOutputConversationInferenceProvider
-    {
-        return OpenTelemetryAnyFullConversationToolStreamingInferenceProvider(core: core)
-    }
-
-    if base is any ToolCallStreamingConversationInferenceProvider,
-       base is any StreamingConversationInferenceProvider
-    {
-        return OpenTelemetryAnyStreamingConversationToolStreamingInferenceProvider(core: core)
-    }
-
-    if base is any ToolCallStreamingConversationInferenceProvider,
-       base is any StructuredOutputConversationInferenceProvider
-    {
-        return OpenTelemetryAnyStructuredConversationToolStreamingInferenceProvider(core: core)
-    }
-
-    if base is any ToolCallStreamingConversationInferenceProvider {
-        return OpenTelemetryAnyConversationToolStreamingInferenceProvider(core: core)
-    }
-
-    if base is any ToolCallStreamingInferenceProvider {
-        return OpenTelemetryAnyPromptToolStreamingInferenceProvider(core: core)
-    }
-
-    if base is any StreamingConversationInferenceProvider,
-       base is any StructuredOutputConversationInferenceProvider
-    {
-        return OpenTelemetryAnyStreamingStructuredConversationInferenceProvider(core: core)
-    }
-
-    if base is any StreamingConversationInferenceProvider {
-        return OpenTelemetryAnyStreamingConversationInferenceProvider(core: core)
-    }
-
-    if base is any StructuredOutputConversationInferenceProvider {
-        return OpenTelemetryAnyStructuredConversationInferenceProvider(core: core)
-    }
-
-    if base is any ConversationInferenceProvider {
-        return OpenTelemetryAnyConversationInferenceProvider(core: core)
-    }
-
-    if base is any StructuredOutputInferenceProvider {
-        return OpenTelemetryAnyStructuredInferenceProvider(core: core)
-    }
-
-    return OpenTelemetryAnyBaseInferenceProvider(core: core)
 }
 
 protocol OpenTelemetryAnyForwarding: InferenceProvider {
@@ -245,16 +196,11 @@ final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
         request: StructuredOutputRequest,
         options: InferenceOptions
     ) async throws -> StructuredOutputResult {
-        try await withLLMSpan(operation: "chat", inputLength: prompt.count, options: options) { span in
-            span.setAttribute(key: "gen_ai.output.type", value: "json")
-            let result = try await self.base.generateStructured(
-                prompt: prompt,
-                request: request,
-                options: options
-            )
-            span.setAttribute(key: "gen_ai.response.output_length", value: result.rawJSON.count)
-            return result
-        }
+        try await generateStructured(
+            messages: [.user(prompt)],
+            request: request,
+            options: options
+        )
     }
 
     func generateStructured(
@@ -280,9 +226,11 @@ final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
         tools: [ToolSchema],
         options: InferenceOptions
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        instrumentToolStream(inputLength: prompt.count, toolCount: tools.count, options: options) {
-            self.base.streamWithToolCalls(prompt: prompt, tools: tools, options: options)
-        }
+        streamWithToolCalls(
+            messages: [.user(prompt)],
+            tools: tools,
+            options: options
+        )
     }
 
     func streamWithToolCalls(
