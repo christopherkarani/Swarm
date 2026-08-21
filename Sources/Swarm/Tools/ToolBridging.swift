@@ -40,9 +40,10 @@ public struct AnyJSONToolAdapter<T: Tool>: AnyJSONTool, Sendable {
         do {
             return try SendableValue(encoding: output)
         } catch {
-            throw AgentError.toolExecutionFailed(
+            throw AgentError.toolFailure(
                 toolName: name,
-                underlyingError: "Failed to encode \(String(describing: T.Output.self)) into JSONValue: \(error.localizedDescription)"
+                message: "Failed to encode \(String(describing: T.Output.self)) into JSONValue: \(error.localizedDescription)",
+                cause: error
             )
         }
     }

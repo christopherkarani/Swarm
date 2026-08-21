@@ -84,9 +84,10 @@ import Foundation
             do {
                 return try ArithmeticParser.evaluate(trimmed)
             } catch let error as ArithmeticParser.ParserError {
-                throw AgentError.toolExecutionFailed(
+                throw AgentError.toolFailure(
                     toolName: name,
-                    underlyingError: "Failed to evaluate expression: \(error)"
+                    message: "Failed to evaluate expression: \(error)",
+                    cause: error
                 )
             }
         }

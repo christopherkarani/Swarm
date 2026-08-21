@@ -66,6 +66,11 @@ struct ToolRegistryAdapter: HiveToolRegistry, Sendable {
                 throw ToolRegistryAdapterError.toolNotFound(name: name)
             case let .toolExecutionFailed(toolName, underlyingError):
                 throw ToolRegistryAdapterError.toolInvocationFailed(name: toolName, reason: underlyingError)
+            case let .toolFailure(toolName, message, cause):
+                throw ToolRegistryAdapterError.toolInvocationFailed(
+                    name: toolName,
+                    reason: message ?? cause.map(String.init(describing:)) ?? "unknown error"
+                )
             case let .invalidToolArguments(toolName, reason):
                 throw ToolRegistryAdapterError.toolInvocationFailed(name: toolName, reason: reason)
             default:
