@@ -22,9 +22,14 @@ public protocol PromptTokenCounter: Sendable {
 /// An inference provider that can expose a prompt token counter.
 ///
 /// Providers conform to this when they can count tokens for the exact model
-/// they are serving. Swarm uses this to avoid heuristic budgeting when the
-/// provider can supply a native count.
+/// they are serving. Agent reads ``InferenceProvider/promptTokenCounter`` instead
+/// of this leftover identity.
+@available(*, deprecated, message: "Expose promptTokenCounter on InferenceProvider")
 public protocol PromptTokenCountingInferenceProvider: InferenceProvider, PromptTokenCounter {}
+
+public extension PromptTokenCountingInferenceProvider {
+    var promptTokenCounter: (any PromptTokenCounter)? { self }
+}
 
 public extension PromptTokenCounter {
     /// Counts tokens across multiple text fragments.

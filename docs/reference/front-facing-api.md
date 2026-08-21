@@ -511,6 +511,7 @@ let triage = try Agent(
 ```swift
 public protocol InferenceProvider: Sendable {
     var capabilities: InferenceProviderCapabilities { get }
+    var promptTokenCounter: (any PromptTokenCounter)? { get }
 
     func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String
 
@@ -551,9 +552,16 @@ public protocol InferenceProvider: Sendable {
         options: InferenceOptions
     ) async throws -> StructuredOutputResult
 
+    // Prompt-string methods remain for one minor so existing backends compile.
+    // Agent and tests call the messages methods only.
     // Prompt-string methods default to wrapping `prompt` as a user message.
 }
 ```
+
+Agent reads ``InferenceProviderCapabilities`` and ``InferenceProvider/promptTokenCounter``
+on ``InferenceProvider``. Deprecated leftover protocols
+(`ToolCallStreamingInferenceProvider`, `StructuredOutputInferenceProvider`,
+`PromptTokenCountingInferenceProvider`) are not the Agent seam.
 
 ### Provider factories (dot-syntax)
 
@@ -587,7 +595,8 @@ Opt in to a provider-owned tool loop with
 (or the streaming counterpart). It never type-casts the adapter.
 ``AgentConfiguration/foundationModelsExecution`` is ignored. Capture remains
 the default. Structured outputs use guided generation when the JSON Schema maps;
-otherwise prompt+parse. See the [Foundation Models guide](/guide/foundation-models).
+otherwise prompt+parse. Agent never type-casts leftover capability protocols.
+See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
 (wrapped as ``FoundationModelsNativeTool``).
@@ -657,7 +666,39 @@ public struct AgentResult: Sendable {
     /// (including Apple Foundation Models on the current SDK).
     public let tokenUsage: TokenUsage?
 }
+
+public struct ToolResult: Sendable {
+    public enum Outcome: Sendable {
+        case success(SendableValue)
+        case failure(message: String)
+    }
+
+    public let callId: UUID
+    public let duration: Duration
+    public let outcome: Outcome
+    public var isSuccess: Bool { get }
+    public var output: SendableValue { get }       // `.null` on failure
+    public var errorMessage: String? { get }      // `nil` on success
+}
+
+public struct ToolCallRecord: Sendable {
+    public enum Outcome: Sendable {
+        case success(SendableValue)
+        case failure(message: String)
+    }
+
+    public let toolName: String
+    public let arguments: [String: SendableValue]
+    public let duration: Duration
+    public let timestamp: Date
+    public let outcome: Outcome
+    public var result: SendableValue { get }      // `.null` on failure
+    public var isSuccess: Bool { get }
+    public var errorMessage: String? { get }      // `nil` on success
+}
 ```
+
+Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The independent `isSuccess` + `errorMessage` memberwise initializers remain as deprecated compatibility shims. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
 
 ## 13) Public macros
 

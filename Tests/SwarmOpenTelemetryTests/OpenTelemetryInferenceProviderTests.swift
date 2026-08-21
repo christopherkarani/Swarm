@@ -153,6 +153,27 @@ func erasedOpenTelemetryWrapperPreservesPromptOnlyToolStreamingShape() {
     #expect(InferenceProviderCapabilities.resolved(for: wrapped).contains(.streamingToolCalls))
 }
 
+@Test("Erased OpenTelemetry wrapper forwards prompt tool streaming without leftover casts")
+func erasedOpenTelemetryWrapperForwardsPromptToolStreamingWithoutLeftoverCasts() async throws {
+    let wrapped = OpenTelemetryAnyInferenceProvider(
+        PromptOnlyProvider(),
+        tracer: OpenTelemetry.instance.tracerProvider.get(instrumentationName: "test.llm"),
+        captureContent: false
+    )
+
+    #expect(!(wrapped is any ToolCallStreamingInferenceProvider))
+
+    var chunks: [String] = []
+    for try await update in wrapped.streamWithToolCalls(prompt: "hello", tools: [], options: .default) {
+        if case let .outputChunk(chunk) = update {
+            chunks.append(chunk)
+        }
+    }
+
+    #expect(chunks == ["hello"])
+    #expect(wrapped.promptTokenCounter == nil)
+}
+
 @Test("Agent OpenTelemetry wrapper creates one parent trace for multiple LLM calls")
 func agentOpenTelemetryWrapperCreatesOneParentTraceForMultipleLLMCalls() async throws {
     let exporter = RecordingSpanExporter()

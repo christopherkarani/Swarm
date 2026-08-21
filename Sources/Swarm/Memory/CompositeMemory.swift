@@ -101,19 +101,17 @@ actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, M
 
     func beginMemorySession() async {
         for memory in memories {
-            guard let lifecycleMemory = memory as? any MemorySessionLifecycle else {
-                continue
+            if let begin = MemoryHooks.resolved(from: memory).beginMemorySession {
+                await begin()
             }
-            await lifecycleMemory.beginMemorySession()
         }
     }
 
     func endMemorySession() async {
         for memory in memories {
-            guard let lifecycleMemory = memory as? any MemorySessionLifecycle else {
-                continue
+            if let end = MemoryHooks.resolved(from: memory).endMemorySession {
+                await end()
             }
-            await lifecycleMemory.endMemorySession()
         }
     }
 
@@ -183,8 +181,8 @@ actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, M
             guard await memory.isEmpty else {
                 continue
             }
-            if let replayAware = memory as? any MemorySessionReplayAware {
-                await replayAware.importSessionHistory(messages)
+            if let importHistory = MemoryHooks.resolved(from: memory).importSessionHistory {
+                await importHistory(messages)
             } else {
                 for message in messages {
                     await memory.add(message)
@@ -198,8 +196,9 @@ actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, M
         query: MemoryQuery,
         tokenLimit: Int
     ) async -> String {
-        if let policyAwareMemory = memory as? any MemoryRetrievalPolicyAware {
-            return await policyAwareMemory.context(for: MemoryQuery(
+        let hooks = MemoryHooks.resolved(from: memory)
+        if let contextForQuery = hooks.contextForQuery {
+            return await contextForQuery(MemoryQuery(
                 text: query.text,
                 tokenLimit: tokenLimit,
                 maxItems: query.maxItems,
@@ -234,6 +233,6 @@ actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, M
     }
 
     private static func allowsSessionSeeding(_ memory: any Memory) -> Bool {
-        (memory as? any MemorySessionImportPolicy)?.allowsAutomaticSessionSeeding ?? true
+        MemoryHooks.resolved(from: memory).allowsAutomaticSessionSeeding
     }
 }

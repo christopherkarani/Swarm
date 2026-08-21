@@ -181,6 +181,8 @@ extension InferenceMessage {
 public extension InferenceProvider {
     var capabilities: InferenceProviderCapabilities { [.conversationMessages] }
 
+    var promptTokenCounter: (any PromptTokenCounter)? { nil }
+
     func generate(prompt: String, options: InferenceOptions) async throws -> String {
         try await generate(messages: [.user(prompt)], options: options)
     }
@@ -242,6 +244,18 @@ public extension InferenceProvider {
         }
         _ = toolExecutor
         return try await generateWithToolCalls(messages: messages, tools: tools, options: options)
+    }
+
+    func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        streamWithToolCalls(
+            messages: [.user(prompt)],
+            tools: tools,
+            options: options
+        )
     }
 
     func streamWithToolCalls(

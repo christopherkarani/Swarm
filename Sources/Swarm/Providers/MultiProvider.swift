@@ -93,6 +93,10 @@ public actor MultiProvider: InferenceProvider {
         capabilitySnapshot.load()
     }
 
+    nonisolated public var promptTokenCounter: (any PromptTokenCounter)? {
+        providerSnapshot.load().promptTokenCounter
+    }
+
     // MARK: - Initialization
 
     /// Creates a MultiProvider with a default provider for unmatched prefixes.

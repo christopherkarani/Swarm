@@ -423,4 +423,238 @@ struct ToolResultTests {
         #expect(result.output["data"]?[0]?["name"] == .string("Item 1"))
         #expect(result.output["metadata"]?["count"] == .int(2))
     }
+
+    // MARK: - Closed Outcome
+
+    @Test("ToolResult success and failure are distinct outcome cases")
+    func outcomeCasesAreExhaustivePair() {
+        let callId = UUID()
+        let success = ToolResult.success(callId: callId, output: .string("ok"), duration: .zero)
+        let failure = ToolResult.failure(callId: callId, error: "nope", duration: .zero)
+        var sawSuccess = false
+        var sawFailure = false
+        for result in [success, failure] {
+            switch result.outcome {
+            case .success:
+                sawSuccess = true
+            case .failure:
+                sawFailure = true
+            }
+        }
+        #expect(sawSuccess)
+        #expect(sawFailure)
+        #expect(success.errorMessage == nil)
+        #expect(failure.output == .null)
+    }
+
+    @Test("Deprecated ToolResult initializer cannot store success-with-error")
+    func deprecatedInitDropsErrorOnSuccess() {
+        let result = ToolResult(
+            callId: UUID(),
+            isSuccess: true,
+            output: .string("ok"),
+            duration: .zero,
+            errorMessage: "ignored"
+        )
+        #expect(result.isSuccess)
+        #expect(result.errorMessage == nil)
+        guard case let .success(value) = result.outcome else {
+            Issue.record("expected success outcome")
+            return
+        }
+        #expect(value == .string("ok"))
+    }
+
+    @Test("Deprecated ToolResult initializer cannot store failure-with-success-output")
+    func deprecatedInitDropsOutputOnFailure() {
+        let result = ToolResult(
+            callId: UUID(),
+            isSuccess: false,
+            output: .string("should not be kept"),
+            duration: .milliseconds(10),
+            errorMessage: "boom"
+        )
+        #expect(!result.isSuccess)
+        #expect(result.output == .null)
+        #expect(result.errorMessage == "boom")
+        guard case let .failure(message) = result.outcome else {
+            Issue.record("expected failure outcome")
+            return
+        }
+        #expect(message == "boom")
+    }
+
+    @Test("Deprecated ToolResult failure initializer fills a default message when nil")
+    func deprecatedInitNilFailureMessage() {
+        let result = ToolResult(
+            callId: UUID(),
+            isSuccess: false,
+            output: .null,
+            duration: .zero
+        )
+        #expect(!result.isSuccess)
+        #expect(result.errorMessage == "Tool execution failed")
+    }
+
+    // MARK: - Legacy Codable
+
+    private struct LegacyToolResultPayload: Encodable {
+        let callId: UUID
+        let isSuccess: Bool
+        let output: SendableValue
+        let duration: Duration
+        let errorMessage: String?
+    }
+
+    @Test("ToolResult decodes historical success JSON")
+    func decodesLegacySuccessJSON() throws {
+        let callId = UUID(uuidString: "12345678-1234-1234-1234-123456789012")!
+        let data = try JSONEncoder().encode(
+            LegacyToolResultPayload(
+                callId: callId,
+                isSuccess: true,
+                output: .string("hello"),
+                duration: .seconds(3),
+                errorMessage: nil
+            )
+        )
+        let decoded = try JSONDecoder().decode(ToolResult.self, from: data)
+        #expect(decoded.callId == callId)
+        #expect(decoded.isSuccess)
+        #expect(decoded.output == .string("hello"))
+        #expect(decoded.errorMessage == nil)
+        #expect(decoded.duration == .seconds(3))
+        guard case .success = decoded.outcome else {
+            Issue.record("expected success outcome")
+            return
+        }
+    }
+
+    @Test("ToolResult decodes historical failure JSON and ignores success output")
+    func decodesLegacyFailureJSON() throws {
+        let callId = UUID(uuidString: "12345678-1234-1234-1234-123456789012")!
+        let data = try JSONEncoder().encode(
+            LegacyToolResultPayload(
+                callId: callId,
+                isSuccess: false,
+                output: .string("stale output"),
+                duration: .milliseconds(250),
+                errorMessage: "Something went wrong"
+            )
+        )
+        let decoded = try JSONDecoder().decode(ToolResult.self, from: data)
+        #expect(decoded.callId == callId)
+        #expect(!decoded.isSuccess)
+        #expect(decoded.output == .null)
+        #expect(decoded.errorMessage == "Something went wrong")
+        guard case let .failure(message) = decoded.outcome else {
+            Issue.record("expected failure outcome")
+            return
+        }
+        #expect(message == "Something went wrong")
+    }
+
+    @Test("ToolResult encodes existing boolean and optional keys derived from outcome")
+    func encodesLegacyKeysFromOutcome() throws {
+        let success = ToolResult.success(
+            callId: UUID(uuidString: "12345678-1234-1234-1234-123456789012")!,
+            output: .int(7),
+            duration: .zero
+        )
+        let failure = ToolResult.failure(
+            callId: UUID(uuidString: "12345678-1234-1234-1234-123456789012")!,
+            error: "nope",
+            duration: .zero
+        )
+
+        let successObject = try jsonObject(from: success)
+        #expect(successObject["isSuccess"] as? Bool == true)
+        #expect(successObject["output"] as? Int == 7)
+        #expect(successObject["errorMessage"] == nil)
+        #expect(successObject["outcome"] == nil)
+
+        let failureObject = try jsonObject(from: failure)
+        #expect(failureObject["isSuccess"] as? Bool == false)
+        #expect(failureObject["errorMessage"] as? String == "nope")
+        #expect(failureObject["outcome"] == nil)
+    }
+
+    @Test("EventStreamObserver treats ToolResult failure as a tool error")
+    func eventStreamTreatsFailureAsToolError() async throws {
+        let (stream, continuation) = AsyncThrowingStream<AgentEvent, any Error>.makeStream()
+        let observer = EventStreamObserver(continuation: continuation)
+        let agent = MockAgentForToolResultEvents()
+        let callId = UUID()
+        let call = ToolCall(id: callId, toolName: "calculator", arguments: [:])
+
+        await observer.onToolStart(context: nil, agent: agent, call: call)
+        await observer.onToolEnd(
+            context: nil,
+            agent: agent,
+            result: ToolResult.failure(callId: callId, error: "Division by zero", duration: .milliseconds(5))
+        )
+        continuation.finish()
+
+        var events: [AgentEvent] = []
+        for try await event in stream {
+            events.append(event)
+        }
+
+        #expect(events.count == 3)
+        guard case let .tool(.started(call: startedCall)) = events[0] else {
+            Issue.record("expected started event")
+            return
+        }
+        #expect(startedCall.id == callId)
+        guard case let .tool(.completed(call: _, result: result)) = events[1] else {
+            Issue.record("expected completed event")
+            return
+        }
+        #expect(!result.isSuccess)
+        #expect(result.errorMessage == "Division by zero")
+        guard case let .tool(.failed(call: failedCall, error: error)) = events[2] else {
+            Issue.record("expected failed event")
+            return
+        }
+        #expect(failedCall.id == callId)
+        guard case let .toolExecutionFailed(toolName: toolName, underlyingError: underlyingError) = error else {
+            Issue.record("expected toolExecutionFailed")
+            return
+        }
+        #expect(toolName == "calculator")
+        #expect(underlyingError == "Division by zero")
+    }
+
+    private func jsonObject(from result: ToolResult) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(result)
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let dictionary = object as? [String: Any] else {
+            Issue.record("expected JSON object")
+            return [:]
+        }
+        return dictionary
+    }
+}
+
+private struct MockAgentForToolResultEvents: AgentRuntime {
+    let tools: [any AnyJSONTool] = []
+    let instructions: String = "Mock agent"
+    let configuration: AgentConfiguration = AgentConfiguration(name: "mock")
+
+    func run(_ input: String, session _: (any Session)? = nil, observer _: (any AgentObserver)? = nil) async throws -> AgentResult {
+        AgentResult(output: input)
+    }
+
+    nonisolated func stream(
+        _ input: String,
+        session _: (any Session)? = nil,
+        observer _: (any AgentObserver)? = nil
+    ) -> AsyncThrowingStream<AgentEvent, any Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(.lifecycle(.started(input: input)))
+            continuation.finish()
+        }
+    }
+
+    func cancel() async {}
 }

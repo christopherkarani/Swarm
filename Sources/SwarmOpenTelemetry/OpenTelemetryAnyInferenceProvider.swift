@@ -24,6 +24,26 @@ protocol OpenTelemetryAnyForwarding: InferenceProvider {
 }
 
 extension OpenTelemetryAnyForwarding {
+    var promptTokenCounter: (any PromptTokenCounter)? {
+        core.promptTokenCounter
+    }
+
+    func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        core.streamWithToolCalls(prompt: prompt, tools: tools, options: options)
+    }
+
+    func generateStructured(
+        prompt: String,
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        try await core.generateStructured(prompt: prompt, request: request, options: options)
+    }
+
     func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],
@@ -74,6 +94,10 @@ final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
 
     var capabilities: InferenceProviderCapabilities {
         InferenceProviderCapabilities.resolved(for: base)
+    }
+
+    var promptTokenCounter: (any PromptTokenCounter)? {
+        base.promptTokenCounter
     }
 
     func generate(prompt: String, options: InferenceOptions) async throws -> String {

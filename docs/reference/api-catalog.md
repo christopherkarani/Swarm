@@ -3,7 +3,7 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14. OpenAI-compatible provider rows added 2026-08-14.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 175
+- Source files scanned: 176
 - Public/open symbols cataloged: 2510
 
 ## 1. Swarm (entry point)
@@ -203,15 +203,20 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 292 | func | public | ToolCall.init(id:providerCallId:toolName:arguments:timestamp:) | `public init(id: UUID = UUID(), providerCallId: String? = nil, toolName: String, arguments: [String : SendableValue] = [:], timestamp: Date = Date())` |
 | 314 | func | public | ToolCall.init(from:) | `public init(from decoder: any Decoder) throws` |
 | 323 | func | public | ToolCall.encode(to:) | `public func encode(to encoder: any Encoder) throws` |
-| 339 | struct | public | ToolResult | `public struct ToolResult` |
-| 341 | var | public | ToolResult.callId | `public let callId: UUID` |
-| 344 | var | public | ToolResult.isSuccess | `public let isSuccess: Bool` |
-| 347 | var | public | ToolResult.output | `public let output: SendableValue` |
-| 350 | var | public | ToolResult.duration | `public let duration: Duration` |
-| 353 | var | public | ToolResult.errorMessage | `public let errorMessage: String?` |
-| 362 | func | public | ToolResult.init(callId:isSuccess:output:duration:errorMessage:) | `public init(callId: UUID, isSuccess: Bool, output: SendableValue, duration: Duration, errorMessage: String? = nil)` |
-| 382 | func | public | ToolResult.success(callId:output:duration:) | `public static func success(callId: UUID, output: SendableValue, duration: Duration) -> ToolResult` |
-| 392 | func | public | ToolResult.failure(callId:error:duration:) | `public static func failure(callId: UUID, error: String, duration: Duration) -> ToolResult` |
+| 268 | struct | public | ToolResult | `public struct ToolResult` |
+| 270 | enum | public | ToolResult.Outcome | `public enum Outcome` |
+| 272 | case | public | ToolResult.Outcome.success(_:) | `public case success(SendableValue)` |
+| 275 | case | public | ToolResult.Outcome.failure(message:) | `public case failure(message: String)` |
+| 278 | var | public | ToolResult.callId | `public let callId: UUID` |
+| 281 | var | public | ToolResult.duration | `public let duration: Duration` |
+| 284 | var | public | ToolResult.outcome | `public let outcome: ToolResult.Outcome` |
+| 287 | var | public | ToolResult.isSuccess | `public var isSuccess: Bool { get }` |
+| 300 | var | public | ToolResult.output | `public var output: SendableValue { get }` |
+| 310 | var | public | ToolResult.errorMessage | `public var errorMessage: String? { get }` |
+| 321 | func | public | ToolResult.init(callId:duration:outcome:) | `public init(callId: UUID, duration: Duration, outcome: ToolResult.Outcome)` |
+| 332 | func | public | ToolResult.init(callId:isSuccess:output:duration:errorMessage:) | `public init(callId: UUID, isSuccess: Bool, output: SendableValue, duration: Duration, errorMessage: String? = nil)` (deprecated) |
+| 355 | func | public | ToolResult.success(callId:output:duration:) | `public static func success(callId: UUID, output: SendableValue, duration: Duration) -> ToolResult` |
+| 365 | func | public | ToolResult.failure(callId:error:duration:) | `public static func failure(callId: UUID, error: String, duration: Duration) -> ToolResult` |
 | 400 | var | public | ToolCall.description | `public var description: String { get }` |
 | 408 | var | public | ToolResult.description | `public var description: String { get }` |
 | 420 | func | public | AgentEvent.==(_:_:) | `public static func == (lhs: AgentEvent, rhs: AgentEvent) -> Bool` |
@@ -225,15 +230,22 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 30 | struct | public | ToolCallRecord | `public struct ToolCallRecord` |
-| 32 | var | public | ToolCallRecord.toolName | `public let toolName: String` |
-| 35 | var | public | ToolCallRecord.arguments | `public let arguments: [String : SendableValue]` |
-| 38 | var | public | ToolCallRecord.result | `public let result: SendableValue` |
-| 41 | var | public | ToolCallRecord.duration | `public let duration: Duration` |
-| 44 | var | public | ToolCallRecord.timestamp | `public let timestamp: Date` |
-| 47 | var | public | ToolCallRecord.isSuccess | `public let isSuccess: Bool` |
-| 50 | var | public | ToolCallRecord.errorMessage | `public let errorMessage: String?` |
-| 62 | func | public | ToolCallRecord.init(toolName:arguments:result:duration:timestamp:isSuccess:errorMessage:) | `public init(toolName: String, arguments: [String : SendableValue] = [:], result: SendableValue = .null, duration: Duration = .zero, timestamp: Date = Date(), isSuccess: Bool = true, errorMessage: String? = nil)` |
+| 35 | struct | public | ToolCallRecord | `public struct ToolCallRecord` |
+| 37 | enum | public | ToolCallRecord.Outcome | `public enum Outcome` |
+| 39 | case | public | ToolCallRecord.Outcome.success(_:) | `public case success(SendableValue)` |
+| 42 | case | public | ToolCallRecord.Outcome.failure(message:) | `public case failure(message: String)` |
+| 45 | var | public | ToolCallRecord.toolName | `public let toolName: String` |
+| 48 | var | public | ToolCallRecord.arguments | `public let arguments: [String : SendableValue]` |
+| 51 | var | public | ToolCallRecord.duration | `public let duration: Duration` |
+| 54 | var | public | ToolCallRecord.timestamp | `public let timestamp: Date` |
+| 57 | var | public | ToolCallRecord.outcome | `public let outcome: ToolCallRecord.Outcome` |
+| 62 | var | public | ToolCallRecord.result | `public var result: SendableValue { get }` |
+| 72 | var | public | ToolCallRecord.isSuccess | `public var isSuccess: Bool { get }` |
+| 82 | var | public | ToolCallRecord.errorMessage | `public var errorMessage: String? { get }` |
+| 95 | func | public | ToolCallRecord.init(toolName:arguments:duration:timestamp:outcome:) | `public init(toolName: String, arguments: [String : SendableValue] = [:], duration: Duration = .zero, timestamp: Date = Date(), outcome: ToolCallRecord.Outcome)` |
+| 116 | func | public | ToolCallRecord.init(toolName:arguments:result:duration:timestamp:isSuccess:errorMessage:) | `public init(toolName: String, arguments: [String : SendableValue] = [:], result: SendableValue = .null, duration: Duration = .zero, timestamp: Date = Date(), isSuccess: Bool = true, errorMessage: String? = nil)` (deprecated) |
+| 136 | func | public | ToolCallRecord.success(toolName:arguments:result:duration:timestamp:) | `public static func success(toolName: String, arguments: [String : SendableValue] = [:], result: SendableValue, duration: Duration = .zero, timestamp: Date = Date()) -> ToolCallRecord` |
+| 152 | func | public | ToolCallRecord.failure(toolName:arguments:error:duration:timestamp:) | `public static func failure(toolName: String, arguments: [String : SendableValue] = [:], error: String, duration: Duration = .zero, timestamp: Date = Date()) -> ToolCallRecord` |
 | 84 | var | public | ToolCallRecord.description | `public var description: String { get }` |
 | 92 | var | public | ToolCallRecord.debugDescription | `public var debugDescription: String { get }` |
 | 145 | struct | public | AgentResponse | `public struct AgentResponse` |
@@ -299,16 +311,19 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 205 | func | public | AgentRuntime.runWithResponse(_:observer:) | `public func runWithResponse(_ input: String, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
 | 221 | protocol | public | InferenceProvider | `public protocol InferenceProvider : Sendable` |
 | 223 | var | public | InferenceProvider.capabilities | `public var capabilities: InferenceProviderCapabilities { get }` |
-| 229 | func | public | InferenceProvider.generate(prompt:options:) | `public func generate(prompt: String, options: InferenceOptions) async throws -> String` _(Compatibility only; Agent uses the messages overloads.)_ |
-| 234 | func | public | InferenceProvider.stream(prompt:options:) | `public func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` _(Compatibility only; Agent uses the messages overloads.)_ |
-| 239 | func | public | InferenceProvider.generateWithToolCalls(prompt:tools:options:) | `public func generateWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` _(Compatibility only; Agent uses the messages overloads.)_ |
-| 246 | func | public | InferenceProvider.generate(messages:options:) | `public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String` |
-| 249 | func | public | InferenceProvider.stream(messages:options:) | `public func stream(messages: [InferenceMessage], options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
-| 255 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
-| 265 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:toolExecutor:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) async throws -> InferenceResponse` |
-| 262 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
-| 282 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:toolExecutor:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
-| 269 | func | public | InferenceProvider.generateStructured(messages:request:options:) | `public func generateStructured(messages: [InferenceMessage], request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` |
+| 229 | var | public | InferenceProvider.promptTokenCounter | `public var promptTokenCounter: (any PromptTokenCounter)? { get }` |
+| 235 | func | public | InferenceProvider.generate(prompt:options:) | `public func generate(prompt: String, options: InferenceOptions) async throws -> String` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 240 | func | public | InferenceProvider.stream(prompt:options:) | `public func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 245 | func | public | InferenceProvider.generateWithToolCalls(prompt:tools:options:) | `public func generateWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 257 | func | public | InferenceProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 267 | func | public | InferenceProvider.generateStructured(prompt:request:options:) | `public func generateStructured(prompt: String, request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 274 | func | public | InferenceProvider.generate(messages:options:) | `public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String` |
+| 277 | func | public | InferenceProvider.stream(messages:options:) | `public func stream(messages: [InferenceMessage], options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
+| 283 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
+| 298 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:toolExecutor:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) async throws -> InferenceResponse` |
+| 306 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
+| 317 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:toolExecutor:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
+| 325 | func | public | InferenceProvider.generateStructured(messages:request:options:) | `public func generateStructured(messages: [InferenceMessage], request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` |
 | 265 | func | public | InferenceOptions.frequencyPenalty(_:) | `public @discardableResult func frequencyPenalty(_ value: Double?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.maxTokens(_:) | `public @discardableResult func maxTokens(_ value: Int?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.parallelToolCalls(_:) | `public @discardableResult func parallelToolCalls(_ value: Bool?) -> InferenceOptions` |
@@ -2816,6 +2831,8 @@ Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationMo
 | 17 | case | public | InferenceStreamUpdate.toolCallsCompleted(_:) | `public case toolCallsCompleted([InferenceResponse.ParsedToolCall])` |
 | 20 | case | public | InferenceStreamUpdate.usage(_:) | `public case usage(TokenUsage)` |
 | 23 | case | public | InferenceStreamUpdate.finishedTurn(_:) | `public case finishedTurn(InferenceResponse)` |
+| 34 | protocol | public | ToolCallStreamingInferenceProvider | `public protocol ToolCallStreamingInferenceProvider : InferenceProvider` _(Deprecated leftover identity; Agent reads `InferenceProviderCapabilities.streamingToolCalls`.)_ |
+| 36 | func | public | ToolCallStreamingInferenceProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
 
 ## 12. Integration (Membrane + Wax)
 

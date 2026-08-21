@@ -16,6 +16,9 @@ public protocol TextOnlyBackend: Sendable {
     /// ``InferenceProviderCapabilities/providerOwnedToolLoop``.
     var capabilities: InferenceProviderCapabilities { get }
 
+    /// Native prompt token counter for this backend, if any.
+    var promptTokenCounter: (any PromptTokenCounter)? { get }
+
     func generate(prompt: String, options: InferenceOptions) async throws -> String
 
     func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error>
@@ -29,6 +32,8 @@ public protocol TextOnlyBackend: Sendable {
 
 public extension TextOnlyBackend {
     var capabilities: InferenceProviderCapabilities { [] }
+
+    var promptTokenCounter: (any PromptTokenCounter)? { nil }
 
     func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
         StreamHelper.makeTrackedStream { continuation in
@@ -83,6 +88,10 @@ public struct TextOnlyConversationInferenceProviderAdapter: InferenceProvider {
         capabilities.remove(.providerOwnedToolLoop)
         capabilities.insert(.conversationMessages)
         return capabilities
+    }
+
+    public var promptTokenCounter: (any PromptTokenCounter)? {
+        backend.promptTokenCounter
     }
 
     /// Serializes structured history into a labeled prompt for text-only backends.
@@ -149,11 +158,5 @@ public extension InferenceProvider where Self == TextOnlyConversationInferencePr
     /// Wraps a text-only backend as an ``InferenceProvider``.
     static func textOnly(_ backend: some TextOnlyBackend) -> TextOnlyConversationInferenceProviderAdapter {
         .textOnly(backend)
-    }
-}
-
-extension TextOnlyConversationInferenceProviderAdapter: PromptTokenCountingInferenceProvider {
-    public func countTokens(in text: String) async throws -> Int {
-        CharacterBasedTokenEstimator.shared.estimateTokens(for: text)
     }
 }

@@ -251,31 +251,84 @@ public struct ToolCall: Sendable, Equatable, Identifiable, Codable {
 
 /// Represents the result of a tool execution.
 ///
-/// A ToolResult captures the outcome of a tool invocation, including
-/// success/failure status, the output value, and timing information.
+/// `ToolResult` is a closed outcome: execution either succeeded with a value or
+/// failed with a message. `callId` and `duration` sit outside the outcome so
+/// timing and correlation stay available on both paths.
+///
+/// Construct values with ``success(callId:output:duration:)`` or
+/// ``failure(callId:error:duration:)``. Compatibility accessors
+/// (``isSuccess``, ``output``, ``errorMessage``) preserve the previous
+/// stored-property surface for observers, event streams, and tests.
+///
+/// | Outcome | ``isSuccess`` | ``output`` | ``errorMessage`` |
+/// |---------|---------------|------------|------------------|
+/// | ``Outcome/success(_:)`` | `true` | associated value | `nil` |
+/// | ``Outcome/failure(message:)`` | `false` | `.null` | associated message |
 public struct ToolResult: Sendable, Equatable, Codable {
+    /// Closed success-or-failure payload for a tool invocation.
+    public enum Outcome: Sendable, Equatable {
+        /// The tool returned a value.
+        case success(SendableValue)
+        /// The tool failed. `message` matches historical ``errorMessage`` semantics.
+        case failure(message: String)
+    }
+
     /// The tool call that produced this result.
     public let callId: UUID
-
-    /// Whether the tool execution was successful.
-    public let isSuccess: Bool
-
-    /// The output value from the tool.
-    public let output: SendableValue
 
     /// Duration of the tool execution.
     public let duration: Duration
 
-    /// Error message if the tool failed.
-    public let errorMessage: String?
+    /// Success value or failure message. Invalid combinations cannot be stored.
+    public let outcome: Outcome
 
-    /// Creates a new tool result.
-    /// - Parameters:
-    ///   - callId: The ID of the tool call.
-    ///   - isSuccess: Whether execution succeeded.
-    ///   - output: The output value.
-    ///   - duration: Execution duration.
-    ///   - errorMessage: Error message on failure.
+    /// Whether the tool execution was successful.
+    public var isSuccess: Bool {
+        switch outcome {
+        case .success:
+            true
+        case .failure:
+            false
+        }
+    }
+
+    /// The output value from the tool.
+    ///
+    /// On failure this is always ``SendableValue/null``.
+    public var output: SendableValue {
+        switch outcome {
+        case let .success(value):
+            value
+        case .failure:
+            .null
+        }
+    }
+
+    /// Error message if the tool failed.
+    public var errorMessage: String? {
+        switch outcome {
+        case .success:
+            nil
+        case let .failure(message):
+            message
+        }
+    }
+
+    /// Creates a result from a closed outcome.
+    ///
+    /// Prefer ``success(callId:output:duration:)`` or ``failure(callId:error:duration:)``.
+    public init(callId: UUID, duration: Duration, outcome: Outcome) {
+        self.callId = callId
+        self.duration = duration
+        self.outcome = outcome
+    }
+
+    /// Creates a new tool result from independently specified success flags.
+    ///
+    /// Prefer ``success(callId:output:duration:)`` or ``failure(callId:error:duration:)``.
+    /// A failure with a nil message is stored as `"Tool execution failed"`.
+    /// Success ignores `errorMessage`; failure ignores `output`.
+    @available(*, deprecated, message: "Use ToolResult.success(...) or .failure(callId:error:duration:)")
     public init(
         callId: UUID,
         isSuccess: Bool,
@@ -284,10 +337,12 @@ public struct ToolResult: Sendable, Equatable, Codable {
         errorMessage: String? = nil
     ) {
         self.callId = callId
-        self.isSuccess = isSuccess
-        self.output = output
         self.duration = duration
-        self.errorMessage = errorMessage
+        if isSuccess {
+            outcome = .success(output)
+        } else {
+            outcome = .failure(message: errorMessage ?? "Tool execution failed")
+        }
     }
 
     /// Creates a successful result.
@@ -297,7 +352,7 @@ public struct ToolResult: Sendable, Equatable, Codable {
     ///   - duration: Execution duration.
     /// - Returns: A successful ToolResult.
     public static func success(callId: UUID, output: SendableValue, duration: Duration) -> ToolResult {
-        ToolResult(callId: callId, isSuccess: true, output: output, duration: duration)
+        ToolResult(callId: callId, duration: duration, outcome: .success(output))
     }
 
     /// Creates a failed result.
@@ -307,7 +362,39 @@ public struct ToolResult: Sendable, Equatable, Codable {
     ///   - duration: Execution duration.
     /// - Returns: A failed ToolResult.
     public static func failure(callId: UUID, error: String, duration: Duration) -> ToolResult {
-        ToolResult(callId: callId, isSuccess: false, output: .null, duration: duration, errorMessage: error)
+        ToolResult(callId: callId, duration: duration, outcome: .failure(message: error))
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case callId
+        case isSuccess
+        case output
+        case duration
+        case errorMessage
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        callId = try container.decode(UUID.self, forKey: .callId)
+        duration = try container.decode(Duration.self, forKey: .duration)
+        let isSuccess = try container.decode(Bool.self, forKey: .isSuccess)
+        if isSuccess {
+            let output = try container.decode(SendableValue.self, forKey: .output)
+            outcome = .success(output)
+        } else {
+            let message = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+                ?? "Tool execution failed"
+            outcome = .failure(message: message)
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(callId, forKey: .callId)
+        try container.encode(isSuccess, forKey: .isSuccess)
+        try container.encode(output, forKey: .output)
+        try container.encode(duration, forKey: .duration)
+        try container.encodeIfPresent(errorMessage, forKey: .errorMessage)
     }
 }
 
