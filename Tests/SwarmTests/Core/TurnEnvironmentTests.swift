@@ -4,26 +4,52 @@
 // Deterministic clock & identity seam tests (spec ticket T1, AC-001/AC-002).
 
 import Foundation
-import os.lock
 @testable import Swarm
 import Testing
 
 // MARK: - Fakes
 
-/// A mutable, Sendable fake clock for tests.
-struct MutableTestClock: Sendable {
-    private let storage: OSAllocatedUnfairLock<Date>
+/// A mutable fake clock for tests.
+///
+/// `@unchecked Sendable` because `date` is guarded by `lock` (established
+/// repo test pattern, e.g. `TraceHeaderState` in WebSearchSupportTests).
+/// Uses `NSLock` rather than `OSAllocatedUnfairLock` so the suite still
+/// compiles on Linux CI.
+final class MutableTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var date: Date
 
     init(start: Date) {
-        storage = OSAllocatedUnfairLock(initialState: start)
+        self.date = start
     }
 
     var now: Date {
-        storage.withLock { $0 }
+        lock.lock()
+        defer { lock.unlock() }
+        return date
     }
 
     func advance(_ interval: TimeInterval) {
-        storage.withLock { $0 = $0.addingTimeInterval(interval) }
+        lock.lock()
+        defer { lock.unlock() }
+        date = date.addingTimeInterval(interval)
+    }
+}
+
+/// A lock-guarded monotonically increasing fake UUID generator.
+private final class SequentialIDGenerator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func next() -> UUID {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
+        return UUID(
+            uuidString: String(
+                format: "00000000-0000-0000-0000-%012d", count
+            )
+        )!
     }
 }
 
@@ -31,7 +57,7 @@ struct MutableTestClock: Sendable {
 /// monotonically increasing sequence of UUIDs.
 struct FixedEnvironment {
     let base: Date
-    private let counter = OSAllocatedUnfairLock(initialState: 0)
+    private let ids = SequentialIDGenerator()
 
     init(base: Date) {
         self.base = base
@@ -40,17 +66,7 @@ struct FixedEnvironment {
     var environment: TurnEnvironment {
         TurnEnvironment(
             now: { base },
-            newUUID: {
-                let n = counter.withLock {
-                    $0 += 1
-                    return $0
-                }
-                return UUID(
-                    uuidString: String(
-                        format: "00000000-0000-0000-0000-%012d", n
-                    )
-                )!
-            }
+            newUUID: { ids.next() }
         )
     }
 }
