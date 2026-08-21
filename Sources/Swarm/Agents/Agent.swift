@@ -1850,16 +1850,21 @@ public struct Agent: AgentRuntime, Sendable {
         resultBuilder: AgentResult.Builder,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
+        kind: AgentTurnKernel.HostToolCallKind,
         membraneAdapter: (any MembraneAgentAdapter)?,
         startTime: ContinuousClock.Instant
     ) async throws {
         let activeMemory = resolvedMemory()
 
-        if AgentTurnKernel.hostToolCallKind(
-            isHandoffTool: false,
-            isMembraneInternal: membraneAdapter != nil && MembraneInternalTools.isInternalTool(parsedCall.name)
-        ) == .membraneInternal,
-           let membraneAdapter {
+        // This function never runs handoff I/O; a stray `.handoff` kind becomes
+        // `.regular` so transfer tools cannot take the Membrane path.
+        let resolvedKind = AgentTurnKernel.resolvedHostToolCallKind(
+            kind,
+            hasHandoffConfiguration: false,
+            hasMembraneAdapter: membraneAdapter != nil
+        )
+        switch (resolvedKind, membraneAdapter) {
+        case (.membraneInternal, let membraneAdapter?):
             let call = ToolCall(
                 providerCallId: parsedCall.id,
                 toolName: parsedCall.name,
@@ -1941,85 +1946,86 @@ public struct Agent: AgentRuntime, Sendable {
                 }
                 return
             }
-        }
 
-        let engine = ToolExecutionEngine()
-        let outcome = try await executeWithinRemainingTimeout(startTime: startTime) {
-            try await engine.execute(
-                parsedCall,
-                registry: toolRegistry,
-                agent: self,
-                context: nil,
-                resultBuilder: resultBuilder,
-                observer: observer,
-                tracing: tracing,
-                stopOnToolError: false
-            )
-        }
+        case (.handoff, _), (.regular, _), (.membraneInternal, nil):
+            let engine = ToolExecutionEngine()
+            let outcome = try await executeWithinRemainingTimeout(startTime: startTime) {
+                try await engine.execute(
+                    parsedCall,
+                    registry: toolRegistry,
+                    agent: self,
+                    context: nil,
+                    resultBuilder: resultBuilder,
+                    observer: observer,
+                    tracing: tracing,
+                    stopOnToolError: false
+                )
+            }
 
-        if outcome.result.isSuccess {
-            var toolOutputText = Self.toolOutputText(for: outcome.result.output)
-            if let membraneAdapter {
-                do {
-                    let currentToolOutput = toolOutputText
-                    let transformed = try await executeWithinRemainingTimeout(startTime: startTime) {
-                        try await membraneAdapter.transformToolResult(
-                            toolName: parsedCall.name,
-                            output: currentToolOutput,
-                            profile: configuration.effectiveContextProfile
-                        )
+            if outcome.result.isSuccess {
+                var toolOutputText = Self.toolOutputText(for: outcome.result.output)
+                if let membraneAdapter {
+                    do {
+                        let currentToolOutput = toolOutputText
+                        let transformed = try await executeWithinRemainingTimeout(startTime: startTime) {
+                            try await membraneAdapter.transformToolResult(
+                                toolName: parsedCall.name,
+                                output: currentToolOutput,
+                                profile: configuration.effectiveContextProfile
+                            )
+                        }
+                        toolOutputText = transformed.textForConversation
+                        if let pointerID = transformed.pointerID {
+                            _ = resultBuilder.setMetadata("membrane.pointerized", .bool(true))
+                            _ = resultBuilder.setMetadata("membrane.pointer.last_id", .string(pointerID))
+                        }
+                    } catch {
+                        _ = resultBuilder.setMetadata("membrane.fallback.used", .bool(true))
+                        _ = resultBuilder.setMetadata("membrane.fallback.error", .string(fallbackDiagnosticMessage(for: error)))
                     }
-                    toolOutputText = transformed.textForConversation
-                    if let pointerID = transformed.pointerID {
-                        _ = resultBuilder.setMetadata("membrane.pointerized", .bool(true))
-                        _ = resultBuilder.setMetadata("membrane.pointer.last_id", .string(pointerID))
-                    }
-                } catch {
-                    _ = resultBuilder.setMetadata("membrane.fallback.used", .bool(true))
-                    _ = resultBuilder.setMetadata("membrane.fallback.error", .string(fallbackDiagnosticMessage(for: error)))
                 }
-            }
 
-            conversationHistory.append(.toolResult(
-                toolName: parsedCall.name,
-                result: toolOutputText,
-                toolCallID: parsedCall.id
-            ))
-            transcriptMessages.append(
-                SwarmTranscriptCodec.encodeMessage(
-                    role: .tool,
-                    content: toolOutputText,
+                conversationHistory.append(.toolResult(
                     toolName: parsedCall.name,
+                    result: toolOutputText,
                     toolCallID: parsedCall.id
-                )
-            )
-            if let activeMemory {
-                await activeMemory.add(.tool(toolOutputText, toolName: parsedCall.name))
-            }
-        } else {
-            let errorMessage = outcome.result.errorMessage ?? "Unknown error"
-            conversationHistory.append(.toolResult(
-                toolName: parsedCall.name,
-                result: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
-                toolCallID: parsedCall.id
-            ))
-            transcriptMessages.append(
-                SwarmTranscriptCodec.encodeMessage(
-                    role: .tool,
-                    content: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
-                    toolName: parsedCall.name,
-                    toolCallID: parsedCall.id
-                )
-            )
-            if let activeMemory {
-                await activeMemory.add(.tool(
-                    AgentTurnKernel.memoryToolErrorText(message: errorMessage),
-                    toolName: parsedCall.name
                 ))
-            }
+                transcriptMessages.append(
+                    SwarmTranscriptCodec.encodeMessage(
+                        role: .tool,
+                        content: toolOutputText,
+                        toolName: parsedCall.name,
+                        toolCallID: parsedCall.id
+                    )
+                )
+                if let activeMemory {
+                    await activeMemory.add(.tool(toolOutputText, toolName: parsedCall.name))
+                }
+            } else {
+                let errorMessage = outcome.result.errorMessage ?? "Unknown error"
+                conversationHistory.append(.toolResult(
+                    toolName: parsedCall.name,
+                    result: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
+                    toolCallID: parsedCall.id
+                ))
+                transcriptMessages.append(
+                    SwarmTranscriptCodec.encodeMessage(
+                        role: .tool,
+                        content: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
+                        toolName: parsedCall.name,
+                        toolCallID: parsedCall.id
+                    )
+                )
+                if let activeMemory {
+                    await activeMemory.add(.tool(
+                        AgentTurnKernel.memoryToolErrorText(message: errorMessage),
+                        toolName: parsedCall.name
+                    ))
+                }
 
-            if configuration.stopOnToolError {
-                throw AgentError.toolExecutionFailed(toolName: parsedCall.name, underlyingError: errorMessage)
+                if configuration.stopOnToolError {
+                    throw AgentError.toolExecutionFailed(toolName: parsedCall.name, underlyingError: errorMessage)
+                }
             }
         }
     }
@@ -2148,13 +2154,33 @@ public struct Agent: AgentRuntime, Sendable {
         )
 
         for parsedCall in response.toolCalls {
-            let kind = AgentTurnKernel.hostToolCallKind(
-                isHandoffTool: handoffMap[parsedCall.name] != nil,
-                isMembraneInternal: membraneAdapter != nil
-                    && MembraneInternalTools.isInternalTool(parsedCall.name)
+            let kind = AgentTurnKernel.resolvedHostToolCallKind(
+                AgentTurnKernel.hostToolCallKind(
+                    isHandoffTool: handoffMap[parsedCall.name] != nil,
+                    isMembraneInternal: membraneAdapter != nil
+                        && MembraneInternalTools.isInternalTool(parsedCall.name)
+                ),
+                hasHandoffConfiguration: handoffMap[parsedCall.name] != nil,
+                hasMembraneAdapter: membraneAdapter != nil
             )
 
-            if kind == .handoff, let handoffConfig = handoffMap[parsedCall.name] {
+            switch kind {
+            case .handoff:
+                guard let handoffConfig = handoffMap[parsedCall.name] else {
+                    try await executeSingleToolCall(
+                        parsedCall: parsedCall,
+                        toolRegistry: toolRegistry,
+                        conversationHistory: &conversationHistory,
+                        transcriptMessages: &transcriptMessages,
+                        resultBuilder: resultBuilder,
+                        observer: observer,
+                        tracing: tracing,
+                        kind: .regular,
+                        membraneAdapter: membraneAdapter,
+                        startTime: startTime
+                    )
+                    continue
+                }
                 if let when = handoffConfig.when, await !when(context, handoffConfig.targetAgent) {
                     let message = "Handoff is not enabled"
                     let handoffCall = ToolCall(
@@ -2333,20 +2359,21 @@ public struct Agent: AgentRuntime, Sendable {
 
                 // Return the handoff output to be used as the final result
                 return FinalAssistantResponse(content: result.output, structuredOutput: nil)
-            }
 
-            // Regular tool call
-            try await executeSingleToolCall(
-                parsedCall: parsedCall,
-                toolRegistry: toolRegistry,
-                conversationHistory: &conversationHistory,
-                transcriptMessages: &transcriptMessages,
-                resultBuilder: resultBuilder,
-                observer: observer,
-                tracing: tracing,
-                membraneAdapter: membraneAdapter,
-                startTime: startTime
-            )
+            case .membraneInternal, .regular:
+                try await executeSingleToolCall(
+                    parsedCall: parsedCall,
+                    toolRegistry: toolRegistry,
+                    conversationHistory: &conversationHistory,
+                    transcriptMessages: &transcriptMessages,
+                    resultBuilder: resultBuilder,
+                    observer: observer,
+                    tracing: tracing,
+                    kind: kind,
+                    membraneAdapter: membraneAdapter,
+                    startTime: startTime
+                )
+            }
         }
 
         return nil

@@ -156,25 +156,57 @@ struct AgentTurnKernelTests {
         )
     }
 
-    @Test("Host tool-call kind prefers handoff over membrane internals")
-    func hostToolCallKind() {
+    @Test(
+        "Host tool-call kind is exhaustive for Agent dispatch",
+        arguments: [
+            (true, true, AgentTurnKernel.HostToolCallKind.handoff),
+            (true, false, AgentTurnKernel.HostToolCallKind.handoff),
+            (false, true, AgentTurnKernel.HostToolCallKind.membraneInternal),
+            (false, false, AgentTurnKernel.HostToolCallKind.regular),
+        ]
+    )
+    func hostToolCallKind(
+        isHandoffTool: Bool,
+        isMembraneInternal: Bool,
+        expected: AgentTurnKernel.HostToolCallKind
+    ) {
         #expect(
             AgentTurnKernel.hostToolCallKind(
-                isHandoffTool: true,
-                isMembraneInternal: true
-            ) == .handoff
+                isHandoffTool: isHandoffTool,
+                isMembraneInternal: isMembraneInternal
+            ) == expected
         )
+    }
+
+    @Test(
+        "Resolved host-tool kind maps missing handles to regular, never Membrane for handoff",
+        arguments: [
+            (AgentTurnKernel.HostToolCallKind.handoff, true, true, AgentTurnKernel.HostToolCallKind.handoff),
+            (AgentTurnKernel.HostToolCallKind.handoff, true, false, AgentTurnKernel.HostToolCallKind.handoff),
+            (AgentTurnKernel.HostToolCallKind.handoff, false, true, AgentTurnKernel.HostToolCallKind.regular),
+            (AgentTurnKernel.HostToolCallKind.handoff, false, false, AgentTurnKernel.HostToolCallKind.regular),
+            (AgentTurnKernel.HostToolCallKind.membraneInternal, true, true, AgentTurnKernel.HostToolCallKind.membraneInternal),
+            (AgentTurnKernel.HostToolCallKind.membraneInternal, true, false, AgentTurnKernel.HostToolCallKind.regular),
+            (AgentTurnKernel.HostToolCallKind.membraneInternal, false, true, AgentTurnKernel.HostToolCallKind.membraneInternal),
+            (AgentTurnKernel.HostToolCallKind.membraneInternal, false, false, AgentTurnKernel.HostToolCallKind.regular),
+            (AgentTurnKernel.HostToolCallKind.regular, true, true, AgentTurnKernel.HostToolCallKind.regular),
+            (AgentTurnKernel.HostToolCallKind.regular, true, false, AgentTurnKernel.HostToolCallKind.regular),
+            (AgentTurnKernel.HostToolCallKind.regular, false, true, AgentTurnKernel.HostToolCallKind.regular),
+            (AgentTurnKernel.HostToolCallKind.regular, false, false, AgentTurnKernel.HostToolCallKind.regular),
+        ]
+    )
+    func resolvedHostToolCallKind(
+        kind: AgentTurnKernel.HostToolCallKind,
+        hasHandoffConfiguration: Bool,
+        hasMembraneAdapter: Bool,
+        expected: AgentTurnKernel.HostToolCallKind
+    ) {
         #expect(
-            AgentTurnKernel.hostToolCallKind(
-                isHandoffTool: false,
-                isMembraneInternal: true
-            ) == .membraneInternal
-        )
-        #expect(
-            AgentTurnKernel.hostToolCallKind(
-                isHandoffTool: false,
-                isMembraneInternal: false
-            ) == .regular
+            AgentTurnKernel.resolvedHostToolCallKind(
+                kind,
+                hasHandoffConfiguration: hasHandoffConfiguration,
+                hasMembraneAdapter: hasMembraneAdapter
+            ) == expected
         )
     }
 
