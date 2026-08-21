@@ -7,9 +7,10 @@ import Swarm
 
 /// An inference-provider wrapper that emits OpenTelemetry GenAI spans.
 ///
-/// Advanced provider protocols are exposed through conditional conformances, so
-/// wrapping a provider does not advertise capabilities the underlying provider
-/// cannot actually satisfy.
+/// The wrapper forwards ``InferenceProvider`` methods, ``promptTokenCounter``,
+/// and advertised capability bits. Leftover capability protocols remain as
+/// deprecated identities for native backends; this wrapper does not dispatch
+/// through those identities.
 public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecked Sendable,
     CapabilityReportingInferenceProvider,
     InferenceProviderMetadata
@@ -29,6 +30,10 @@ public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecke
 
     public var capabilities: InferenceProviderCapabilities {
         InferenceProviderCapabilities.resolved(for: base)
+    }
+
+    public var promptTokenCounter: (any PromptTokenCounter)? {
+        base.promptTokenCounter
     }
 
     public var providerName: String? {
@@ -72,6 +77,29 @@ public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecke
             let response = try await base.generateWithToolCalls(prompt: prompt, tools: tools, options: options)
             apply(response: response, to: span)
             return response
+        }
+    }
+
+    public func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
+        instrumentToolStream(inputLength: prompt.count, toolCount: tools.count, options: options) {
+            base.streamWithToolCalls(prompt: prompt, tools: tools, options: options)
+        }
+    }
+
+    public func generateStructured(
+        prompt: String,
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        try await withLLMSpan(operation: "chat", inputLength: prompt.count, options: options) { span in
+            span.setAttribute(key: "gen_ai.output.type", value: "json")
+            let result = try await base.generateStructured(prompt: prompt, request: request, options: options)
+            span.setAttribute(key: "gen_ai.response.output_length", value: result.rawJSON.count)
+            return result
         }
     }
 
@@ -186,35 +214,12 @@ extension OpenTelemetryInferenceProvider: ConversationInferenceProvider where Ba
 
 extension OpenTelemetryInferenceProvider: StreamingConversationInferenceProvider where Base: StreamingConversationInferenceProvider {}
 
-extension OpenTelemetryInferenceProvider: ToolCallStreamingInferenceProvider where Base: ToolCallStreamingInferenceProvider {
-  public func streamWithToolCalls(
-        prompt: String,
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        instrumentToolStream(inputLength: prompt.count, toolCount: tools.count, options: options) {
-            base.streamWithToolCalls(prompt: prompt, tools: tools, options: options)
-        }
-    }
-}
+extension OpenTelemetryInferenceProvider: ToolCallStreamingInferenceProvider where Base: ToolCallStreamingInferenceProvider {}
 
 extension OpenTelemetryInferenceProvider: ToolCallStreamingConversationInferenceProvider
 where Base: ToolCallStreamingConversationInferenceProvider {}
 
-extension OpenTelemetryInferenceProvider: StructuredOutputInferenceProvider where Base: StructuredOutputInferenceProvider {
-  public func generateStructured(
-        prompt: String,
-        request: StructuredOutputRequest,
-        options: InferenceOptions
-    ) async throws -> StructuredOutputResult {
-        try await withLLMSpan(operation: "chat", inputLength: prompt.count, options: options) { span in
-            span.setAttribute(key: "gen_ai.output.type", value: "json")
-            let result = try await base.generateStructured(prompt: prompt, request: request, options: options)
-            span.setAttribute(key: "gen_ai.response.output_length", value: result.rawJSON.count)
-            return result
-        }
-    }
-}
+extension OpenTelemetryInferenceProvider: StructuredOutputInferenceProvider where Base: StructuredOutputInferenceProvider {}
 
 extension OpenTelemetryInferenceProvider: StructuredOutputConversationInferenceProvider
 where Base: StructuredOutputConversationInferenceProvider {}

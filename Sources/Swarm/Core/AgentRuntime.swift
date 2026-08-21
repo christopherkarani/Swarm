@@ -222,6 +222,12 @@ public protocol InferenceProvider: Sendable {
     /// Advertised features. Callers read this bitset; they do not probe extra protocols.
     var capabilities: InferenceProviderCapabilities { get }
 
+    /// Native prompt token counter for this backend, if any.
+    ///
+    /// Agent reads this property when wiring ``AgentEnvironment/promptTokenCounter``.
+    /// The default is `nil`, which keeps the environment heuristic counter.
+    var promptTokenCounter: (any PromptTokenCounter)? { get }
+
     /// Generates a response for the given prompt.
     ///
     /// Deprecated as the Agent seam. Prefer ``generate(messages:options:)``.
@@ -241,6 +247,28 @@ public protocol InferenceProvider: Sendable {
         tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse
+
+    /// Streams text and tool-call updates from a flattened prompt.
+    ///
+    /// Deprecated as the Agent seam. Prefer ``streamWithToolCalls(messages:tools:options:)``.
+    /// The protocol default generate-then-emits a finished turn. Override to stream
+    /// partial tool-call assembly, and advertise
+    /// ``InferenceProviderCapabilities/streamingToolCalls``.
+    func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
+
+    /// Generates structured output from a flattened prompt.
+    ///
+    /// Deprecated as the Agent seam. Prefer
+    /// ``generateStructured(messages:request:options:)``.
+    func generateStructured(
+        prompt: String,
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult
 
     /// Generates a response from role-tagged conversation messages.
     func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String

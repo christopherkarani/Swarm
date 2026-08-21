@@ -1152,7 +1152,7 @@ public struct Agent: AgentRuntime, Sendable {
 
     private func runtimeEnvironment(for provider: any InferenceProvider) -> AgentEnvironment {
         var environment = AgentEnvironmentValues.current
-        if let tokenCounter = provider as? any PromptTokenCountingInferenceProvider {
+        if let tokenCounter = provider.promptTokenCounter {
             environment.promptTokenCounter = tokenCounter
         }
         return environment

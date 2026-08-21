@@ -299,16 +299,19 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 205 | func | public | AgentRuntime.runWithResponse(_:observer:) | `public func runWithResponse(_ input: String, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
 | 221 | protocol | public | InferenceProvider | `public protocol InferenceProvider : Sendable` |
 | 223 | var | public | InferenceProvider.capabilities | `public var capabilities: InferenceProviderCapabilities { get }` |
-| 229 | func | public | InferenceProvider.generate(prompt:options:) | `public func generate(prompt: String, options: InferenceOptions) async throws -> String` _(Compatibility only; Agent uses the messages overloads.)_ |
-| 234 | func | public | InferenceProvider.stream(prompt:options:) | `public func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` _(Compatibility only; Agent uses the messages overloads.)_ |
-| 239 | func | public | InferenceProvider.generateWithToolCalls(prompt:tools:options:) | `public func generateWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` _(Compatibility only; Agent uses the messages overloads.)_ |
-| 246 | func | public | InferenceProvider.generate(messages:options:) | `public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String` |
-| 249 | func | public | InferenceProvider.stream(messages:options:) | `public func stream(messages: [InferenceMessage], options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
-| 255 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
-| 265 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:toolExecutor:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) async throws -> InferenceResponse` |
-| 262 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
-| 282 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:toolExecutor:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
-| 269 | func | public | InferenceProvider.generateStructured(messages:request:options:) | `public func generateStructured(messages: [InferenceMessage], request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` |
+| 229 | var | public | InferenceProvider.promptTokenCounter | `public var promptTokenCounter: (any PromptTokenCounter)? { get }` |
+| 235 | func | public | InferenceProvider.generate(prompt:options:) | `public func generate(prompt: String, options: InferenceOptions) async throws -> String` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 240 | func | public | InferenceProvider.stream(prompt:options:) | `public func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 245 | func | public | InferenceProvider.generateWithToolCalls(prompt:tools:options:) | `public func generateWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 257 | func | public | InferenceProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 267 | func | public | InferenceProvider.generateStructured(prompt:request:options:) | `public func generateStructured(prompt: String, request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` _(Compatibility only; Agent uses the messages overloads.)_ |
+| 274 | func | public | InferenceProvider.generate(messages:options:) | `public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String` |
+| 277 | func | public | InferenceProvider.stream(messages:options:) | `public func stream(messages: [InferenceMessage], options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
+| 283 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
+| 298 | func | public | InferenceProvider.generateWithToolCalls(messages:tools:options:toolExecutor:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) async throws -> InferenceResponse` |
+| 306 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
+| 317 | func | public | InferenceProvider.streamWithToolCalls(messages:tools:options:toolExecutor:) | `public func streamWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
+| 325 | func | public | InferenceProvider.generateStructured(messages:request:options:) | `public func generateStructured(messages: [InferenceMessage], request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` |
 | 265 | func | public | InferenceOptions.frequencyPenalty(_:) | `public @discardableResult func frequencyPenalty(_ value: Double?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.maxTokens(_:) | `public @discardableResult func maxTokens(_ value: Int?) -> InferenceOptions` |
 | 265 | func | public | InferenceOptions.parallelToolCalls(_:) | `public @discardableResult func parallelToolCalls(_ value: Bool?) -> InferenceOptions` |
@@ -2811,8 +2814,8 @@ Experimental adapter wrapping a user `FoundationModels.Tool` as a Swarm `AnyJSON
 | 14 | case | public | InferenceStreamUpdate.toolCallPartial(_:) | `public case toolCallPartial(PartialToolCallUpdate)` |
 | 17 | case | public | InferenceStreamUpdate.toolCallsCompleted(_:) | `public case toolCallsCompleted([InferenceResponse.ParsedToolCall])` |
 | 20 | case | public | InferenceStreamUpdate.usage(_:) | `public case usage(TokenUsage)` |
-| 26 | protocol | public | ToolCallStreamingInferenceProvider | `public protocol ToolCallStreamingInferenceProvider : InferenceProvider` |
-| 28 | func | public | ToolCallStreamingInferenceProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
+| 34 | protocol | public | ToolCallStreamingInferenceProvider | `public protocol ToolCallStreamingInferenceProvider : InferenceProvider` _(Deprecated leftover identity; Agent reads `InferenceProviderCapabilities.streamingToolCalls`.)_ |
+| 36 | func | public | ToolCallStreamingInferenceProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
 
 ## 12. Integration (Membrane + Wax)
 
