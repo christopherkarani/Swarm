@@ -488,6 +488,13 @@ private struct WorkflowLegacyMigratingCheckpointStore: HiveCheckpointStore {
 /// cursors and snapshot forward. A synthesized completion cannot leave pending
 /// cursors behind because the cursors are dropped with the legacy layout.
 ///
+/// Version bookkeeping (`channelVersionsByChannelID`, `versionsSeenByNodeID`,
+/// `updatedChannelsLastCommit`) is pruned to channel IDs the current schema
+/// still registers: legacy checkpoints carry the removed channel IDs in these
+/// maps, and the runtime rejects any unknown ID there as corrupt. Surviving
+/// channels keep their write history; the phase channel starts at version 0
+/// like any newly registered channel.
+///
 /// Checkpoints without the legacy discriminator channel are returned untouched
 /// so the runtime raises its regular version-mismatch error rather than
 /// guessing at an unknown format.
@@ -522,6 +529,12 @@ enum WorkflowLegacyCheckpointMigrator {
         migratedData[WorkflowDurableSchema.signatureKey.id.rawValue] =
             try WorkflowCheckpointCodec<String>().encode(legacy.signature)
 
+        let registeredGlobalIDs = Set(
+            WorkflowDurableSchema.channelSpecs
+                .filter { $0.scope == .global }
+                .map { $0.id.rawValue }
+        )
+
         return HiveCheckpoint(
             id: checkpoint.id,
             threadID: checkpoint.threadID,
@@ -530,9 +543,13 @@ enum WorkflowLegacyCheckpointMigrator {
             schemaVersion: schemaVersion,
             graphVersion: graphVersion,
             checkpointFormatVersion: checkpoint.checkpointFormatVersion,
-            channelVersionsByChannelID: checkpoint.channelVersionsByChannelID,
-            versionsSeenByNodeID: checkpoint.versionsSeenByNodeID,
-            updatedChannelsLastCommit: checkpoint.updatedChannelsLastCommit,
+            channelVersionsByChannelID: checkpoint.channelVersionsByChannelID
+                .filter { registeredGlobalIDs.contains($0.key) },
+            versionsSeenByNodeID: checkpoint.versionsSeenByNodeID.mapValues { versions in
+                versions.filter { registeredGlobalIDs.contains($0.key) }
+            },
+            updatedChannelsLastCommit: checkpoint.updatedChannelsLastCommit
+                .filter { registeredGlobalIDs.contains($0) },
             globalDataByChannelID: migratedData,
             frontier: checkpoint.frontier,
             deferredFrontier: checkpoint.deferredFrontier,

@@ -21,8 +21,9 @@ struct WorkflowDurablePhaseTests {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
+        let log = ExecutionLog()
         let checkpointing = WorkflowCheckpointing.fileSystem(directory: directory)
-        let workflow = makeLinearWorkflow(checkpointing: checkpointing, checkpointID: "wf-roundtrip")
+        let workflow = makeLinearWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-roundtrip")
 
         let first = try await workflow.durable.execute("start")
         #expect(first.output == "C")
@@ -46,6 +47,12 @@ struct WorkflowDurablePhaseTests {
 
         let resumed = try await workflow.durable.execute("ignored", resumeFrom: "wf-roundtrip")
         #expect(resumed.output == "C")
+
+        // Resuming a completed run must end at the router without re-running steps.
+        let counts = await log.counts
+        #expect(counts["A"] == 1)
+        #expect(counts["B"] == 1)
+        #expect(counts["C"] == 1)
     }
 
     @Test("mid-run checkpoint encodes a running phase and resumes with step granularity")
@@ -201,6 +208,55 @@ struct WorkflowDurablePhaseTests {
         #expect(result.output == "B-out")
     }
 
+    @Test("checkpoints without the legacy discriminator pass through and fail version matching")
+    func unknownFormatPassesThroughToVersionMismatch() async throws {
+        let backend = WorkflowInMemoryCheckpointStore()
+        let checkpointing = WorkflowCheckpointing(backend: backend)
+        let workflow = makeTwoStepWorkflow(checkpointing: checkpointing, checkpointID: "wf-unknown-format")
+
+        // Mismatched schema versions but no legacy discriminator channel: the
+        // migrator must not guess at an unknown layout.
+        let fixture = legacyCheckpoint(threadID: "wf-unknown-format", signature: workflow.workflowSignature) { _ in }
+        try await backend.save(fixture)
+
+        do {
+            _ = try await workflow.durable.execute("ignored", resumeFrom: "wf-unknown-format")
+            Issue.record("expected version mismatch")
+        } catch let error as HiveRuntimeError {
+            guard case .checkpointVersionMismatch(let expectedSchema, _, let foundSchema, _) = error else {
+                Issue.record("unexpected HiveRuntimeError \(error)")
+                return
+            }
+            #expect(foundSchema == "legacy-pre-phase-enum-schema")
+            #expect(expectedSchema != foundSchema)
+        }
+    }
+
+    @Test("corrupt legacy payload fails resume instead of fabricating state")
+    func corruptLegacyPayloadFailsLoudly() async throws {
+        let backend = WorkflowInMemoryCheckpointStore()
+        let checkpointing = WorkflowCheckpointing(backend: backend)
+        let log = ExecutionLog()
+        let workflow = makeTwoStepWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-legacy-corrupt")
+
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-corrupt", signature: workflow.workflowSignature) {
+            $0["workflow.completed"] = encodedJSON(false)
+            $0["workflow.lastResult"] = Data("not-json".utf8)
+            $0["workflow.currentInput"] = encodedJSON("seed")
+        }
+        try await backend.save(fixture)
+
+        do {
+            _ = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-corrupt")
+            Issue.record("expected decode failure")
+        } catch is DecodingError {
+            // Expected: present-but-undecodable legacy entries fail loudly.
+        }
+
+        let counts = await log.counts
+        #expect(counts.isEmpty)
+    }
+
     // MARK: - Result fidelity
 
     @Test("repeat conditions receive full agent results in durable runs")
@@ -225,6 +281,61 @@ struct WorkflowDurablePhaseTests {
         // If the mid-run result were reconstructed from the input text alone,
         // the metadata would be lost and neither observation would match.
         #expect(await observations.values == [.string("no"), .string("done")])
+        #expect(result.output == "again")
+        #expect(result.metadata["pass"] == .string("done"))
+    }
+
+    @Test("resumed repeat boundary evaluates metadata from the persisted snapshot")
+    func resumedRepeatBoundaryUsesPersistedMetadata() async throws {
+        let observations = MetadataRecorder()
+        let log = ExecutionLog()
+        let checkpointing = makeInMemoryCheckpointing()
+        let controller = WorkflowDurableFaultController(queue: [.afterCheckpointWrite])
+
+        try await WorkflowDurableFaultInjection.$controller.withValue(controller) {
+            do {
+                _ = try await Workflow()
+                    .step(MetadataEchoAgent(log: log))
+                    .repeatUntil(maxIterations: 4) { result in
+                        observations.record(result.metadata["pass"])
+                        return result.metadata["pass"] == .string("done")
+                    }
+                    .durable
+                    .checkpoint(id: "wf-repeat-resume", policy: .everyStep)
+                    .durable
+                    .checkpointing(checkpointing)
+                    .durable
+                    .execute("start")
+                Issue.record("expected injected fault")
+            } catch let fault as WorkflowDurableInjectedFault {
+                #expect(fault.point == .afterCheckpointWrite)
+            }
+        }
+
+        // No boundary ran before the fault, so nothing was observed yet; the
+        // committed step's snapshot only exists in the persisted checkpoint.
+        #expect(await observations.values.isEmpty)
+
+        let result = try await Workflow()
+            .step(MetadataEchoAgent(log: log))
+            .repeatUntil(maxIterations: 4) { result in
+                observations.record(result.metadata["pass"])
+                return result.metadata["pass"] == .string("done")
+            }
+            .durable
+            .checkpoint(id: "wf-repeat-resume", policy: .everyStep)
+            .durable
+            .checkpointing(checkpointing)
+            .durable
+            .execute("ignored", resumeFrom: "wf-repeat-resume")
+
+        // The first boundary observation must come from the decoded snapshot's
+        // metadata ("no"). A fallback AgentResult(currentInput) carries no
+        // metadata and would record "<nil>" instead. The agent then runs exactly
+        // one more time (pass 2), proving the committed step was not re-executed.
+        #expect(await observations.values == [.string("no"), .string("done")])
+        let counts = await log.counts
+        #expect(counts["MetadataEchoAgent"] == 2)
         #expect(result.output == "again")
         #expect(result.metadata["pass"] == .string("done"))
     }
@@ -285,6 +396,11 @@ struct WorkflowDurablePhaseTests {
         channels["workflow.signature"] = encodedJSON(signature)
         populate(&channels)
 
+        // Realistic pre-change bookkeeping: the old engine version-bumped every
+        // committed channel, stamped updatedChannelsLastCommit, and recorded
+        // per-node seen versions, so surviving checkpoints carry the removed
+        // channel IDs inside these maps. Migration must prune them or the
+        // runtime rejects the checkpoint as corrupt.
         return HiveCheckpoint(
             id: HiveCheckpointID("legacy-cp"),
             threadID: HiveThreadID(threadID),
@@ -293,9 +409,26 @@ struct WorkflowDurablePhaseTests {
             schemaVersion: "legacy-pre-phase-enum-schema",
             graphVersion: "legacy-pre-phase-enum-graph",
             checkpointFormatVersion: "HCP1",
-            channelVersionsByChannelID: [:],
-            versionsSeenByNodeID: [:],
-            updatedChannelsLastCommit: [],
+            channelVersionsByChannelID: [
+                "workflow.currentInput": 2,
+                "workflow.signature": 1,
+                "workflow.stepCursor": 2,
+                "workflow.iterationCursor": 1,
+                "workflow.completed": 1,
+                "workflow.lastResult": 2,
+            ],
+            versionsSeenByNodeID: [
+                "workflow.execute": [
+                    "workflow.currentInput": 2,
+                    "workflow.lastResult": 2,
+                    "workflow.stepCursor": 2,
+                ],
+            ],
+            updatedChannelsLastCommit: [
+                "workflow.currentInput",
+                "workflow.lastResult",
+                "workflow.stepCursor",
+            ],
             globalDataByChannelID: channels,
             frontier: [],
             deferredFrontier: [],
@@ -390,12 +523,20 @@ private actor CountingAgent: AgentRuntime {
 /// Agent whose result metadata flips once its input marks a completed pass.
 private actor MetadataEchoAgent: AgentRuntime {
     nonisolated let tools: [any AnyJSONTool] = []
-    nonisolated let instructions = "MetadataEchoAgent"
+    nonisolated let instructions: String
     nonisolated let configuration = AgentConfiguration(name: "MetadataEchoAgent")
     nonisolated let handoffs: [AnyHandoffConfiguration] = []
 
+    private let log: ExecutionLog?
+
+    init(log: ExecutionLog? = nil) {
+        self.log = log
+        instructions = "MetadataEchoAgent"
+    }
+
     func run(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) async throws -> AgentResult {
-        AgentResult(
+        await log?.record(instructions)
+        return AgentResult(
             output: "again",
             metadata: ["pass": .string(input == "again" ? "done" : "no")]
         )
