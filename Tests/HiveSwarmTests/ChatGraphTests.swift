@@ -680,7 +680,13 @@ struct HiveAgentsTests {
         )
         _ = try await seeded.outcome.value
 
-        let unknownKey = HiveChannelKey<ChatGraph.Schema, Int>(HiveChannelID("unknown-channel"))
+        let unknownKey = HiveChannelSpec<ChatGraph.Schema, Int>(
+            id: HiveChannelID("unknown-channel"),
+            scope: .global,
+            reducer: .lastWriteWins(),
+            initial: { 0 },
+            persistence: .untracked
+        ).key
         let thrown = await #expect(throws: (any Error).self) {
             _ = try await runControl.applyExternalWrites(
                 ExternalWriteRequest(

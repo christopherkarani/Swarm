@@ -634,9 +634,9 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 94 | var | public | HandoffResult.transferredContext | `public let transferredContext: [String : SendableValue]` |
 | 97 | var | public | HandoffResult.timestamp | `public let timestamp: Date` |
 | 107 | func | public | HandoffResult.init(targetAgentName:input:result:transferredContext:timestamp:) | `public init(targetAgentName: String, input: String, result: AgentResult, transferredContext: [String : SendableValue], timestamp: Date = Date())` |
-| 159 | protocol | public | HandoffReceiver | `public protocol HandoffReceiver : AgentRuntime` |
-| 174 | func | public | HandoffReceiver.handleHandoff(_:context:) | `public func handleHandoff(_ request: HandoffRequest, context: AgentContext) async throws -> AgentResult` |
-| 197 | func | public | HandoffReceiver.handleHandoff(_:context:) | `public func handleHandoff(_ request: HandoffRequest, context: AgentContext) async throws -> AgentResult` |
+| 159 | protocol | public | HandoffReceiver | `public protocol HandoffReceiver : AgentRuntime` (deprecated; `handleHandoff` is on `AgentRuntime`) |
+| 174 | func | public | AgentRuntime.handleHandoff(_:context:) | `public func handleHandoff(_ request: HandoffRequest, context: AgentContext) async throws -> AgentResult` |
+| 197 | func | public | AgentRuntime.handleHandoff(_:context:) | `public func handleHandoff(_ request: HandoffRequest, context: AgentContext) async throws -> AgentResult` |
 | 457 | var | public | HandoffRequest.description | `public var description: String { get }` |
 | 472 | var | public | HandoffResult.description | `public var description: String { get }` |
 

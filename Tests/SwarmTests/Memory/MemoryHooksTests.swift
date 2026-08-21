@@ -4,21 +4,21 @@ import Testing
 
 @Suite("Memory Hooks")
 struct MemoryHooksTests {
-    @Test("Memory that does not conform to lifecycle resolves to empty hooks")
-    func memoryWithoutLifecycleResolvesToEmptyHooks() async {
+    @Test("Memory requirements fill hooks without marker conformances")
+    func memoryWithoutLifecycleResolvesToProtocolDefaults() async {
         let memory = ConversationMemory()
         let hooks = MemoryHooks.resolved(from: memory)
 
-        #expect(hooks.beginMemorySession == nil)
-        #expect(hooks.endMemorySession == nil)
-        #expect(hooks.contextForQuery == nil)
-        #expect(hooks.memoryPromptTitle == nil)
+        #expect(hooks.beginMemorySession != nil)
+        #expect(hooks.endMemorySession != nil)
+        #expect(hooks.contextForQuery != nil)
+        #expect(hooks.memoryPromptTitle == "Relevant Context from Memory")
         #expect(hooks.memoryPromptGuidance == nil)
-        #expect(hooks.memoryPriority == nil)
+        #expect(hooks.memoryPriority == .primary)
         #expect(hooks.trackedSessionMemory == nil)
         #expect(hooks.allowsAutomaticSessionSeeding)
-        #expect(hooks.shouldImportSessionHistory == nil)
-        #expect(hooks.importSessionHistory == nil)
+        #expect(hooks.shouldImportSessionHistory != nil)
+        #expect(hooks.importSessionHistory != nil)
     }
 
     @Test("Public marker protocols still fill hooks through the shim")

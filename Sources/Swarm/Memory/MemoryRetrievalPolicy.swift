@@ -35,13 +35,9 @@ public struct MemoryQuery: Sendable, Equatable {
 }
 
 /// Optional memory extension for retrieval implementations that need more than a token limit.
-public protocol MemoryRetrievalPolicyAware: Memory {
-    /// Retrieves context relevant to the query while respecting item-level budgets.
-    func context(for query: MemoryQuery) async -> String
-}
+@available(*, deprecated, message: "context(for: MemoryQuery) is a defaulted Memory requirement")
+public protocol MemoryRetrievalPolicyAware: Memory {}
 
 /// Optional policy hook for memories that should not ingest session history automatically.
-public protocol MemorySessionImportPolicy: Sendable {
-    /// Whether the agent runtime may seed session history into this memory store.
-    var allowsAutomaticSessionSeeding: Bool { get }
-}
+@available(*, deprecated, message: "allowsAutomaticSessionSeeding is a defaulted Memory requirement")
+public protocol MemorySessionImportPolicy: Sendable {}

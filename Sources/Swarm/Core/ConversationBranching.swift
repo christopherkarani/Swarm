@@ -1,11 +1,13 @@
 import Foundation
 
 /// Internal capability for runtimes that can create an isolated branch of their own execution state.
-package protocol ConversationBranchingRuntime: AgentRuntime {
-    func branchConversationRuntime() async throws -> any AgentRuntime
-}
+///
+/// ``AgentRuntime/branchConversationRuntime()`` is now a defaulted requirement.
+@available(*, deprecated, message: "branchConversationRuntime is a defaulted AgentRuntime requirement")
+package protocol ConversationBranchingRuntime: AgentRuntime {}
 
 /// Internal capability for sessions that can clone themselves while preserving backend semantics.
-package protocol ConversationBranchingSession: Session {
-    func branchConversationSession() async throws -> any Session
-}
+///
+/// ``Session/branchConversationSession()`` is now a defaulted requirement.
+@available(*, deprecated, message: "branchConversationSession is a defaulted Session requirement")
+package protocol ConversationBranchingSession: Session {}

@@ -1656,13 +1656,12 @@ public actor HiveRuntime<Schema: HiveSchema> {
         case .fullStore:
             return .fullStore(state.global)
         case .channels(let ids):
-            var values: [HiveProjectedChannelValue] = []
-            values.reserveCapacity(ids.count)
+            var valuesByID: [HiveChannelID: any Sendable] = [:]
+            valuesByID.reserveCapacity(ids.count)
             for id in ids {
-                let value = try state.global.valueAny(for: id)
-                values.append(HiveProjectedChannelValue(id: id, value: value))
+                valuesByID[id] = try state.global.valueAny(for: id)
             }
-            return .channels(values)
+            return .channels(HiveChannelProjection(valuesByID: valuesByID, registry: registry))
         }
     }
 
@@ -1733,13 +1732,11 @@ public actor HiveRuntime<Schema: HiveSchema> {
         to global: inout HiveGlobalStore<Schema>
     ) throws -> [HiveChannelID] {
         func validateValueType(_ value: any Sendable, spec: AnyHiveChannelSpec<Schema>) throws {
-            let expectedValueTypeID = spec.valueTypeID
-            let actualValueTypeID = String(reflecting: type(of: value))
-            guard expectedValueTypeID == actualValueTypeID else {
+            guard spec.matchesStoredValue(value) else {
                 throw HiveExternalWriteError.payloadTypeMismatch(
                     channelID: spec.id,
-                    expectedValueTypeID: expectedValueTypeID,
-                    actualValueTypeID: actualValueTypeID
+                    expectedValueTypeID: spec.valueTypeID,
+                    actualValueTypeID: String(reflecting: type(of: value))
                 )
             }
         }

@@ -1,37 +1,43 @@
 /// Type registry keyed by channel ID for runtime type validation.
+///
+/// Identity is ``ObjectIdentifier`` of the spec’s `Value`, not reflected type strings.
 struct HiveChannelTypeRegistry<Schema: HiveSchema>: Sendable {
-    private let valueTypeIDsByID: [HiveChannelID: String]
+    private let identifiersByID: [HiveChannelID: ObjectIdentifier]
+    private let diagnosticTypeIDsByID: [HiveChannelID: String]
 
     init(_ registry: HiveSchemaRegistry<Schema>) {
-        var ids: [HiveChannelID: String] = [:]
-        ids.reserveCapacity(registry.channelSpecs.count)
+        var identifiers: [HiveChannelID: ObjectIdentifier] = [:]
+        var diagnostics: [HiveChannelID: String] = [:]
+        identifiers.reserveCapacity(registry.channelSpecs.count)
+        diagnostics.reserveCapacity(registry.channelSpecs.count)
         for spec in registry.channelSpecs {
-            ids[spec.id] = spec.valueTypeID
+            identifiers[spec.id] = spec.valueTypeIdentifier
+            diagnostics[spec.id] = spec.valueTypeID
         }
-        self.valueTypeIDsByID = ids
+        self.identifiersByID = identifiers
+        self.diagnosticTypeIDsByID = diagnostics
     }
 
     func cast<Value: Sendable>(
         _ value: any Sendable,
         for key: HiveChannelKey<Schema, Value>
     ) throws -> Value {
-        let expectedValueTypeID = String(reflecting: Value.self)
-        guard let registered = valueTypeIDsByID[key.id] else {
+        guard let registered = identifiersByID[key.id] else {
             return try HiveChannelTypeRegistry.failUnknown(channelID: key.id)
         }
-        if registered != expectedValueTypeID {
+        let expected = ObjectIdentifier(Value.self)
+        if registered != expected {
             return try HiveChannelTypeRegistry.fail(
                 channelID: key.id,
-                expected: registered,
-                actual: expectedValueTypeID
+                expected: diagnosticTypeIDsByID[key.id] ?? String(reflecting: Value.self),
+                actual: String(reflecting: Value.self)
             )
         }
         guard let typed = value as? Value else {
-            let actualValueTypeID = String(reflecting: type(of: value))
             return try HiveChannelTypeRegistry.fail(
                 channelID: key.id,
-                expected: expectedValueTypeID,
-                actual: actualValueTypeID
+                expected: diagnosticTypeIDsByID[key.id] ?? String(reflecting: Value.self),
+                actual: String(reflecting: type(of: value))
             )
         }
         return typed

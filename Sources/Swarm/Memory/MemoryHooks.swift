@@ -1,13 +1,10 @@
 import Foundation
 
-/// Package-internal optional memory behavior, resolved from public marker protocols.
+/// Package-internal optional memory behavior, resolved from ``Memory``.
 ///
-/// Agent and ``CompositeMemory`` read this value instead of probing `as?` / `as AnyObject`.
-/// ``resolved(from:)`` is the compatibility shim: it is the only site that may cast the
-/// public marker protocols (and the package-internal tracking / seed controllers).
-///
-/// Memories that do not conform to a marker produce ``empty`` hooks for that capability
-/// (session begin/end is a no-op, retrieval falls back to ``Memory/context(for:tokenLimit:)``).
+/// Agent and ``CompositeMemory`` can read this value instead of probing `as?` /
+/// `as AnyObject`. ``resolved(from:)`` wraps defaulted ``Memory`` requirements so
+/// missing overrides are no-ops rather than skipped layers.
 ///
 /// - Note: `MemoryHooks` is not part of the public API. Generated `@AgentActor` `run()`
 ///   still uses ``MemorySessionLifecycle`` directly so consumer modules can compile.
@@ -51,54 +48,33 @@ package struct MemoryHooks: Sendable {
 package extension MemoryHooks {
     static let empty = MemoryHooks()
 
-    /// Fills hooks from public marker protocols and package-internal controllers.
+    /// Fills hooks from defaulted ``Memory`` requirements.
     ///
-    /// This is the only remaining `as?` pyramid for optional memory behavior.
+    /// Marker protocols remain for source compatibility. Behavior is no longer
+    /// recovered with `as?`; missing overrides use the protocol defaults.
     static func resolved(from memory: any Memory) -> MemoryHooks {
-        var hooks = MemoryHooks.empty
-
-        if let lifecycle = memory as? any MemorySessionLifecycle {
-            hooks.beginMemorySession = {
-                await lifecycle.beginMemorySession()
+        MemoryHooks(
+            beginMemorySession: {
+                await memory.beginMemorySession()
+            },
+            endMemorySession: {
+                await memory.endMemorySession()
+            },
+            contextForQuery: { query in
+                await memory.context(for: query)
+            },
+            memoryPromptTitle: memory.memoryPromptTitle,
+            memoryPromptGuidance: memory.memoryPromptGuidance,
+            memoryPriority: memory.memoryPriority,
+            trackedSessionMemory: memory.trackedSessionMemory,
+            allowsAutomaticSessionSeeding: memory.allowsAutomaticSessionSeeding,
+            shouldImportSessionHistory: {
+                await memory.shouldImportSessionHistory()
+            },
+            importSessionHistory: { messages in
+                await memory.importSessionHistory(messages)
             }
-            hooks.endMemorySession = {
-                await lifecycle.endMemorySession()
-            }
-        }
-
-        if let policyAware = memory as? any MemoryRetrievalPolicyAware {
-            hooks.contextForQuery = { query in
-                await policyAware.context(for: query)
-            }
-        }
-
-        if let descriptor = memory as? any MemoryPromptDescriptor {
-            hooks.memoryPromptTitle = descriptor.memoryPromptTitle
-            hooks.memoryPromptGuidance = descriptor.memoryPromptGuidance
-            hooks.memoryPriority = descriptor.memoryPriority
-        }
-
-        if let trackingProvider = memory as? any MemorySessionTrackingProvider {
-            hooks.trackedSessionMemory = trackingProvider.trackedSessionMemory
-        }
-
-        if let importPolicy = memory as? any MemorySessionImportPolicy {
-            hooks.allowsAutomaticSessionSeeding = importPolicy.allowsAutomaticSessionSeeding
-        }
-
-        if let seedController = memory as? any MemorySessionSeedControlling {
-            hooks.shouldImportSessionHistory = {
-                await seedController.shouldImportSessionHistory()
-            }
-        }
-
-        if let replayAware = memory as? any MemorySessionReplayAware {
-            hooks.importSessionHistory = { messages in
-                await replayAware.importSessionHistory(messages)
-            }
-        }
-
-        return hooks
+        )
     }
 }
 

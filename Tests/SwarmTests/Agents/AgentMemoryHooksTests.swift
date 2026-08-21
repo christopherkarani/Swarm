@@ -19,8 +19,8 @@ struct AgentMemoryHooksTests {
         let result = try await agent.run("hello", session: session)
 
         #expect(result.output == "ok")
-        #expect(MemoryHooks.resolved(from: memory).beginMemorySession == nil)
-        #expect(MemoryHooks.resolved(from: memory).endMemorySession == nil)
+        #expect(MemoryHooks.resolved(from: memory).beginMemorySession != nil)
+        #expect(MemoryHooks.resolved(from: memory).endMemorySession != nil)
     }
 
     @Test("Agent still invokes lifecycle through resolved hooks")

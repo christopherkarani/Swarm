@@ -139,7 +139,7 @@ public actor InMemorySession: Session {
 }
 
 extension InMemorySession: ConversationBranchingSession {
-    package func branchConversationSession() async throws -> any Session {
+    public func branchConversationSession() async throws -> any Session {
         let branched = InMemorySession()
         try await branched.addItems(items)
         return branched

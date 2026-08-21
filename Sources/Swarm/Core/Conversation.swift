@@ -453,13 +453,7 @@ public actor Conversation {
     /// - ``ConversationBranchingRuntime``
     /// - ``ConversationBranchingSession``
     public func branch() async throws -> Conversation {
-        let branchedAgent: any AgentRuntime
-        if let branchingRuntime = agent as? any ConversationBranchingRuntime {
-            branchedAgent = try await branchingRuntime.branchConversationRuntime()
-        } else {
-            branchedAgent = agent
-        }
-
+        let branchedAgent = try await agent.branchConversationRuntime()
         let branchedSession = try await Self.branchSession(session)
         return Conversation(
             agent: branchedAgent,
@@ -473,14 +467,6 @@ public actor Conversation {
         guard let session else {
             return nil
         }
-
-        if let branchingSession = session as? any ConversationBranchingSession {
-            return try await branchingSession.branchConversationSession()
-        }
-
-        let branched = InMemorySession()
-        let items = try await session.getAllItems()
-        try await branched.addItems(items)
-        return branched
+        return try await session.branchConversationSession()
     }
 }

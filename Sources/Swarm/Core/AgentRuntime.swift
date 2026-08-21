@@ -110,6 +110,18 @@ public protocol AgentRuntime: Sendable {
         session: (any Session)?,
         observer: (any AgentObserver)?
     ) async throws -> AgentResponse
+
+    /// Handles a handoff from another agent.
+    ///
+    /// The default merges transferred context and calls ``run(_:)``. Override
+    /// to customize handoff intake.
+    func handleHandoff(
+        _ request: HandoffRequest,
+        context: AgentContext
+    ) async throws -> AgentResult
+
+    /// Creates an isolated copy of this runtime for conversation branching.
+    func branchConversationRuntime() async throws -> any AgentRuntime
 }
 
 // MARK: - LegacyAgent Protocol Extensions
@@ -135,6 +147,33 @@ public extension AgentRuntime {
 
     /// Default handoffs (none).
     nonisolated var handoffs: [AnyHandoffConfiguration] { [] }
+
+    /// Default handoff handling: merge transferred context and ``run(_:)``.
+    func handleHandoff(
+        _ request: HandoffRequest,
+        context: AgentContext
+    ) async throws -> AgentResult {
+        for (key, value) in request.context {
+            await context.set(key, value: value)
+        }
+
+        await context.set(
+            "handoff_source",
+            value: .string(request.sourceAgentName)
+        )
+
+        if let reason = request.reason {
+            await context.set("handoff_reason", value: .string(reason))
+        }
+
+        await context.recordExecution(agentName: request.targetAgentName)
+        return try await run(request.input)
+    }
+
+    /// Default branching shares this runtime instance.
+    func branchConversationRuntime() async throws -> any AgentRuntime {
+        self
+    }
 }
 
 // MARK: - Agent Convenience Extensions
@@ -333,9 +372,23 @@ public protocol InferenceProvider: Sendable {
         toolExecutor: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
 
+    /// Streams text and tool-call updates from a flattened prompt.
+    func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
+
     /// Generates structured output from role-tagged messages.
     func generateStructured(
         messages: [InferenceMessage],
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult
+
+    /// Generates structured output from a flattened prompt.
+    func generateStructured(
+        prompt: String,
         request: StructuredOutputRequest,
         options: InferenceOptions
     ) async throws -> StructuredOutputResult

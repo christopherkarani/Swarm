@@ -1,4 +1,6 @@
 /// Output value for a projected channel.
+///
+/// Prefer ``HiveChannelProjection/get(_:)`` on ``HiveRunOutput/channels(_:)``.
 public struct HiveProjectedChannelValue: Sendable {
     public let id: HiveChannelID
     public let value: any Sendable
@@ -9,10 +11,30 @@ public struct HiveProjectedChannelValue: Sendable {
     }
 }
 
+/// Typed read surface for a subset of global channel values.
+public struct HiveChannelProjection<Schema: HiveSchema>: Sendable {
+    private let valuesByID: [HiveChannelID: any Sendable]
+    private let access: HiveStoreSupport<Schema>
+
+    init(valuesByID: [HiveChannelID: any Sendable], registry: HiveSchemaRegistry<Schema>) {
+        self.valuesByID = valuesByID
+        self.access = HiveStoreSupport(registry: registry)
+    }
+
+    /// Reads a channel through its schema-bound key.
+    public func get<Value: Sendable>(_ key: HiveChannelKey<Schema, Value>) throws -> Value {
+        let spec = try access.requireSpec(for: key.id)
+        guard let value = valuesByID[key.id] else {
+            throw HiveRuntimeError.storeValueMissing(channelID: key.id)
+        }
+        return try access.cast(value, for: key, spec: spec)
+    }
+}
+
 /// Output of a completed run attempt.
 public enum HiveRunOutput<Schema: HiveSchema>: Sendable {
     case fullStore(HiveGlobalStore<Schema>)
-    case channels([HiveProjectedChannelValue])
+    case channels(HiveChannelProjection<Schema>)
 }
 
 /// Terminal result of a run attempt.

@@ -156,70 +156,8 @@ public struct HandoffResult: Sendable, Equatable {
 ///     // HandoffReceiver can use the default implementation
 /// }
 /// ```
-public protocol HandoffReceiver: AgentRuntime {
-    /// Handles a handoff from another agent.
-    ///
-    /// This method is called when another agent transfers control
-    /// to this agent. It receives the handoff request and the
-    /// orchestration context.
-    ///
-    /// The default implementation merges the handoff context into
-    /// the orchestration context and executes the agent normally.
-    ///
-    /// - Parameters:
-    ///   - request: The handoff request containing input and context.
-    ///   - context: The shared orchestration context.
-    /// - Returns: The result of handling the handoff.
-    /// - Throws: `AgentError` if execution fails.
-    func handleHandoff(
-        _ request: HandoffRequest,
-        context: AgentContext
-    ) async throws -> AgentResult
-}
-
-// MARK: - HandoffReceiver Default Implementation
-
-public extension HandoffReceiver {
-    /// Default implementation of handoff handling.
-    ///
-    /// This implementation:
-    /// 1. Merges the handoff context into the orchestration context
-    /// 2. Records the handoff in the execution path
-    /// 3. Executes the agent with the provided input
-    ///
-    /// Override this method to provide custom handoff behavior.
-    ///
-    /// - Parameters:
-    ///   - request: The handoff request.
-    ///   - context: The shared orchestration context.
-    /// - Returns: The agent's execution result.
-    /// - Throws: `AgentError` if execution fails.
-    func handleHandoff(
-        _ request: HandoffRequest,
-        context: AgentContext
-    ) async throws -> AgentResult {
-        // Merge handoff context into orchestration context
-        for (key, value) in request.context {
-            await context.set(key, value: value)
-        }
-
-        // Record the handoff source in context
-        await context.set(
-            "handoff_source",
-            value: .string(request.sourceAgentName)
-        )
-
-        if let reason = request.reason {
-            await context.set("handoff_reason", value: .string(reason))
-        }
-
-        // Record this agent's execution
-        await context.recordExecution(agentName: request.targetAgentName)
-
-        // Execute the agent normally
-        return try await run(request.input)
-    }
-}
+@available(*, deprecated, message: "handleHandoff is a defaulted AgentRuntime requirement")
+public protocol HandoffReceiver: AgentRuntime {}
 
 // MARK: - HandoffCoordinator
 
@@ -290,31 +228,7 @@ actor HandoffCoordinator {
             throw WorkflowError.agentNotFound(name: request.targetAgentName)
         }
 
-        // Execute handoff based on agent capabilities
-        let result: AgentResult
-
-        if let handoffReceiver = targetAgent as? HandoffReceiver {
-            // LegacyAgent implements HandoffReceiver, use specialized handling
-            result = try await handoffReceiver.handleHandoff(request, context: context)
-        } else {
-            // Agent doesn't implement HandoffReceiver, use standard execution
-            // Merge context manually, filtering out reserved keys to prevent injection
-            let reservedPrefixes = ["auth", "user_id", "authorization", "session", "internal."]
-            for (key, value) in request.context {
-                let lowerKey = key.lowercased()
-                guard !reservedPrefixes.contains(where: { lowerKey.hasPrefix($0) }) else {
-                    Log.agents.warning("Handoff context key '\(key)' blocked: matches reserved prefix")
-                    continue
-                }
-                await context.set(key, value: value)
-            }
-
-            // Record execution
-            await context.recordExecution(agentName: request.targetAgentName)
-
-            // Execute normally
-            result = try await targetAgent.run(request.input)
-        }
+        let result = try await targetAgent.handleHandoff(request, context: context)
 
         // Store the result in context
         await context.setPreviousOutput(result)
@@ -401,10 +315,6 @@ actor HandoffCoordinator {
             await observer.onHandoff(context: context, fromAgent: sourceAgent, toAgent: targetAgent)
         }
 
-        // Execute handoff based on agent capabilities
-        let result: AgentResult
-
-        // Create modified request with effective values
         let effectiveRequest = HandoffRequest(
             sourceAgentName: request.sourceAgentName,
             targetAgentName: request.targetAgentName,
@@ -412,23 +322,7 @@ actor HandoffCoordinator {
             reason: request.reason,
             context: effectiveContext
         )
-
-        if let handoffReceiver = targetAgent as? HandoffReceiver {
-            // LegacyAgent implements HandoffReceiver, use specialized handling
-            result = try await handoffReceiver.handleHandoff(effectiveRequest, context: context)
-        } else {
-            // LegacyAgent doesn't implement HandoffReceiver, use standard execution
-            // Merge context manually
-            for (key, value) in effectiveContext {
-                await context.set(key, value: value)
-            }
-
-            // Record execution
-            await context.recordExecution(agentName: request.targetAgentName)
-
-            // Execute normally
-            result = try await targetAgent.run(effectiveInput)
-        }
+        let result = try await targetAgent.handleHandoff(effectiveRequest, context: context)
 
         // Store the result in context
         await context.setPreviousOutput(result)

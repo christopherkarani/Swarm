@@ -37,8 +37,9 @@ public struct HiveChannelSpec<Schema: HiveSchema, Value: Sendable>: Sendable {
     public let codec: HiveAnyCodec<Value>?
     public let persistence: HiveChannelPersistence
 
+    /// Creates a spec and the only corresponding ``HiveChannelKey`` for `id`.
     public init(
-        key: HiveChannelKey<Schema, Value>,
+        id: HiveChannelID,
         scope: HiveChannelScope,
         reducer: HiveReducer<Value>,
         updatePolicy: HiveUpdatePolicy = .single,
@@ -46,7 +47,7 @@ public struct HiveChannelSpec<Schema: HiveSchema, Value: Sendable>: Sendable {
         codec: HiveAnyCodec<Value>? = nil,
         persistence: HiveChannelPersistence
     ) {
-        self.key = key
+        self.key = HiveChannelKey(id)
         self.scope = scope
         self.reducer = reducer
         self.updatePolicy = updatePolicy

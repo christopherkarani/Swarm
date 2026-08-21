@@ -109,7 +109,7 @@ public actor AgentContext {
 
     /// All current keys in the context.
     public var allKeys: [String] {
-        Array(values.keys)
+        Array(Set(values.keys).union(typedValues.keys.map(\.name)))
     }
 
     /// A snapshot copy of all values.
@@ -367,6 +367,9 @@ public actor AgentContext {
     /// Key-value storage for arbitrary data.
     private var values: [String: SendableValue]
 
+    /// Typed `ContextKey` storage keyed by (name, value type).
+    private var typedValues: [ContextStorageIdentity: SendableValue] = [:]
+
     /// Message history for conversation continuity.
     private var messages: [MemoryMessage]
 
@@ -375,6 +378,23 @@ public actor AgentContext {
 
     /// Typed context storage keyed by context key string.
     private var typedContexts: [String: any AgentContextProviding] = [:]
+
+    func storeTyped(_ identity: ContextStorageIdentity, value: SendableValue) {
+        typedValues[identity] = value
+    }
+
+    func loadTyped(_ identity: ContextStorageIdentity) -> SendableValue? {
+        typedValues[identity]
+    }
+
+    @discardableResult
+    func removeTypedIdentity(_ identity: ContextStorageIdentity) -> SendableValue? {
+        typedValues.removeValue(forKey: identity)
+    }
+
+    func containsTypedIdentity(_ identity: ContextStorageIdentity) -> Bool {
+        typedValues[identity] != nil
+    }
 }
 
 // MARK: CustomStringConvertible

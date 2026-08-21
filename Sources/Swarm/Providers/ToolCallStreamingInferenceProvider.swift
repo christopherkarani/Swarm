@@ -25,17 +25,11 @@ public enum InferenceStreamUpdate: Sendable, Equatable {
 
 /// An inference provider that can stream tool-call assembly.
 ///
-/// This allows agents to surface partial tool arguments to clients before tool execution begins.
+/// ``InferenceProvider`` now includes ``InferenceProvider/streamWithToolCalls(prompt:tools:options:)``.
+/// This marker remains as a deprecated alias for source compatibility.
 ///
 /// Agent dispatches live streaming from ``InferenceProviderCapabilities/streamingToolCalls``
 /// and ``InferenceProvider/streamWithToolCalls(messages:tools:options:)``. Do not use this
 /// protocol as the Agent seam.
 @available(*, deprecated, message: "Declare InferenceProviderCapabilities.streamingToolCalls and override streamWithToolCalls on InferenceProvider")
-public protocol ToolCallStreamingInferenceProvider: InferenceProvider {
-    /// Streams a response with potential tool calls, yielding partial tool-call updates as they arrive.
-    func streamWithToolCalls(
-        prompt: String,
-        tools: [ToolSchema],
-        options: InferenceOptions
-    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
-}
+public protocol ToolCallStreamingInferenceProvider: InferenceProvider {}

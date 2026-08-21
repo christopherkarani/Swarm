@@ -380,69 +380,65 @@ extension ChatGraph {
         typealias InterruptPayload = ChatGraph.Interrupt
         typealias ResumePayload = ChatGraph.Resume
 
-        static let messagesKey = HiveChannelKey<Self, [HiveChatMessage]>(HiveChannelID("messages"))
-        static let pendingToolCallsKey = HiveChannelKey<Self, [HiveToolCall]>(HiveChannelID("pendingToolCalls"))
-        static let finalAnswerKey = HiveChannelKey<Self, String?>(HiveChannelID("finalAnswer"))
-        static let llmInputMessagesKey = HiveChannelKey<Self, [HiveChatMessage]?>(HiveChannelID("llmInputMessages"))
-        static let membraneCheckpointDataKey = HiveChannelKey<Self, Data?>(HiveChannelID("membraneCheckpointData"))
+        static let messagesSpec = HiveChannelSpec<Self, [HiveChatMessage]>(
+            id: HiveChannelID("messages"),
+            scope: .global,
+            reducer: HiveReducer(MessagesReducer.reduce),
+            updatePolicy: .multi,
+            initial: { [] },
+            codec: HiveAnyCodec(HiveCodableJSONCodec<[HiveChatMessage]>()),
+            persistence: .checkpointed
+        )
+        static let pendingToolCallsSpec = HiveChannelSpec<Self, [HiveToolCall]>(
+            id: HiveChannelID("pendingToolCalls"),
+            scope: .global,
+            reducer: .lastWriteWins(),
+            updatePolicy: .single,
+            initial: { [] },
+            codec: HiveAnyCodec(HiveCodableJSONCodec<[HiveToolCall]>()),
+            persistence: .checkpointed
+        )
+        static let finalAnswerSpec = HiveChannelSpec<Self, String?>(
+            id: HiveChannelID("finalAnswer"),
+            scope: .global,
+            reducer: .lastWriteWins(),
+            updatePolicy: .single,
+            initial: { Optional<String>.none },
+            codec: HiveAnyCodec(HiveCodableJSONCodec<String?>()),
+            persistence: .checkpointed
+        )
+        static let llmInputMessagesSpec = HiveChannelSpec<Self, [HiveChatMessage]?>(
+            id: HiveChannelID("llmInputMessages"),
+            scope: .global,
+            reducer: .lastWriteWins(),
+            updatePolicy: .single,
+            initial: { Optional<[HiveChatMessage]>.none },
+            codec: HiveAnyCodec(HiveCodableJSONCodec<[HiveChatMessage]?>()),
+            persistence: .checkpointed
+        )
+        static let membraneCheckpointDataSpec = HiveChannelSpec<Self, Data?>(
+            id: HiveChannelID("membraneCheckpointData"),
+            scope: .global,
+            reducer: .lastWriteWins(),
+            updatePolicy: .single,
+            initial: { Optional<Data>.none },
+            codec: HiveAnyCodec(HiveCodableJSONCodec<Data?>()),
+            persistence: .checkpointed
+        )
+
+        static let messagesKey = messagesSpec.key
+        static let pendingToolCallsKey = pendingToolCallsSpec.key
+        static let finalAnswerKey = finalAnswerSpec.key
+        static let llmInputMessagesKey = llmInputMessagesSpec.key
+        static let membraneCheckpointDataKey = membraneCheckpointDataSpec.key
 
         static var channelSpecs: [AnyHiveChannelSpec<Self>] {
             [
-                AnyHiveChannelSpec(
-                    HiveChannelSpec(
-                        key: messagesKey,
-                        scope: .global,
-                        reducer: HiveReducer(MessagesReducer.reduce),
-                        updatePolicy: .multi,
-                        initial: { [] },
-                        codec: HiveAnyCodec(HiveCodableJSONCodec<[HiveChatMessage]>()),
-                        persistence: .checkpointed
-                    )
-                ),
-                AnyHiveChannelSpec(
-                    HiveChannelSpec(
-                        key: pendingToolCallsKey,
-                        scope: .global,
-                        reducer: .lastWriteWins(),
-                        updatePolicy: .single,
-                        initial: { [] },
-                        codec: HiveAnyCodec(HiveCodableJSONCodec<[HiveToolCall]>()),
-                        persistence: .checkpointed
-                    )
-                ),
-                AnyHiveChannelSpec(
-                    HiveChannelSpec(
-                        key: finalAnswerKey,
-                        scope: .global,
-                        reducer: .lastWriteWins(),
-                        updatePolicy: .single,
-                        initial: { Optional<String>.none },
-                        codec: HiveAnyCodec(HiveCodableJSONCodec<String?>()),
-                        persistence: .checkpointed
-                    )
-                ),
-                AnyHiveChannelSpec(
-                    HiveChannelSpec(
-                        key: llmInputMessagesKey,
-                        scope: .global,
-                        reducer: .lastWriteWins(),
-                        updatePolicy: .single,
-                        initial: { Optional<[HiveChatMessage]>.none },
-                        codec: HiveAnyCodec(HiveCodableJSONCodec<[HiveChatMessage]?>()),
-                        persistence: .checkpointed
-                    )
-                ),
-                AnyHiveChannelSpec(
-                    HiveChannelSpec(
-                        key: membraneCheckpointDataKey,
-                        scope: .global,
-                        reducer: .lastWriteWins(),
-                        updatePolicy: .single,
-                        initial: { Optional<Data>.none },
-                        codec: HiveAnyCodec(HiveCodableJSONCodec<Data?>()),
-                        persistence: .checkpointed
-                    )
-                )
+                AnyHiveChannelSpec(messagesSpec),
+                AnyHiveChannelSpec(pendingToolCallsSpec),
+                AnyHiveChannelSpec(finalAnswerSpec),
+                AnyHiveChannelSpec(llmInputMessagesSpec),
+                AnyHiveChannelSpec(membraneCheckpointDataSpec),
             ]
         }
 

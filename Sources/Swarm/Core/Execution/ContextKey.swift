@@ -38,6 +38,10 @@ public struct ContextKey<Value: Sendable>: Hashable, Sendable {
         self.name = name
     }
 
+    var storageIdentity: ContextStorageIdentity {
+        ContextStorageIdentity(name: name, valueType: ObjectIdentifier(Value.self))
+    }
+
     // MARK: - Equatable
 
     public static func == (lhs: ContextKey<Value>, rhs: ContextKey<Value>) -> Bool {
@@ -48,7 +52,14 @@ public struct ContextKey<Value: Sendable>: Hashable, Sendable {
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(name)
+        hasher.combine(ObjectIdentifier(Value.self))
     }
+}
+
+/// Storage identity for typed context values: name plus `Value` type.
+struct ContextStorageIdentity: Hashable, Sendable {
+    let name: String
+    let valueType: ObjectIdentifier
 }
 
 // MARK: - Standard String Keys
@@ -133,20 +144,17 @@ public extension AgentContext {
     /// - Parameters:
     ///   - key: The typed context key.
     ///   - value: The value to store.
+    /// - Throws: If `value` cannot be encoded as ``SendableValue``.
     ///
     /// Example:
     /// ```swift
-    /// await context.setTyped(.userID, value: "user-123")
-    /// await context.setTyped(.isAuthenticated, value: true)
+    /// try await context.setTyped(.userID, value: "user-123")
+    /// try await context.setTyped(.isAuthenticated, value: true)
     /// ```
-    func setTyped<T: Sendable & Encodable>(_ key: ContextKey<T>, value: T) {
-        do {
-            let sendableValue = try SendableValue(encoding: value)
-            set(key.name, value: sendableValue)
-        } catch {
-            // If encoding fails, store as string representation
-            set(key.name, value: .string(String(describing: value)))
-        }
+    func setTyped<T: Sendable & Encodable>(_ key: ContextKey<T>, value: T) throws {
+        let sendableValue = try SendableValue(encoding: value)
+        storeTyped(key.storageIdentity, value: sendableValue)
+        set(key.name, value: sendableValue)
     }
 
     /// Gets a typed value from the context.
@@ -160,40 +168,10 @@ public extension AgentContext {
     /// let isAuth: Bool? = await context.getTyped(.isAuthenticated)
     /// ```
     func getTyped<T: Sendable & Decodable>(_ key: ContextKey<T>) -> T? {
-        guard let sendableValue = get(key.name) else {
+        guard let sendableValue = loadTyped(key.storageIdentity) else {
             return nil
         }
 
-        // Handle primitive types directly
-        if T.self == String.self {
-            return sendableValue.stringValue as? T
-        }
-        if T.self == Int.self {
-            return sendableValue.intValue as? T
-        }
-        if T.self == Double.self {
-            return sendableValue.doubleValue as? T
-        }
-        if T.self == Bool.self {
-            return sendableValue.boolValue as? T
-        }
-
-        // Handle arrays
-        if T.self == [String].self {
-            if let array = sendableValue.arrayValue {
-                let strings = array.compactMap(\.stringValue)
-                return strings as? T
-            }
-        }
-
-        // Handle Date
-        if T.self == Date.self {
-            if let timestamp = sendableValue.doubleValue {
-                return Date(timeIntervalSince1970: timestamp) as? T
-            }
-        }
-
-        // For complex types, try to decode
         do {
             return try sendableValue.decode()
         } catch {
@@ -225,7 +203,7 @@ public extension AgentContext {
     /// await context.removeTyped(.userID)
     /// ```
     func removeTyped(_ key: ContextKey<some Sendable>) {
-        _ = remove(key.name)
+        _ = removeTypedIdentity(key.storageIdentity)
     }
 
     /// Checks if a typed key exists in the context.
@@ -240,6 +218,6 @@ public extension AgentContext {
     /// }
     /// ```
     func hasTyped(_ key: ContextKey<some Sendable>) -> Bool {
-        get(key.name) != nil
+        containsTypedIdentity(key.storageIdentity)
     }
 }

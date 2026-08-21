@@ -50,11 +50,12 @@ struct AgentRuntimeIdentity: Hashable, Sendable {
         } else if type(of: runtime) is AnyObject.Type {
             storage = .reference(ObjectIdentifier(runtime as AnyObject))
         } else {
-            // `String(reflecting:)` is used as a best-effort fingerprint for value
+            // `String(reflecting:)` is a best-effort in-process fingerprint for value
             // types that don't conform to `AgentRuntimeIdentifiable`. Two instances
             // with identical stored properties will compare as equal (intended), but
             // the string can include reference-type descriptions that vary across
-            // runs. For stable, cross-run identity, conform to `AgentRuntimeIdentifiable`.
+            // runs. Do not use this fingerprint for cross-process or durable identity;
+            // conform to `AgentRuntimeIdentifiable` instead.
             storage = .value(
                 type: ObjectIdentifier(type(of: runtime)),
                 fingerprint: String(reflecting: runtime)

@@ -61,7 +61,16 @@ public struct FoundationModelsNativeTool: AnyJSONTool {
             if let string = output as? String {
                 return .string(string)
             }
-            return .string(String(describing: output))
+            if let generated = output as? GeneratedContent {
+                return FoundationModelsSchemaConversion.sendableValue(from: generated)
+            }
+            if let encodable = output as? any Encodable {
+                return try SendableValue(encoding: encodable)
+            }
+            throw AgentError.toolExecutionFailed(
+                toolName: tool.name,
+                underlyingError: "Foundation Models tool output is not Encodable or GeneratedContent"
+            )
         }
     }
 

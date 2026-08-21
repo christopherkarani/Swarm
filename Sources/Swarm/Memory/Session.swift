@@ -97,6 +97,9 @@ public protocol Session: Actor, Sendable {
     ///
     /// - Throws: If clear operation fails.
     func clearSession() async throws
+
+    /// Creates an isolated copy of this session for conversation branching.
+    func branchConversationSession() async throws -> any Session
 }
 
 // MARK: - SessionError
@@ -207,5 +210,12 @@ public extension Session {
     /// Implementations should override this for proper error handling.
     func getItemCount() async throws -> Int {
         await itemCount
+    }
+
+    func branchConversationSession() async throws -> any Session {
+        let branched = InMemorySession()
+        let items = try await getAllItems()
+        try await branched.addItems(items)
+        return branched
     }
 }

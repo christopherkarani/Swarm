@@ -2,7 +2,7 @@ import Foundation
 
 /// A memory implementation that fans writes out to multiple memory layers and
 /// combines retrieved context from each layer.
-actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, MemorySessionReplayAware, MemoryRetrievalPolicyAware, MemorySessionImportPolicy, MemorySessionTrackingProvider, MemorySessionSeedControlling {
+actor CompositeMemory: Memory {
     nonisolated let memoryPromptTitle: String
     nonisolated let memoryPromptGuidance: String?
     nonisolated let memoryPriority: MemoryPriorityHint
@@ -101,17 +101,13 @@ actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, M
 
     func beginMemorySession() async {
         for memory in memories {
-            if let begin = MemoryHooks.resolved(from: memory).beginMemorySession {
-                await begin()
-            }
+            await memory.beginMemorySession()
         }
     }
 
     func endMemorySession() async {
         for memory in memories {
-            if let end = MemoryHooks.resolved(from: memory).endMemorySession {
-                await end()
-            }
+            await memory.endMemorySession()
         }
     }
 
@@ -181,12 +177,8 @@ actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, M
             guard await memory.isEmpty else {
                 continue
             }
-            if let importHistory = MemoryHooks.resolved(from: memory).importSessionHistory {
-                await importHistory(messages)
-            } else {
-                for message in messages {
-                    await memory.add(message)
-                }
+            if await memory.shouldImportSessionHistory() {
+                await memory.importSessionHistory(messages)
             }
         }
     }
@@ -196,17 +188,12 @@ actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, M
         query: MemoryQuery,
         tokenLimit: Int
     ) async -> String {
-        let hooks = MemoryHooks.resolved(from: memory)
-        if let contextForQuery = hooks.contextForQuery {
-            return await contextForQuery(MemoryQuery(
-                text: query.text,
-                tokenLimit: tokenLimit,
-                maxItems: query.maxItems,
-                maxItemTokens: min(query.maxItemTokens, tokenLimit)
-            ))
-        }
-
-        return await memory.context(for: query.text, tokenLimit: tokenLimit)
+        return await memory.context(for: MemoryQuery(
+            text: query.text,
+            tokenLimit: tokenLimit,
+            maxItems: query.maxItems,
+            maxItemTokens: min(query.maxItemTokens, tokenLimit)
+        ))
     }
 
     private func truncate(_ text: String, tokenLimit: Int) -> String {
@@ -233,6 +220,6 @@ actor CompositeMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, M
     }
 
     private static func allowsSessionSeeding(_ memory: any Memory) -> Bool {
-        MemoryHooks.resolved(from: memory).allowsAutomaticSessionSeeding
+        memory.allowsAutomaticSessionSeeding
     }
 }

@@ -73,6 +73,8 @@ public protocol AgentRuntime: Sendable {
 
     func run(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) async throws -> AgentResult
     nonisolated func stream(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) -> AsyncThrowingStream<AgentEvent, Error>
+    func handleHandoff(_ request: HandoffRequest, context: AgentContext) async throws -> AgentResult
+    func branchConversationRuntime() async throws -> any AgentRuntime
 
     func cancel() async
 }
@@ -513,6 +515,8 @@ public protocol InferenceProvider: Sendable {
     var capabilities: InferenceProviderCapabilities { get }
     var promptTokenCounter: (any PromptTokenCounter)? { get }
 
+    var promptTokenCounter: (any PromptTokenCounter)? { get }
+
     func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String
 
     func stream(
@@ -548,6 +552,18 @@ public protocol InferenceProvider: Sendable {
 
     func generateStructured(
         messages: [InferenceMessage],
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult
+
+    func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
+
+    func generateStructured(
+        prompt: String,
         request: StructuredOutputRequest,
         options: InferenceOptions
     ) async throws -> StructuredOutputResult

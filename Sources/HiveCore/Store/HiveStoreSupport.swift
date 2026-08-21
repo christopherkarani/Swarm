@@ -25,13 +25,11 @@ internal struct HiveStoreSupport<Schema: HiveSchema>: Sendable {
         _ key: HiveChannelKey<Schema, Value>,
         spec: AnyHiveChannelSpec<Schema>
     ) throws {
-        let expectedValueTypeID = spec.valueTypeID
-        let actualValueTypeID = String(reflecting: Value.self)
-        guard expectedValueTypeID == actualValueTypeID else {
+        guard spec.matchesValueType(Value.self) else {
             throw HiveRuntimeError.channelTypeMismatch(
                 channelID: key.id,
-                expectedValueTypeID: expectedValueTypeID,
-                actualValueTypeID: actualValueTypeID
+                expectedValueTypeID: spec.valueTypeID,
+                actualValueTypeID: String(reflecting: Value.self)
             )
         }
     }
@@ -40,13 +38,11 @@ internal struct HiveStoreSupport<Schema: HiveSchema>: Sendable {
         _ value: any Sendable,
         spec: AnyHiveChannelSpec<Schema>
     ) throws {
-        let expectedValueTypeID = spec.valueTypeID
-        let actualValueTypeID = String(reflecting: type(of: value))
-        guard expectedValueTypeID == actualValueTypeID else {
+        guard spec.matchesStoredValue(value) else {
             throw HiveRuntimeError.channelTypeMismatch(
                 channelID: spec.id,
-                expectedValueTypeID: expectedValueTypeID,
-                actualValueTypeID: actualValueTypeID
+                expectedValueTypeID: spec.valueTypeID,
+                actualValueTypeID: String(reflecting: type(of: value))
             )
         }
     }

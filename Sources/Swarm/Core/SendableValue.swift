@@ -352,12 +352,11 @@ public extension SendableValue {
             return result
         }
 
-        // For complex types, use JSON decoding as an intermediate format
-        let jsonObject = _convertToJSONObject()
+        // For complex types, round-trip through Codable JSON. JSONSerialization
+        // cannot encode a top-level String/number, so do not use it here.
         do {
-            let data = try JSONSerialization.data(withJSONObject: jsonObject)
-            let decoder = JSONDecoder()
-            return try decoder.decode(T.self, from: data)
+            let data = try JSONEncoder().encode(self)
+            return try JSONDecoder().decode(T.self, from: data)
         } catch {
             throw ConversionError.decodingFailed(String(describing: error))
         }

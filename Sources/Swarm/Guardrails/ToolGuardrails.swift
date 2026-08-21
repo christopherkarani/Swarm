@@ -3,6 +3,9 @@
 //
 // Tool-level guardrails for validating tool inputs and outputs.
 // Provides fine-grained validation before and after tool execution.
+//
+// Guardrails operate on the LLM wire boundary (AnyJSONTool / SendableValue).
+// Typed Tool.Input / Tool.Output are erased before this layer.
 
 import Foundation
 

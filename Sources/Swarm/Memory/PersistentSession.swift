@@ -229,7 +229,7 @@
     }
 
     extension PersistentSession: ConversationBranchingSession {
-        package func branchConversationSession() async throws -> any Session {
+        public func branchConversationSession() async throws -> any Session {
             let branched = PersistentSession(sessionId: UUID().uuidString, backend: backend)
             let originalItems = try await getAllItems()
             let items = originalItems.map { item in

@@ -19,81 +19,76 @@ struct WorkflowDurableSchema: HiveSchema {
     typealias InterruptPayload = String
     typealias ResumePayload = String
 
-    static let currentInputKey = HiveChannelKey<Self, String>(HiveChannelID("workflow.currentInput"))
-    static let lastResultKey = HiveChannelKey<Self, WorkflowResultSnapshot?>(HiveChannelID("workflow.lastResult"))
-    static let stepCursorKey = HiveChannelKey<Self, Int>(HiveChannelID("workflow.stepCursor"))
-    static let iterationCursorKey = HiveChannelKey<Self, Int>(HiveChannelID("workflow.iterationCursor"))
-    static let completedKey = HiveChannelKey<Self, Bool>(HiveChannelID("workflow.completed"))
-    static let signatureKey = HiveChannelKey<Self, String>(HiveChannelID("workflow.signature"))
+    static let currentInputSpec = HiveChannelSpec<Self, String>(
+        id: HiveChannelID("workflow.currentInput"),
+        scope: .global,
+        reducer: .lastWriteWins(),
+        updatePolicy: .single,
+        initial: { "" },
+        codec: HiveAnyCodec(WorkflowCheckpointCodec<String>()),
+        persistence: .checkpointed
+    )
+    static let lastResultSpec = HiveChannelSpec<Self, WorkflowResultSnapshot?>(
+        id: HiveChannelID("workflow.lastResult"),
+        scope: .global,
+        reducer: .lastWriteWins(),
+        updatePolicy: .single,
+        initial: { Optional<WorkflowResultSnapshot>.none },
+        codec: HiveAnyCodec(WorkflowCheckpointCodec<WorkflowResultSnapshot?>()),
+        persistence: .checkpointed
+    )
+    static let stepCursorSpec = HiveChannelSpec<Self, Int>(
+        id: HiveChannelID("workflow.stepCursor"),
+        scope: .global,
+        reducer: .lastWriteWins(),
+        updatePolicy: .single,
+        initial: { 0 },
+        codec: HiveAnyCodec(WorkflowCheckpointCodec<Int>()),
+        persistence: .checkpointed
+    )
+    static let iterationCursorSpec = HiveChannelSpec<Self, Int>(
+        id: HiveChannelID("workflow.iterationCursor"),
+        scope: .global,
+        reducer: .lastWriteWins(),
+        updatePolicy: .single,
+        initial: { 0 },
+        codec: HiveAnyCodec(WorkflowCheckpointCodec<Int>()),
+        persistence: .checkpointed
+    )
+    static let completedSpec = HiveChannelSpec<Self, Bool>(
+        id: HiveChannelID("workflow.completed"),
+        scope: .global,
+        reducer: .lastWriteWins(),
+        updatePolicy: .single,
+        initial: { false },
+        codec: HiveAnyCodec(WorkflowCheckpointCodec<Bool>()),
+        persistence: .checkpointed
+    )
+    static let signatureSpec = HiveChannelSpec<Self, String>(
+        id: HiveChannelID("workflow.signature"),
+        scope: .global,
+        reducer: .lastWriteWins(),
+        updatePolicy: .single,
+        initial: { "" },
+        codec: HiveAnyCodec(WorkflowCheckpointCodec<String>()),
+        persistence: .checkpointed
+    )
+
+    static let currentInputKey = currentInputSpec.key
+    static let lastResultKey = lastResultSpec.key
+    static let stepCursorKey = stepCursorSpec.key
+    static let iterationCursorKey = iterationCursorSpec.key
+    static let completedKey = completedSpec.key
+    static let signatureKey = signatureSpec.key
 
     static var channelSpecs: [AnyHiveChannelSpec<Self>] {
         [
-            AnyHiveChannelSpec(
-                HiveChannelSpec(
-                    key: currentInputKey,
-                    scope: .global,
-                    reducer: .lastWriteWins(),
-                    updatePolicy: .single,
-                    initial: { "" },
-                    codec: HiveAnyCodec(WorkflowCheckpointCodec<String>()),
-                    persistence: .checkpointed
-                )
-            ),
-            AnyHiveChannelSpec(
-                HiveChannelSpec(
-                    key: lastResultKey,
-                    scope: .global,
-                    reducer: .lastWriteWins(),
-                    updatePolicy: .single,
-                    initial: { Optional<WorkflowResultSnapshot>.none },
-                    codec: HiveAnyCodec(WorkflowCheckpointCodec<WorkflowResultSnapshot?>()),
-                    persistence: .checkpointed
-                )
-            ),
-            AnyHiveChannelSpec(
-                HiveChannelSpec(
-                    key: stepCursorKey,
-                    scope: .global,
-                    reducer: .lastWriteWins(),
-                    updatePolicy: .single,
-                    initial: { 0 },
-                    codec: HiveAnyCodec(WorkflowCheckpointCodec<Int>()),
-                    persistence: .checkpointed
-                )
-            ),
-            AnyHiveChannelSpec(
-                HiveChannelSpec(
-                    key: iterationCursorKey,
-                    scope: .global,
-                    reducer: .lastWriteWins(),
-                    updatePolicy: .single,
-                    initial: { 0 },
-                    codec: HiveAnyCodec(WorkflowCheckpointCodec<Int>()),
-                    persistence: .checkpointed
-                )
-            ),
-            AnyHiveChannelSpec(
-                HiveChannelSpec(
-                    key: completedKey,
-                    scope: .global,
-                    reducer: .lastWriteWins(),
-                    updatePolicy: .single,
-                    initial: { false },
-                    codec: HiveAnyCodec(WorkflowCheckpointCodec<Bool>()),
-                    persistence: .checkpointed
-                )
-            ),
-            AnyHiveChannelSpec(
-                HiveChannelSpec(
-                    key: signatureKey,
-                    scope: .global,
-                    reducer: .lastWriteWins(),
-                    updatePolicy: .single,
-                    initial: { "" },
-                    codec: HiveAnyCodec(WorkflowCheckpointCodec<String>()),
-                    persistence: .checkpointed
-                )
-            ),
+            AnyHiveChannelSpec(currentInputSpec),
+            AnyHiveChannelSpec(lastResultSpec),
+            AnyHiveChannelSpec(stepCursorSpec),
+            AnyHiveChannelSpec(iterationCursorSpec),
+            AnyHiveChannelSpec(completedSpec),
+            AnyHiveChannelSpec(signatureSpec),
         ]
     }
 
@@ -243,14 +238,11 @@ struct WorkflowDurableEngine: Sendable {
             let currentInput = try store.get(WorkflowDurableSchema.currentInputKey)
             return AgentResult(output: currentInput)
 
-        case .channels(let values):
-            if let snapshot = values.first(where: { $0.id == WorkflowDurableSchema.lastResultKey.id })?.value as? WorkflowResultSnapshot {
+        case .channels(let projection):
+            if let snapshot = try projection.get(WorkflowDurableSchema.lastResultKey) {
                 return snapshot.agentResult
             }
-            if let currentInput = values.first(where: { $0.id == WorkflowDurableSchema.currentInputKey.id })?.value as? String {
-                return AgentResult(output: currentInput)
-            }
-            return AgentResult(output: "")
+            return AgentResult(output: try projection.get(WorkflowDurableSchema.currentInputKey))
         }
     }
 }

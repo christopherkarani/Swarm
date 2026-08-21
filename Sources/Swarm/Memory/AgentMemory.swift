@@ -174,6 +174,67 @@ public protocol Memory: Actor, Sendable {
     /// ``count`` should return `0`. This is typically used when starting
     /// a new conversation or resetting the agent state.
     func clear() async
+
+    /// Called at the beginning of an agent `run` / `stream`. Default is a no-op.
+    func beginMemorySession() async
+
+    /// Called at the end of an agent `run` / `stream`. Default is a no-op.
+    func endMemorySession() async
+
+    /// Imports a batch of session history messages. Default appends via ``add(_:)``.
+    func importSessionHistory(_ messages: [MemoryMessage]) async
+
+    /// Whether replay should import into this store. Default is ``isEmpty``.
+    func shouldImportSessionHistory() async -> Bool
+
+    /// Retrieves context using item-aware budgets. Default forwards to
+    /// ``context(for:tokenLimit:)``.
+    func context(for query: MemoryQuery) async -> String
+
+    /// Whether the agent runtime may seed session history automatically.
+    nonisolated var allowsAutomaticSessionSeeding: Bool { get }
+
+    /// Label above memory context in prompts.
+    nonisolated var memoryPromptTitle: String { get }
+
+    /// Optional guidance for how memory should be used.
+    nonisolated var memoryPromptGuidance: String? { get }
+
+    /// Whether this memory is primary or secondary prompt context.
+    nonisolated var memoryPriority: MemoryPriorityHint { get }
+
+    /// The session-scoped layer inside a composite, if any.
+    nonisolated var trackedSessionMemory: (any Memory)? { get }
+}
+
+public extension Memory {
+    func beginMemorySession() async {}
+
+    func endMemorySession() async {}
+
+    func importSessionHistory(_ messages: [MemoryMessage]) async {
+        for message in messages {
+            await add(message)
+        }
+    }
+
+    func shouldImportSessionHistory() async -> Bool {
+        await isEmpty
+    }
+
+    func context(for query: MemoryQuery) async -> String {
+        await context(for: query.text, tokenLimit: query.tokenLimit)
+    }
+
+    nonisolated var allowsAutomaticSessionSeeding: Bool { true }
+
+    nonisolated var memoryPromptTitle: String { "Relevant Context from Memory" }
+
+    nonisolated var memoryPromptGuidance: String? { nil }
+
+    nonisolated var memoryPriority: MemoryPriorityHint { .primary }
+
+    nonisolated var trackedSessionMemory: (any Memory)? { nil }
 }
 
 // MARK: - MemoryMessage Context Formatting

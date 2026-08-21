@@ -1125,12 +1125,11 @@ extension GraphRunController {
             guard spec.scope == .global else {
                 throw HiveRuntimeError.taskLocalWriteNotAllowed
             }
-            let actualValueTypeID = String(reflecting: type(of: write.value))
-            if actualValueTypeID != spec.valueTypeID {
+            if !spec.matchesStoredValue(write.value) {
                 throw HiveRuntimeError.channelTypeMismatch(
                     channelID: write.channelID,
                     expectedValueTypeID: spec.valueTypeID,
-                    actualValueTypeID: actualValueTypeID
+                    actualValueTypeID: String(reflecting: type(of: write.value))
                 )
             }
             writeCounts[write.channelID, default: 0] += 1

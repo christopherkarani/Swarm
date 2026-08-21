@@ -88,6 +88,22 @@ public struct StructuredAgentResult: Sendable, Equatable {
     }
 }
 
+public extension StructuredOutputResult {
+    /// Decodes ``rawJSON`` as `T`. Does not claim that a hand-written schema matches `T`.
+    func decoded<T: Decodable>(as type: T.Type = T.self) throws -> T {
+        guard let data = rawJSON.data(using: .utf8) else {
+            throw AgentError.generationFailed(reason: "Structured output is not valid UTF-8")
+        }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw AgentError.generationFailed(
+                reason: "Failed to decode structured output as \(type): \(error.localizedDescription)"
+            )
+        }
+    }
+}
+
 enum StructuredOutputPromptBuilder {
     static func instruction(for request: StructuredOutputRequest) -> String {
         switch request.format {
@@ -158,13 +174,7 @@ enum StructuredOutputParser {
 /// ``InferenceProvider/generateStructured(messages:request:options:)``. Do not use this
 /// protocol as the Agent seam.
 @available(*, deprecated, message: "Declare InferenceProviderCapabilities.structuredOutputs and override generateStructured on InferenceProvider")
-public protocol StructuredOutputInferenceProvider: InferenceProvider {
-    func generateStructured(
-        prompt: String,
-        request: StructuredOutputRequest,
-        options: InferenceOptions
-    ) async throws -> StructuredOutputResult
-}
+public protocol StructuredOutputInferenceProvider: InferenceProvider {}
 
 @available(*, deprecated, renamed: "InferenceProvider")
 public protocol StructuredOutputConversationInferenceProvider: ConversationInferenceProvider {}

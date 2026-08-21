@@ -501,6 +501,24 @@ public struct Agent: AgentRuntime, Sendable {
         }
     }
 
+    /// Merges transferred context and runs this agent, seeding a nested session from
+    /// messages already copied onto `context` when ``HandoffConfiguration/nestHandoffHistory`` is on.
+    public func handleHandoff(
+        _ request: HandoffRequest,
+        context: AgentContext
+    ) async throws -> AgentResult {
+        for (key, value) in request.context {
+            await context.set(key, value: value)
+        }
+        await context.set("handoff_source", value: .string(request.sourceAgentName))
+        if let reason = request.reason {
+            await context.set("handoff_reason", value: .string(reason))
+        }
+        await context.recordExecution(agentName: request.targetAgentName)
+        let session = try await makeNestedHandoffSession(from: context, enabled: true)
+        return try await run(request.input, session: session, observer: nil)
+    }
+
     /// Executes the agent and enforces a structured output contract for the final assistant response.
     public func runStructured(
         _ input: String,
@@ -896,7 +914,6 @@ public struct Agent: AgentRuntime, Sendable {
 
         let activeTracer = resolvedActiveTracer()
         let activeMemory = resolvedMemory()
-        let memoryHooks = activeMemory.map { MemoryHooks.resolved(from: $0) } ?? .empty
         let trackedSessionMemory = activeMemory.flatMap { memory in
             resolvedTrackedSessionMemory(from: memory, defaultMemory: defaultMemory)
         }
@@ -922,8 +939,8 @@ public struct Agent: AgentRuntime, Sendable {
         // Notify observer of agent start
         await observer?.onAgentStart(context: nil, agent: self, input: input)
 
-        if let beginMemorySession = memoryHooks.beginMemorySession {
-            await beginMemorySession()
+        if let activeMemory {
+            await activeMemory.beginMemorySession()
         }
 
         do {
@@ -1032,8 +1049,8 @@ public struct Agent: AgentRuntime, Sendable {
             // Notify observer of agent completion
             await observer?.onAgentEnd(context: nil, agent: self, result: result)
 
-            if let endMemorySession = memoryHooks.endMemorySession {
-                await endMemorySession()
+            if let activeMemory {
+                await activeMemory.endMemorySession()
             }
             if let defaultMemoryRunKey {
                 await Self.defaultMemorySessionTracker.endRun(for: defaultMemoryRunKey)
@@ -1044,8 +1061,8 @@ public struct Agent: AgentRuntime, Sendable {
             // Notify observer of error
             await observer?.onError(context: nil, agent: self, error: normalizedError)
             await tracing.traceError(normalizedError)
-            if let endMemorySession = memoryHooks.endMemorySession {
-                await endMemorySession()
+            if let activeMemory {
+                await activeMemory.endMemorySession()
             }
             if let defaultMemoryRunKey {
                 await Self.defaultMemorySessionTracker.endRun(for: defaultMemoryRunKey)
@@ -1380,18 +1397,14 @@ public struct Agent: AgentRuntime, Sendable {
             let contextProfile = configuration.effectiveContextProfile
             let tokenLimit = contextProfile.memoryTokenLimit
             memoryContext = try await executeWithinRemainingTimeout(startTime: startTime) {
-                let hooks = MemoryHooks.resolved(from: mem)
-                if let contextForQuery = hooks.contextForQuery {
-                    return await contextForQuery(
-                        MemoryQuery(
-                            text: input,
-                            tokenLimit: tokenLimit,
-                            maxItems: contextProfile.maxRetrievedItems,
-                            maxItemTokens: contextProfile.maxRetrievedItemTokens
-                        )
+                await mem.context(
+                    for: MemoryQuery(
+                        text: input,
+                        tokenLimit: tokenLimit,
+                        maxItems: contextProfile.maxRetrievedItems,
+                        maxItemTokens: contextProfile.maxRetrievedItemTokens
                     )
-                }
-                return await mem.context(for: input, tokenLimit: tokenLimit)
+                )
             }
         }
 
@@ -2264,19 +2277,7 @@ public struct Agent: AgentRuntime, Sendable {
                 let result: AgentResult
                 do {
                     result = try await executeWithinRemainingTimeout(startTime: startTime) {
-                        if let receiver = targetAgent as? any HandoffReceiver {
-                            return try await receiver.handleHandoff(handoffRequest, context: handoffContext)
-                        } else {
-                            let handoffSession = try await makeNestedHandoffSession(
-                                from: handoffContext,
-                                enabled: handoffConfig.nestHandoffHistory
-                            )
-                            return try await targetAgent.run(
-                                transformedData.input,
-                                session: handoffSession,
-                                observer: observer
-                            )
-                        }
+                        try await targetAgent.handleHandoff(handoffRequest, context: handoffContext)
                     }
                 } catch {
                     let handoffDuration = ContinuousClock.now - handoffStart
@@ -2442,10 +2443,9 @@ public struct Agent: AgentRuntime, Sendable {
             return baseInstructions
         }
 
-        let hooks = memory.map { MemoryHooks.resolved(from: $0) } ?? .empty
-        let title = hooks.memoryPromptTitle ?? "Relevant Context from Memory"
-        let priority = hooks.memoryPriority
-        let guidance = hooks.memoryPromptGuidance ?? {
+        let title = memory?.memoryPromptTitle ?? "Relevant Context from Memory"
+        let priority = memory?.memoryPriority
+        let guidance = memory?.memoryPromptGuidance ?? {
             guard priority == .primary else { return nil }
             return "Use the memory context as primary source of truth before calling tools."
         }()
