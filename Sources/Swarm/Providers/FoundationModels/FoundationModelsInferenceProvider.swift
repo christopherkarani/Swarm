@@ -288,26 +288,16 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         options: InferenceOptions,
         toolExecutor: ToolCallExecutor?
     ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        StreamHelper.makeTrackedStream { continuation in
-            let response = try await self.generateWithToolCalls(
+        // Foundation Models has no native tool-call stream; degrade the finished
+        // turn through the shared emitter so update ordering matches the
+        // default provider ladder exactly.
+        streamFinishedToolTurn {
+            try await self.generateWithToolCalls(
                 messages: messages,
                 tools: tools,
                 options: options,
                 toolExecutor: toolExecutor
             )
-            if let content = response.content, !content.isEmpty {
-                continuation.yield(.outputChunk(content))
-            }
-            if !response.toolCalls.isEmpty {
-                continuation.yield(.toolCallsCompleted(response.toolCalls))
-            }
-            if let usage = response.usage {
-                continuation.yield(.usage(usage))
-            }
-            if !response.transcriptMessages.isEmpty {
-                continuation.yield(.finishedTurn(response))
-            }
-            continuation.finish()
         }
     }
 
