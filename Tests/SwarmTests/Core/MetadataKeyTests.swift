@@ -38,7 +38,7 @@ struct MetadataKeyTests {
         metadata[.durationMs] = 12.5
 
         #expect(metadata[.durationMs] == 12.5)
-        #expect(metadata["durationMs"] == .double(12.5))
+        #expect(metadata["duration_ms"] == .double(12.5))
     }
 
     @Test("bool key round-trips through result metadata")
@@ -95,7 +95,7 @@ struct MetadataKeyTests {
         #expect(MetadataKey<Int>.totalTokens.name == "total_tokens")
         #expect(MetadataKey<Int>.legacyTokenCount.name == "tokenCount")
         #expect(MetadataKey<Int>.stepNumber.name == "stepNumber")
-        #expect(MetadataKey<Double>.durationMs.name == "durationMs")
+        #expect(MetadataKey<Double>.durationMs.name == "duration_ms")
         #expect(MetadataKey<Bool>.toolSuccess.name == "success")
         #expect(StreamEventMetadata.model.name == "model")
         #expect(StreamEventMetadata.text.name == "text")
@@ -146,7 +146,7 @@ struct MetadataKeyTests {
         #expect(metadata[.inputTokens] == nil)
         #expect(metadata[.stepNumber] == nil)
 
-        metadata["durationMs"] = .int(5)
+        metadata["duration_ms"] = .int(5)
         // Double reads accept integer payloads via SendableValue.doubleValue.
         #expect(metadata[.durationMs] == 5.0)
     }

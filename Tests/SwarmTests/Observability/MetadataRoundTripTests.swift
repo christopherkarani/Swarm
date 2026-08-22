@@ -42,6 +42,9 @@ struct MetadataRoundTripTests {
         #expect(event.metadata["total_tokens"] == .int(18))
         #expect(event.metadata["tokenCount"] == .int(18))
 
+        // The typed duration key observes the helper's duration_ms write.
+        #expect(event.metadata[.durationMs] == event.metadata["duration_ms"]?.doubleValue)
+
         // The same event feeds MetricsCollector through the typed keys.
         let collector = MetricsCollector()
         let spanId = event.spanId

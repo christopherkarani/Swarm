@@ -100,11 +100,11 @@ public struct TracingHelper: Sendable {
             message: "LegacyAgent \(agentName) completed",
             metadata: {
                 var metadata: [String: SendableValue] = [
-                    "duration_ms": .double(duration.milliseconds),
                     "iterations": .int(result.iterationCount),
                     "tool_calls_count": .int(result.toolCalls.count),
                     "output_length": .int(result.output.count)
                 ]
+                metadata[.durationMs] = duration.milliseconds
                 if let usage = tokenUsage {
                     metadata[.inputTokens] = usage.inputTokens
                     metadata[.outputTokens] = usage.outputTokens
@@ -129,11 +129,14 @@ public struct TracingHelper: Sendable {
             kind: .agentError,
             level: .error,
             message: "LegacyAgent \(agentName) error: \(error.localizedDescription)",
-            metadata: [
-                "duration_ms": .double(duration.milliseconds),
-                "error_type": .string(String(describing: type(of: error))),
-                "error_message": .string(error.localizedDescription)
-            ],
+            metadata: {
+                var metadata: [String: SendableValue] = [
+                    "error_type": .string(String(describing: type(of: error))),
+                    "error_message": .string(error.localizedDescription)
+                ]
+                metadata[.durationMs] = duration.milliseconds
+                return metadata
+            }(),
             agentName: agentName,
             error: ErrorInfo(from: error)
         ))
@@ -253,11 +256,14 @@ public struct TracingHelper: Sendable {
             kind: .toolResult,
             level: .debug,
             message: "Tool result: \(name)",
-            metadata: [
-                "tool_name": .string(name),
-                "result_length": .int(result.count),
-                "duration_ms": .double(duration.milliseconds)
-            ],
+            metadata: {
+                var metadata: [String: SendableValue] = [
+                    "tool_name": .string(name),
+                    "result_length": .int(result.count)
+                ]
+                metadata[.durationMs] = duration.milliseconds
+                return metadata
+            }(),
             agentName: agentName,
             toolName: name
         ))

@@ -85,8 +85,11 @@ public extension MetadataKey where Value == Int {
 }
 
 public extension MetadataKey where Value == Double {
-    /// Step duration in milliseconds recorded on trace events.
-    static let durationMs = MetadataKey("durationMs")
+    /// Duration in milliseconds recorded on trace events (`duration_ms`).
+    ///
+    /// Written by ``TracingHelper`` spans and `@Traceable` results; readers
+    /// share this symbol instead of repeating the raw string.
+    static let durationMs = MetadataKey("duration_ms")
 }
 
 // MARK: - Tool Outcome Keys
@@ -95,8 +98,8 @@ public extension MetadataKey where Value == Bool {
     /// Tool invocation outcome written as a Boolean payload (never
     /// `"true"`/`"false"` strings) on result and trace metadata.
     ///
-    /// Graph-runtime stream events carry their stringly counterpart in
-    /// ``StreamEventMetadata/success`` until those payloads migrate.
+    /// Graph-runtime stream events carry their stringly counterpart under the
+    /// same `"success"` name until those payloads migrate.
     static let toolSuccess = MetadataKey("success")
 }
 
@@ -107,25 +110,29 @@ public extension MetadataKey where Value == Bool {
 /// These events serialize as `[String: String]`, so every field here is a
 /// ``MetadataKey``-keyed read over a plain string dictionary. See `GraphAgent`
 /// for the consumer side of these payloads.
-public enum StreamEventMetadata {
+///
+/// Internal because both the producer (`ChatGraph`) and the consumer
+/// (`GraphAgent`) live in this module; promote to public if external graph
+/// nodes ever need to emit compatible events.
+enum StreamEventMetadata {
     /// Model identifier reported when a model invocation starts.
-    public static let model = MetadataKey<String>("model")
+    static let model = MetadataKey<String>("model")
 
     /// Incremental text chunk reported while a model streams.
-    public static let text = MetadataKey<String>("text")
+    static let text = MetadataKey<String>("text")
 
     /// Tool name reported when a tool invocation starts or finishes.
-    public static let name = MetadataKey<String>("name")
+    static let name = MetadataKey<String>("name")
 
     /// Tool invocation outcome (`"true"`/`"false"`) reported when a tool
     /// invocation finishes.
-    public static let success = MetadataKey<String>("success")
+    static let success = MetadataKey<String>("success")
 
     /// Provider tool-call identifier correlating invocations across events.
-    public static let toolCallID = MetadataKey<String>("toolCallID")
+    static let toolCallID = MetadataKey<String>("toolCallID")
 
     /// Tool output reported when a successful tool invocation finishes.
-    public static let output = MetadataKey<String>("output")
+    static let output = MetadataKey<String>("output")
 }
 
 // MARK: - Typed Metadata Access
