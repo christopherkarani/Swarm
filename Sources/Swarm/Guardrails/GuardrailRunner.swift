@@ -284,7 +284,7 @@ public actor GuardrailRunner {
         }
     }
 
-    private func inputTripwireError(
+    private static func inputTripwireError(
         guardrailName: String,
         result: GuardrailResult
     ) -> GuardrailError? {
@@ -300,7 +300,7 @@ public actor GuardrailRunner {
         }
     }
 
-    private func outputTripwireError(
+    private static func outputTripwireError(
         guardrailName: String,
         agentName: String,
         result: GuardrailResult
@@ -318,7 +318,7 @@ public actor GuardrailRunner {
         }
     }
 
-    private func toolInputTripwireError(
+    private static func toolInputTripwireError(
         guardrailName: String,
         toolName: String,
         result: GuardrailResult
@@ -336,7 +336,7 @@ public actor GuardrailRunner {
         }
     }
 
-    private func toolOutputTripwireError(
+    private static func toolOutputTripwireError(
         guardrailName: String,
         toolName: String,
         result: GuardrailResult
@@ -413,11 +413,16 @@ public actor GuardrailRunner {
         input: String,
         context: AgentContext?
     ) async throws -> [GuardrailExecutionResult] {
-        if configuration.runInParallel {
-            try await runInputGuardrailsParallel(guardrails, input: input, context: context)
-        } else {
-            try await runInputGuardrailsSequential(guardrails, input: input, context: context)
-        }
+        try await execute(
+            guardrails.map { guardrail in
+                GuardrailStep(name: guardrail.name) {
+                    try await guardrail.validate(input, context: context)
+                }
+            },
+            guardrailType: .input,
+            context: context,
+            tripwireError: Self.inputTripwireError
+        )
     }
 
     // MARK: - Output Guardrails
@@ -443,11 +448,16 @@ public actor GuardrailRunner {
         agent: any AgentRuntime,
         context: AgentContext?
     ) async throws -> [GuardrailExecutionResult] {
-        if configuration.runInParallel {
-            try await runOutputGuardrailsParallel(guardrails, output: output, agent: agent, context: context)
-        } else {
-            try await runOutputGuardrailsSequential(guardrails, output: output, agent: agent, context: context)
-        }
+        try await execute(
+            guardrails.map { guardrail in
+                GuardrailStep(name: guardrail.name) {
+                    try await guardrail.validate(output, agent: agent, context: context)
+                }
+            },
+            guardrailType: .output,
+            context: context,
+            tripwireError: { Self.outputTripwireError(guardrailName: $0, agentName: agent.configuration.name, result: $1) }
+        )
     }
 
     // MARK: - Tool Input Guardrails
@@ -469,11 +479,16 @@ public actor GuardrailRunner {
         _ guardrails: [any ToolInputGuardrail],
         data: ToolGuardrailData
     ) async throws -> [GuardrailExecutionResult] {
-        if configuration.runInParallel {
-            try await runToolInputGuardrailsParallel(guardrails, data: data)
-        } else {
-            try await runToolInputGuardrailsSequential(guardrails, data: data)
-        }
+        try await execute(
+            guardrails.map { guardrail in
+                GuardrailStep(name: guardrail.name) {
+                    try await guardrail.validate(data)
+                }
+            },
+            guardrailType: .toolInput,
+            context: data.context,
+            tripwireError: { Self.toolInputTripwireError(guardrailName: $0, toolName: data.tool.name, result: $1) }
+        )
     }
 
     // MARK: - Tool Output Guardrails
@@ -497,216 +512,73 @@ public actor GuardrailRunner {
         data: ToolGuardrailData,
         output: SendableValue
     ) async throws -> [GuardrailExecutionResult] {
-        if configuration.runInParallel {
-            try await runToolOutputGuardrailsParallel(guardrails, data: data, output: output)
-        } else {
-            try await runToolOutputGuardrailsSequential(guardrails, data: data, output: output)
-        }
-    }
-}
-
-// MARK: - GuardrailRunner + Sequential Execution
-
-extension GuardrailRunner {
-    func runInputGuardrailsSequential(
-        _ guardrails: [any InputGuardrail],
-        input: String,
-        context: AgentContext?
-    ) async throws -> [GuardrailExecutionResult] {
-        var results: [GuardrailExecutionResult] = []
-
-        for guardrail in guardrails {
-            try Task.checkCancellation()
-
-            do {
-                let result = try await validateWithTimeout(guardrailName: guardrail.name) {
-                    try await guardrail.validate(input, context: context)
-                }
-                let executionResult = GuardrailExecutionResult(
-                    guardrailName: guardrail.name,
-                    result: result
-                )
-                results.append(executionResult)
-
-                if let error = inputTripwireError(guardrailName: guardrail.name, result: result) {
-                    await emitGuardrailEvent(
-                        guardrailName: guardrail.name,
-                        guardrailType: .input,
-                        result: result,
-                        context: context
-                    )
-                    if configuration.stopOnFirstTripwire {
-                        throw error
-                    }
-                }
-            } catch let error as GuardrailError {
-                throw error
-            } catch {
-                throw GuardrailError.executionFailed(
-                    guardrailName: guardrail.name,
-                    underlyingError: error.localizedDescription
-                )
-            }
-        }
-
-        // Check if any tripwires were triggered (when not stopping on first)
-        if let tripwiredResult = results.first(where: \.didTriggerTripwire),
-           let error = inputTripwireError(
-               guardrailName: tripwiredResult.guardrailName,
-               result: tripwiredResult.result
-           ) {
-            throw error
-        }
-
-        return results
-    }
-
-    func runOutputGuardrailsSequential(
-        _ guardrails: [any OutputGuardrail],
-        output: String,
-        agent: any AgentRuntime,
-        context: AgentContext?
-    ) async throws -> [GuardrailExecutionResult] {
-        var results: [GuardrailExecutionResult] = []
-
-        for guardrail in guardrails {
-            try Task.checkCancellation()
-
-            do {
-                let result = try await validateWithTimeout(guardrailName: guardrail.name) {
-                    try await guardrail.validate(output, agent: agent, context: context)
-                }
-                let executionResult = GuardrailExecutionResult(
-                    guardrailName: guardrail.name,
-                    result: result
-                )
-                results.append(executionResult)
-
-                if let error = outputTripwireError(
-                    guardrailName: guardrail.name,
-                    agentName: agent.configuration.name,
-                    result: result
-                ) {
-                    await emitGuardrailEvent(
-                        guardrailName: guardrail.name,
-                        guardrailType: .output,
-                        result: result,
-                        context: context
-                    )
-                    if configuration.stopOnFirstTripwire {
-                        throw error
-                    }
-                }
-            } catch let error as GuardrailError {
-                throw error
-            } catch {
-                throw GuardrailError.executionFailed(
-                    guardrailName: guardrail.name,
-                    underlyingError: error.localizedDescription
-                )
-            }
-        }
-
-        // Check if any tripwires were triggered (when not stopping on first)
-        if let tripwiredResult = results.first(where: \.didTriggerTripwire),
-           let error = outputTripwireError(
-               guardrailName: tripwiredResult.guardrailName,
-               agentName: agent.configuration.name,
-               result: tripwiredResult.result
-           ) {
-            throw error
-        }
-
-        return results
-    }
-
-    func runToolInputGuardrailsSequential(
-        _ guardrails: [any ToolInputGuardrail],
-        data: ToolGuardrailData
-    ) async throws -> [GuardrailExecutionResult] {
-        var results: [GuardrailExecutionResult] = []
-
-        for guardrail in guardrails {
-            try Task.checkCancellation()
-
-            do {
-                let result = try await validateWithTimeout(guardrailName: guardrail.name) {
-                    try await guardrail.validate(data)
-                }
-                let executionResult = GuardrailExecutionResult(
-                    guardrailName: guardrail.name,
-                    result: result
-                )
-                results.append(executionResult)
-
-                if let error = toolInputTripwireError(
-                    guardrailName: guardrail.name,
-                    toolName: data.tool.name,
-                    result: result
-                ) {
-                    await emitGuardrailEvent(
-                        guardrailName: guardrail.name,
-                        guardrailType: .toolInput,
-                        result: result,
-                        context: data.context
-                    )
-                    if configuration.stopOnFirstTripwire {
-                        throw error
-                    }
-                }
-            } catch let error as GuardrailError {
-                throw error
-            } catch {
-                throw GuardrailError.executionFailed(
-                    guardrailName: guardrail.name,
-                    underlyingError: error.localizedDescription
-                )
-            }
-        }
-
-        // Check if any tripwires were triggered (when not stopping on first)
-        if let tripwiredResult = results.first(where: \.didTriggerTripwire),
-           let error = toolInputTripwireError(
-               guardrailName: tripwiredResult.guardrailName,
-               toolName: data.tool.name,
-               result: tripwiredResult.result
-           ) {
-            throw error
-        }
-
-        return results
-    }
-
-    func runToolOutputGuardrailsSequential(
-        _ guardrails: [any ToolOutputGuardrail],
-        data: ToolGuardrailData,
-        output: SendableValue
-    ) async throws -> [GuardrailExecutionResult] {
-        var results: [GuardrailExecutionResult] = []
-
-        for guardrail in guardrails {
-            try Task.checkCancellation()
-
-            do {
-                let result = try await validateWithTimeout(guardrailName: guardrail.name) {
+        try await execute(
+            guardrails.map { guardrail in
+                GuardrailStep(name: guardrail.name) {
                     try await guardrail.validate(data, output: output)
                 }
-                let executionResult = GuardrailExecutionResult(
-                    guardrailName: guardrail.name,
-                    result: result
-                )
-                results.append(executionResult)
+            },
+            guardrailType: .toolOutput,
+            context: data.context,
+            tripwireError: { Self.toolOutputTripwireError(guardrailName: $0, toolName: data.tool.name, result: $1) }
+        )
+    }
+}
 
-                if let error = toolOutputTripwireError(
-                    guardrailName: guardrail.name,
-                    toolName: data.tool.name,
-                    result: result
-                ) {
+// MARK: - Shared Execution Engine
+
+extension GuardrailRunner {
+    /// One type-erased guardrail execution step.
+    ///
+    /// Each public runner method erases its guardrail type into steps so that
+    /// cancellation checks, timeout enforcement, result accumulation, tripwire
+    /// emission, and error normalization are implemented exactly once.
+    private struct GuardrailStep: Sendable {
+        let name: String
+        let run: @Sendable () async throws -> GuardrailResult
+
+        init(name: String, run: @escaping @Sendable () async throws -> GuardrailResult) {
+            self.name = name
+            self.run = run
+        }
+    }
+
+    /// Dispatches type-erased steps according to the runner configuration.
+    private func execute(
+        _ steps: [GuardrailStep],
+        guardrailType: GuardrailType,
+        context: AgentContext?,
+        tripwireError: @escaping @Sendable (_ guardrailName: String, _ result: GuardrailResult) -> GuardrailError?
+    ) async throws -> [GuardrailExecutionResult] {
+        if configuration.runInParallel {
+            try await executeParallel(steps, guardrailType: guardrailType, context: context, tripwireError: tripwireError)
+        } else {
+            try await executeSequential(steps, guardrailType: guardrailType, context: context, tripwireError: tripwireError)
+        }
+    }
+
+    /// Runs steps one-by-one in order.
+    private func executeSequential(
+        _ steps: [GuardrailStep],
+        guardrailType: GuardrailType,
+        context: AgentContext?,
+        tripwireError: (_ guardrailName: String, _ result: GuardrailResult) -> GuardrailError?
+    ) async throws -> [GuardrailExecutionResult] {
+        var results: [GuardrailExecutionResult] = []
+
+        for step in steps {
+            try Task.checkCancellation()
+
+            do {
+                let result = try await validateWithTimeout(guardrailName: step.name, operation: step.run)
+                results.append(GuardrailExecutionResult(guardrailName: step.name, result: result))
+
+                if let error = tripwireError(step.name, result) {
                     await emitGuardrailEvent(
-                        guardrailName: guardrail.name,
-                        guardrailType: .toolOutput,
+                        guardrailName: step.name,
+                        guardrailType: guardrailType,
                         result: result,
-                        context: data.context
+                        context: context
                     )
                     if configuration.stopOnFirstTripwire {
                         throw error
@@ -716,7 +588,7 @@ extension GuardrailRunner {
                 throw error
             } catch {
                 throw GuardrailError.executionFailed(
-                    guardrailName: guardrail.name,
+                    guardrailName: step.name,
                     underlyingError: error.localizedDescription
                 )
             }
@@ -724,48 +596,37 @@ extension GuardrailRunner {
 
         // Check if any tripwires were triggered (when not stopping on first)
         if let tripwiredResult = results.first(where: \.didTriggerTripwire),
-           let error = toolOutputTripwireError(
-               guardrailName: tripwiredResult.guardrailName,
-               toolName: data.tool.name,
-               result: tripwiredResult.result
-           ) {
+           let error = tripwireError(tripwiredResult.guardrailName, tripwiredResult.result) {
             throw error
         }
 
         return results
     }
-}
 
-// MARK: - GuardrailRunner + Parallel Execution
-
-extension GuardrailRunner {
-    func runInputGuardrailsParallel(
-        _ guardrails: [any InputGuardrail],
-        input: String,
-        context: AgentContext?
+    /// Runs steps concurrently via TaskGroup, preserving input ordering in results.
+    private func executeParallel(
+        _ steps: [GuardrailStep],
+        guardrailType: GuardrailType,
+        context: AgentContext?,
+        tripwireError: (_ guardrailName: String, _ result: GuardrailResult) -> GuardrailError?
     ) async throws -> [GuardrailExecutionResult] {
         try Task.checkCancellation()
 
         return try await withThrowingTaskGroup(of: (Int, GuardrailExecutionResult).self) { group in
             var indexedResults: [(Int, GuardrailExecutionResult)] = []
-            indexedResults.reserveCapacity(guardrails.count)
+            indexedResults.reserveCapacity(steps.count)
 
-            // Add all guardrails to the task group
-            for (index, guardrail) in guardrails.enumerated() {
+            // Add all steps to the task group
+            for (index, step) in steps.enumerated() {
                 group.addTask {
                     do {
-                        let result = try await self.validateWithTimeout(guardrailName: guardrail.name) {
-                            try await guardrail.validate(input, context: context)
-                        }
-                        return (index, GuardrailExecutionResult(
-                            guardrailName: guardrail.name,
-                            result: result
-                        ))
+                        let result = try await self.validateWithTimeout(guardrailName: step.name, operation: step.run)
+                        return (index, GuardrailExecutionResult(guardrailName: step.name, result: result))
                     } catch let error as GuardrailError {
                         throw error
                     } catch {
                         throw GuardrailError.executionFailed(
-                            guardrailName: guardrail.name,
+                            guardrailName: step.name,
                             underlyingError: error.localizedDescription
                         )
                     }
@@ -775,13 +636,10 @@ extension GuardrailRunner {
             // Collect results
             for try await (index, executionResult) in group {
                 if configuration.stopOnFirstTripwire,
-                   let error = inputTripwireError(
-                       guardrailName: executionResult.guardrailName,
-                       result: executionResult.result
-                   ) {
+                   let error = tripwireError(executionResult.guardrailName, executionResult.result) {
                     await emitGuardrailEvent(
                         guardrailName: executionResult.guardrailName,
-                        guardrailType: .input,
+                        guardrailType: guardrailType,
                         result: executionResult.result,
                         context: context
                     )
@@ -797,259 +655,13 @@ extension GuardrailRunner {
 
             // Check if any tripwires were triggered (when not stopping on first)
             if let tripwiredResult = results.first(where: \.didTriggerTripwire),
-               let error = inputTripwireError(
-                   guardrailName: tripwiredResult.guardrailName,
-                   result: tripwiredResult.result
-               ) {
+               let error = tripwireError(tripwiredResult.guardrailName, tripwiredResult.result) {
                 for result in results where result.didTriggerTripwire {
                     await emitGuardrailEvent(
                         guardrailName: result.guardrailName,
-                        guardrailType: .input,
+                        guardrailType: guardrailType,
                         result: result.result,
                         context: context
-                    )
-                }
-                throw error
-            }
-
-            return results
-        }
-    }
-
-    func runOutputGuardrailsParallel(
-        _ guardrails: [any OutputGuardrail],
-        output: String,
-        agent: any AgentRuntime,
-        context: AgentContext?
-    ) async throws -> [GuardrailExecutionResult] {
-        try Task.checkCancellation()
-
-        let agentName = agent.configuration.name
-
-        return try await withThrowingTaskGroup(of: (Int, GuardrailExecutionResult).self) { group in
-            var indexedResults: [(Int, GuardrailExecutionResult)] = []
-            indexedResults.reserveCapacity(guardrails.count)
-
-            // Add all guardrails to the task group
-            for (index, guardrail) in guardrails.enumerated() {
-                group.addTask {
-                    do {
-                        let result = try await self.validateWithTimeout(guardrailName: guardrail.name) {
-                            try await guardrail.validate(output, agent: agent, context: context)
-                        }
-                        return (index, GuardrailExecutionResult(
-                            guardrailName: guardrail.name,
-                            result: result
-                        ))
-                    } catch let error as GuardrailError {
-                        throw error
-                    } catch {
-                        throw GuardrailError.executionFailed(
-                            guardrailName: guardrail.name,
-                            underlyingError: error.localizedDescription
-                        )
-                    }
-                }
-            }
-
-            // Collect results
-            for try await (index, executionResult) in group {
-                if configuration.stopOnFirstTripwire,
-                   let error = outputTripwireError(
-                       guardrailName: executionResult.guardrailName,
-                       agentName: agentName,
-                       result: executionResult.result
-                   ) {
-                    await emitGuardrailEvent(
-                        guardrailName: executionResult.guardrailName,
-                        guardrailType: .output,
-                        result: executionResult.result,
-                        context: context
-                    )
-                    // Cancel remaining tasks
-                    group.cancelAll()
-                    throw error
-                }
-                indexedResults.append((index, executionResult))
-            }
-
-            indexedResults.sort { $0.0 < $1.0 }
-            let results = indexedResults.map(\.1)
-
-            // Check if any tripwires were triggered (when not stopping on first)
-            if let tripwiredResult = results.first(where: \.didTriggerTripwire),
-               let error = outputTripwireError(
-                   guardrailName: tripwiredResult.guardrailName,
-                   agentName: agentName,
-                   result: tripwiredResult.result
-               ) {
-                for result in results where result.didTriggerTripwire {
-                    await emitGuardrailEvent(
-                        guardrailName: result.guardrailName,
-                        guardrailType: .output,
-                        result: result.result,
-                        context: context
-                    )
-                }
-                throw error
-            }
-
-            return results
-        }
-    }
-
-    func runToolInputGuardrailsParallel(
-        _ guardrails: [any ToolInputGuardrail],
-        data: ToolGuardrailData
-    ) async throws -> [GuardrailExecutionResult] {
-        try Task.checkCancellation()
-
-        let toolName = data.tool.name
-
-        return try await withThrowingTaskGroup(of: (Int, GuardrailExecutionResult).self) { group in
-            var indexedResults: [(Int, GuardrailExecutionResult)] = []
-            indexedResults.reserveCapacity(guardrails.count)
-
-            // Add all guardrails to the task group
-            for (index, guardrail) in guardrails.enumerated() {
-                group.addTask {
-                    do {
-                        let result = try await self.validateWithTimeout(guardrailName: guardrail.name) {
-                            try await guardrail.validate(data)
-                        }
-                        return (index, GuardrailExecutionResult(
-                            guardrailName: guardrail.name,
-                            result: result
-                        ))
-                    } catch let error as GuardrailError {
-                        throw error
-                    } catch {
-                        throw GuardrailError.executionFailed(
-                            guardrailName: guardrail.name,
-                            underlyingError: error.localizedDescription
-                        )
-                    }
-                }
-            }
-
-            // Collect results
-            for try await (index, executionResult) in group {
-                if configuration.stopOnFirstTripwire,
-                   let error = toolInputTripwireError(
-                       guardrailName: executionResult.guardrailName,
-                       toolName: toolName,
-                       result: executionResult.result
-                   ) {
-                    await emitGuardrailEvent(
-                        guardrailName: executionResult.guardrailName,
-                        guardrailType: .toolInput,
-                        result: executionResult.result,
-                        context: data.context
-                    )
-                    // Cancel remaining tasks
-                    group.cancelAll()
-                    throw error
-                }
-                indexedResults.append((index, executionResult))
-            }
-
-            indexedResults.sort { $0.0 < $1.0 }
-            let results = indexedResults.map(\.1)
-
-            // Check if any tripwires were triggered (when not stopping on first)
-            if let tripwiredResult = results.first(where: \.didTriggerTripwire),
-               let error = toolInputTripwireError(
-                   guardrailName: tripwiredResult.guardrailName,
-                   toolName: toolName,
-                   result: tripwiredResult.result
-               ) {
-                for result in results where result.didTriggerTripwire {
-                    await emitGuardrailEvent(
-                        guardrailName: result.guardrailName,
-                        guardrailType: .toolInput,
-                        result: result.result,
-                        context: data.context
-                    )
-                }
-                throw error
-            }
-
-            return results
-        }
-    }
-
-    func runToolOutputGuardrailsParallel(
-        _ guardrails: [any ToolOutputGuardrail],
-        data: ToolGuardrailData,
-        output: SendableValue
-    ) async throws -> [GuardrailExecutionResult] {
-        try Task.checkCancellation()
-
-        let toolName = data.tool.name
-
-        return try await withThrowingTaskGroup(of: (Int, GuardrailExecutionResult).self) { group in
-            var indexedResults: [(Int, GuardrailExecutionResult)] = []
-            indexedResults.reserveCapacity(guardrails.count)
-
-            // Add all guardrails to the task group
-            for (index, guardrail) in guardrails.enumerated() {
-                group.addTask {
-                    do {
-                        let result = try await self.validateWithTimeout(guardrailName: guardrail.name) {
-                            try await guardrail.validate(data, output: output)
-                        }
-                        return (index, GuardrailExecutionResult(
-                            guardrailName: guardrail.name,
-                            result: result
-                        ))
-                    } catch let error as GuardrailError {
-                        throw error
-                    } catch {
-                        throw GuardrailError.executionFailed(
-                            guardrailName: guardrail.name,
-                            underlyingError: error.localizedDescription
-                        )
-                    }
-                }
-            }
-
-            // Collect results
-            for try await (index, executionResult) in group {
-                if configuration.stopOnFirstTripwire,
-                   let error = toolOutputTripwireError(
-                       guardrailName: executionResult.guardrailName,
-                       toolName: toolName,
-                       result: executionResult.result
-                   ) {
-                    await emitGuardrailEvent(
-                        guardrailName: executionResult.guardrailName,
-                        guardrailType: .toolOutput,
-                        result: executionResult.result,
-                        context: data.context
-                    )
-                    // Cancel remaining tasks
-                    group.cancelAll()
-                    throw error
-                }
-                indexedResults.append((index, executionResult))
-            }
-
-            indexedResults.sort { $0.0 < $1.0 }
-            let results = indexedResults.map(\.1)
-
-            // Check if any tripwires were triggered (when not stopping on first)
-            if let tripwiredResult = results.first(where: \.didTriggerTripwire),
-               let error = toolOutputTripwireError(
-                   guardrailName: tripwiredResult.guardrailName,
-                   toolName: toolName,
-                   result: tripwiredResult.result
-               ) {
-                for result in results where result.didTriggerTripwire {
-                    await emitGuardrailEvent(
-                        guardrailName: result.guardrailName,
-                        guardrailType: .toolOutput,
-                        result: result.result,
-                        context: data.context
                     )
                 }
                 throw error
