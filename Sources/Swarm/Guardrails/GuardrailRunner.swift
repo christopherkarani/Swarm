@@ -332,7 +332,10 @@ public actor GuardrailRunner {
 
         // Parent cancellation is not wired into this race (matching the
         // original implementation): a cancelled caller parks until the
-        // guardrail finishes or the timeout fires.
+        // guardrail finishes or the timeout fires. Unlike the original
+        // actor-isolated `Task {}` workers, the helper spawns unisolated
+        // tasks, so guardrail operations and their timers no longer queue
+        // behind other runner-actor work.
         return try await withTimeoutRace(
             timeout: timeout,
             cancelsOnParentCancellation: false,
