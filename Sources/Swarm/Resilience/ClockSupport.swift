@@ -33,7 +33,8 @@ extension Duration {
     /// Total nanoseconds for `SwarmClock`-style APIs.
     ///
     /// Negative durations clamp to `0`; overflow saturates at `UInt64.max`.
-    /// Sub-nanosecond precision may round.
+    /// Conversion goes through `Double`: sub-nanosecond components always
+    /// round, and integer nanoseconds lose precision past ~2^53 ns (~104 days).
     var swarmNanoseconds: UInt64 {
         let (seconds, attoseconds) = components
         let total = Double(seconds) * 1_000_000_000 + Double(attoseconds) / 1_000_000_000

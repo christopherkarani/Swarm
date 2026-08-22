@@ -188,6 +188,38 @@ private struct SeededRandomGeneratorTests {
     }
 }
 
+// MARK: - Duration Nanosecond Conversion Tests
+
+@Suite("Duration Nanosecond Conversion Tests")
+private struct DurationNanosecondConversionTests {
+    @Test("Positive durations convert exactly within Double precision")
+    func positiveConversionIsExact() {
+        #expect((.seconds(1) + .nanoseconds(1)).swarmNanoseconds == 1_000_000_001)
+        #expect(Duration.milliseconds(250).swarmNanoseconds == 250_000_000)
+    }
+
+    @Test("Negative and zero durations clamp to zero nanoseconds")
+    func negativeDurationsClampToZero() {
+        #expect(Duration.seconds(0).swarmNanoseconds == 0)
+        #expect(Duration.seconds(-1).swarmNanoseconds == 0)
+        #expect(Duration.milliseconds(-500).swarmNanoseconds == 0)
+    }
+
+    @Test("Overflowing durations saturate at UInt64.max")
+    func overflowingDurationsSaturate() {
+        #expect(Duration.seconds(Int64.max).swarmNanoseconds == UInt64.max)
+    }
+
+    @Test("Init saturates values beyond Int64.max nanoseconds")
+    func initSaturatesBeyondInt64MaxNanoseconds() {
+        #expect(
+            Duration(swarmNanoseconds: UInt64(Int64.max) + 1)
+                == .nanoseconds(Int64.max)
+        )
+        #expect(Duration(swarmNanoseconds: 1_500_000_000) == .milliseconds(1500))
+    }
+}
+
 // MARK: - Live Clock Tests
 
 @Suite("LiveSwarmClock Tests")
