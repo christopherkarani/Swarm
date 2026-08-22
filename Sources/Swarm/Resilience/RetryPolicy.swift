@@ -67,8 +67,11 @@ public enum BackoffStrategy: Sendable {
     /// generators under test).
     /// - Parameters:
     ///   - attempt: The attempt number (1-indexed).
-    ///   - random: Replacement for `Double.random(in:)`; receives the legal
-    ///     range for the drawn value.
+    ///   - random: Replacement for `Double.random(in:)`; receives exactly the
+    ///     range the live implementation would draw from. Implementations
+    ///     mirroring `Double.random(in:)` keep its precondition failure on
+    ///     inverted ranges, preserving historical crash behavior for
+    ///     degenerate configurations.
     /// - Returns: The delay in seconds before the next retry.
     func delay(
         forAttempt attempt: Int,
@@ -202,11 +205,11 @@ public struct RetryPolicy: Sendable {
 
     /// Clock used to suspend between retries. Defaults to `LiveSwarmClock`
     /// (plain `Task.sleep`) so existing behavior is unchanged when nil.
-    let clock: any SwarmClock
+    private let clock: any SwarmClock
 
     /// Randomness source consulted by jittered backoff strategies. Defaults
     /// to `Double.random(in:)` so existing behavior is unchanged when nil.
-    let randomSource: @Sendable (ClosedRange<Double>) -> Double
+    private let randomSource: @Sendable (ClosedRange<Double>) -> Double
 
     // MARK: - Initialization
 
