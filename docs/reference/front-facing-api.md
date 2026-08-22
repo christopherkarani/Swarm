@@ -709,6 +709,8 @@ public struct AgentResult: Sendable {
     /// Provider-reported token usage, or `nil` when the backend does not expose counts
     /// (including Apple Foundation Models on the current SDK).
     public let tokenUsage: TokenUsage?
+    public let metadata: [String : SendableValue]
+    public var runtimeEngine: String? { get }     // `"graph"` or `"native"`
 }
 
 public struct ToolResult: Sendable {
@@ -757,6 +759,41 @@ public case toolFailure(toolName: String, message: String?, cause: (any Error)?)
 The previous `AgentError.toolExecutionFailed(toolName:underlyingError:)` case is deprecated
 but remains fully constructible and matchable; `message` carries the same flattened string
 that `underlyingError` used to.
+### Result metadata keys
+
+`AgentResult.metadata` and trace-event metadata serialize as `[String : SendableValue]`. Producers and readers share `MetadataKey<Value>` constants so key names and payload types are paired at compile time:
+
+```swift
+var metadata: [String: SendableValue] = [:]
+metadata[.inputTokens] = 120          // MetadataKey<Int> ("input_tokens")
+metadata[.fallbackUsed] = true        // MetadataKey<Bool>
+
+let tokens: Int? = metadata[.inputTokens]
+let engine: String? = result.metadata[.runtimeEngine]  // also AgentResult.runtimeEngine
+```
+
+Shipped keys cover runtime engine (`runtimeEngine`), workflow fallback (`fallbackUsed`, `fallbackError`), token usage (`inputTokens`, `outputTokens`, `totalTokens`, legacy `legacyTokenCount`), step timing (`stepNumber`, `durationMs`), and tool outcome (`toolSuccess`). Raw string access over the same dictionary keeps compiling; define custom keys as shared `MetadataKey("your.stable.name")` constants rather than ad-hoc strings at call sites.
+
+### Typed context keys
+
+`AgentContext` stores typed values in slots keyed by `ContextKey<Value>`: the key's name together with its value type forms one slot identity, so two keys sharing a name string across different value types do not collide, and a read returns the key's own value type or nil:
+
+```swift
+await context.setTyped(.userID, value: "user-123")
+let id: String? = await context.getTyped(.userID)
+let retries = await context.getTyped(.retryCount, default: 0)
+await context.removeTyped(.userID)
+```
+
+Define custom keys by extending `ContextKey` for your value type:
+
+```swift
+extension ContextKey where Value == String {
+    static let locale = ContextKey("locale")
+}
+```
+
+`AgentContextProviding` is deprecated. Define a `ContextKey<Value>` for your context type and use `setTyped(_:value:)` / `getTyped(_:)`; the protocol remains functional over the same store and will be removed in a future release.
 
 ## 13) Public macros
 
