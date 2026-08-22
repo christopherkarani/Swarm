@@ -122,7 +122,10 @@ struct ContextSlotStore {
     ///   - other: The store whose value slots are copied in.
     ///   - overwrite: When false, existing slots are left untouched.
     mutating func mergeValueSlots(from other: ContextSlotStore, overwrite: Bool) {
-        for (id, entry) in other.valueSlots {
+        // Re-stamp in source-recency order so the relative order that
+        // `projectedValues` resolves ties by survives the merge regardless
+        // of dictionary iteration order.
+        for (id, entry) in other.valueSlots.sorted(by: { $0.value.writeStamp < $1.value.writeStamp }) {
             if overwrite || valueSlots[id] == nil {
                 nextWriteStamp += 1
                 valueSlots[id] = ContextSlotEntry(
@@ -219,7 +222,10 @@ struct ContextSlotStore {
     /// - Returns: A store whose value slots match this store's.
     func copyingValueSlots() -> ContextSlotStore {
         var copy = ContextSlotStore()
-        for (id, entry) in valueSlots {
+        // Re-stamp in source-recency order so a copy projects the same
+        // same-named winner as its source regardless of dictionary
+        // iteration order.
+        for (id, entry) in valueSlots.sorted(by: { $0.value.writeStamp < $1.value.writeStamp }) {
             copy.nextWriteStamp += 1
             copy.valueSlots[id] = ContextSlotEntry(
                 payload: entry.payload,

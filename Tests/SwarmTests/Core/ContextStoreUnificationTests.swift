@@ -263,6 +263,20 @@ struct ContextStoreUnificationTests {
         #expect(await child.snapshot["user_id"] == .string("parent-user"))
     }
 
+    @Test("merge keeps most-recent same-named slot winning across value types")
+    func mergePreservesSameNamedRecencyAcrossValueTypes() async throws {
+        let parent = AgentContext(input: "parent")
+        await parent.setTyped(ContextKey<Int>("recency_name"), value: 1)
+        await parent.setTyped(ContextKey<String>("recency_name"), value: "newest")
+
+        let child = AgentContext(input: "child")
+        await child.merge(from: parent)
+
+        #expect(await child.snapshot["recency_name"] == .string("newest"))
+        #expect(await child.getTyped(ContextKey<String>("recency_name")) == "newest")
+        #expect(await child.getTyped(ContextKey<Int>("recency_name")) == 1)
+    }
+
     // MARK: - Copy Behavior
 
     @Test("copy carries typed values and lands additionalValues in the raw namespace")
@@ -279,6 +293,18 @@ struct ContextStoreUnificationTests {
         // The copy is independent of its source.
         await branch.setTyped(.userID, value: "changed-in-copy")
         #expect(await source.getTyped(.userID) == "copied-user")
+    }
+
+    @Test("copy keeps most-recent same-named slot winning across value types")
+    func copyPreservesSameNamedRecencyAcrossValueTypes() async throws {
+        let context = AgentContext(input: "test")
+        await context.setTyped(ContextKey<Int>("recency_name"), value: 1)
+        await context.setTyped(ContextKey<String>("recency_name"), value: "newest")
+
+        let branch = await context.copy()
+        #expect(await branch.snapshot["recency_name"] == .string("newest"))
+        #expect(await branch.getTyped(ContextKey<String>("recency_name")) == "newest")
+        #expect(await branch.getTyped(ContextKey<Int>("recency_name")) == 1)
     }
 
     // MARK: - Deprecated AgentContextProviding Shim
