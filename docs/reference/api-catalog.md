@@ -2367,7 +2367,10 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 56 | var | public | CircuitBreaker.successThreshold | `public let successThreshold: Int` |
 | 59 | var | public | CircuitBreaker.resetTimeout | `public let resetTimeout: TimeInterval` |
 | 62 | var | public | CircuitBreaker.halfOpenMaxRequests | `public let halfOpenMaxRequests: Int` |
-| 73 | func | public | CircuitBreaker.init(name:failureThreshold:successThreshold:resetTimeout:halfOpenMaxRequests:) | `public init(name: String, failureThreshold: Int = 5, successThreshold: Int = 2, resetTimeout: TimeInterval = 60.0, halfOpenMaxRequests: Int = 1)` |
+| 21 | struct | public | BreakerClock | `public struct BreakerClock: Sendable` |
+| 30 | func | public | BreakerClock.init(now:) | `public init(now: @escaping @Sendable () -> Date = { Date() })` |
+| 38 | func | public | BreakerClock.now() | `public func now() -> Date` |
+| 73 | func | public | CircuitBreaker.init(name:failureThreshold:successThreshold:resetTimeout:halfOpenMaxRequests:clock:) | `public init(name: String, failureThreshold: Int = 5, successThreshold: Int = 2, resetTimeout: TimeInterval = 60.0, halfOpenMaxRequests: Int = 1, clock: BreakerClock = BreakerClock())` |
 | 93 | func | public | CircuitBreaker.execute(_:) | `public func execute<T>(_ operation: () async throws -> T) async throws -> T where T : Sendable` |
 | 121 | func | public | CircuitBreaker.currentState() | `public func currentState() -> CircuitBreaker.State` |
 | 126 | func | public | CircuitBreaker.reset() | `public func reset() async` |
@@ -2433,8 +2436,11 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 |------|------|--------|------|-----------|
 | 30 | class | public | RateLimiter | `public actor RateLimiter` |
 | 34 | var | public | RateLimiter.available | `public var available: Int { get }` |
-| 40 | func | public | RateLimiter.init(maxRequestsPerMinute:) | `public init(maxRequestsPerMinute: Int)` |
-| 49 | func | public | RateLimiter.init(maxTokens:refillRatePerSecond:) | `public init(maxTokens: Int, refillRatePerSecond: Double)` |
+| 15 | struct | public | RateLimiterClock | `public struct RateLimiterClock: Sendable` |
+| 27 | func | public | RateLimiterClock.init(now:sleep:) | `public init(now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now }, sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) })` |
+| 38 | func | public | RateLimiterClock.now() | `public func now() -> ContinuousClock.Instant` |
+| 40 | func | public | RateLimiter.init(maxRequestsPerMinute:clock:) | `public init(maxRequestsPerMinute: Int, clock: RateLimiterClock = RateLimiterClock())` |
+| 49 | func | public | RateLimiter.init(maxTokens:refillRatePerSecond:clock:) | `public init(maxTokens: Int, refillRatePerSecond: Double, clock: RateLimiterClock = RateLimiterClock())` |
 | 62 | func | public | RateLimiter.acquire() | `public func acquire() async throws` |
 | 78 | func | public | RateLimiter.tryAcquire() | `public func tryAcquire() -> Bool` |
 | 88 | func | public | RateLimiter.reset() | `public func reset()` |
@@ -2476,7 +2482,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 25 | var | public | ResilienceError.errorDescription | `public var errorDescription: String? { get }` |
 | 40 | var | public | ResilienceError.debugDescription | `public var debugDescription: String { get }` |
 | 55 | enum | public | BackoffStrategy | `public enum BackoffStrategy` |
-| 61 | func | public | BackoffStrategy.delay(forAttempt:) | `public func delay(forAttempt attempt: Int) -> TimeInterval` |
+| 61 | func | public | BackoffStrategy.delay(forAttempt:randomSource:) | `public func delay(forAttempt attempt: Int, randomSource: RetryRandomSource = RetryRandomSource()) -> TimeInterval` |
 | 97 | case | public | BackoffStrategy.fixed(delay:) | `public case fixed(delay: TimeInterval)` |
 | 100 | case | public | BackoffStrategy.linear(initial:increment:maxDelay:) | `public case linear(initial: TimeInterval, increment: TimeInterval, maxDelay: TimeInterval)` |
 | 103 | case | public | BackoffStrategy.exponential(base:multiplier:maxDelay:) | `public case exponential(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
@@ -2494,7 +2500,10 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 181 | var | public | RetryPolicy.shouldRetry | `public let shouldRetry: (any Error) -> Bool` |
 | 184 | var | public | RetryPolicy.onRetry | `public let onRetry: ((Int, any Error) async -> Void)?` |
 | 194 | func | public | RetryPolicy.init(maxAttempts:backoff:shouldRetry:onRetry:) | `public init(maxAttempts: Int = 3, backoff: BackoffStrategy = .exponential(base: 1.0, multiplier: 2.0, maxDelay: 60.0), shouldRetry: @escaping (any Error) -> Bool = { _ in true }, onRetry: ((Int, any Error) async -> Void)? = nil)` |
-| 213 | func | public | RetryPolicy.execute(_:) | `public func execute<T>(_ operation: () async throws -> T) async throws -> T where T : Sendable` |
+| 58 | struct | public | RetryRandomSource | `public struct RetryRandomSource: Sendable` |
+| 65 | func | public | RetryRandomSource.init(randomIn:) | `public init(randomIn: @escaping @Sendable (ClosedRange<Double>) -> Double = { Double.random(in: $0) })` |
+| 76 | func | public | RetryRandomSource.randomIn(_:) | `public func randomIn(_ range: ClosedRange<Double>) -> Double` |
+| 213 | func | public | RetryPolicy.execute(_:sleep:randomSource:) | `public func execute<T>(_ operation: @Sendable () async throws -> T, sleep: @escaping @Sendable (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }, randomSource: RetryRandomSource = RetryRandomSource()) async throws -> T` |
 | 271 | func | public | RetryPolicy.==(_:_:) | `public static func == (lhs: RetryPolicy, rhs: RetryPolicy) -> Bool` |
 
 ## 9. Workflow
