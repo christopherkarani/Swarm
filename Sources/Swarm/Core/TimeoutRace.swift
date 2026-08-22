@@ -3,7 +3,11 @@
 //
 // Shared completion machinery for async operations raced against a timeout,
 // consolidating the per-site coordinator/race classes that previously lived
-// in GuardrailRunner and Workflow+Timeout.
+// in GuardrailRunner and Workflow+Timeout. Two timeout sites deliberately
+// keep their own machinery: Agent.executeWithinRemainingTimeout ties race
+// settlement to its ProviderOwnedLoopGate execution-gate state, and
+// StreamOperations.timeout(after:) is a stream-lifetime operator rather than
+// a one-shot race.
 
 import Foundation
 
