@@ -793,7 +793,7 @@ extension ContextKey where Value == String {
 }
 ```
 
-`AgentContextProviding` is deprecated. Define a `ContextKey<Value>` for your context type and use `setTyped(_:value:)` / `getTyped(_:)`; the protocol remains functional over the same store and will be removed in a future release.
+`AgentContextProviding` is deprecated. Define a `ContextKey<Value>` for your context type and use `setTyped(_:value:)` / `getTyped(_:)`; the protocol remains functional over the same store.
 
 ## 13) Public macros
 
