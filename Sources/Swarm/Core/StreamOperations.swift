@@ -122,7 +122,10 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
                     lastError = error
                     if attempts < maxAttempts, delay != .zero {
                         do {
-                            try await Task.sleep(for: delay)
+                            // Routed through the SwarmClock seam so a future
+                            // injected virtual clock makes retry delays
+                            // deterministic in tests.
+                            try await LiveSwarmClock.live.sleep(nanoseconds: delay.swarmNanoseconds)
                         } catch is CancellationError {
                             continuation.finish(throwing: CancellationError())
                             return
