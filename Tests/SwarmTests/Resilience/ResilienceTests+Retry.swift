@@ -171,6 +171,161 @@ struct RetryPolicyTests {
         #expect(strategy.delay(forAttempt: 5) == 50.0)
     }
 
+    // MARK: - Deterministic Jitter Tests
+
+    @Test("exponentialWithJitter upper-bound source returns capped exponential delays")
+    func jitterUpperBoundReturnsCappedExponentialDelays() {
+        let strategy = BackoffStrategy.exponentialWithJitter(base: 1.0, multiplier: 2.0, maxDelay: 8.0)
+        let source = RetryRandomSource(randomIn: { $0.upperBound })
+
+        #expect(strategy.delay(forAttempt: 1, randomSource: source) == 1.0)
+        #expect(strategy.delay(forAttempt: 2, randomSource: source) == 2.0)
+        #expect(strategy.delay(forAttempt: 3, randomSource: source) == 4.0)
+        #expect(strategy.delay(forAttempt: 4, randomSource: source) == 8.0)
+        // Past the cap the draw range tops out at maxDelay
+        #expect(strategy.delay(forAttempt: 5, randomSource: source) == 8.0)
+    }
+
+    @Test("exponentialWithJitter lower-bound source collapses to zero delay")
+    func jitterLowerBoundCollapsesToZeroDelay() {
+        let strategy = BackoffStrategy.exponentialWithJitter(base: 1.0, multiplier: 2.0, maxDelay: 60.0)
+        let source = RetryRandomSource(randomIn: { $0.lowerBound })
+
+        for attempt in 1...5 {
+            #expect(strategy.delay(forAttempt: attempt, randomSource: source) == 0.0)
+        }
+    }
+
+    @Test("exponentialWithJitter midpoint source returns exact midpoints")
+    func jitterMidpointReturnsExactMidpoints() {
+        let strategy = BackoffStrategy.exponentialWithJitter(base: 1.0, multiplier: 2.0, maxDelay: 8.0)
+        let source = RetryRandomSource(randomIn: { ($0.lowerBound + $0.upperBound) / 2 })
+
+        #expect(strategy.delay(forAttempt: 1, randomSource: source) == 0.5)
+        #expect(strategy.delay(forAttempt: 2, randomSource: source) == 1.0)
+        #expect(strategy.delay(forAttempt: 3, randomSource: source) == 2.0)
+        #expect(strategy.delay(forAttempt: 4, randomSource: source) == 4.0)
+    }
+
+    @Test("decorrelatedJitter draws from ranges derived from injected randomness")
+    func decorrelatedJitterRangesFollowFormula() {
+        let strategy = BackoffStrategy.decorrelatedJitter(base: 1.0, maxDelay: 100.0)
+        let ranges = SyncRecorder<ClosedRange<Double>>()
+        let source = RetryRandomSource(randomIn: { range in
+            ranges.record(range)
+            return range.upperBound
+        })
+
+        // previousSleep grows by a factor of 3 per attempt after the first
+        #expect(strategy.delay(forAttempt: 1, randomSource: source) == 3.0)
+        #expect(strategy.delay(forAttempt: 2, randomSource: source) == 3.0)
+        #expect(strategy.delay(forAttempt: 3, randomSource: source) == 9.0)
+        #expect(strategy.delay(forAttempt: 4, randomSource: source) == 27.0)
+        #expect(strategy.delay(forAttempt: 5, randomSource: source) == 81.0)
+
+        let recorded = ranges.all
+        #expect(recorded.count == 5)
+        #expect(recorded[0] == 1.0...3.0)
+        #expect(recorded[1] == 1.0...3.0)
+        #expect(recorded[2] == 1.0...9.0)
+        #expect(recorded[3] == 1.0...27.0)
+        #expect(recorded[4] == 1.0...81.0)
+    }
+
+    @Test("decorrelatedJitter lower-bound source returns base and respects maxDelay")
+    func decorrelatedJitterLowerBoundAndCap() {
+        let strategy = BackoffStrategy.decorrelatedJitter(base: 1.0, maxDelay: 10.0)
+        let source = RetryRandomSource(randomIn: { $0.lowerBound })
+
+        for attempt in 1...6 {
+            #expect(strategy.delay(forAttempt: attempt, randomSource: source) == 1.0)
+        }
+
+        // Upper bound past maxDelay is clamped by min(delay, maxDelay)
+        let cappedSource = RetryRandomSource(randomIn: { $0.upperBound })
+        #expect(strategy.delay(forAttempt: 4, randomSource: cappedSource) == 10.0)
+        #expect(strategy.delay(forAttempt: 5, randomSource: cappedSource) == 10.0)
+    }
+
+    @Test("Default random source draws within strategy bounds")
+    func defaultRandomSourceStaysWithinBounds() {
+        // GUD-001: the default source must keep drawing uniform samples from
+        // exactly the pre-change ranges.
+        let jitter = BackoffStrategy.exponentialWithJitter(base: 1.0, multiplier: 1.0, maxDelay: 1.0)
+        var jitterSamples: Set<Double> = []
+        for _ in 0..<500 {
+            let value = jitter.delay(forAttempt: 1)
+            #expect(value >= 0.0 && value <= 1.0)
+            jitterSamples.insert(value)
+        }
+
+        let decorrelated = BackoffStrategy.decorrelatedJitter(base: 1.0, maxDelay: 100.0)
+        var decorrelatedSamples: Set<Double> = []
+        for _ in 0..<500 {
+            let value = decorrelated.delay(forAttempt: 1)
+            #expect(value >= 1.0 && value <= 3.0)
+            decorrelatedSamples.insert(value)
+        }
+
+        // Continuous uniform sampling cannot realistically repeat one value
+        #expect(jitterSamples.count > 1)
+        #expect(decorrelatedSamples.count > 1)
+    }
+
+    @Test("Retry applies deterministic jittered backoff via injected sleep")
+    func retryAppliesDeterministicJitteredBackoff() async throws {
+        let counter = TestCounter()
+        let recorder = SleepRecorder()
+        let policy = RetryPolicy(
+            maxAttempts: 2,
+            backoff: .exponentialWithJitter(base: 1.0, multiplier: 2.0, maxDelay: 60.0)
+        )
+
+        let result = try await policy.execute(
+            {
+                let attempt = await counter.increment()
+                if attempt < 3 {
+                    throw TestError.transient
+                }
+                return "recovered"
+            },
+            sleep: { nanoseconds in
+                await recorder.record(nanoseconds)
+            },
+            randomSource: RetryRandomSource(randomIn: { $0.upperBound })
+        )
+
+        #expect(result == "recovered")
+        #expect(await counter.get() == 3)
+
+        // Attempt 1 sleeps 1s (jittered cap), attempt 2 sleeps 2s; zero real time passes
+        let sleeps = await recorder.getAll()
+        #expect(sleeps == [1_000_000_000, 2_000_000_000])
+    }
+
+    @Test("Zero-delay backoff skips the sleep handler entirely")
+    func zeroDelayBackoffSkipsSleep() async throws {
+        let counter = TestCounter()
+        let recorder = SleepRecorder()
+        let policy = RetryPolicy(maxAttempts: 2, backoff: .immediate)
+
+        do {
+            _ = try await policy.execute(
+                {
+                    _ = await counter.increment()
+                    throw TestError.transient
+                },
+                sleep: { nanoseconds in
+                    await recorder.record(nanoseconds)
+                }
+            )
+            Issue.record("Expected retriesExhausted")
+        } catch {}
+
+        #expect(await counter.get() == 3)
+        #expect(await recorder.getAll().isEmpty)
+    }
+
     // MARK: - shouldRetry Predicate Tests
 
     @Test("shouldRetry predicate controls retry behavior")

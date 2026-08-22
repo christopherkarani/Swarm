@@ -5,6 +5,46 @@
 
 import Foundation
 
+// MARK: - RateLimiterClock
+
+/// Time source driving token refill and acquisition waits for `RateLimiter`.
+///
+/// The default reads the continuous clock and sleeps with `Task.sleep`.
+/// Tests inject fixed or stepped instants plus a no-op (or clock-advancing)
+/// sleep to exercise refill math deterministically without real waiting.
+public struct RateLimiterClock: Sendable {
+    // MARK: Private
+
+    private let nowProvider: @Sendable () -> ContinuousClock.Instant
+    private let sleepHandler: @Sendable (Duration) async throws -> Void
+
+    // MARK: - Initialization
+
+    /// Creates a clock backed by custom instant and sleep handlers.
+    /// - Parameters:
+    ///   - now: Closure producing the current instant (default: `ContinuousClock.now`).
+    ///   - sleep: Async suspension handler (default: `Task.sleep(for:)`).
+    public init(
+        now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now },
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
+        self.nowProvider = now
+        self.sleepHandler = sleep
+    }
+
+    // MARK: - Public API
+
+    /// Returns the current instant.
+    public func now() -> ContinuousClock.Instant {
+        nowProvider()
+    }
+
+    /// Suspends for the requested duration.
+    public func sleep(for duration: Duration) async throws {
+        try await sleepHandler(duration)
+    }
+}
+
 // MARK: - RateLimiter
 
 /// Token bucket rate limiter for API calls
@@ -37,16 +77,31 @@ public actor RateLimiter {
     }
 
     /// Create rate limiter with requests per minute
-    public init(maxRequestsPerMinute: Int) {
+    /// - Parameters:
+    ///   - maxRequestsPerMinute: Requests allowed per minute.
+    ///   - clock: Time source for refill and acquisition waits (default: wall clock).
+    public init(
+        maxRequestsPerMinute: Int,
+        clock: RateLimiterClock = RateLimiterClock()
+    ) {
         let normalizedMaxRequests = max(1, maxRequestsPerMinute)
         maxTokens = normalizedMaxRequests
         refillRate = max(1.0 / 60.0, Double(normalizedMaxRequests) / 60.0)
         availableTokens = Double(normalizedMaxRequests)
-        lastRefillTime = .now
+        lastRefillTime = clock.now()
+        self.clock = clock
     }
 
     /// Create rate limiter with custom token bucket parameters
-    public init(maxTokens: Int, refillRatePerSecond: Double) {
+    /// - Parameters:
+    ///   - maxTokens: Bucket capacity.
+    ///   - refillRatePerSecond: Tokens added per second.
+    ///   - clock: Time source for refill and acquisition waits (default: wall clock).
+    public init(
+        maxTokens: Int,
+        refillRatePerSecond: Double,
+        clock: RateLimiterClock = RateLimiterClock()
+    ) {
         let normalizedMaxTokens = max(1, maxTokens)
         let normalizedRefillRate = refillRatePerSecond.isFinite && refillRatePerSecond > 0
             ? refillRatePerSecond
@@ -55,7 +110,8 @@ public actor RateLimiter {
         self.maxTokens = normalizedMaxTokens
         refillRate = normalizedRefillRate
         availableTokens = Double(normalizedMaxTokens)
-        lastRefillTime = .now
+        lastRefillTime = clock.now()
+        self.clock = clock
     }
 
     /// Acquire a token, waiting if necessary
@@ -66,7 +122,7 @@ public actor RateLimiter {
         while availableTokens < 1 {
             let rawWaitTime = (1 - availableTokens) / refillRate
             let waitTime = rawWaitTime.isFinite && rawWaitTime > 0 ? rawWaitTime : 0
-            try await Task.sleep(for: .seconds(waitTime))
+            try await clock.sleep(for: .seconds(waitTime))
             try Task.checkCancellation()
             refill()
         }
@@ -87,7 +143,7 @@ public actor RateLimiter {
     /// Reset the limiter to full capacity
     public func reset() {
         availableTokens = Double(maxTokens)
-        lastRefillTime = .now
+        lastRefillTime = clock.now()
     }
 
     // MARK: Private
@@ -97,8 +153,11 @@ public actor RateLimiter {
     private var availableTokens: Double
     private var lastRefillTime: ContinuousClock.Instant
 
+    /// Time source driving refill and acquisition waits.
+    private let clock: RateLimiterClock
+
     private func refill() {
-        let now = ContinuousClock.now
+        let now = clock.now()
         let elapsed = now - lastRefillTime
         let tokensToAdd = elapsed.seconds * refillRate
         availableTokens = min(Double(maxTokens), availableTokens + tokensToAdd)

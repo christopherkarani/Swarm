@@ -49,6 +49,38 @@ extension ResilienceError: CustomDebugStringConvertible {
     }
 }
 
+// MARK: - RetryRandomSource
+
+/// Randomness source used by jittered backoff strategies.
+///
+/// The default draws uniformly via `Double.random(in:)`. Tests inject a
+/// deterministic source to exercise jitter branches exactly.
+public struct RetryRandomSource: Sendable {
+    // MARK: Private
+
+    private let provider: @Sendable (ClosedRange<Double>) -> Double
+
+    // MARK: - Initialization
+
+    /// Creates a randomness source backed by a custom draw handler.
+    /// - Parameter randomIn: Closure drawing one uniform sample from the range
+    ///   (default: `Double.random(in:)`).
+    public init(
+        randomIn: @escaping @Sendable (ClosedRange<Double>) -> Double = { Double.random(in: $0) }
+    ) {
+        self.provider = randomIn
+    }
+
+    // MARK: - Public API
+
+    /// Draws one uniform sample from the given range.
+    /// - Parameter range: The closed range to draw from.
+    /// - Returns: The sampled value.
+    public func randomIn(_ range: ClosedRange<Double>) -> Double {
+        provider(range)
+    }
+}
+
 // MARK: - BackoffStrategy
 
 /// Strategies for calculating retry delays.
@@ -56,9 +88,15 @@ public enum BackoffStrategy: Sendable {
     // MARK: Public
 
     /// Calculate the delay for a given retry attempt.
-    /// - Parameter attempt: The attempt number (1-indexed).
+    /// - Parameters:
+    ///   - attempt: The attempt number (1-indexed).
+    ///   - randomSource: Source of randomness for jittered strategies
+    ///     (default: uniform `Double.random`).
     /// - Returns: The delay in seconds before the next retry.
-    public func delay(forAttempt attempt: Int) -> TimeInterval {
+    public func delay(
+        forAttempt attempt: Int,
+        randomSource: RetryRandomSource = RetryRandomSource()
+    ) -> TimeInterval {
         switch self {
         case let .fixed(delay):
             return delay
@@ -75,14 +113,14 @@ public enum BackoffStrategy: Sendable {
             let exponentialDelay = base * pow(multiplier, Double(attempt - 1))
             let cappedDelay = min(exponentialDelay, maxDelay)
             // Add random jitter between 0 and the calculated delay
-            let jitter = Double.random(in: 0...cappedDelay)
+            let jitter = randomSource.randomIn(0...cappedDelay)
             return jitter
 
         case let .decorrelatedJitter(base, maxDelay):
             // Decorrelated jitter: sleep = min(cap, random_between(base, sleep * 3))
             // For the first attempt, use base as the previous sleep
             let previousSleep = attempt == 1 ? base : base * pow(3.0, Double(attempt - 2))
-            let delay = Double.random(in: base...(previousSleep * 3.0))
+            let delay = randomSource.randomIn(base...(previousSleep * 3.0))
             return min(delay, maxDelay)
 
         case .immediate:
@@ -206,12 +244,19 @@ public struct RetryPolicy: Sendable {
     // MARK: - Execution
 
     /// Executes an operation with retry logic.
-    /// - Parameter operation: The async operation to execute.
+    /// - Parameters:
+    ///   - operation: The async operation to execute.
+    ///   - sleep: Suspension handler applied between retries, receiving the
+    ///     sanitized backoff delay in nanoseconds (default: `Task.sleep`).
+    ///   - randomSource: Randomness fed to jittered backoff strategies
+    ///     (default: uniform `Double.random`).
     /// - Returns: The result of the operation.
     /// - Throws: `ResilienceError.retriesExhausted` if all attempts fail, or the original error if retries are
     /// disabled.
     public func execute<T: Sendable>(
-        _ operation: @Sendable () async throws -> T
+        _ operation: @Sendable () async throws -> T,
+        sleep: @escaping @Sendable (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) },
+        randomSource: RetryRandomSource = RetryRandomSource()
     ) async throws -> T {
         var retryCount = 0
         var lastError: Error?
@@ -241,9 +286,9 @@ public struct RetryPolicy: Sendable {
                 await onRetry?(retryCount, error)
 
                 // Calculate and apply backoff delay
-                let delay = sanitizeBackoffDelay(backoff.delay(forAttempt: retryCount))
+                let delay = sanitizeBackoffDelay(backoff.delay(forAttempt: retryCount, randomSource: randomSource))
                 if delay > 0 {
-                    try await Task.sleep(nanoseconds: delay)
+                    try await sleep(delay)
                 }
             }
         }

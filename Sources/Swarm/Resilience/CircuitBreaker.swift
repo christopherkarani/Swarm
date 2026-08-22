@@ -5,6 +5,40 @@
 
 import Foundation
 
+// MARK: - BreakerClock
+
+/// Provides the current instant used by circuit breaker state transitions.
+///
+/// The default clock reads the wall clock. Tests inject fixed or stepped
+/// instants to drive open/half-open/closed transitions deterministically
+/// without real waiting.
+///
+/// Example:
+/// ```swift
+/// let clock = BreakerClock(now: { fixedDate })
+/// let breaker = CircuitBreaker(name: "test", clock: clock)
+/// ```
+public struct BreakerClock: Sendable {
+    // MARK: Private
+
+    private let provider: @Sendable () -> Date
+
+    // MARK: - Initialization
+
+    /// Creates a clock backed by a custom instant provider.
+    /// - Parameter now: Closure producing the current instant (default: `Date()`).
+    public init(now: @escaping @Sendable () -> Date = { Date() }) {
+        self.provider = now
+    }
+
+    // MARK: - Public API
+
+    /// Returns the current instant.
+    public func now() -> Date {
+        provider()
+    }
+}
+
 // MARK: - CircuitBreaker
 
 /// Actor-based circuit breaker for preventing cascading failures.
@@ -70,18 +104,21 @@ public actor CircuitBreaker {
     ///   - successThreshold: Number of consecutive successes to close from half-open (default: 2).
     ///   - resetTimeout: Time in seconds before attempting recovery (default: 60.0).
     ///   - halfOpenMaxRequests: Maximum concurrent requests in half-open state (default: 1).
+    ///   - clock: Time source for state transitions (default: wall clock).
     public init(
         name: String,
         failureThreshold: Int = 5,
         successThreshold: Int = 2,
         resetTimeout: TimeInterval = 60.0,
-        halfOpenMaxRequests: Int = 1
+        halfOpenMaxRequests: Int = 1,
+        clock: BreakerClock = BreakerClock()
     ) {
         self.name = name
         self.failureThreshold = max(1, failureThreshold)
         self.successThreshold = max(1, successThreshold)
         self.resetTimeout = max(0, resetTimeout)
         self.halfOpenMaxRequests = max(1, halfOpenMaxRequests)
+        self.clock = clock
     }
 
     // MARK: - Public API
@@ -132,7 +169,7 @@ public actor CircuitBreaker {
 
     /// Manually opens the circuit breaker.
     public func trip() async {
-        let openUntil = Date().addingTimeInterval(resetTimeout)
+        let openUntil = clock.now().addingTimeInterval(resetTimeout)
         state = .open(until: openUntil)
         consecutiveSuccesses = 0
     }
@@ -170,6 +207,9 @@ public actor CircuitBreaker {
 
     /// Timestamp of last failure.
     private var lastFailureTime: Date?
+
+    /// Time source driving state transitions.
+    private let clock: BreakerClock
 
     // MARK: - Private Helpers
 
@@ -211,18 +251,18 @@ public actor CircuitBreaker {
         totalFailures += 1
         consecutiveFailures += 1
         consecutiveSuccesses = 0
-        lastFailureTime = Date()
+        lastFailureTime = clock.now()
 
         switch state {
         case .closed:
             if consecutiveFailures >= failureThreshold {
                 // Transition to open
-                let openUntil = Date().addingTimeInterval(resetTimeout)
+                let openUntil = clock.now().addingTimeInterval(resetTimeout)
                 state = .open(until: openUntil)
             }
         case .halfOpen:
             // Any failure in half-open transitions back to open
-            let openUntil = Date().addingTimeInterval(resetTimeout)
+            let openUntil = clock.now().addingTimeInterval(resetTimeout)
             state = .open(until: openUntil)
         case .open:
             // Already open, no state change needed
@@ -236,7 +276,7 @@ public actor CircuitBreaker {
             return
         }
 
-        if Date() >= until {
+        if clock.now() >= until {
             // Transition to half-open
             state = .halfOpen
             consecutiveSuccesses = 0

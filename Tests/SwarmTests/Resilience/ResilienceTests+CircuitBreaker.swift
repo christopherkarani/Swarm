@@ -118,10 +118,13 @@ struct CircuitBreakerTests {
 
     @Test("Circuit transitions to halfOpen after timeout")
     func circuitTransitionsToHalfOpen() async throws {
+        let now = SteppedDate()
+        let start = now.current
         let breaker = CircuitBreaker(
             name: "test",
             failureThreshold: 2,
-            resetTimeout: 0.1 // Short timeout for testing
+            resetTimeout: 0.1,
+            clock: BreakerClock(now: { now.current })
         )
 
         // Open the circuit
@@ -135,21 +138,23 @@ struct CircuitBreakerTests {
             }
         }
 
-        // Verify circuit is open
+        // Verify circuit is open until exactly start + resetTimeout
         var state = await breaker.currentState()
-        if case .open = state {
-            // Good
-        } else {
-            Issue.record("Expected circuit to be open")
+        #expect(state == .open(until: start.addingTimeInterval(0.1)))
+
+        // Before the window elapses, requests are rejected and the circuit stays open
+        await #expect(throws: ResilienceError.self) {
+            _ = try await breaker.execute {
+                "too early"
+            }
         }
+        state = await breaker.currentState()
+        #expect(state == .open(until: start.addingTimeInterval(0.1)))
 
-        // Wait for timeout
-        try await Task.sleep(nanoseconds: 150_000_000) // 0.15 seconds
-
-        // Trigger state check by attempting execution
+        // Advance exactly to the boundary and trigger the state check via execution
+        now.advance(by: 0.1)
         do {
             _ = try await breaker.execute {
-                // This will check state and transition to half-open
                 "test"
             }
         } catch {
@@ -157,20 +162,22 @@ struct CircuitBreakerTests {
         }
 
         state = await breaker.currentState()
-        // Should be halfOpen or closed (if the test operation succeeded)
-        #expect(state == .halfOpen || state == .closed)
+        // One success counts toward successThreshold (2), so the circuit stays halfOpen
+        #expect(state == .halfOpen)
     }
 
     // MARK: - Circuit Closing Tests
 
     @Test("Circuit closes after successThreshold successes in halfOpen")
     func circuitClosesAfterSuccesses() async throws {
+        let now = SteppedDate()
         let breaker = CircuitBreaker(
             name: "test",
             failureThreshold: 2,
             successThreshold: 2,
             resetTimeout: 0.1,
-            halfOpenMaxRequests: 5
+            halfOpenMaxRequests: 5,
+            clock: BreakerClock(now: { now.current })
         )
 
         // Open the circuit
@@ -184,8 +191,8 @@ struct CircuitBreakerTests {
             }
         }
 
-        // Wait for timeout to transition to half-open
-        try await Task.sleep(nanoseconds: 150_000_000)
+        // Advance past the timeout to transition to half-open
+        now.advance(by: 0.15)
 
         // Execute successful operations to close circuit
         for _ in 1...2 {
@@ -200,11 +207,13 @@ struct CircuitBreakerTests {
 
     @Test("Single success in halfOpen keeps circuit halfOpen")
     func singleSuccessInHalfOpen() async throws {
+        let now = SteppedDate()
         let breaker = CircuitBreaker(
             name: "test",
             failureThreshold: 2,
             successThreshold: 3,
-            resetTimeout: 0.1
+            resetTimeout: 0.1,
+            clock: BreakerClock(now: { now.current })
         )
 
         // Open circuit
@@ -214,8 +223,8 @@ struct CircuitBreakerTests {
             } catch {}
         }
 
-        // Wait and transition to half-open
-        try await Task.sleep(nanoseconds: 150_000_000)
+        // Advance past the timeout to transition to half-open
+        now.advance(by: 0.15)
 
         // One success
         _ = try await breaker.execute { "success" }
@@ -323,11 +332,13 @@ struct CircuitBreakerTests {
 
     @Test("HalfOpen state limits concurrent requests")
     func halfOpenRequestLimit() async throws {
+        let now = SteppedDate()
         let breaker = CircuitBreaker(
             name: "test",
             failureThreshold: 2,
             resetTimeout: 0.1,
-            halfOpenMaxRequests: 1
+            halfOpenMaxRequests: 1,
+            clock: BreakerClock(now: { now.current })
         )
 
         // Open circuit
@@ -337,19 +348,23 @@ struct CircuitBreakerTests {
             } catch {}
         }
 
-        // Wait for half-open transition
-        try await Task.sleep(nanoseconds: 150_000_000)
+        // Advance past the timeout so the next request transitions to half-open
+        now.advance(by: 0.15)
 
-        // First request should be allowed
+        let (enteredStream, enteredContinuation) = AsyncStream<Void>.makeStream()
+        let (releaseStream, releaseContinuation) = AsyncStream<Void>.makeStream()
+
+        // First request should be allowed; hold it in flight inside half-open
         let task = Task { @Sendable in
             try await breaker.execute {
-                try await Task.sleep(nanoseconds: 100_000_000) // Slow operation
+                enteredContinuation.yield()
+                await releaseStream.first { _ in true }
                 return "success"
             }
         }
 
-        // Give it time to start
-        try await Task.sleep(nanoseconds: 10_000_000)
+        // Deterministically wait until the first request is in flight
+        await enteredStream.first { _ in true }
 
         // Second concurrent request should be blocked
         do {
@@ -365,8 +380,96 @@ struct CircuitBreakerTests {
             }
         }
 
-        // Clean up
-        _ = try await task.value
+        // Release the held request and let it succeed
+        releaseContinuation.yield()
+        let result = try await task.value
+        #expect(result == "success")
+
+        // One success counts toward successThreshold (default 2): still halfOpen
+        let state = await breaker.currentState()
+        #expect(state == .halfOpen)
+    }
+
+    // MARK: - Deterministic Time Tests
+
+    @Test("Manual trip computes open window from injected clock")
+    func manualTripUsesInjectedClock() async throws {
+        let now = SteppedDate(Date(timeIntervalSince1970: 5_000))
+        let start = now.current
+        let breaker = CircuitBreaker(
+            name: "test",
+            resetTimeout: 30.0,
+            clock: BreakerClock(now: { now.current })
+        )
+
+        await breaker.trip()
+
+        let state = await breaker.currentState()
+        #expect(state == .open(until: start.addingTimeInterval(30.0)))
+    }
+
+    @Test("Half-open probe failure re-opens from injected instant")
+    func halfOpenProbeFailureReopensFromInjectedNow() async throws {
+        let now = SteppedDate(Date(timeIntervalSince1970: 6_000))
+        let breaker = CircuitBreaker(
+            name: "test",
+            failureThreshold: 2,
+            resetTimeout: 10.0,
+            clock: BreakerClock(now: { now.current })
+        )
+
+        // Open the circuit
+        for _ in 1...2 {
+            do {
+                _ = try await breaker.execute { throw TestError.network }
+            } catch {}
+        }
+
+        // Advance past the window and fail the half-open probe
+        now.advance(by: 11.0)
+        let probedAt = now.current
+        do {
+            _ = try await breaker.execute { throw TestError.network }
+            Issue.record("Failing probe should rethrow its error")
+        } catch {}
+
+        // Re-open deadline must come from the injected now, not the wall clock
+        let state = await breaker.currentState()
+        #expect(state == .open(until: probedAt.addingTimeInterval(10.0)))
+    }
+
+    @Test("Boundary exactly at open deadline transitions to halfOpen")
+    func boundaryExactlyAtDeadlineTransitionsToHalfOpen() async throws {
+        let now = SteppedDate(Date(timeIntervalSince1970: 7_000))
+        let breaker = CircuitBreaker(
+            name: "test",
+            failureThreshold: 1,
+            resetTimeout: 5.0,
+            clock: BreakerClock(now: { now.current })
+        )
+
+        do {
+            _ = try await breaker.execute { throw TestError.network }
+        } catch {}
+        guard case let .open(until: deadline) = await breaker.currentState() else {
+            Issue.record("Expected open state after threshold failure")
+            return
+        }
+
+        // One tick below the deadline: still open
+        now.advance(by: 4.999)
+        await #expect(throws: ResilienceError.self) {
+            _ = try await breaker.execute { "rejected" }
+        }
+        let stillOpen = await breaker.currentState()
+        #expect(stillOpen == .open(until: deadline))
+
+        // Exactly at the deadline (`now >= until`): transition fires
+        now.advance(by: 0.001)
+        _ = try await breaker.execute { "probe" }
+        let state = await breaker.currentState()
+        // successThreshold defaults to 2, so a single success stays halfOpen
+        #expect(state == .halfOpen)
     }
 }
 
