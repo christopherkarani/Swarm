@@ -1305,7 +1305,6 @@ public struct Agent: AgentRuntime, Sendable {
                     messages: conversationHistory.map(\.inferenceMessage),
                     profile: configuration.effectiveContextProfile
                 )
-                let prompt = InferenceMessage.flattenPrompt(structuredMessages)
                 let useProviderOwnedToolLoop = provider.capabilities.contains(.providerOwnedToolLoop)
                 try AgentTurnKernel.requireOwnedLoopGate(
                     useProviderOwnedToolLoop: useProviderOwnedToolLoop,
@@ -1343,7 +1342,6 @@ public struct Agent: AgentRuntime, Sendable {
                     ) {
                         try await generateWithoutTools(
                             provider: provider,
-                            prompt: prompt,
                             messages: structuredMessages,
                             systemPrompt: systemMessage,
                             inferenceOptions: loopInferenceOptions,
@@ -1387,7 +1385,6 @@ public struct Agent: AgentRuntime, Sendable {
                         ) {
                             try await generateWithToolsStreaming(
                                 provider: provider,
-                                prompt: prompt,
                                 messages: structuredMessages,
                                 tools: toolSchemas,
                                 inferenceOptions: loopInferenceOptions,
@@ -1406,7 +1403,6 @@ public struct Agent: AgentRuntime, Sendable {
                         ) {
                             try await generateWithTools(
                                 provider: provider,
-                                prompt: prompt,
                                 messages: structuredMessages,
                                 tools: toolSchemas,
                                 inferenceOptions: loopInferenceOptions,
@@ -1636,14 +1632,13 @@ public struct Agent: AgentRuntime, Sendable {
     /// Generates a response without tool calling.
     private func generateWithoutTools(
         provider: any InferenceProvider,
-        prompt: String,
         messages: [InferenceMessage],
         systemPrompt: String,
         inferenceOptions: InferenceOptions,
         enableStreaming: Bool = false,
         observer: (any AgentObserver)?
     ) async throws -> FinalAssistantResponse {
-        await observer?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: [MemoryMessage.user(prompt)])
+        await observer?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
 
         let options = optionsWithMembraneRuntimeSettings(inferenceOptions)
         let content: String
@@ -2331,7 +2326,6 @@ public struct Agent: AgentRuntime, Sendable {
 
     private func generateWithTools(
         provider: any InferenceProvider,
-        prompt: String,
         messages: [InferenceMessage],
         tools: [ToolSchema],
         inferenceOptions: InferenceOptions,
@@ -2344,7 +2338,7 @@ public struct Agent: AgentRuntime, Sendable {
         options = optionsWithMembraneRuntimeSettings(options)
 
         // Notify observer of LLM start
-        await observer?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: [MemoryMessage.user(prompt)])
+        await observer?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
 
         let response = try await provider.generateWithToolCalls(
             messages: messages,
@@ -2368,7 +2362,6 @@ public struct Agent: AgentRuntime, Sendable {
 
     private func generateWithToolsStreaming(
         provider: any InferenceProvider,
-        prompt: String,
         messages: [InferenceMessage],
         tools: [ToolSchema],
         inferenceOptions: InferenceOptions,
@@ -2379,7 +2372,7 @@ public struct Agent: AgentRuntime, Sendable {
         var options = inferenceOptions
         options = optionsWithMembraneRuntimeSettings(options)
 
-        await observer?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: [MemoryMessage.user(prompt)])
+        await observer?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
 
         var content = ""
         content.reserveCapacity(1024)

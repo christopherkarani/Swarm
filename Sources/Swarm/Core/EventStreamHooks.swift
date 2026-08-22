@@ -92,7 +92,7 @@ internal struct EventStreamObserver: AgentObserver {
         continuation.yield(.handoff(.requested(from: fromName, to: toName, reason: nil)))
     }
 
-    func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async {
+    func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async {
         continuation.yield(.observation(.llmStarted(model: nil, promptTokens: nil)))
     }
 

@@ -908,7 +908,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 84 | func | public | AgentObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 89 | func | public | AgentObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 98 | func | public | AgentObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
-| 107 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async` |
+| 107 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async` |
 | 116 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async` |
 | 125 | func | public | AgentObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
 | 133 | func | public | AgentObserver.onThinking(context:agent:thought:) | `public func onThinking(context: AgentContext?, agent: any AgentRuntime, thought: String) async` |
@@ -923,7 +923,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 184 | func | public | AgentObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 187 | func | public | AgentObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 190 | func | public | AgentObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
-| 193 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [MemoryMessage]) async` |
+| 193 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async` |
 | 196 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context _: AgentContext?, agent _: any AgentRuntime, response _: String, usage _: TokenUsage?) async` |
 | 199 | func | public | AgentObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context _: AgentContext?, guardrailName _: String, guardrailType _: GuardrailType, result _: GuardrailResult) async` |
 | 202 | func | public | AgentObserver.onThinking(context:agent:thought:) | `public func onThinking(context _: AgentContext?, agent _: any AgentRuntime, thought _: String) async` |
@@ -940,7 +940,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 300 | func | public | CompositeObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 310 | func | public | CompositeObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 320 | func | public | CompositeObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
-| 330 | func | public | CompositeObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async` |
+| 330 | func | public | CompositeObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async` |
 | 340 | func | public | CompositeObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async` |
 | 350 | func | public | CompositeObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
 | 360 | func | public | CompositeObserver.onThinking(context:agent:thought:) | `public func onThinking(context: AgentContext?, agent: any AgentRuntime, thought: String) async` |
@@ -956,7 +956,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 475 | func | public | LoggingObserver.onHandoff(context:fromAgent:toAgent:) | `public func onHandoff(context: AgentContext?, fromAgent: any AgentRuntime, toAgent: any AgentRuntime) async` |
 | 486 | func | public | LoggingObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async` |
 | 495 | func | public | LoggingObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent _: any AgentRuntime, result: ToolResult) async` |
-| 507 | func | public | LoggingObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [MemoryMessage]) async` |
+| 507 | func | public | LoggingObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [InferenceMessage]) async` |
 | 516 | func | public | LoggingObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent _: any AgentRuntime, response _: String, usage: TokenUsage?) async` |
 | 530 | func | public | LoggingObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
 | 540 | func | public | LoggingObserver.onThinking(context:agent:thought:) | `public func onThinking(context: AgentContext?, agent _: any AgentRuntime, thought: String) async` |

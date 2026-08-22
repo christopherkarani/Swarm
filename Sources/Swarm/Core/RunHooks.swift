@@ -103,8 +103,8 @@ public protocol AgentObserver: Sendable {
     ///   - context: Optional agent context for orchestration scenarios.
     ///   - agent: The agent making the LLM call.
     ///   - systemPrompt: The system prompt, if any.
-    ///   - inputMessages: The input messages sent to the LLM.
-    func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async
+    ///   - inputMessages: The role-tagged messages sent to the provider for this turn.
+    func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async
 
     /// Called when an LLM inference completes.
     ///
@@ -203,7 +203,7 @@ public extension AgentObserver {
     func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async {}
 
     /// Default no-op implementation for LLM start.
-    func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [MemoryMessage]) async {}
+    func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async {}
 
     /// Default no-op implementation for LLM end.
     func onLLMEnd(context _: AgentContext?, agent _: any AgentRuntime, response _: String, usage _: TokenUsage?) async {}
@@ -343,7 +343,7 @@ package struct CompositeObserver: AgentObserver {
         }
     }
 
-    package func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async {
+    package func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async {
         await withTaskGroup(of: Void.self) { group in
             for hook in observers {
                 group.addTask {
@@ -530,7 +530,7 @@ public struct LoggingObserver: AgentObserver {
         Log.agents.info("Tool execution \(status)\(contextId) - duration: \(result.duration)")
     }
 
-    public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [MemoryMessage]) async {
+    public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [InferenceMessage]) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"
         } else {
