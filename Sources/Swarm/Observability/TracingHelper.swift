@@ -106,10 +106,10 @@ public struct TracingHelper: Sendable {
                     "output_length": .int(result.output.count)
                 ]
                 if let usage = tokenUsage {
-                    metadata["input_tokens"] = .int(usage.inputTokens)
-                    metadata["output_tokens"] = .int(usage.outputTokens)
-                    metadata["total_tokens"] = .int(usage.totalTokens)
-                    metadata["tokenCount"] = .int(usage.totalTokens)
+                    metadata[.inputTokens] = usage.inputTokens
+                    metadata[.outputTokens] = usage.outputTokens
+                    metadata[.totalTokens] = usage.totalTokens
+                    metadata[.legacyTokenCount] = usage.totalTokens
                 }
                 return metadata
             }(),
