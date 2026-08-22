@@ -277,6 +277,20 @@ struct ContextStoreUnificationTests {
         #expect(await child.getTyped(ContextKey<Int>("recency_name")) == 1)
     }
 
+    @Test("store-level merge re-stamps incoming slots in source-recency order")
+    func storeMergeRestampsInSourceRecencyOrder() {
+        var source = ContextSlotStore()
+        source.setValuePayload(ContextKey<Int>("recency_name"), payload: .int(1))
+        source.setValuePayload(ContextKey<String>("recency_name"), payload: .string("newest"))
+
+        var merged = ContextSlotStore()
+        merged.mergeValueSlots(from: source, overwrite: false)
+
+        #expect(merged.projectedValues()["recency_name"] == .string("newest"))
+        #expect(merged.valuePayload(for: ContextKey<Int>("recency_name")) == .int(1))
+        #expect(merged.valuePayload(for: ContextKey<String>("recency_name")) == .string("newest"))
+    }
+
     // MARK: - Copy Behavior
 
     @Test("copy carries typed values and lands additionalValues in the raw namespace")
