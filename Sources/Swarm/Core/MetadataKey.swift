@@ -172,9 +172,14 @@ public extension Dictionary where Key == String, Value == SendableValue {
     }
 }
 
-public extension Dictionary where Key == String, Value == String {
+extension Dictionary where Key == String, Value == String {
     /// Reads the value stored under the key's stable name from a plain string
     /// dictionary, such as graph-runtime stream event payloads.
+    ///
+    /// Internal because the only keys defined for these dictionaries
+    /// (`StreamEventMetadata`) are internal module plumbing; promote this
+    /// accessor alongside that enum if external producers ever need typed
+    /// access to stream payloads.
     subscript(key: MetadataKey<String>) -> String? {
         get { self[key.name] }
         set { self[key.name] = newValue }
