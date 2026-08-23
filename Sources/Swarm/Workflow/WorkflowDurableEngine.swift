@@ -26,6 +26,11 @@ enum WorkflowDurableInput: Sendable {
 /// channel) because completion and repeat-boundary evaluation happen in later
 /// supersteps than the last step write; the snapshot must survive the store
 /// round-trip so resumed runs return and evaluate the full ``AgentResult``.
+///
+/// Cursor *values* cannot be forbidden structurally (`Int` associated values),
+/// so the non-negative invariant is enforced once at the domain-read boundary
+/// in ``workflowNode(_:)-swift.func``, where every resume — migrated legacy or
+/// native — crosses back into engine logic.
 enum WorkflowDurablePhase: Codable, Sendable, Equatable {
     /// The run is still executing. `stepCursor` indexes the next step to run;
     /// `iterationCursor` counts completed passes of a repeating workflow;
@@ -283,6 +288,17 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
     let phase = try input.store.get(WorkflowDurableSchema.phaseKey)
     guard case .running(let stepCursor, let iterationCursor, let lastResult) = phase else {
         return HiveNodeOutput(next: .end)
+    }
+
+    // Cursors are untrusted persisted state: every engine-written cursor is
+    // non-negative by construction, so a negative value can only come from a
+    // tampered or truncated checkpoint. Fail the resume with a typed error
+    // instead of trapping on `steps[stepCursor]` below.
+    guard stepCursor >= 0, iterationCursor >= 0 else {
+        throw WorkflowError.invalidWorkflow(
+            reason: "durable checkpoint carries negative cursors "
+                + "(stepCursor: \(stepCursor), iterationCursor: \(iterationCursor))"
+        )
     }
 
     let currentInput = try input.store.get(WorkflowDurableSchema.currentInputKey)

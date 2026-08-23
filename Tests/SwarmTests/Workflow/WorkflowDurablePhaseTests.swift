@@ -284,6 +284,70 @@ struct WorkflowDurablePhaseTests {
         #expect(counts.isEmpty)
     }
 
+    @Test("tampered negative stepCursor fails resume with a typed error instead of trapping")
+    func negativeStepCursorFailsResumeWithTypedError() async throws {
+        let backend = WorkflowInMemoryCheckpointStore()
+        let checkpointing = WorkflowCheckpointing(backend: backend)
+        let log = ExecutionLog()
+        let workflow = makeTwoStepWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-legacy-negative-step")
+
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-negative-step", signature: workflow.workflowSignature) {
+            $0["workflow.completed"] = encodedJSON(false)
+            $0["workflow.stepCursor"] = encodedJSON(-1)
+            $0["workflow.iterationCursor"] = encodedJSON(0)
+            $0["workflow.lastResult"] = encodedJSON(Optional<WorkflowResultSnapshot>.none)
+            $0["workflow.currentInput"] = encodedJSON("seed")
+        }
+        try await backend.save(fixture)
+
+        do {
+            _ = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-negative-step")
+            Issue.record("expected invalid-workflow error")
+        } catch let error as WorkflowError {
+            guard case .invalidWorkflow(let reason) = error else {
+                Issue.record("unexpected WorkflowError \(error)")
+                return
+            }
+            #expect(reason.contains("negative cursors"))
+            #expect(reason.contains("stepCursor: -1"))
+        }
+
+        // The tampered cursor must never reach the step table as a subscript.
+        let counts = await log.counts
+        #expect(counts.isEmpty)
+    }
+
+    @Test("tampered negative iterationCursor fails resume with a typed error")
+    func negativeIterationCursorFailsResumeWithTypedError() async throws {
+        let backend = WorkflowInMemoryCheckpointStore()
+        let checkpointing = WorkflowCheckpointing(backend: backend)
+        let log = ExecutionLog()
+        let workflow = makeTwoStepWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-legacy-negative-iteration")
+
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-negative-iteration", signature: workflow.workflowSignature) {
+            $0["workflow.completed"] = encodedJSON(false)
+            $0["workflow.stepCursor"] = encodedJSON(0)
+            $0["workflow.iterationCursor"] = encodedJSON(-3)
+            $0["workflow.lastResult"] = encodedJSON(Optional<WorkflowResultSnapshot>.none)
+            $0["workflow.currentInput"] = encodedJSON("seed")
+        }
+        try await backend.save(fixture)
+
+        do {
+            _ = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-negative-iteration")
+            Issue.record("expected invalid-workflow error")
+        } catch let error as WorkflowError {
+            guard case .invalidWorkflow(let reason) = error else {
+                Issue.record("unexpected WorkflowError \(error)")
+                return
+            }
+            #expect(reason.contains("iterationCursor: -3"))
+        }
+
+        let counts = await log.counts
+        #expect(counts.isEmpty)
+    }
+
     // MARK: - Result fidelity
 
     @Test("repeat conditions receive full agent results in durable runs")
