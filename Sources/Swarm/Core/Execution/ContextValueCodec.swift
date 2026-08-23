@@ -14,6 +14,13 @@ import Foundation
 /// `Codable` machinery alone; no runtime casting decides value identity. The
 /// encoder/decoder pair pins `Date` to seconds-since-1970, which keeps typed
 /// reads of timestamp payloads exact.
+///
+/// Do not substitute ``SendableValue/init(encoding:)`` /
+/// ``SendableValue/decode()`` here: both decide value identity with runtime
+/// casts and carry no `Date` strategy, which reintroduces silent wrong-type
+/// reads and timestamp drift. JSON is the chosen serialization; if another
+/// format ever becomes a requirement, replace this enum wholesale rather
+/// than threading an injected strategy through `AgentContext`.
 enum ContextValueCodec {
     // MARK: - Encoding
 

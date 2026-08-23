@@ -12,6 +12,12 @@ import Foundation
 /// `ContextKey` provides compile-time type safety for context values,
 /// eliminating runtime type errors when storing and retrieving data.
 ///
+/// Typed storage is a namespace separate from untyped string storage:
+/// unlike ``MetadataKey`` — whose entries remain visible to raw-string
+/// dictionary access — a value written through
+/// ``AgentContext/setTyped(_:value:)`` is readable only through
+/// ``AgentContext/getTyped(_:)``, not by its string name.
+///
 /// Example:
 /// ```swift
 /// // Define typed keys
