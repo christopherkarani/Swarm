@@ -150,7 +150,14 @@ public actor ResponseTracker {
     /// // Unlimited sessions (use with caution in production)
     /// let unlimitedTracker = ResponseTracker(maxSessions: nil)
     /// ```
-    public init(maxHistorySize: Int = 100, maxSessions: Int? = 1000) {
+    ///   - now: Clock used for time-window decisions (e.g. session cleanup).
+    ///     Defaults to the module's shared wall clock. Tests inject a fake
+    ///     clock so window boundaries flip without `Task.sleep`.
+    public init(
+        maxHistorySize: Int = 100,
+        maxSessions: Int? = 1000,
+        now: @escaping @Sendable () -> Date = { TurnEnvironment.live.now() }
+    ) {
         if maxHistorySize < 1 {
             Log.agents.warning("ResponseTracker: maxHistorySize \(maxHistorySize) must be >= 1; using 1")
         }
@@ -163,6 +170,7 @@ public actor ResponseTracker {
         } else {
             nil
         }
+        self.now = now
     }
 
     // MARK: - Recording
@@ -466,7 +474,7 @@ public actor ResponseTracker {
     /// ```
     @discardableResult
     public func removeSessions(notAccessedWithin interval: TimeInterval) -> Int {
-        let threshold = Date().addingTimeInterval(-interval)
+        let threshold = now().addingTimeInterval(-interval)
         return removeSessions(lastAccessedBefore: threshold)
     }
 
@@ -547,6 +555,9 @@ public actor ResponseTracker {
     // MARK: Private
 
     // MARK: - Private Properties
+
+    /// Clock used for time-window decisions (session cleanup). Injectable for tests.
+    private let now: @Sendable () -> Date
 
     /// Storage for response history keyed by session ID.
     private var responseHistory: [String: [AgentResponse]] = [:]

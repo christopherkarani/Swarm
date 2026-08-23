@@ -181,8 +181,8 @@ enum SwarmTranscriptCodec {
     static func encodeMessage(
         role: MemoryMessage.Role,
         content: String,
-        timestamp: Date = Date(),
-        messageID: UUID = UUID(),
+        timestamp: Date = TurnEnvironment.live.now(),
+        messageID: UUID = TurnEnvironment.live.newUUID(),
         metadata: [String: String] = [:],
         toolName: String? = nil,
         toolCallID: String? = nil,

@@ -150,7 +150,7 @@ public struct ToolExecutionResult: Sendable {
         arguments: [String: SendableValue],
         result: Result<SendableValue, Error>,
         duration: Duration,
-        timestamp: Date = Date()
+        timestamp: Date = TurnEnvironment.live.now()
     ) {
         self.toolName = toolName
         self.arguments = arguments
@@ -173,7 +173,7 @@ public struct ToolExecutionResult: Sendable {
         arguments: [String: SendableValue],
         value: SendableValue,
         duration: Duration,
-        timestamp: Date = Date()
+        timestamp: Date = TurnEnvironment.live.now()
     ) -> ToolExecutionResult {
         ToolExecutionResult(
             toolName: toolName,
@@ -198,7 +198,7 @@ public struct ToolExecutionResult: Sendable {
         arguments: [String: SendableValue],
         error: Error,
         duration: Duration,
-        timestamp: Date = Date()
+        timestamp: Date = TurnEnvironment.live.now()
     ) -> ToolExecutionResult {
         ToolExecutionResult(
             toolName: toolName,

@@ -207,11 +207,11 @@ public struct ToolCall: Sendable, Equatable, Identifiable, Codable {
     ///   - arguments: Arguments for the tool.
     ///   - timestamp: When the call was made. Default: now
     public init(
-        id: UUID = UUID(),
+        id: UUID = TurnEnvironment.live.newUUID(),
         providerCallId: String? = nil,
         toolName: String,
         arguments: [String: SendableValue] = [:],
-        timestamp: Date = Date()
+        timestamp: Date = TurnEnvironment.live.now()
     ) {
         self.id = id
         self.providerCallId = providerCallId

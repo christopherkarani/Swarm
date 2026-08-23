@@ -129,8 +129,8 @@ public actor AgentContext {
     ///   - initialValues: Optional initial key-value pairs. Default: [:]
     public init(input: String, initialValues: [String: SendableValue] = [:]) {
         originalInput = input
-        executionId = UUID()
-        createdAt = Date()
+        executionId = TurnEnvironment.live.newUUID()
+        createdAt = TurnEnvironment.live.now()
         values = initialValues
         messages = []
         executionPath = []
