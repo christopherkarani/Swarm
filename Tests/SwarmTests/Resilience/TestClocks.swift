@@ -63,8 +63,10 @@ final class VirtualClock: SwarmClock, @unchecked Sendable {
     }
 
     func sleep(nanoseconds duration: UInt64) async throws {
-        lock.withLock { sleeps.append(duration) }
-        advance(by: duration)
+        lock.withLock {
+            sleeps.append(duration)
+            currentNanoseconds += duration
+        }
     }
 }
 
@@ -163,6 +165,27 @@ private struct SeededRandomGeneratorTests {
         #expect(left == right)
     }
 
+    @Test("Matches published SplitMix64 reference vectors")
+    func matchesPublishedSplitMix64Vectors() {
+        var seedZero = SeededRandomGenerator(seed: 0)
+        #expect([
+            seedZero.next(), seedZero.next(), seedZero.next(),
+        ] == [
+            0xE220_A839_7B1D_CDAF,
+            0x6E78_9E6A_A1B9_65F4,
+            0x06C4_5D18_8009_454F,
+        ])
+
+        var seed42 = SeededRandomGenerator(seed: 42)
+        #expect([
+            seed42.next(), seed42.next(), seed42.next(),
+        ] == [
+            13_679_457_532_755_275_413,
+            2_949_826_092_126_892_291,
+            5_139_283_748_462_763_858,
+        ])
+    }
+
     @Test("Different seeds diverge")
     func differentSeedsDiverge() {
         var one = SeededRandomGenerator(seed: 1)
@@ -196,6 +219,21 @@ private struct DurationNanosecondConversionTests {
     func positiveConversionIsExact() {
         #expect((.seconds(1) + .nanoseconds(1)).swarmNanoseconds == 1_000_000_001)
         #expect(Duration.milliseconds(250).swarmNanoseconds == 250_000_000)
+    }
+
+    @Test("Exact integer math survives the 2^53 nanosecond Double cliff")
+    func conversionIsExactPastDoublePrecision() {
+        // 2^53 ns + 1: the previous Double-based conversion truncated to 2^53.
+        #expect(
+            Duration.nanoseconds(9_007_199_254_740_993).swarmNanoseconds
+                == 9_007_199_254_740_993
+        )
+        // Exact just below saturation: exercises the addition-overflow guard.
+        #expect(
+            Duration.seconds(18_446_744_073).swarmNanoseconds == 18_446_744_073_000_000_000
+        )
+        // Seconds product beyond UInt64.max: exercises the multiply-overflow branch.
+        #expect(Duration.seconds(Int64.max - 123).swarmNanoseconds == UInt64.max)
     }
 
     @Test("Negative and zero durations clamp to zero nanoseconds")
