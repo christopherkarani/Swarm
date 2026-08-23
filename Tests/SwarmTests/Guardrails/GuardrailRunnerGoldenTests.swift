@@ -44,6 +44,47 @@ private actor RecordingObserver: AgentObserver {
 
 private struct KaboomError: Error {}
 
+/// One-shot gate used to suspend validations at a deterministic point.
+private final class ReleaseGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var released = false
+
+    func waitForRelease() async {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if released {
+                lock.unlock()
+                continuation.resume()
+            } else {
+                waiters.append(continuation)
+                lock.unlock()
+            }
+        }
+    }
+
+    func releaseAll() {
+        lock.lock()
+        released = true
+        let waiters = waiters
+        self.waiters = []
+        lock.unlock()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+}
+
+private func waitForEntries(_ log: ExecutionLog, count: Int) async throws {
+    for _ in 0..<2500 {
+        if await log.snapshot().count >= count {
+            return
+        }
+        try await Task.sleep(for: .milliseconds(2))
+    }
+    Issue.record("Timed out waiting for \(count) guardrail entries")
+}
+
 // MARK: - Sequential Golden Tests
 
 @Suite("Guardrail Runner Sequential Goldens")
@@ -195,6 +236,40 @@ struct GuardrailRunnerSequentialGoldens {
                 message: "too big",
                 outputInfo: nil
             ))
+        }
+    }
+
+    @Test("Sequential mid-run cancellation aborts remaining guardrails with raw CancellationError")
+    func sequentialMidRunCancellation() async throws {
+        let gate = ReleaseGate()
+        let log = ExecutionLog()
+        let first = InputGuard("first_waiter") { _, _ in
+            await log.record("first_waiter")
+            await gate.waitForRelease()
+            return .passed(message: "first ok")
+        }
+        let second = InputGuard("second_never") { _, _ in
+            await log.record("second_never")
+            return .passed(message: "second ok")
+        }
+        let runner = GuardrailRunner(
+            configuration: GuardrailRunnerConfiguration(stopOnFirstTripwire: true, timeout: nil)
+        )
+
+        let task = Task {
+            try await runner.runInputGuardrails([first, second], input: "x", context: nil)
+        }
+        try await waitForEntries(log, count: 1)
+        task.cancel()
+        gate.releaseAll()
+
+        do {
+            _ = try await task.value
+            Issue.record("Expected CancellationError")
+        } catch is CancellationError {
+            #expect(await log.snapshot() == ["first_waiter"])
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
         }
     }
 
@@ -393,6 +468,34 @@ struct GuardrailRunnerParallelGoldens {
 
         let events = await observer.events
         #expect(events == [RecordingObserver.Event(name: "deny_all", type: .toolInput, message: "denied")])
+    }
+
+    @Test("Parallel mid-flight cancellation lets spawned guardrails finish and returns ordered results")
+    func parallelMidFlightCancellationStillCompletes() async throws {
+        let gate = ReleaseGate()
+        let log = ExecutionLog()
+        let slow = InputGuard("slow_waiter") { _, _ in
+            await log.record("slow_waiter")
+            await gate.waitForRelease()
+            return .passed(message: "survived")
+        }
+        let quick = InputGuard("quick_pass") { _, _ in
+            await log.record("quick_pass")
+            return .passed(message: "quick ok")
+        }
+        let runner = GuardrailRunner(
+            configuration: GuardrailRunnerConfiguration(runInParallel: true, timeout: nil)
+        )
+
+        let task = Task {
+            try await runner.runInputGuardrails([slow, quick], input: "x", context: nil)
+        }
+        try await waitForEntries(log, count: 2)
+        task.cancel()
+        gate.releaseAll()
+
+        let results = try await task.value
+        #expect(results.map(\.guardrailName) == ["slow_waiter", "quick_pass"])
     }
 
     @Test("Parallel non-GuardrailError is wrapped as executionFailed for every kind")
