@@ -656,6 +656,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 43 | var | public | AnyHandoffConfiguration.nestHandoffHistory | `public let nestHandoffHistory: Bool` |
 | 50 | func | public | AnyHandoffConfiguration.init(_:) | `public init(_ configuration: HandoffConfiguration<some AgentRuntime>)` |
 | 70 | func | public | AnyHandoffConfiguration.init(targetAgent:toolNameOverride:toolDescription:onTransfer:transform:when:nestHandoffHistory:) | `public init(targetAgent: any AgentRuntime, toolNameOverride: String? = nil, toolDescription: String? = nil, onTransfer: OnTransferCallback? = nil, transform: TransformCallback? = nil, when: WhenCallback? = nil, nestHandoffHistory: Bool = false)` |
+| 93 | var | public | AnyHandoffConfiguration.effectiveToolName | `public var effectiveToolName: String { get }` |
+| 102 | var | public | AnyHandoffConfiguration.effectiveToolDescription | `public var effectiveToolDescription: String { get }` |
 
 ### Core/Handoff/HandoffConfiguration.swift
 
