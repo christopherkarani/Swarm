@@ -103,6 +103,9 @@ struct MetadataKeyTests {
         #expect(StreamEventMetadata.success.name == "success")
         #expect(StreamEventMetadata.toolCallID.name == "toolCallID")
         #expect(StreamEventMetadata.output.name == "output")
+
+        // The legacy writer constant stays tied to the canonical typed key.
+        #expect(RuntimeMetadata.runtimeEngineKey == MetadataKey<String>.runtimeEngine.name)
     }
 
     @Test("typed write overwrites and nil assignment removes the entry")
@@ -169,6 +172,29 @@ struct MetadataKeyTests {
         seen.insert(MetadataKey<Int>("input_tokens"))
 
         #expect(seen.count == 1)
+    }
+
+    // MARK: - Cross-Type Collision Tests
+
+    @Test("same-name keys with different value types share storage and mismatched reads are nil")
+    func sameNameDifferentValueTypeCollision() {
+        var metadata: [String: SendableValue] = [:]
+        let boolView = MetadataKey<Bool>("input_tokens")
+
+        // The wrongly-typed key writes through the same wire name.
+        metadata[boolView] = true
+        #expect(metadata["input_tokens"] == .bool(true))
+
+        // The canonical Int key reads the non-int payload as nil, not a
+        // coerced or defaulted value.
+        #expect(metadata[.inputTokens] == nil)
+
+        // A typed write through the canonical key overwrites the colliding
+        // entry, after which the Bool view's read is nil.
+        metadata[.inputTokens] = 9
+        #expect(metadata["input_tokens"] == .int(9))
+        #expect(metadata[.inputTokens] == 9)
+        #expect(metadata[boolView] == nil)
     }
 }
 
