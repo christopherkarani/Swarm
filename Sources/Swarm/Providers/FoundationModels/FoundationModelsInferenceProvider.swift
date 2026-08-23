@@ -282,34 +282,10 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         return try await generateWithToolCalls(messages: messages, tools: tools, options: options)
     }
 
-    public func streamWithToolCalls(
-        messages: [InferenceMessage],
-        tools: [ToolSchema],
-        options: InferenceOptions,
-        toolExecutor: ToolCallExecutor?
-    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        StreamHelper.makeTrackedStream { continuation in
-            let response = try await self.generateWithToolCalls(
-                messages: messages,
-                tools: tools,
-                options: options,
-                toolExecutor: toolExecutor
-            )
-            if let content = response.content, !content.isEmpty {
-                continuation.yield(.outputChunk(content))
-            }
-            if !response.toolCalls.isEmpty {
-                continuation.yield(.toolCallsCompleted(response.toolCalls))
-            }
-            if let usage = response.usage {
-                continuation.yield(.usage(usage))
-            }
-            if !response.transcriptMessages.isEmpty {
-                continuation.yield(.finishedTurn(response))
-            }
-            continuation.finish()
-        }
-    }
+    // No `streamWithToolCalls` override: Foundation Models has no native
+    // tool-call stream, so the protocol default's shared finished-turn emitter
+    // is used verbatim. Its closure dispatches into
+    // `generateWithToolCalls(messages:tools:options:toolExecutor:)` below.
 
     public func generateWithToolCalls(
         messages: [InferenceMessage],
