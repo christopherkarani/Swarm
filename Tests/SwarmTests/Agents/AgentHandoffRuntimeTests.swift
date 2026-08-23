@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Agent handoff runtime")
 struct AgentHandoffRuntimeTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Disabled handoffs are not advertised as tools")
     func disabledHandoffsAreNotAdvertisedAsTools() async throws {
         let provider = MockInferenceProvider()

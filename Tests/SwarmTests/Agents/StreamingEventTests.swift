@@ -9,6 +9,8 @@ import Testing
 
 @Suite("Streaming Event Tests")
 struct StreamingEventTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     
     @Test("Agent stream emits tool call events")
     func reactAgentStreamEvents() async throws {

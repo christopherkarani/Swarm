@@ -8,6 +8,8 @@ import Testing
 
 @Suite("AgentResult.runtimeEngine")
 struct AgentResultRuntimeEngineTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
 
     @Test("returns nil when metadata has no runtime.engine key")
     func returnsNilWhenAbsent() {

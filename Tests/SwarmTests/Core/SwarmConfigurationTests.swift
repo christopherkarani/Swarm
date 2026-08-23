@@ -6,6 +6,8 @@ import Testing
 
 @Suite("SwarmConfiguration", .serialized)
 struct SwarmConfigurationTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     // MARK: Internal
 
     @Test("configure sets global provider")

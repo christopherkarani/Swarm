@@ -8,6 +8,8 @@ import Testing
 /// 2. `DefaultMemorySessionTracker.beginRun` honors cancellation.
 @Suite("Codex Review Fixes")
 struct AgentCodexReviewFixesTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
 
     // MARK: - Fix #1: private resolver consults Swarm.defaultProvider
 

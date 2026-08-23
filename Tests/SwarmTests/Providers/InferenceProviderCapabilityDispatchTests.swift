@@ -4,6 +4,8 @@ import Testing
 
 @Suite("InferenceProvider capability dispatch")
 struct InferenceProviderCapabilityDispatchTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Agent uses InferenceProvider.promptTokenCounter instead of leftover protocol identity")
     func agentUsesProviderPromptTokenCounterProperty() async throws {
         let providerCounter = RecordingPromptTokenCounter()

@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Agent Live Tool Call Streaming")
 struct AgentLiveToolCallStreamingTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Emits toolCallPartial before toolCallStarted when provider streams tool-call assembly")
     func emitsPartialUpdatesBeforeToolExecution() async throws {
         struct EchoTool: AnyJSONTool, Sendable {

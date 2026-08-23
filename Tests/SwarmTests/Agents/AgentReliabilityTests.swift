@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Agent Reliability Tests")
 struct AgentReliabilityTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Agent.cancel() terminates in-flight run promptly")
     func agentInstanceCancelTerminatesInflightRun() async throws {
         let provider = HangingInferenceProvider(delay: .seconds(2))

@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Agent Defaults")
 struct AgentDefaultInferenceProviderTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("privacyRequired does not route through an explicit non-private provider")
     func privacyRequiredSkipsExplicitNonPrivateProvider() async throws {
         try await withSwarmConfigurationIsolation {

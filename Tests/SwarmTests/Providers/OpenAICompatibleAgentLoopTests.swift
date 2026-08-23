@@ -8,6 +8,8 @@ import FoundationNetworking
 
 @Suite("OpenAI-compatible Linux agent loop", .serialized)
 struct OpenAICompatibleAgentLoopTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Agent run executes tools against an OpenAI-compatible fixture")
     func agentRunExecutesTools() async throws {
         OpenAICompatibleURLProtocol.reset()

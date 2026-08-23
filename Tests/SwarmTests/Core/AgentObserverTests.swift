@@ -3,6 +3,8 @@ import Testing
 
 @Suite("AgentObserver")
 struct AgentObserverTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("AgentObserver conformance works")
     func observerConformance() async throws {
         struct TestObserver: AgentObserver {

@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Agent Token Usage Population")
 struct AgentTokenUsageTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Provider-reported usage reaches AgentResult, onLLMEnd, and MetricsCollector")
     func providerUsageReachesResultObserverAndMetrics() async throws {
         let expected = TokenUsage(inputTokens: 11, outputTokens: 7)

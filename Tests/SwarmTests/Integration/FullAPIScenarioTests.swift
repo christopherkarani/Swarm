@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Full API Scenarios")
 struct FullAPIScenarioTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Scenario 1: simple agent with no tools")
     func helloWorld() async throws {
         let mock = MockInferenceProvider()

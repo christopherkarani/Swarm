@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Agent Memory Hooks")
 struct AgentMemoryHooksTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Session run with Memory-only store is a lifecycle no-op")
     func memoryWithoutLifecycleIsSessionNoOp() async throws {
         let memory = ConversationMemory()

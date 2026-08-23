@@ -38,6 +38,8 @@ private struct PongTool: Tool {
 
 @Suite("Agent V3 Modifiers")
 struct AgentModifiersTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
 
     // MARK: - Canonical Init
 

@@ -8,6 +8,8 @@ import Testing
 /// than chasing an unrelated scenario test.
 @Suite("Workflow Core")
 struct WorkflowCoreTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
 
     // MARK: - Sequential
 

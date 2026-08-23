@@ -3,6 +3,8 @@ import Testing
 
 @Suite("Agent.run guardrail behavior")
 struct AgentRunGuardrailBehaviorTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Input guardrail tripwire blocks provider execution")
     func inputGuardrailTripwireBlocksProvider() async throws {
         let provider = MockInferenceProvider(responses: ["should not be used"])

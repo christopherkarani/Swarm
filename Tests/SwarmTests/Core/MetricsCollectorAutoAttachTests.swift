@@ -4,6 +4,8 @@ import Testing
 
 @Suite("MetricsCollector auto-attach")
 struct MetricsCollectorAutoAttachTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Default configuration does not auto-attach a collector")
     func defaultIsOff() throws {
         #expect(AgentConfiguration.default.autoAttachMetricsCollector == false)

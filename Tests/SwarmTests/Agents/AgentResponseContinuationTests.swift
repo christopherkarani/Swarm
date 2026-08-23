@@ -3,6 +3,8 @@ import Testing
 
 @Suite("Agent Response Continuation")
 struct AgentResponseContinuationTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("runWithResponse auto-tracks previous response id per session")
     func runWithResponseAutoTracksPreviousResponseID() async throws {
         let provider = MockInferenceProvider(

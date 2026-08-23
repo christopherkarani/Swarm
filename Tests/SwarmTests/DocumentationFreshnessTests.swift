@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Documentation Freshness")
 struct DocumentationFreshnessTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Workflow stream doc example uses current AgentEvent cases")
     func workflowStreamDocExampleUsesCurrentAgentEventCases() throws {
         let workflowSource = try readRepoFile("Sources/Swarm/Workflow/Workflow.swift")

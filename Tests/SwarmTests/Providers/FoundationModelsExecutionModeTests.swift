@@ -8,6 +8,8 @@ import Testing
 
 @Suite("FoundationModels Execution Mode")
 struct FoundationModelsExecutionModeTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Capture remains the stored AgentConfiguration default")
     func captureIsDefault() {
         #expect(AgentConfiguration.default.foundationModelsExecution == .capture)

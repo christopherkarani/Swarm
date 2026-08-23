@@ -5,6 +5,8 @@ import Testing
 
 @Suite("Default Composite Memory")
 struct ContextCoreDefaultMemoryTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Agent uses ContextCore + Wax memory by default on subsequent turns")
     func agentUsesContextCoreMemoryByDefault() async throws {
         let session = InMemorySession()

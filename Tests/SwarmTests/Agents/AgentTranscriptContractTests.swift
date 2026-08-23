@@ -112,6 +112,8 @@ private func metadataString(
 
 @Suite("Agent Transcript Contract")
 struct AgentTranscriptContractTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("runStructured uses prompt fallback and persists structured transcript metadata")
     func runStructuredPromptFallbackPersistsTranscriptMetadata() async throws {
         let provider = MockInferenceProvider(responses: [#"{"answer":"ok"}"#])
@@ -291,6 +293,8 @@ struct AgentTranscriptContractTests {
 #if canImport(SwiftData)
 @Suite("Persistent Transcript Contract")
 struct PersistentTranscriptContractTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("PersistentSession in-memory branch keeps transcript replay-compatible")
     func persistentSessionBranchKeepsTranscriptReplayCompatible() async throws {
         let provider = MockInferenceProvider()

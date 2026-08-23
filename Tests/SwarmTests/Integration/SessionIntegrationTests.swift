@@ -12,6 +12,8 @@ import Testing
 
 @Suite("Session Integration Tests")
 struct SessionIntegrationTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     // MARK: - Basic Multi-Turn Conversation Tests
 
     @Test("Multi-turn conversation stores messages")

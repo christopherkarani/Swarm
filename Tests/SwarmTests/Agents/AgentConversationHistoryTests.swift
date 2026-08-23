@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Agent Conversation History Fidelity")
 struct AgentConversationHistoryTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Multi-turn session delivers exact role-tagged history to the provider")
     func multiTurnSessionDeliversExactMessageArray() async throws {
         let provider = MockInferenceProvider(responses: ["first reply", "second reply"])

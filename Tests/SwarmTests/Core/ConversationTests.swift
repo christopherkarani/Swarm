@@ -3,6 +3,8 @@ import Testing
 
 @Suite("Conversation")
 struct ConversationTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("send appends user and assistant messages")
     func sendAppendsMessages() async throws {
         let mock = MockAgentRuntime(response: "hello back")

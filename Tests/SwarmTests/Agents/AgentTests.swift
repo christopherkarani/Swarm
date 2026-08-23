@@ -11,6 +11,8 @@ import Testing
 
 @Suite("Agent Tests")
 struct ReActAgentTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("makeDefaultMemory matches Integrations trait")
     func makeDefaultMemoryMatchesIntegrationsTrait() throws {
         let memory = try Agent.makeDefaultMemory()

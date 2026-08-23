@@ -3,6 +3,8 @@ import Testing
 
 @Suite("Agent Structured Inference Providers")
 struct AgentStructuredInferenceProviderTests {
+    private let _ephemeralDefaultStores = SwarmEphemeralStoreBootstrap.installOnce
+
     @Test("Prefers structured conversation generation when provider supports it")
     func prefersStructuredConversationGeneration() async throws {
         let provider = MockInferenceProvider(responses: ["structured reply"])
