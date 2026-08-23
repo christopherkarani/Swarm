@@ -121,7 +121,7 @@ public actor SwiftLogTracer: Tracer {
         }
 
         // Extract stepNumber from metadata if present
-        if let stepNumber = event.metadata["stepNumber"]?.intValue {
+        if let stepNumber = event.metadata[.stepNumber] {
             metadata["step"] = "\(stepNumber)"
         }
 
@@ -130,7 +130,7 @@ public actor SwiftLogTracer: Tracer {
         }
 
         // Extract tokenCount from metadata if present
-        if let tokenCount = event.metadata["tokenCount"]?.intValue {
+        if let tokenCount = event.metadata[.legacyTokenCount] {
             metadata["tokens"] = "\(tokenCount)"
         }
 
