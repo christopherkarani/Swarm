@@ -52,4 +52,40 @@ struct AgentErrorCauseTests {
         let error = AgentError.toolFailure(toolName: "t", message: nil, cause: Boom())
         #expect(error.isRetryable == false)
     }
+
+    @Test("stopOnToolError keeps the underlying error reachable through the engine seam")
+    func engineStopOnToolErrorPreservesCause() async throws {
+        struct Marker: Error, Equatable {}
+        let marker = Marker()
+        let registry = ToolRegistry()
+        try await registry.register(MockErrorTool(name: "boom", error: marker))
+        let agent = ParallelTestMockAgent()
+
+        do {
+            _ = try await ToolExecutionEngine().execute(
+                toolName: "boom",
+                arguments: [:],
+                registry: registry,
+                agent: agent,
+                context: nil,
+                resultBuilder: AgentResult.Builder(),
+                observer: nil,
+                tracing: nil,
+                stopOnToolError: true
+            )
+            Issue.record("expected toolFailure")
+        } catch let error as AgentError {
+            guard case let .toolFailure(toolName, _, cause) = error else {
+                Issue.record("expected toolFailure, got \(error)")
+                return
+            }
+            #expect(toolName == "boom")
+            let registryWrapper = try #require(cause as? AgentError)
+            guard case .toolFailure(_, _, let innerCause) = registryWrapper else {
+                Issue.record("expected nested toolFailure, got \(registryWrapper)")
+                return
+            }
+            #expect(innerCause as? Marker == marker)
+        }
+    }
 }

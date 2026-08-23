@@ -68,6 +68,7 @@ import Foundation
 /// ### Tool Errors
 /// - ``toolNotFound(name:)``
 /// - ``toolExecutionFailed(toolName:underlyingError:)``
+/// - ``toolFailure(toolName:message:cause:)``
 /// - ``invalidToolArguments(toolName:reason:)``
 ///
 /// ### Model Errors
