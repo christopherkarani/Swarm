@@ -110,8 +110,9 @@ private func metadataString(
     metadata[key]?.stringValue
 }
 
-@Suite("Agent Transcript Contract")
+@Suite("Agent Transcript Contract", .ephemeralDefaultStores)
 struct AgentTranscriptContractTests {
+
     @Test("runStructured uses prompt fallback and persists structured transcript metadata")
     func runStructuredPromptFallbackPersistsTranscriptMetadata() async throws {
         let provider = MockInferenceProvider(responses: [#"{"answer":"ok"}"#])
@@ -289,8 +290,9 @@ struct AgentTranscriptContractTests {
 }
 
 #if canImport(SwiftData)
-@Suite("Persistent Transcript Contract")
+@Suite("Persistent Transcript Contract", .ephemeralDefaultStores)
 struct PersistentTranscriptContractTests {
+
     @Test("PersistentSession in-memory branch keeps transcript replay-compatible")
     func persistentSessionBranchKeepsTranscriptReplayCompatible() async throws {
         let provider = MockInferenceProvider()

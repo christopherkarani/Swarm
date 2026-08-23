@@ -1,8 +1,9 @@
 import Testing
 @testable import Swarm
 
-@Suite("Agent Response Continuation")
+@Suite("Agent Response Continuation", .ephemeralDefaultStores)
 struct AgentResponseContinuationTests {
+
     @Test("runWithResponse auto-tracks previous response id per session")
     func runWithResponseAutoTracksPreviousResponseID() async throws {
         let provider = MockInferenceProvider(

@@ -6,8 +6,9 @@ import Testing
 /// per-shape behavior (`.step`, `.parallel(merge:)`, `.route`, `.repeatUntil`,
 /// `.timeout`) so a maintainer changing one shape sees a focused failure rather
 /// than chasing an unrelated scenario test.
-@Suite("Workflow Core")
+@Suite("Workflow Core", .ephemeralDefaultStores)
 struct WorkflowCoreTests {
+
 
     // MARK: - Sequential
 
@@ -207,39 +208,35 @@ struct WorkflowCoreTests {
 
     @Test("timeout-wrapped workflow uses ambient task-local inference provider")
     func timeoutPreservesAmbientTaskLocalProvider() async throws {
-        try await withSwarmConfigurationIsolation {
-            let mock = MockInferenceProvider(responses: ["from-task-local-env"])
-            let agent = try Agent("Reply with the model output.")
-            var env = AgentEnvironment()
-            env.inferenceProvider = mock
+        let mock = MockInferenceProvider(responses: ["from-task-local-env"])
+        let agent = try Agent("Reply with the model output.")
+        var env = AgentEnvironment()
+        env.inferenceProvider = mock
 
-            let result = try await AgentEnvironmentValues.$current.withValue(env) {
-                try await Workflow()
-                    .step(agent)
-                    .timeout(.seconds(5))
-                    .run("hello")
-            }
-
-            #expect(result.output == "from-task-local-env")
-            #expect(await mockProviderServicedRequest(mock))
+        let result = try await AgentEnvironmentValues.$current.withValue(env) {
+            try await Workflow()
+                .step(agent)
+                .timeout(.seconds(5))
+                .run("hello")
         }
+
+        #expect(result.output == "from-task-local-env")
+        #expect(await mockProviderServicedRequest(mock))
     }
 
     @Test("timeout-wrapped workflow still honors agent.environment provider")
     func timeoutPreservesAgentEnvironmentModifier() async throws {
-        try await withSwarmConfigurationIsolation {
-            let mock = MockInferenceProvider(responses: ["from-agent-environment"])
-            let agent = try Agent("Reply with the model output.")
-                .environment(\.inferenceProvider, mock as (any InferenceProvider)?)
+        let mock = MockInferenceProvider(responses: ["from-agent-environment"])
+        let agent = try Agent("Reply with the model output.")
+            .environment(\.inferenceProvider, mock as (any InferenceProvider)?)
 
-            let result = try await Workflow()
-                .step(agent)
-                .timeout(.seconds(5))
-                .run("hello")
+        let result = try await Workflow()
+            .step(agent)
+            .timeout(.seconds(5))
+            .run("hello")
 
-            #expect(result.output == "from-agent-environment")
-            #expect(await mockProviderServicedRequest(mock))
-        }
+        #expect(result.output == "from-agent-environment")
+        #expect(await mockProviderServicedRequest(mock))
     }
 
     // MARK: - Parallel merge ordering and cancellation

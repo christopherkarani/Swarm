@@ -30,19 +30,36 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
     }
 
     static var defaultStoreURL: URL {
+        if let ephemeralRoot = SwarmDefaultStoreLocation.installedEphemeralRoot {
+            return makeEphemeralStoreURL(under: ephemeralRoot)
+        }
+        return makeDurableStoreURL()
+    }
+
+    /// Durable store location under the user's Application Support directory,
+    /// independent of any installed ephemeral root.
+    static func makeDurableStoreURL() -> URL {
         let fileManager = FileManager.default
-        let baseURL = SwarmRuntimeEnvironment.isRunningTests
-            ? fileManager.temporaryDirectory
-            : (fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-                ?? fileManager.temporaryDirectory)
+        let baseURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
         let root = baseURL
             .appendingPathComponent("Swarm", isDirectory: true)
-            .appendingPathComponent(SwarmRuntimeEnvironment.isRunningTests ? "MembraneTests" : "Membrane", isDirectory: true)
+            .appendingPathComponent("Membrane", isDirectory: true)
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
-        let fileName = SwarmRuntimeEnvironment.isRunningTests
-            ? "membrane-store-\(UUID().uuidString).mv2s"
-            : "membrane-store.mv2s"
-        return root.appendingPathComponent(fileName)
+        return root.appendingPathComponent("membrane-store.mv2s")
+    }
+
+    /// Throwaway store location with a unique file name for isolated runs
+    /// (tests, previews). Placed under `root`, defaulting to the temporary
+    /// directory.
+    static func makeEphemeralStoreURL(under root: URL? = nil) -> URL {
+        let fileManager = FileManager.default
+        let baseURL = root ?? fileManager.temporaryDirectory
+        let ephemeralRoot = baseURL
+            .appendingPathComponent("Swarm", isDirectory: true)
+            .appendingPathComponent("MembraneTests", isDirectory: true)
+        try? fileManager.createDirectory(at: ephemeralRoot, withIntermediateDirectories: true)
+        return ephemeralRoot.appendingPathComponent("membrane-store-\(UUID().uuidString).mv2s")
     }
 
     private let url: URL

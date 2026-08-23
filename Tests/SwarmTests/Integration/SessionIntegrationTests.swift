@@ -10,8 +10,9 @@ import Testing
 
 // MARK: - SessionIntegrationTests
 
-@Suite("Session Integration Tests")
+@Suite("Session Integration Tests", .ephemeralDefaultStores)
 struct SessionIntegrationTests {
+
     // MARK: - Basic Multi-Turn Conversation Tests
 
     @Test("Multi-turn conversation stores messages")

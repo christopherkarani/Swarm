@@ -6,8 +6,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("FoundationModels Execution Mode")
+@Suite("FoundationModels Execution Mode", .ephemeralDefaultStores)
 struct FoundationModelsExecutionModeTests {
+
     @Test("Capture remains the stored AgentConfiguration default")
     func captureIsDefault() {
         #expect(AgentConfiguration.default.foundationModelsExecution == .capture)

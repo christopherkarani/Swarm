@@ -399,26 +399,46 @@ public extension WaxMemory {
         makeDefaultStoreURL()
     }
 
+    /// Durable store location under the user's Application Support directory,
+    /// or a uniquely named ephemeral store when an ephemeral root is installed
+    /// via ``SwarmDefaultStoreLocation/installEphemeralRoot(_:)``.
     static func makeDefaultStoreURL() -> URL {
+        if let ephemeralRoot = SwarmDefaultStoreLocation.installedEphemeralRoot {
+            return makeEphemeralStoreURL(under: ephemeralRoot)
+        }
+        return makeDurableStoreURL()
+    }
+
+    /// Durable store location under the user's Application Support directory,
+    /// independent of any installed ephemeral root.
+    internal static func makeDurableStoreURL() -> URL {
         let fileManager = FileManager.default
-        let isRunningTests = SwarmRuntimeEnvironment.isRunningTests
-        let baseURL = isRunningTests
-            ? fileManager.temporaryDirectory
-            : (fileManager.urls(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask
-            ).first ?? fileManager.temporaryDirectory)
+        let baseURL = fileManager.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? fileManager.temporaryDirectory
 
         let root = baseURL
             .appendingPathComponent("Swarm", isDirectory: true)
-            .appendingPathComponent(
-                isRunningTests ? "AgentMemoryTests" : "AgentMemory",
-                isDirectory: true
-            )
+            .appendingPathComponent("AgentMemory", isDirectory: true)
 
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
-        let fileName = isRunningTests ? "wax-memory-\(UUID().uuidString).mv2s" : "wax-memory.mv2s"
-        return root.appendingPathComponent(fileName)
+        return root.appendingPathComponent("wax-memory.mv2s")
+    }
+
+    /// Throwaway store location with a unique file name for isolated runs
+    /// (tests, previews). Placed under `root`, defaulting to the temporary
+    /// directory.
+    internal static func makeEphemeralStoreURL(under root: URL? = nil) -> URL {
+        let fileManager = FileManager.default
+        let baseURL = root ?? fileManager.temporaryDirectory
+
+        let ephemeralRoot = baseURL
+            .appendingPathComponent("Swarm", isDirectory: true)
+            .appendingPathComponent("AgentMemoryTests", isDirectory: true)
+
+        try? fileManager.createDirectory(at: ephemeralRoot, withIntermediateDirectories: true)
+        return ephemeralRoot.appendingPathComponent("wax-memory-\(UUID().uuidString).mv2s")
     }
 }
 #endif

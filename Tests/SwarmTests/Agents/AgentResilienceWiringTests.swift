@@ -7,8 +7,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Agent resilience wiring")
+@Suite("Agent resilience wiring", .ephemeralDefaultStores)
 struct AgentResilienceWiringTests {
+
     private static let transient = AgentError.generationFailed(reason: "transient 503")
 
     @Test(".standard retries a transient failure; .noRetry does not")

@@ -111,6 +111,14 @@ struct AgentRunEnvironment: Sendable {
     /// Serializes concurrent runs sharing the package default memory.
     let defaultMemorySessionTracker: DefaultMemorySessionTracker
 
+    /// Explicit durable store location for the auto-created default memory.
+    ///
+    /// `nil` (the default) resolves the package location: the installed
+    /// ephemeral root when one is present via
+    /// ``SwarmDefaultStoreLocation/installEphemeralRoot(_:)``, and the durable
+    /// Application-Support location otherwise.
+    let defaultMemoryStoreURL: URL?
+
     private let defaultProviderLookup: @Sendable () async -> (any InferenceProvider)?
     private let webConfigurationLookup: @Sendable () async -> WebSearchTool.Configuration?
 
@@ -125,12 +133,14 @@ struct AgentRunEnvironment: Sendable {
         responseTracker: ResponseTracker = ResponseTracker(),
         defaultMemorySessionTracker: DefaultMemorySessionTracker = DefaultMemorySessionTracker(),
         defaultProvider: @escaping @Sendable () async -> (any InferenceProvider)? = { await Swarm.defaultProvider },
-        webConfiguration: @escaping @Sendable () async -> WebSearchTool.Configuration? = { await Swarm.webConfiguration }
+        webConfiguration: @escaping @Sendable () async -> WebSearchTool.Configuration? = { await Swarm.webConfiguration },
+        defaultMemoryStoreURL: URL? = nil
     ) {
         self.responseTracker = responseTracker
         self.defaultMemorySessionTracker = defaultMemorySessionTracker
         self.defaultProviderLookup = defaultProvider
         self.webConfigurationLookup = webConfiguration
+        self.defaultMemoryStoreURL = defaultMemoryStoreURL
     }
 
     // MARK: Shared Configuration Source

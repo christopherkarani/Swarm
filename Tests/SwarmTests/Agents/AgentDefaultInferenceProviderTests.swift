@@ -2,57 +2,59 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Agent Defaults")
+@Suite("Agent Defaults", .ephemeralDefaultStores)
 struct AgentDefaultInferenceProviderTests {
+
     @Test("privacyRequired does not route through an explicit non-private provider")
     func privacyRequiredSkipsExplicitNonPrivateProvider() async throws {
-        try await withSwarmConfigurationIsolation {
-            let nonPrivateProvider = MockInferenceProvider(responses: ["non-private response"])
-            let configuration = AgentConfiguration.default
-                .inferencePolicy(InferencePolicy(privacyRequired: true))
-            let agent = try Agent(
-                instructions: "Keep this private.",
-                configuration: configuration,
-                inferenceProvider: nonPrivateProvider
-            )
+        let nonPrivateProvider = MockInferenceProvider(responses: ["non-private response"])
+        let configuration = AgentConfiguration.default
+            .inferencePolicy(InferencePolicy(privacyRequired: true))
+        let agent = try Agent(
+            instructions: "Keep this private.",
+            configuration: configuration,
+            inferenceProvider: nonPrivateProvider,
+            runEnvironment: AgentRunEnvironment(defaultProvider: { nil })
+        )
 
-            do {
-                _ = try await agent.run("secret")
-            } catch {
-                // Foundation Models may be unavailable or unavailable for the test prompt.
-                // The privacy invariant is that the explicit non-private provider is not called.
-            }
-
-            #expect(await nonPrivateProvider.generateCallCount == 0)
-            #expect(await nonPrivateProvider.toolCallCalls.isEmpty)
-            #expect(await nonPrivateProvider.generateMessageCalls.isEmpty)
-            #expect(await nonPrivateProvider.toolCallMessageCalls.isEmpty)
+        do {
+            _ = try await agent.run("secret")
+        } catch {
+            // Foundation Models may be unavailable or unavailable for the test prompt.
+            // The privacy invariant is that the explicit non-private provider is not called.
         }
+
+        #expect(await nonPrivateProvider.generateCallCount == 0)
+        #expect(await nonPrivateProvider.toolCallCalls.isEmpty)
+        #expect(await nonPrivateProvider.generateMessageCalls.isEmpty)
+        #expect(await nonPrivateProvider.toolCallMessageCalls.isEmpty)
     }
 
     @Test("Throws if no inference provider is set and Foundation Models are unavailable")
     func throwsIfNoProviderAndFoundationModelsUnavailable() async {
-        await withSwarmConfigurationIsolation {
-            // Keep this deterministic across environments: if Foundation Models are available at runtime,
-            // Agent may run without an explicit provider.
-            if DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() != nil {
-                return
-            }
+        // Keep this deterministic across environments: if Foundation Models are available at runtime,
+        // Agent may run without an explicit provider.
+        if DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() != nil {
+            return
+        }
 
-            do {
-                _ = try await Agent().run("hi")
-                Issue.record("Expected inference provider unavailable error")
-            } catch let error as AgentError {
-                switch error {
-                case let .inferenceProviderUnavailable(reason):
-                    #expect(reason.contains("Foundation Models"))
-                    #expect(reason.contains("inference provider"))
-                default:
-                    Issue.record("Unexpected AgentError: \(error)")
-                }
-            } catch {
-                Issue.record("Unexpected error: \(error)")
+        do {
+            let agent = try Agent(runEnvironment: AgentRunEnvironment(
+                defaultProvider: { nil },
+                webConfiguration: { nil }
+            ))
+            _ = try await agent.run("hi")
+            Issue.record("Expected inference provider unavailable error")
+        } catch let error as AgentError {
+            switch error {
+            case let .inferenceProviderUnavailable(reason):
+                #expect(reason.contains("Foundation Models"))
+                #expect(reason.contains("inference provider"))
+            default:
+                Issue.record("Unexpected AgentError: \(error)")
             }
+        } catch {
+            Issue.record("Unexpected error: \(error)")
         }
     }
 
