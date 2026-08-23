@@ -460,3 +460,131 @@ struct ModelSettingsDescriptionTests {
         #expect(settings.description.contains("reasoning: ReasoningConfig("))
     }
 }
+
+// MARK: - ModelSettingsPostInitClampTests
+
+/// Post-initialization property writes clamp via `didSet` so every read
+/// satisfies the invariants `validate()` enforces. Fluent builders are
+/// intentionally exempt (they are sugar over `init` and preserve raw values
+/// for `validate()`/`merged(with:)` to judge), and decoding bypasses `didSet`
+/// by design.
+@Suite("ModelSettings Post-Init Clamp Tests")
+struct ModelSettingsPostInitClampTests {
+    @Test("Writing temperature 99 clamps to 2.0 on read")
+    func temperatureAboveRangeClamps() {
+        var settings = ModelSettings()
+        settings.temperature = 99
+        #expect(settings.temperature == 2.0)
+    }
+
+    @Test("Writing a negative temperature clamps to 0.0")
+    func temperatureBelowRangeClamps() {
+        var settings = ModelSettings()
+        settings.temperature = -1
+        #expect(settings.temperature == 0.0)
+    }
+
+    @Test("Writing infinite temperature collapses onto the nearest bound")
+    func infiniteTemperatureCollapsesOntoBound() {
+        var settings = ModelSettings()
+
+        settings.temperature = .infinity
+        #expect(settings.temperature == 2.0)
+
+        settings.temperature = -.infinity
+        #expect(settings.temperature == 0.0)
+    }
+
+    @Test("Writing NaN temperature falls back to nil (provider default)")
+    func nanTemperatureFallsBackToNil() {
+        var settings = ModelSettings()
+        settings.temperature = .nan
+        #expect(settings.temperature == nil)
+    }
+
+    @Test("Writing out-of-range topP and minP clamps into 0.0...1.0")
+    func probabilitiesClamp() {
+        var settings = ModelSettings()
+
+        settings.topP = 1.5
+        #expect(settings.topP == 1.0)
+
+        settings.minP = -0.2
+        #expect(settings.minP == 0.0)
+    }
+
+    @Test("Writing zero or negative counts clamps to at least 1")
+    func countsClampToAtLeastOne() {
+        var settings = ModelSettings()
+
+        settings.topK = 0
+        #expect(settings.topK == 1)
+
+        settings.maxTokens = -100
+        #expect(settings.maxTokens == 1)
+    }
+
+    @Test("Writing out-of-range penalties clamps into -2.0...2.0")
+    func penaltiesClamp() {
+        var settings = ModelSettings()
+
+        settings.frequencyPenalty = 5.0
+        #expect(settings.frequencyPenalty == 2.0)
+
+        settings.presencePenalty = -5.0
+        #expect(settings.presencePenalty == -2.0)
+    }
+
+    @Test("Writing negative repetitionPenalty clamps to 0.0; non-finite falls back to nil")
+    func repetitionPenaltyClamp() {
+        var settings = ModelSettings()
+
+        settings.repetitionPenalty = -0.5
+        #expect(settings.repetitionPenalty == 0.0)
+
+        settings.repetitionPenalty = .nan
+        #expect(settings.repetitionPenalty == nil)
+
+        settings.repetitionPenalty = .infinity
+        #expect(settings.repetitionPenalty == nil)
+    }
+
+    @Test("Writing reasoning with invalid maxTokens normalizes the nested value on read")
+    func reasoningMaxTokensNormalizes() {
+        var settings = ModelSettings()
+
+        settings.reasoning = ReasoningConfig(maxTokens: 0)
+        #expect(settings.reasoning?.maxTokens == 1)
+
+        settings.reasoning?.maxTokens = -25
+        #expect(settings.reasoning?.maxTokens == 1)
+    }
+
+    @Test("Clamped post-write reads satisfy validate()")
+    func clampedReadsValidate() throws {
+        var settings = ModelSettings()
+        settings.temperature = 99
+        settings.topP = 4.2
+        settings.maxTokens = 0
+        settings.frequencyPenalty = 12.0
+        try settings.validate()
+    }
+
+    @Test("Fluent builders preserve raw values for validate() to judge")
+    func builderPreservesRawValues() {
+        let settings = ModelSettings().temperature(3.0)
+        #expect(settings.temperature == 3.0)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    @Test("Decoding bypasses didSet normalization by design")
+    func decodingBypassesDidSet() throws {
+        let json = #"{"temperature":99,"maxTokens":-5}"#
+        let decoded = try JSONDecoder().decode(ModelSettings.self, from: Data(json.utf8))
+
+        #expect(decoded.temperature == 99)
+        #expect(decoded.maxTokens == -5)
+    }
+}

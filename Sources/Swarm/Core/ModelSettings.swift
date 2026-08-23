@@ -38,6 +38,23 @@ import Foundation
 /// let merged = base.merged(with: override)
 /// // Result: temperature 0.7, maxTokens 2048
 /// ```
+///
+/// ## Write-Path Invariants
+///
+/// Settings are mutation-proofed on every write path:
+///
+/// - **Initialization** (including the fluent builders, which are sugar over
+///   `init`) preserves raw values so programmatic mistakes surface loudly via
+///   ``validate()`` or ``merged(with:)`` instead of being silently rewritten.
+/// - **Direct property writes after initialization** (`settings.temperature = 99`)
+///   cannot throw, so `didSet` normalization clamps them into the valid range
+///   instead (e.g. temperature into `0.0...2.0`, counts to at least 1). Any
+///   post-write read therefore satisfies the same invariants that
+///   ``validate()`` enforces.
+/// - **Decoding bypasses `didSet` by design**: synthesized `Codable`
+///   conformance assigns stored properties during initialization, where Swift
+///   property observers do not run. Decoded values are assumed to have been
+///   valid when they were encoded and are preserved as-is.
 public struct ModelSettings: Sendable, Equatable {
     // MARK: - Sampling Parameters
 
@@ -46,41 +63,53 @@ public struct ModelSettings: Sendable, Equatable {
     /// Lower values produce more focused, deterministic outputs.
     /// Higher values produce more diverse, creative outputs.
     /// - Valid range: 0.0 to 2.0
-    public var temperature: Double?
+    public var temperature: Double? {
+        didSet { temperature = Self.clamped(temperature, in: Self.temperatureRange) }
+    }
 
     /// Nucleus sampling threshold.
     ///
     /// Only consider tokens with cumulative probability up to this threshold.
     /// Lower values produce more focused outputs.
     /// - Valid range: 0.0 to 1.0
-    public var topP: Double?
+    public var topP: Double? {
+        didSet { topP = Self.clamped(topP, in: Self.probabilityRange) }
+    }
 
     /// Top-k sampling parameter.
     ///
     /// Only consider the top k most likely tokens.
     /// Lower values produce more focused outputs.
     /// - Valid range: > 0
-    public var topK: Int?
+    public var topK: Int? {
+        didSet { topK = Self.clampedPositive(topK) }
+    }
 
     /// Maximum tokens to generate per response.
     ///
     /// Limits the length of the generated response.
     /// - Valid range: > 0
-    public var maxTokens: Int?
+    public var maxTokens: Int? {
+        didSet { maxTokens = Self.clampedPositive(maxTokens) }
+    }
 
     /// Frequency penalty for repeated tokens.
     ///
     /// Positive values discourage repetition of tokens based on their frequency.
     /// Negative values encourage repetition.
     /// - Valid range: -2.0 to 2.0
-    public var frequencyPenalty: Double?
+    public var frequencyPenalty: Double? {
+        didSet { frequencyPenalty = Self.clamped(frequencyPenalty, in: Self.penaltyRange) }
+    }
 
     /// Presence penalty for new tokens.
     ///
     /// Positive values encourage the model to use new tokens.
     /// Negative values encourage staying with tokens already used.
     /// - Valid range: -2.0 to 2.0
-    public var presencePenalty: Double?
+    public var presencePenalty: Double? {
+        didSet { presencePenalty = Self.clamped(presencePenalty, in: Self.penaltyRange) }
+    }
 
     /// Sequences that will stop generation when encountered.
     ///
@@ -129,13 +158,17 @@ public struct ModelSettings: Sendable, Equatable {
     ///
     /// Values greater than 1.0 discourage repetition.
     /// Values less than 1.0 encourage repetition.
-    public var repetitionPenalty: Double?
+    public var repetitionPenalty: Double? {
+        didSet { repetitionPenalty = Self.clampedNonNegative(repetitionPenalty) }
+    }
 
     /// Minimum probability threshold for tokens.
     ///
     /// Tokens with probability below this threshold are filtered out.
     /// - Valid range: 0.0 to 1.0
-    public var minP: Double?
+    public var minP: Double? {
+        didSet { minP = Self.clamped(minP, in: Self.probabilityRange) }
+    }
 
     // MARK: - Provider-Specific Settings
 
@@ -160,7 +193,9 @@ public struct ModelSettings: Sendable, Equatable {
     /// Without this, reasoning models may run unbounded — see one-fhx for the
     /// production failure mode (gpt-5 returning response_bytes=0 after 800-1000
     /// reasoning tokens).
-    public var reasoning: ReasoningConfig?
+    public var reasoning: ReasoningConfig? {
+        didSet { reasoning = reasoning?.clampedToValidMaxTokens() }
+    }
 
     // MARK: - Initialization
 
@@ -210,46 +245,148 @@ public struct ModelSettings: Sendable, Equatable {
 // MARK: - Fluent Builders
 
 public extension ModelSettings {
+    /// Returns new settings with the given temperature.
+    ///
+    /// Builders are sugar over ``init(temperature:topP:topK:maxTokens:frequencyPenalty:presencePenalty:stopSequences:seed:toolChoice:parallelToolCalls:truncation:verbosity:promptCacheRetention:repetitionPenalty:minP:providerSettings:reasoning:)``,
+    /// so raw values — including out-of-range ones — are preserved for
+    /// ``validate()``/``merged(with:)`` to judge. Only direct property writes
+    /// after initialization clamp via `didSet`.
     @discardableResult
     func temperature(_ value: Double?) -> Self {
-        var copy = self
-        copy.temperature = value
-        return copy
+        Self(
+            temperature: value,
+            topP: topP,
+            topK: topK,
+            maxTokens: maxTokens,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            stopSequences: stopSequences,
+            seed: seed,
+            toolChoice: toolChoice,
+            parallelToolCalls: parallelToolCalls,
+            truncation: truncation,
+            verbosity: verbosity,
+            promptCacheRetention: promptCacheRetention,
+            repetitionPenalty: repetitionPenalty,
+            minP: minP,
+            providerSettings: providerSettings,
+            reasoning: reasoning
+        )
     }
 
     @discardableResult
     func topP(_ value: Double?) -> Self {
-        var copy = self
-        copy.topP = value
-        return copy
+        Self(
+            temperature: temperature,
+            topP: value,
+            topK: topK,
+            maxTokens: maxTokens,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            stopSequences: stopSequences,
+            seed: seed,
+            toolChoice: toolChoice,
+            parallelToolCalls: parallelToolCalls,
+            truncation: truncation,
+            verbosity: verbosity,
+            promptCacheRetention: promptCacheRetention,
+            repetitionPenalty: repetitionPenalty,
+            minP: minP,
+            providerSettings: providerSettings,
+            reasoning: reasoning
+        )
     }
 
     @discardableResult
     func topK(_ value: Int?) -> Self {
-        var copy = self
-        copy.topK = value
-        return copy
+        Self(
+            temperature: temperature,
+            topP: topP,
+            topK: value,
+            maxTokens: maxTokens,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            stopSequences: stopSequences,
+            seed: seed,
+            toolChoice: toolChoice,
+            parallelToolCalls: parallelToolCalls,
+            truncation: truncation,
+            verbosity: verbosity,
+            promptCacheRetention: promptCacheRetention,
+            repetitionPenalty: repetitionPenalty,
+            minP: minP,
+            providerSettings: providerSettings,
+            reasoning: reasoning
+        )
     }
 
     @discardableResult
     func maxTokens(_ value: Int?) -> Self {
-        var copy = self
-        copy.maxTokens = value
-        return copy
+        Self(
+            temperature: temperature,
+            topP: topP,
+            topK: topK,
+            maxTokens: value,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            stopSequences: stopSequences,
+            seed: seed,
+            toolChoice: toolChoice,
+            parallelToolCalls: parallelToolCalls,
+            truncation: truncation,
+            verbosity: verbosity,
+            promptCacheRetention: promptCacheRetention,
+            repetitionPenalty: repetitionPenalty,
+            minP: minP,
+            providerSettings: providerSettings,
+            reasoning: reasoning
+        )
     }
 
     @discardableResult
     func frequencyPenalty(_ value: Double?) -> Self {
-        var copy = self
-        copy.frequencyPenalty = value
-        return copy
+        Self(
+            temperature: temperature,
+            topP: topP,
+            topK: topK,
+            maxTokens: maxTokens,
+            frequencyPenalty: value,
+            presencePenalty: presencePenalty,
+            stopSequences: stopSequences,
+            seed: seed,
+            toolChoice: toolChoice,
+            parallelToolCalls: parallelToolCalls,
+            truncation: truncation,
+            verbosity: verbosity,
+            promptCacheRetention: promptCacheRetention,
+            repetitionPenalty: repetitionPenalty,
+            minP: minP,
+            providerSettings: providerSettings,
+            reasoning: reasoning
+        )
     }
 
     @discardableResult
     func presencePenalty(_ value: Double?) -> Self {
-        var copy = self
-        copy.presencePenalty = value
-        return copy
+        Self(
+            temperature: temperature,
+            topP: topP,
+            topK: topK,
+            maxTokens: maxTokens,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: value,
+            stopSequences: stopSequences,
+            seed: seed,
+            toolChoice: toolChoice,
+            parallelToolCalls: parallelToolCalls,
+            truncation: truncation,
+            verbosity: verbosity,
+            promptCacheRetention: promptCacheRetention,
+            repetitionPenalty: repetitionPenalty,
+            minP: minP,
+            providerSettings: providerSettings,
+            reasoning: reasoning
+        )
     }
 
     @discardableResult
@@ -303,16 +440,48 @@ public extension ModelSettings {
 
     @discardableResult
     func repetitionPenalty(_ value: Double?) -> Self {
-        var copy = self
-        copy.repetitionPenalty = value
-        return copy
+        Self(
+            temperature: temperature,
+            topP: topP,
+            topK: topK,
+            maxTokens: maxTokens,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            stopSequences: stopSequences,
+            seed: seed,
+            toolChoice: toolChoice,
+            parallelToolCalls: parallelToolCalls,
+            truncation: truncation,
+            verbosity: verbosity,
+            promptCacheRetention: promptCacheRetention,
+            repetitionPenalty: value,
+            minP: minP,
+            providerSettings: providerSettings,
+            reasoning: reasoning
+        )
     }
 
     @discardableResult
     func minP(_ value: Double?) -> Self {
-        var copy = self
-        copy.minP = value
-        return copy
+        Self(
+            temperature: temperature,
+            topP: topP,
+            topK: topK,
+            maxTokens: maxTokens,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            stopSequences: stopSequences,
+            seed: seed,
+            toolChoice: toolChoice,
+            parallelToolCalls: parallelToolCalls,
+            truncation: truncation,
+            verbosity: verbosity,
+            promptCacheRetention: promptCacheRetention,
+            repetitionPenalty: repetitionPenalty,
+            minP: value,
+            providerSettings: providerSettings,
+            reasoning: reasoning
+        )
     }
 
     @discardableResult
@@ -324,9 +493,25 @@ public extension ModelSettings {
 
     @discardableResult
     func reasoning(_ value: ReasoningConfig?) -> Self {
-        var copy = self
-        copy.reasoning = value
-        return copy
+        Self(
+            temperature: temperature,
+            topP: topP,
+            topK: topK,
+            maxTokens: maxTokens,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            stopSequences: stopSequences,
+            seed: seed,
+            toolChoice: toolChoice,
+            parallelToolCalls: parallelToolCalls,
+            truncation: truncation,
+            verbosity: verbosity,
+            promptCacheRetention: promptCacheRetention,
+            repetitionPenalty: repetitionPenalty,
+            minP: minP,
+            providerSettings: providerSettings,
+            reasoning: value
+        )
     }
 }
 
@@ -365,6 +550,62 @@ public extension ModelSettings {
     }
 }
 
+// MARK: - Shared Invariant Bounds & Clamps
+
+extension ModelSettings {
+    /// Valid temperature bounds. Single source of truth shared by
+    /// ``validate()`` and write-path clamping so the two cannot drift.
+    static let temperatureRange: ClosedRange<Double> = 0.0 ... 2.0
+
+    /// Valid probability bounds (`topP`, `minP`).
+    static let probabilityRange: ClosedRange<Double> = 0.0 ... 1.0
+
+    /// Valid penalty bounds (`frequencyPenalty`, `presencePenalty`).
+    static let penaltyRange: ClosedRange<Double> = -2.0 ... 2.0
+
+    /// Clamps an optional double into `range`.
+    ///
+    /// `nil` stays `nil` and finite values are pulled into `range`. Positive
+    /// infinity collapses onto the upper bound and negative infinity onto the
+    /// lower bound. NaN has no direction to clamp toward, so it falls back to
+    /// `nil` (provider default).
+    static func clamped(_ value: Double?, in range: ClosedRange<Double>) -> Double? {
+        guard let value else { return nil }
+        if !value.isFinite {
+            if value > range.upperBound { return range.upperBound }
+            if value < range.lowerBound { return range.lowerBound }
+            return nil // NaN
+        }
+        return min(range.upperBound, max(range.lowerBound, value))
+    }
+
+    /// Clamps an optional count to at least 1 (zero and negatives become 1).
+    static func clampedPositive(_ value: Int?) -> Int? {
+        value.map { max(1, $0) }
+    }
+
+    /// Clamps an optional double to a finite value of at least 0; non-finite
+    /// values fall back to `nil` (provider default).
+    static func clampedNonNegative(_ value: Double?) -> Double? {
+        guard let value, value.isFinite else { return nil }
+        return max(0.0, value)
+    }
+}
+
+// MARK: - ReasoningConfig + Invariant Normalization
+
+extension ReasoningConfig {
+    /// Returns a copy whose ``ReasoningConfig/maxTokens`` satisfies the "> 0"
+    /// invariant enforced by ``ModelSettings/validate()``; returns `self`
+    /// when already valid or unset.
+    func clampedToValidMaxTokens() -> ReasoningConfig {
+        guard let maxTokens, maxTokens < 1 else { return self }
+        var copy = self
+        copy.maxTokens = 1
+        return copy
+    }
+}
+
 // MARK: - Validation
 
 public extension ModelSettings {
@@ -385,13 +626,13 @@ public extension ModelSettings {
     /// ```
     func validate() throws {
         if let temperature {
-            guard temperature.isFinite, temperature >= 0.0, temperature <= 2.0 else {
+            guard temperature.isFinite, Self.temperatureRange.contains(temperature) else {
                 throw ModelSettingsValidationError.invalidTemperature(temperature)
             }
         }
 
         if let topP {
-            guard topP.isFinite, topP >= 0.0, topP <= 1.0 else {
+            guard topP.isFinite, Self.probabilityRange.contains(topP) else {
                 throw ModelSettingsValidationError.invalidTopP(topP)
             }
         }
@@ -409,19 +650,19 @@ public extension ModelSettings {
         }
 
         if let frequencyPenalty {
-            guard frequencyPenalty.isFinite, frequencyPenalty >= -2.0, frequencyPenalty <= 2.0 else {
+            guard frequencyPenalty.isFinite, Self.penaltyRange.contains(frequencyPenalty) else {
                 throw ModelSettingsValidationError.invalidFrequencyPenalty(frequencyPenalty)
             }
         }
 
         if let presencePenalty {
-            guard presencePenalty.isFinite, presencePenalty >= -2.0, presencePenalty <= 2.0 else {
+            guard presencePenalty.isFinite, Self.penaltyRange.contains(presencePenalty) else {
                 throw ModelSettingsValidationError.invalidPresencePenalty(presencePenalty)
             }
         }
 
         if let minP {
-            guard minP.isFinite, minP >= 0.0, minP <= 1.0 else {
+            guard minP.isFinite, Self.probabilityRange.contains(minP) else {
                 throw ModelSettingsValidationError.invalidMinP(minP)
             }
         }
