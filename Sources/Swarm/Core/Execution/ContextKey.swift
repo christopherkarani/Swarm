@@ -159,7 +159,9 @@ public extension AgentContext {
     ///
     /// - Parameter key: The typed context key.
     /// - Returns: The stored value decoded as the key's value type, or nil
-    ///   when nothing is stored under this slot.
+    ///   when nothing is stored under this slot. When the value type is
+    ///   itself Optional, storing `nil` creates a null slot whose read
+    ///   succeeds with a nil payload rather than returning nil for absence.
     ///
     /// Example:
     /// ```swift

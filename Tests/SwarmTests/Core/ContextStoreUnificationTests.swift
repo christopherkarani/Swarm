@@ -32,6 +32,25 @@ private struct LegacySessionContext: AgentContextProviding {
     let sessionId: String
 }
 
+/// An enum with associated values used to exercise codec round-trips that
+/// must not corrupt case payloads.
+private enum AssociatedValueEnum: Codable, Equatable, Sendable {
+    case count(Int)
+    case label(String)
+}
+
+/// A Codable type whose `encode(to:)` always throws, forcing the codec's
+/// description-string fallback; its synthesized decoder requires a field
+/// the fallback cannot supply, so typed reads of the fallback return nil.
+private struct UnencodableButDecodable: Codable, Sendable {
+    let required: Int
+
+    func encode(to encoder: any Encoder) throws {
+        struct EncodingUnavailable: Error {}
+        throw EncodingUnavailable()
+    }
+}
+
 // MARK: - ContextStoreUnificationTests
 
 @Suite("Context Store Unification")
@@ -365,5 +384,112 @@ struct ContextStoreUnificationTests {
 
         let snap = await context.snapshot
         #expect(snap["legacy_user_context"] == nil)
+    }
+
+    // MARK: - Codec Edge Cases
+
+    @Test("enums with associated values round-trip without corrupting cases")
+    func associatedValueEnumRoundTrips() async throws {
+        let context = AgentContext(input: "test")
+
+        await context.setTyped(ContextKey<AssociatedValueEnum>("en_count"), value: .count(5))
+        await context.setTyped(ContextKey<AssociatedValueEnum>("en_label"), value: .label("x"))
+
+        #expect(await context.getTyped(ContextKey<AssociatedValueEnum>("en_count")) == .count(5))
+        #expect(await context.getTyped(ContextKey<AssociatedValueEnum>("en_label")) == .label("x"))
+    }
+
+    @Test("nested SendableValue containers round-trip")
+    func nestedContainersRoundTrip() async throws {
+        let context = AgentContext(input: "test")
+        let nested: [String: SendableValue] = [
+            "a": .array([.int(1), .string("s")]),
+            "b": .bool(true),
+        ]
+
+        await context.setTyped(ContextKey<[String: SendableValue]>("nest"), value: nested)
+        await context.setTyped(ContextKey<[SendableValue]>("arr"), value: [.double(1.5), .null])
+
+        #expect(await context.getTyped(ContextKey<[String: SendableValue]>("nest")) == nested)
+        #expect(await context.getTyped(ContextKey<[SendableValue]>("arr")) == [.double(1.5), .null])
+    }
+
+    @Test("optional none stores a null slot that reads back as absent")
+    func optionalNoneSlotSemantics() async throws {
+        let key = ContextKey<String?>("opt_none")
+        let context = AgentContext(input: "test")
+
+        await context.setTyped(key, value: nil)
+
+        // The slot exists and projects a null payload; the typed read
+        // succeeds decoding `null` as String?, yielding .some(.none).
+        #expect(await context.hasTyped(key))
+        #expect(await context.snapshot["opt_none"] == .null)
+        let decoded = await context.valueSlotPayload(for: key)
+        #expect(decoded == .null)
+        // A present-optional write still round-trips exactly.
+        let someKey = ContextKey<String?>("opt_some")
+        await context.setTyped(someKey, value: "present")
+        #expect(await context.getTyped(someKey) == "present")
+    }
+
+    @Test("unencodable value falls back to a description string that fails to decode")
+    func unencodableFallsBackToInertStringPayload() async throws {
+        let key = ContextKey<UnencodableButDecodable>("boom")
+        let context = AgentContext(input: "test")
+
+        await context.setTyped(key, value: UnencodableButDecodable(required: 7))
+
+        // Write never throws (fallback stored); the payload is inert for
+        // typed reads: has stays true, the read returns nil, nothing is
+        // corrupted.
+        #expect(await context.hasTyped(key))
+        #expect(await context.getTyped(key) == nil)
+        #expect(await context.snapshot["boom"]?.stringValue?.isEmpty == false)
+    }
+
+    @Test("whole-number doubles collapse to int payloads but read back exact")
+    func wholeDoublePayloadCollapsesNumericallyLosslessly() async throws {
+        let context = AgentContext(input: "test")
+
+        await context.setTyped(ContextKey<Double>("whole"), value: 2.0)
+
+        // JSON cannot distinguish 2 from 2.0, so the projected payload
+        // decodes as an integer; the Double read remains numerically exact.
+        let snap = try #require(await context.snapshot["whole"])
+        guard case .int = snap else {
+            Issue.record("expected integer-shaped payload for whole double, got \(snap)")
+            return
+        }
+        #expect(await context.getTyped(ContextKey<Double>("whole")) == 2.0)
+    }
+
+    @Test("date keys stay exact at sub-second precision and far-future epochs")
+    func dateExtremeValuesStayExact() async throws {
+        let context = AgentContext(input: "test")
+        let tiny = Date(timeIntervalSince1970: 0.000001)
+        let far = Date(timeIntervalSince1970: 4_102_444_800)
+
+        await context.setTyped(.timestamp, value: tiny)
+        await context.setTyped(ContextKey<Date>("far_future"), value: far)
+
+        #expect(await context.getTyped(.timestamp) == tiny)
+        #expect(await context.getTyped(ContextKey<Date>("far_future")) == far)
+    }
+
+    @Test("merge without overwrite keeps raw entry in snapshot while merging the slot")
+    func mergeWithoutOverwriteSeparatesRawEntryFromMergedSlot() async throws {
+        let parent = AgentContext(input: "parent")
+        await parent.setTyped(.userID, value: "from-slot")
+
+        let child = AgentContext(input: "child")
+        await child.set("user_id", value: .string("raw-local"))
+        await child.merge(from: parent, overwrite: false)
+
+        // Snapshot projection: existing raw entry wins.
+        #expect(await child.snapshot["user_id"] == .string("raw-local"))
+        // Typed namespace still received the merged slot.
+        #expect(await child.getTyped(.userID) == "from-slot")
+        #expect(await child.get("user_id") == .string("raw-local"))
     }
 }

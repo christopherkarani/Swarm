@@ -50,6 +50,13 @@ public enum AgentContextKey: String, Sendable {
 /// time. This protocol remains functional over the unified context store
 /// but will be removed in a future release.
 ///
+/// - Migration hazard: `ContextKey<Value>` writes live in a namespace
+/// separate from untyped string storage. Values written through the typed
+/// API are no longer visible to raw reads such as
+/// ``AgentContext/get(_:)`` or string-keyed snapshot entries, so any code
+/// still reading a migrated value by its raw string must switch to
+/// ``AgentContext/getTyped(_:)`` with the same key name.
+///
 /// Example:
 /// ```swift
 /// extension ContextKey where Value == String {
