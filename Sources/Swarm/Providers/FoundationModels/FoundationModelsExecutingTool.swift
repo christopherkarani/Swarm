@@ -21,6 +21,7 @@ import FoundationModels
 struct FoundationModelsNativeToolError: Error, LocalizedError, Sendable {
     let toolName: String
     let message: String
+    let cause: (any Error)?
 
     var errorDescription: String? {
         "Tool '\(toolName)' failed: \(message)"
@@ -51,7 +52,8 @@ actor FoundationModelsNativeToolRuntime {
             case .toolFailure, .toolExecutionFailed:
                 throw FoundationModelsNativeToolError(
                     toolName: name,
-                    message: error.localizedDescription
+                    message: error.localizedDescription,
+                    cause: error
                 )
             default:
                 return "Tool '\(name)' failed: \(error.localizedDescription)"

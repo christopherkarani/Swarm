@@ -392,7 +392,7 @@ extension FoundationModelsInferenceProvider {
                 throw AgentError.toolFailure(
                     toolName: native.toolName,
                     message: native.message,
-                    cause: native
+                    cause: native.cause ?? native
                 )
             }
             if let request = error.underlyingError as? OwnedLoopHandoffRequest {
@@ -404,7 +404,7 @@ extension FoundationModelsInferenceProvider {
             throw mapError(error)
         } catch let error as FoundationModelsNativeToolError {
             await store.discard(lease)
-            throw AgentError.toolFailure(toolName: error.toolName, message: error.message, cause: error)
+            throw AgentError.toolFailure(toolName: error.toolName, message: error.message, cause: error.cause ?? error)
         } catch {
             await store.discard(lease)
             throw mapError(error)
