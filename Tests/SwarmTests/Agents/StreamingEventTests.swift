@@ -7,8 +7,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Streaming Event Tests")
+@Suite("Streaming Event Tests", .ephemeralDefaultStores)
 struct StreamingEventTests {
+
     
     @Test("Agent stream emits tool call events")
     func reactAgentStreamEvents() async throws {

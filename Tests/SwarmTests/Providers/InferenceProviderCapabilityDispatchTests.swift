@@ -2,8 +2,9 @@ import Foundation
 import Testing
 @testable import Swarm
 
-@Suite("InferenceProvider capability dispatch")
+@Suite("InferenceProvider capability dispatch", .ephemeralDefaultStores)
 struct InferenceProviderCapabilityDispatchTests {
+
     @Test("Agent uses InferenceProvider.promptTokenCounter instead of leftover protocol identity")
     func agentUsesProviderPromptTokenCounterProperty() async throws {
         let providerCounter = RecordingPromptTokenCounter()

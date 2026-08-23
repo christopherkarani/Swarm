@@ -1,8 +1,9 @@
 @testable import Swarm
 import Testing
 
-@Suite("Agent.run guardrail behavior")
+@Suite("Agent.run guardrail behavior", .ephemeralDefaultStores)
 struct AgentRunGuardrailBehaviorTests {
+
     @Test("Input guardrail tripwire blocks provider execution")
     func inputGuardrailTripwireBlocksProvider() async throws {
         let provider = MockInferenceProvider(responses: ["should not be used"])

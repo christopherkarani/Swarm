@@ -2,8 +2,9 @@ import Foundation
 import Testing
 @testable import Swarm
 
-@Suite("Full API Scenarios")
+@Suite("Full API Scenarios", .ephemeralDefaultStores)
 struct FullAPIScenarioTests {
+
     @Test("Scenario 1: simple agent with no tools")
     func helloWorld() async throws {
         let mock = MockInferenceProvider()
@@ -13,17 +14,14 @@ struct FullAPIScenarioTests {
         #expect(result.output.contains("Hello"))
     }
 
-    @Test("Scenario 2: tool agent via Swarm.configure")
+    @Test("Scenario 2: tool agent with an explicit provider")
     func toolAgent() async throws {
-        try await withSwarmConfigurationIsolation {
-            let mock = MockInferenceProvider()
-            await mock.setResponses(["42"])
-            await Swarm.configure(provider: mock)
-            let tool = MockTool(name: "calculator")
-            let agent = try Agent(tools: [tool], instructions: "Math assistant")
-            let result = try await agent.run("What is 2+2?")
-            #expect(result.output == "42")
-        }
+        let mock = MockInferenceProvider()
+        await mock.setResponses(["42"])
+        let tool = MockTool(name: "calculator")
+        let agent = try Agent(tools: [tool], instructions: "Math assistant", inferenceProvider: mock)
+        let result = try await agent.run("What is 2+2?")
+        #expect(result.output == "42")
     }
 
     @Test("Scenario 3: Conversation send/receive")

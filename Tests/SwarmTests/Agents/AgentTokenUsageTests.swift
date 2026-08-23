@@ -2,8 +2,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Agent Token Usage Population")
+@Suite("Agent Token Usage Population", .ephemeralDefaultStores)
 struct AgentTokenUsageTests {
+
     @Test("Provider-reported usage reaches AgentResult, onLLMEnd, and MetricsCollector")
     func providerUsageReachesResultObserverAndMetrics() async throws {
         let expected = TokenUsage(inputTokens: 11, outputTokens: 7)

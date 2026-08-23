@@ -1,8 +1,9 @@
 import Testing
 @testable import Swarm
 
-@Suite("Conversation")
+@Suite("Conversation", .ephemeralDefaultStores)
 struct ConversationTests {
+
     @Test("send appends user and assistant messages")
     func sendAppendsMessages() async throws {
         let mock = MockAgentRuntime(response: "hello back")

@@ -6,7 +6,9 @@
 import Foundation
 
 enum RuntimeMetadata {
-    static let runtimeEngineKey = "runtime.engine"
+    /// Derived from the canonical typed key so the writer and reader sides of
+    /// the runtime-engine seam cannot drift apart.
+    static let runtimeEngineKey = MetadataKey<String>.runtimeEngine.name
     static let graphRuntimeEngineName = "graph"
     static let nativeRuntimeEngineName = "native"
 }

@@ -2,8 +2,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Agent Memory Hooks")
+@Suite("Agent Memory Hooks", .ephemeralDefaultStores)
 struct AgentMemoryHooksTests {
+
     @Test("Session run with Memory-only store is a lifecycle no-op")
     func memoryWithoutLifecycleIsSessionNoOp() async throws {
         let memory = ConversationMemory()

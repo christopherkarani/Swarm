@@ -324,22 +324,22 @@ struct GraphAgent: AgentRuntime, Sendable {
     private static func mapCustomDebugEvent(name: String, event: HiveEvent) -> AgentEvent? {
         switch name {
         case "modelInvocationStarted":
-            return .observation(.llmStarted(model: event.metadata["model"], promptTokens: nil))
+            return .observation(.llmStarted(model: event.metadata[StreamEventMetadata.model], promptTokens: nil))
         case "modelToken":
-            return .output(.token(event.metadata["text"] ?? ""))
+            return .output(.token(event.metadata[StreamEventMetadata.text] ?? ""))
         case "modelInvocationFinished":
             return .observation(.llmCompleted(model: nil, promptTokens: nil, completionTokens: nil, duration: 0))
         case "toolInvocationStarted":
-            let toolName = event.metadata["name"] ?? "tool"
+            let toolName = event.metadata[StreamEventMetadata.name] ?? "tool"
             let call = toolCall(from: event, toolName: toolName)
             return .tool(.started(call: call))
         case "toolInvocationFinished":
-            let toolName = event.metadata["name"] ?? "tool"
+            let toolName = event.metadata[StreamEventMetadata.name] ?? "tool"
             let call = toolCall(from: event, toolName: toolName)
-            if event.metadata["success"] == "true" {
+            if event.metadata[StreamEventMetadata.success] == "true" {
                 let result = ToolResult.success(
                     callId: call.id,
-                    output: event.metadata["output"].map(SendableValue.string) ?? .null,
+                    output: event.metadata[StreamEventMetadata.output].map { SendableValue($0) } ?? .null,
                     duration: .zero
                 )
                 return .tool(.completed(call: call, result: result))
@@ -352,7 +352,7 @@ struct GraphAgent: AgentRuntime, Sendable {
     }
 
     private static func toolCall(from event: HiveEvent, toolName: String) -> ToolCall {
-        let providerCallId = event.metadata["toolCallID"]
+        let providerCallId = event.metadata[StreamEventMetadata.toolCallID]
         let stableID = stableUUID(
             for: providerCallId ?? "\(event.id.eventIndex)|\(event.id.stepIndex.map(String.init) ?? "nil")|\(toolName)"
         )

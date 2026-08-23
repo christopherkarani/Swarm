@@ -265,7 +265,6 @@ public extension AgentResult {
     /// The runtime engine that produced this result, if recorded.
     /// Returns `"graph"` when the graph runtime was used, `"native"` otherwise.
     var runtimeEngine: String? {
-        guard case let .string(value) = metadata["runtime.engine"] else { return nil }
-        return value
+        metadata[.runtimeEngine]
     }
 }

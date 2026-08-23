@@ -2,8 +2,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Agent handoff runtime")
+@Suite("Agent handoff runtime", .ephemeralDefaultStores)
 struct AgentHandoffRuntimeTests {
+
     @Test("Disabled handoffs are not advertised as tools")
     func disabledHandoffsAreNotAdvertisedAsTools() async throws {
         let provider = MockInferenceProvider()

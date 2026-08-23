@@ -2,8 +2,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Documentation Freshness")
+@Suite("Documentation Freshness", .ephemeralDefaultStores)
 struct DocumentationFreshnessTests {
+
     @Test("Workflow stream doc example uses current AgentEvent cases")
     func workflowStreamDocExampleUsesCurrentAgentEventCases() throws {
         let workflowSource = try readRepoFile("Sources/Swarm/Workflow/Workflow.swift")

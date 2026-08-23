@@ -2,8 +2,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("MetricsCollector auto-attach")
+@Suite("MetricsCollector auto-attach", .ephemeralDefaultStores)
 struct MetricsCollectorAutoAttachTests {
+
     @Test("Default configuration does not auto-attach a collector")
     func defaultIsOff() throws {
         #expect(AgentConfiguration.default.autoAttachMetricsCollector == false)

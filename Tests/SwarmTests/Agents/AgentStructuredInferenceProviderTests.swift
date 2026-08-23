@@ -1,8 +1,9 @@
 import Testing
 @testable import Swarm
 
-@Suite("Agent Structured Inference Providers")
+@Suite("Agent Structured Inference Providers", .ephemeralDefaultStores)
 struct AgentStructuredInferenceProviderTests {
+
     @Test("Prefers structured conversation generation when provider supports it")
     func prefersStructuredConversationGeneration() async throws {
         let provider = MockInferenceProvider(responses: ["structured reply"])

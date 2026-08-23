@@ -9,8 +9,9 @@ import Testing
 
 // MARK: - ReActAgentTests
 
-@Suite("Agent Tests")
+@Suite("Agent Tests", .ephemeralDefaultStores)
 struct ReActAgentTests {
+
     @Test("makeDefaultMemory matches Integrations trait")
     func makeDefaultMemoryMatchesIntegrationsTrait() throws {
         let memory = try Agent.makeDefaultMemory()
