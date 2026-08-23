@@ -69,8 +69,15 @@ public struct InferencePolicy: Sendable, Equatable {
     ///
     /// This limits the model's generation length, not the context window.
     /// For context window management, see ``AgentConfiguration/contextProfile``.
+    ///
+    /// Post-initialization writes are coerced like the initializer: values of
+    /// zero or less are dropped to `nil` (with a `Log.agents` warning), so a
+    /// write of `-5` reads back as `nil`.
+    ///
     /// Default: `nil`
-    public var tokenBudget: Int?
+    public var tokenBudget: Int? {
+        didSet { tokenBudget = Self.coercedTokenBudget(tokenBudget) }
+    }
 
     /// Current network state hint. Default: `.online`
     public var networkState: NetworkState
@@ -81,13 +88,27 @@ public struct InferencePolicy: Sendable, Equatable {
         tokenBudget: Int? = nil,
         networkState: NetworkState = .online
     ) {
-        if let tokenBudget, tokenBudget <= 0 {
-            Log.agents.warning("InferencePolicy: tokenBudget \(tokenBudget) must be > 0; dropping value")
-        }
         self.latencyTier = latencyTier
         self.privacyRequired = privacyRequired
-        self.tokenBudget = tokenBudget.flatMap { $0 > 0 ? $0 : nil }
+        self.tokenBudget = Self.coercedTokenBudget(tokenBudget)
         self.networkState = networkState
+    }
+}
+
+// MARK: - InferencePolicy Write-Path Coercion
+
+private extension InferencePolicy {
+    /// Drops non-positive token budgets to `nil`, matching the designated
+    /// initializer; warns via ``Log/agents`` when dropped. Shared by `init`
+    /// and `didSet` so both write paths stay identical.
+    static func coercedTokenBudget(_ value: Int?) -> Int? {
+        guard let value, value > 0 else {
+            if let value {
+                Log.agents.warning("InferencePolicy: tokenBudget \(value) must be > 0; dropping value")
+            }
+            return nil
+        }
+        return value
     }
 }
 
@@ -765,10 +786,14 @@ private extension AgentConfiguration {
 
     /// Falls back to 1.0 for non-finite or out-of-range temperatures, matching
     /// the designated initializer; warns via ``Log/agents`` when replaced.
+    /// Shares ``ModelSettings/temperatureRange`` so both types' temperature
+    /// bounds cannot drift apart.
     static func coercedTemperature(_ value: Double) -> Double {
-        guard !value.isFinite || !(0.0 ... 2.0).contains(value) else { return value }
-        Log.agents.warning("AgentConfiguration: temperature \(value) out of [0.0, 2.0]; using default 1.0")
-        return 1.0
+        guard value.isFinite, ModelSettings.temperatureRange.contains(value) else {
+            Log.agents.warning("AgentConfiguration: temperature \(value) out of [0.0, 2.0]; using default 1.0")
+            return 1.0
+        }
+        return value
     }
 }
 

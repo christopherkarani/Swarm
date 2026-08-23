@@ -87,3 +87,34 @@ struct AgentConfigurationPostInitClampTests {
         #expect(config.name == "Agent")
     }
 }
+
+// MARK: - InferencePolicyPostInitClampTests
+
+@Suite("InferencePolicy Post-Init Clamp Tests")
+struct InferencePolicyPostInitClampTests {
+    @Test("Initializer drops non-positive tokenBudget")
+    func initializerDropsNonPositiveTokenBudget() {
+        #expect(InferencePolicy(tokenBudget: -5).tokenBudget == nil)
+        #expect(InferencePolicy(tokenBudget: 0).tokenBudget == nil)
+        #expect(InferencePolicy(tokenBudget: 500).tokenBudget == 500)
+        #expect(InferencePolicy().tokenBudget == nil)
+    }
+
+    @Test("Writing a non-positive tokenBudget drops the value on read")
+    func nonPositiveTokenBudgetWriteDrops() {
+        var policy = InferencePolicy(tokenBudget: 500)
+
+        policy.tokenBudget = -5
+        #expect(policy.tokenBudget == nil)
+
+        policy.tokenBudget = 0
+        #expect(policy.tokenBudget == nil)
+    }
+
+    @Test("Writing a positive tokenBudget survives unchanged")
+    func positiveTokenBudgetWriteSurvives() {
+        var policy = InferencePolicy()
+        policy.tokenBudget = 250
+        #expect(policy.tokenBudget == 250)
+    }
+}
