@@ -32,7 +32,8 @@ public struct StepError: Sendable, Equatable {
     public static func == (lhs: StepError, rhs: StepError) -> Bool {
         lhs.stepName == rhs.stepName &&
             lhs.stepIndex == rhs.stepIndex &&
-            lhs.error.localizedDescription == rhs.error.localizedDescription
+            String(describing: type(of: lhs.error)) == String(describing: type(of: rhs.error)) &&
+            String(describing: lhs.error) == String(describing: rhs.error)
     }
 }
 

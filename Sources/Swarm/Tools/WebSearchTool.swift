@@ -292,9 +292,10 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         )
         return .string(formatLegacy(envelope))
         #else
-        throw AgentError.toolExecutionFailed(
+        throw AgentError.toolFailure(
             toolName: name,
-            underlyingError: IntegrationsTrait.requirementMessage(for: "Web search")
+            message: IntegrationsTrait.requirementMessage(for: "Web search"),
+            cause: nil
         )
         #endif
     }
@@ -307,9 +308,10 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         )
         return formatLegacy(envelope)
         #else
-        throw AgentError.toolExecutionFailed(
+        throw AgentError.toolFailure(
             toolName: name,
-            underlyingError: IntegrationsTrait.requirementMessage(for: "Web search")
+            message: IntegrationsTrait.requirementMessage(for: "Web search"),
+            cause: nil
         )
         #endif
     }

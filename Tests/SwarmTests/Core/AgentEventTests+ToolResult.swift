@@ -617,12 +617,13 @@ struct ToolResultTests {
             return
         }
         #expect(failedCall.id == callId)
-        guard case let .toolExecutionFailed(toolName: toolName, underlyingError: underlyingError) = error else {
-            Issue.record("expected toolExecutionFailed")
+        guard case let .toolFailure(toolName: toolName, message: message, cause: cause) = error else {
+            Issue.record("expected toolFailure")
             return
         }
         #expect(toolName == "calculator")
-        #expect(underlyingError == "Division by zero")
+        #expect(message == "Division by zero")
+        #expect(cause == nil)
     }
 
     private func jsonObject(from result: ToolResult) throws -> [String: Any] {

@@ -68,6 +68,7 @@ import Foundation
 /// ### Tool Errors
 /// - ``toolNotFound(name:)``
 /// - ``toolExecutionFailed(toolName:underlyingError:)``
+/// - ``toolFailure(toolName:message:cause:)``
 /// - ``invalidToolArguments(toolName:reason:)``
 ///
 /// ### Model Errors
@@ -271,7 +272,37 @@ public enum AgentError: Error, Sendable, Equatable {
     /// - Parameters:
     ///   - toolName: The name of the tool that failed
     ///   - underlyingError: A string description of the underlying error
+    @available(*, deprecated, message: "Use toolFailure(toolName:message:cause:) to preserve the original error instance.")
     case toolExecutionFailed(toolName: String, underlyingError: String)
+
+    /// A tool invocation failed.
+    ///
+    /// This error is thrown when a tool's execution raises an error. Unlike the
+    /// deprecated `toolExecutionFailed(toolName:underlyingError:)` case, it keeps
+    /// the original error instance reachable through `cause`, so callers can
+    /// inspect types, retryability, and nested domains instead of a flattened
+    /// string.
+    ///
+    /// ## Recovery
+    ///
+    /// ```swift
+    /// } catch let error as AgentError {
+    ///     if case .toolFailure(_, _, let cause) = error {
+    ///         if let cause, InferenceRetryability.isRetryable(cause) {
+    ///             // Retry with backoff
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - toolName: The name of the tool that failed
+    ///   - message: Human-readable summary; include one when no underlying
+    ///     error instance exists (for example, configuration or trait-gate
+    ///     failures). May be `nil` when `cause` carries enough context.
+    ///   - cause: The original error raised by the tool, when one exists.
+    ///     `nil` is valid for failures synthesized from strings alone.
+    case toolFailure(toolName: String, message: String?, cause: (any Error)?)
 
     /// Invalid arguments were provided to a tool.
     ///
@@ -591,6 +622,71 @@ public enum AgentError: Error, Sendable, Equatable {
     /// ``InferenceProvider/generateWithToolCalls(messages:tools:options:toolExecutor:)``
     /// must do the same.
     case providerOwnedToolLoopRequiresExecutor
+
+    /// Element-wise equality. The `toolFailure` cause compares by dynamic type
+    /// and description because `(any Error)?` has no structural equality.
+    public static func == (lhs: AgentError, rhs: AgentError) -> Bool {
+        switch (lhs, rhs) {
+        case let (.invalidInput(a), .invalidInput(b)):
+            a == b
+        case (.cancelled, .cancelled):
+            true
+        case let (.maxIterationsExceeded(a), .maxIterationsExceeded(b)):
+            a == b
+        case let (.timeout(a), .timeout(b)):
+            a == b
+        case let (.invalidLoop(a), .invalidLoop(b)):
+            a == b
+        case let (.toolNotFound(a), .toolNotFound(b)):
+            a == b
+        case let (.toolExecutionFailed(a1, a2), .toolExecutionFailed(b1, b2)):
+            a1 == b1 && a2 == b2
+        case let (.toolFailure(n1, m1, c1), .toolFailure(n2, m2, c2)):
+            n1 == n2 && m1 == m2 && Self.causeEquals(c1, c2)
+        case let (.invalidToolArguments(a1, a2), .invalidToolArguments(b1, b2)):
+            a1 == b1 && a2 == b2
+        case let (.inferenceProviderUnavailable(a), .inferenceProviderUnavailable(b)):
+            a == b
+        case let (.contextWindowExceeded(a1, a2), .contextWindowExceeded(b1, b2)):
+            a1 == b1 && a2 == b2
+        case let (.guardrailViolation(a), .guardrailViolation(b)):
+            a == b
+        case let (.contentFiltered(a), .contentFiltered(b)):
+            a == b
+        case let (.unsupportedLanguage(a), .unsupportedLanguage(b)):
+            a == b
+        case let (.generationFailed(a), .generationFailed(b)):
+            a == b
+        case let (.modelNotAvailable(a), .modelNotAvailable(b)):
+            a == b
+        case let (.rateLimitExceeded(a), .rateLimitExceeded(b)):
+            a == b
+        case let (.embeddingFailed(a), .embeddingFailed(b)):
+            a == b
+        case let (.agentNotFound(a), .agentNotFound(b)):
+            a == b
+        case let (.internalError(a), .internalError(b)):
+            a == b
+        case (.toolCallingUnsupported, .toolCallingUnsupported):
+            true
+        case (.providerOwnedToolLoopRequiresExecutor, .providerOwnedToolLoopRequiresExecutor):
+            true
+        default:
+            false
+        }
+    }
+
+    private static func causeEquals(_ lhs: (any Error)?, _ rhs: (any Error)?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            true
+        case let (a?, b?):
+            String(describing: type(of: a)) == String(describing: type(of: b))
+                && String(describing: a) == String(describing: b)
+        default:
+            false
+        }
+    }
 }
 
 // MARK: - LocalizedError
@@ -617,6 +713,8 @@ extension AgentError: LocalizedError {
             "Tool not found: \(name)"
         case let .toolExecutionFailed(toolName, underlyingError):
             "Tool '\(toolName)' failed: \(underlyingError)"
+        case let .toolFailure(toolName, message, cause):
+            "Tool '\(toolName)' failed: \(message ?? cause.map(String.init(describing:)) ?? "unknown error")"
         case let .invalidToolArguments(toolName, reason):
             "Invalid arguments for tool '\(toolName)': \(reason)"
         case let .inferenceProviderUnavailable(reason):
@@ -715,6 +813,8 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.toolNotFound(name: \(name))"
         case let .toolExecutionFailed(toolName, underlyingError):
             "AgentError.toolExecutionFailed(toolName: \(toolName), underlyingError: \(underlyingError))"
+        case let .toolFailure(toolName, message, cause):
+            "AgentError.toolFailure(toolName: \(toolName), message: \(message ?? "nil"), cause: \(cause.map { String(describing: type(of: $0)) } ?? "nil"))"
         case let .invalidToolArguments(toolName, reason):
             "AgentError.invalidToolArguments(toolName: \(toolName), reason: \(reason))"
         case let .inferenceProviderUnavailable(reason):
@@ -770,6 +870,7 @@ extension AgentError {
              .contentFiltered,
              .invalidToolArguments,
              .toolExecutionFailed,
+             .toolFailure,
              .toolNotFound,
              .contextWindowExceeded,
              .unsupportedLanguage,

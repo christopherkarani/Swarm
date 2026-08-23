@@ -516,6 +516,46 @@ struct FoundationModelsExecutingToolTests {
         }
     }
 
+    @Test("Executing tool surfaces registry toolFailure as a native tool error")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func executingToolSurfacesToolFailureAsNativeError() async throws {
+        struct Boom: Error, Equatable {}
+        let cause = Boom()
+        let executor = ToolCallExecutor { _, _ in
+            throw AgentError.toolFailure(toolName: "boom", message: nil, cause: cause)
+        }
+        let runtime = FoundationModelsNativeToolRuntime(executor: executor)
+        do {
+            _ = try await runtime.execute(name: "boom", arguments: [:])
+            Issue.record("expected FoundationModelsNativeToolError")
+        } catch let error as FoundationModelsNativeToolError {
+            #expect(error.toolName == "boom")
+            guard case let .toolFailure(_, _, unwrapped) = error.cause as? AgentError else {
+                Issue.record("expected nested toolFailure")
+                return
+            }
+            #expect(unwrapped as? Boom == cause)
+        }
+    }
+
+    @Test("Session seam unwraps the deep toolFailure cause past the native wrapper")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func nativeToolErrorCauseFallbackPrefersDeepCause() {
+        struct Boom: Error, Equatable {}
+        let deep = Boom()
+        let native = FoundationModelsNativeToolError(
+            toolName: "boom",
+            message: "nope",
+            cause: AgentError.toolFailure(toolName: "boom", message: nil, cause: deep)
+        )
+        let mappedCause = native.cause ?? native
+        guard case let .toolFailure(_, _, unwrapped) = mappedCause as? AgentError else {
+            Issue.record("expected nested toolFailure")
+            return
+        }
+        #expect(unwrapped as? Boom == deep)
+    }
+
     @Test("Executing tool fires observer hooks and input guardrails")
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
     func executingToolFiresObserverAndGuardrails() async throws {

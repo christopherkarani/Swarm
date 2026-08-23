@@ -278,9 +278,10 @@ public actor ParallelToolExecutor {
             let errors = results.compactMap(\.error)
             if !errors.isEmpty {
                 let errorDescriptions = errors.map(\.localizedDescription)
-                throw AgentError.toolExecutionFailed(
+                throw AgentError.toolFailure(
                     toolName: "parallel_execution",
-                    underlyingError: "Multiple tools failed: \(errorDescriptions.joined(separator: "; "))"
+                    message: "Multiple tools failed: \(errorDescriptions.joined(separator: "; "))",
+                    cause: errors.first
                 )
             }
 

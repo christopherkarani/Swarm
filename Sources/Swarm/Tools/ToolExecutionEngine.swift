@@ -74,7 +74,7 @@ struct ToolExecutionEngine: Sendable {
             await observer?.onToolEnd(context: context, agent: agent, result: result)
 
             if stopOnToolError {
-                throw AgentError.toolExecutionFailed(toolName: toolName, underlyingError: errorMessage)
+                throw AgentError.toolFailure(toolName: toolName, message: errorMessage, cause: error)
             }
 
             return Outcome(call: call, result: result)

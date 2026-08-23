@@ -344,7 +344,7 @@ struct GraphAgent: AgentRuntime, Sendable {
                 )
                 return .tool(.completed(call: call, result: result))
             }
-            let error = AgentError.toolExecutionFailed(toolName: toolName, underlyingError: "Tool invocation failed")
+            let error = AgentError.toolFailure(toolName: toolName, message: "Tool invocation failed", cause: nil)
             return .tool(.failed(call: call, error: error))
         default:
             return nil

@@ -700,6 +700,20 @@ public struct ToolCallRecord: Sendable {
 
 Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The independent `isSuccess` + `errorMessage` memberwise initializers remain as deprecated compatibility shims. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
 
+### Tool failure errors
+
+Tool failures surface as `AgentError.toolFailure(toolName:message:cause:)`, which keeps the
+original error instance reachable through `cause` (`nil` for failures synthesized from
+strings alone, such as trait-gate or configuration errors):
+
+```swift
+public case toolFailure(toolName: String, message: String?, cause: (any Error)?)
+```
+
+The previous `AgentError.toolExecutionFailed(toolName:underlyingError:)` case is deprecated
+but remains fully constructible and matchable; `message` carries the same flattened string
+that `underlyingError` used to.
+
 ## 13) Public macros
 
 | Macro | Applied To | Effect |

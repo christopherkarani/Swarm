@@ -260,11 +260,11 @@ struct ParallelToolExecutorTests {
 
         #expect(thrownError != nil)
         if let agentError = thrownError as? AgentError {
-            if case let .toolExecutionFailed(toolName, underlyingError) = agentError {
+            if case let .toolFailure(toolName, message, _) = agentError {
                 #expect(toolName == "parallel_execution")
-                #expect(underlyingError.contains("Multiple tools failed"))
+                #expect(message?.contains("Multiple tools failed") == true)
             } else {
-                Issue.record("Expected toolExecutionFailed with parallel_execution")
+                Issue.record("Expected toolFailure with parallel_execution")
             }
         }
     }
