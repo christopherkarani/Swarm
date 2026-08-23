@@ -305,10 +305,10 @@ public actor MetricsCollector: Tracer {
                 let duration = event.timestamp.timeIntervalSince(startTime)
                 executionDurations.append(duration)
             }
-            if let input = event.metadata["input_tokens"]?.intValue {
+            if let input = event.metadata[.inputTokens] {
                 inputTokens += input
             }
-            if let output = event.metadata["output_tokens"]?.intValue {
+            if let output = event.metadata[.outputTokens] {
                 outputTokens += output
             }
             spanStartTimes.removeValue(forKey: event.spanId)

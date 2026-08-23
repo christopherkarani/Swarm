@@ -313,7 +313,19 @@ public extension InferenceProvider {
     }
 }
 
-private func streamFinishedToolTurn(
+/// Degrades a finished, non-streaming turn into the canonical
+/// ``InferenceStreamUpdate`` sequence.
+///
+/// Shared adapter toolkit for in-package backends that cannot stream natively:
+/// route the finished turn through this helper so update ordering stays
+/// identical across adapters — `outputChunk`, then `toolCallsCompleted`, then
+/// `usage`, then `finishedTurn` (only when the turn carries a provider-owned
+/// inner transcript), then finish.
+///
+/// Out-of-package providers need nothing: they inherit this exact sequence via
+/// the `streamWithToolCalls(messages:tools:options:toolExecutor:)` protocol
+/// default as long as they do not override that requirement.
+package func streamFinishedToolTurn(
     _ generate: @escaping @Sendable () async throws -> InferenceResponse
 ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
     StreamHelper.makeTrackedStream { continuation in

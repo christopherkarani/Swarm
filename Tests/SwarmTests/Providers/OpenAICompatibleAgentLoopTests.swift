@@ -6,8 +6,9 @@ import Testing
 import FoundationNetworking
 #endif
 
-@Suite("OpenAI-compatible Linux agent loop", .serialized)
+@Suite("OpenAI-compatible Linux agent loop", .serialized, .ephemeralDefaultStores)
 struct OpenAICompatibleAgentLoopTests {
+
     @Test("Agent run executes tools against an OpenAI-compatible fixture")
     func agentRunExecutesTools() async throws {
         OpenAICompatibleURLProtocol.reset()

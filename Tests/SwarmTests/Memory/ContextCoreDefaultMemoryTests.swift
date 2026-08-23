@@ -3,8 +3,9 @@ import Foundation
 import Testing
 @testable import Swarm
 
-@Suite("Default Composite Memory")
+@Suite("Default Composite Memory", .ephemeralDefaultStores)
 struct ContextCoreDefaultMemoryTests {
+
     @Test("Agent uses ContextCore + Wax memory by default on subsequent turns")
     func agentUsesContextCoreMemoryByDefault() async throws {
         let session = InMemorySession()

@@ -2,8 +2,9 @@ import Foundation
 import Testing
 @testable import Swarm
 
-@Suite("Agent Live Tool Call Streaming")
+@Suite("Agent Live Tool Call Streaming", .ephemeralDefaultStores)
 struct AgentLiveToolCallStreamingTests {
+
     @Test("Emits toolCallPartial before toolCallStarted when provider streams tool-call assembly")
     func emitsPartialUpdatesBeforeToolExecution() async throws {
         struct EchoTool: AnyJSONTool, Sendable {

@@ -1,8 +1,9 @@
 import Testing
 @testable import Swarm
 
-@Suite("AgentObserver")
+@Suite("AgentObserver", .ephemeralDefaultStores)
 struct AgentObserverTests {
+
     @Test("AgentObserver conformance works")
     func observerConformance() async throws {
         struct TestObserver: AgentObserver {

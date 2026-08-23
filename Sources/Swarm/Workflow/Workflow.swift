@@ -642,9 +642,9 @@ public struct Workflow: Sendable {
 
             let fallbackResult = try await backup.run(input, session: nil, observer: observer)
             var metadata = fallbackResult.metadata
-            metadata["workflow.fallback.used"] = .bool(true)
+            metadata[.fallbackUsed] = true
             if let lastError {
-                metadata["workflow.fallback.error"] = .string(String(describing: lastError))
+                metadata[.fallbackError] = String(describing: lastError)
             }
             return AgentResult(
                 output: fallbackResult.output,

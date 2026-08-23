@@ -1,6 +1,14 @@
 import Foundation
 @testable import Swarm
 
+/// Serializes process-global `Swarm.Configuration.shared` mutations.
+///
+/// Reserved for suites that exercise GLOBAL default behavior itself
+/// (`Swarm.configure` / `Swarm.reset` / the ambient configuration touchpoints).
+/// Suites that merely need a provider or web configuration should inject one
+/// explicitly (`Agent(inferenceProvider:)`, `runEnvironment:`) instead of
+/// mutating the global — no wrapper required.
+
 // MARK: - SwarmConfigurationTestMutex
 
 private actor SwarmConfigurationTestMutex {

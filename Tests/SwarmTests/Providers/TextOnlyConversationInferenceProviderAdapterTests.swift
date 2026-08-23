@@ -2,8 +2,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Text-Only Inference Provider Adapter")
+@Suite("Text-Only Inference Provider Adapter", .ephemeralDefaultStores)
 struct TextOnlyConversationInferenceProviderAdapterTests {
+
     @Test("Default tool-calling emulation works for plain inference providers")
     func defaultToolCallingEmulationWorksForPlainProviders() async throws {
         let provider = CertifiedTextOnlyProvider(mode: .alwaysToolEnvelope)

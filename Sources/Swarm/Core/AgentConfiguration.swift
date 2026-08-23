@@ -69,8 +69,15 @@ public struct InferencePolicy: Sendable, Equatable {
     ///
     /// This limits the model's generation length, not the context window.
     /// For context window management, see ``AgentConfiguration/contextProfile``.
+    ///
+    /// Post-initialization writes are coerced like the initializer: values of
+    /// zero or less are dropped to `nil` (with a `Log.agents` warning), so a
+    /// write of `-5` reads back as `nil`.
+    ///
     /// Default: `nil`
-    public var tokenBudget: Int?
+    public var tokenBudget: Int? {
+        didSet { tokenBudget = Self.coercedTokenBudget(tokenBudget) }
+    }
 
     /// Current network state hint. Default: `.online`
     public var networkState: NetworkState
@@ -81,13 +88,27 @@ public struct InferencePolicy: Sendable, Equatable {
         tokenBudget: Int? = nil,
         networkState: NetworkState = .online
     ) {
-        if let tokenBudget, tokenBudget <= 0 {
-            Log.agents.warning("InferencePolicy: tokenBudget \(tokenBudget) must be > 0; dropping value")
-        }
         self.latencyTier = latencyTier
         self.privacyRequired = privacyRequired
-        self.tokenBudget = tokenBudget.flatMap { $0 > 0 ? $0 : nil }
+        self.tokenBudget = Self.coercedTokenBudget(tokenBudget)
         self.networkState = networkState
+    }
+}
+
+// MARK: - InferencePolicy Write-Path Coercion
+
+private extension InferencePolicy {
+    /// Drops non-positive token budgets to `nil`, matching the designated
+    /// initializer; warns via ``Log/agents`` when dropped. Shared by `init`
+    /// and `didSet` so both write paths stay identical.
+    static func coercedTokenBudget(_ value: Int?) -> Int? {
+        guard let value, value > 0 else {
+            if let value {
+                Log.agents.warning("InferencePolicy: tokenBudget \(value) must be > 0; dropping value")
+            }
+            return nil
+        }
+        return value
     }
 }
 
@@ -206,6 +227,14 @@ public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
 ///
 /// `AgentConfiguration` is a value type (`struct`) and is `Sendable`, making it
 /// safe to pass across concurrency boundaries.
+///
+/// ## Post-Initialization Writes
+///
+/// ``maxIterations``, ``timeout``, and ``temperature`` are mutation-proofed:
+/// `didSet` observers coerce any write with the exact same rules (and
+/// ``Log/agents`` warnings) as the designated initializer, so e.g.
+/// `config.maxIterations = 0` reads back as `1`. Property setters cannot
+/// throw, which is why invalid values are coerced rather than rejected.
 public struct AgentConfiguration: Sendable, Equatable {
     // MARK: - Default Configuration
 
@@ -237,17 +266,33 @@ public struct AgentConfiguration: Sendable, Equatable {
 
     /// Maximum number of reasoning iterations before stopping.
     /// Default: 10
-    public var maxIterations: Int
+    ///
+    /// Post-initialization writes are coerced like the initializer: values
+    /// below 1 self-correct to 1 (with a `Log.agents` warning), so a write of
+    /// `0` reads back as `1`.
+    public var maxIterations: Int {
+        didSet { maxIterations = Self.coercedMaxIterations(maxIterations) }
+    }
 
     /// Maximum time allowed for the entire execution.
     /// Default: 60 seconds
-    public var timeout: Duration
+    ///
+    /// Post-initialization writes are coerced like the initializer: non-positive
+    /// durations fall back to the 60-second default (with a `Log.agents` warning).
+    public var timeout: Duration {
+        didSet { timeout = Self.coercedTimeout(timeout) }
+    }
 
     // MARK: - Model Settings
 
     /// Temperature for model generation (0.0 = deterministic, 2.0 = creative).
     /// Default: 1.0
-    public var temperature: Double
+    ///
+    /// Post-initialization writes are coerced like the initializer: non-finite
+    /// or out-of-range values fall back to 1.0 (with a `Log.agents` warning).
+    public var temperature: Double {
+        didSet { temperature = Self.coercedTemperature(temperature) }
+    }
 
     /// Maximum tokens to generate per response.
     /// Default: nil (model default)
@@ -693,19 +738,10 @@ public struct AgentConfiguration: Sendable, Equatable {
         foundationModelsExecution: FoundationModelsExecutionMode = .capture,
         resilience: ResilienceConfiguration = .disabled
     ) {
-        if maxIterations < 1 {
-            Log.agents.warning("AgentConfiguration: maxIterations \(maxIterations) must be >= 1; using 1")
-        }
-        if timeout <= .zero {
-            Log.agents.warning("AgentConfiguration: timeout must be positive; using default 60 seconds")
-        }
-        if !temperature.isFinite || !(0.0 ... 2.0).contains(temperature) {
-            Log.agents.warning("AgentConfiguration: temperature \(temperature) out of [0.0, 2.0]; using default 1.0")
-        }
         self.name = name
-        self.maxIterations = max(1, maxIterations)
-        self.timeout = timeout > .zero ? timeout : .seconds(60)
-        self.temperature = (temperature.isFinite && (0.0 ... 2.0).contains(temperature)) ? temperature : 1.0
+        self.maxIterations = Self.coercedMaxIterations(maxIterations)
+        self.timeout = Self.coercedTimeout(timeout)
+        self.temperature = Self.coercedTemperature(temperature)
         self.maxTokens = maxTokens
         self.stopSequences = stopSequences
         self.modelSettings = modelSettings
@@ -725,6 +761,39 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.autoAttachMetricsCollector = autoAttachMetricsCollector
         self.foundationModelsExecution = foundationModelsExecution
         self.resilience = resilience
+    }
+}
+
+// MARK: - Write-Path Coercion
+
+private extension AgentConfiguration {
+    /// Coerces `maxIterations` to at least 1, matching the designated
+    /// initializer; warns via ``Log/agents`` when clamping occurs. Shared by
+    /// `init` and `didSet` so both write paths stay identical.
+    static func coercedMaxIterations(_ value: Int) -> Int {
+        guard value < 1 else { return value }
+        Log.agents.warning("AgentConfiguration: maxIterations \(value) must be >= 1; using 1")
+        return max(1, value)
+    }
+
+    /// Falls back to the 60-second default for non-positive timeouts, matching
+    /// the designated initializer; warns via ``Log/agents`` when replaced.
+    static func coercedTimeout(_ value: Duration) -> Duration {
+        guard value <= .zero else { return value }
+        Log.agents.warning("AgentConfiguration: timeout must be positive; using default 60 seconds")
+        return .seconds(60)
+    }
+
+    /// Falls back to 1.0 for non-finite or out-of-range temperatures, matching
+    /// the designated initializer; warns via ``Log/agents`` when replaced.
+    /// Shares ``ModelSettings/temperatureRange`` so both types' temperature
+    /// bounds cannot drift apart.
+    static func coercedTemperature(_ value: Double) -> Double {
+        guard value.isFinite, ModelSettings.temperatureRange.contains(value) else {
+            Log.agents.warning("AgentConfiguration: temperature \(value) out of [0.0, 2.0]; using default 1.0")
+            return 1.0
+        }
+        return value
     }
 }
 
