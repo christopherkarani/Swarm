@@ -321,7 +321,41 @@ public struct OutputGuard: OutputGuardrail, Sendable {
         try await handler(output, agent, context)
     }
 
+    /// Evaluates this guard's predicate without an agent runtime.
+    ///
+    /// Built-in guards such as ``maxLength(_:name:)`` never read the agent or
+    /// context parameters; this internal entry point lets their predicates be
+    /// exercised directly without constructing any ``AgentRuntime``.
+    func evaluate(_ output: String) async throws -> GuardrailResult {
+        try await handler(output, NullAgentRuntime.shared, nil)
+    }
+
     private let handler: OutputValidationHandler
+}
+
+// MARK: - NullAgentRuntime
+
+/// An inert ``AgentRuntime`` satisfying validation handlers that require an
+/// agent argument but never read one.
+struct NullAgentRuntime: AgentRuntime {
+    /// Shared inert instance.
+    static let shared = NullAgentRuntime()
+
+    nonisolated let configuration = AgentConfiguration(name: "null-agent")
+    nonisolated let tools: [any AnyJSONTool] = []
+    nonisolated let instructions = ""
+
+    private init() {}
+
+    func run(_: String, session _: (any Session)? = nil, observer _: (any AgentObserver)? = nil) async throws -> AgentResult {
+        AgentResult(output: "")
+    }
+
+    nonisolated func stream(_: String, session _: (any Session)? = nil, observer _: (any AgentObserver)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+
+    func cancel() async {}
 }
 
 // MARK: - OutputGuard Static Factories
