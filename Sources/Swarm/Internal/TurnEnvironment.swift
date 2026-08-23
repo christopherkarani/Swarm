@@ -10,9 +10,13 @@ import Foundation
 /// constructing domain values (`AgentEvent`, transcript entries, tool results,
 /// rate-limit windows).
 ///
-/// Production code uses ``live``, which delegates to `Date()` and `UUID()`.
-/// Tests inject deterministic fakes so two identical runs produce
-/// byte-identical `id`/`timestamp` fields (spec AC-001).
+/// ``live`` is a fixed constant, not swappable global state: default
+/// arguments at construction boundaries always observe wall-clock time and
+/// random UUIDs. Determinism comes from explicit data instead — tests pass
+/// fake timestamps/ids when constructing domain values, or inject a closure
+/// at seams that observe time passage (`ResponseTracker.init(now:)`), so
+/// identical inputs produce byte-identical `id`/`timestamp` fields
+/// (spec AC-001).
 ///
 /// The type is a struct of `@Sendable` closures, so it is `Sendable` without
 /// any unchecked conformances (spec CON-002).
