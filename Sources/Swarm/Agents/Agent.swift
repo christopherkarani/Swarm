@@ -264,6 +264,39 @@ public struct Agent: AgentRuntime, Sendable {
         guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default,
         handoffs: [AnyHandoffConfiguration] = []
     ) throws {
+        try self.init(
+            tools: tools,
+            instructions: instructions,
+            configuration: configuration,
+            memory: memory,
+            inferenceProvider: inferenceProvider,
+            tracer: tracer,
+            inputGuardrails: inputGuardrails,
+            outputGuardrails: outputGuardrails,
+            guardrailRunnerConfiguration: guardrailRunnerConfiguration,
+            handoffs: handoffs,
+            runEnvironment: .live
+        )
+    }
+
+    /// Designated initializer with explicit per-run dependencies.
+    ///
+    /// ``runEnvironment`` defaults to ``AgentRunEnvironment/live`` so agents
+    /// built through public initializers share dedup and session-serialization
+    /// state exactly as they did when these dependencies were process globals.
+    init(
+        tools: [any AnyJSONTool] = [],
+        instructions: String = "",
+        configuration: AgentConfiguration = .default,
+        memory: (any Memory)? = nil,
+        inferenceProvider: (any InferenceProvider)? = nil,
+        tracer: (any Tracer)? = nil,
+        inputGuardrails: [any InputGuardrail] = [],
+        outputGuardrails: [any OutputGuardrail] = [],
+        guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default,
+        handoffs: [AnyHandoffConfiguration] = [],
+        runEnvironment: AgentRunEnvironment = .live
+    ) throws {
         self.tools = tools
         self.instructions = instructions
         self.configuration = configuration
@@ -283,6 +316,7 @@ public struct Agent: AgentRuntime, Sendable {
             agentName: configuration.name
         )
         inferenceRateLimiter = configuration.resilience.makeRateLimiter()
+        self.runEnvironment = runEnvironment
     }
 
     /// Convenience initializer that takes an unlabeled inference provider.
@@ -638,8 +672,22 @@ public struct Agent: AgentRuntime, Sendable {
     let inferenceCircuitBreaker: CircuitBreaker?
     /// Created from ``AgentConfiguration/resilience`` at init. Copies of this value share the actor.
     let inferenceRateLimiter: RateLimiter?
-    private static let autoResponseTracker = ResponseTracker()
-    private static let defaultMemorySessionTracker = DefaultMemorySessionTracker()
+    /// Per-run dependency bundle (response tracker, default-memory session
+    /// tracker, shared configuration source). Defaults to ``AgentRunEnvironment/live``;
+    /// a separately constructed environment isolates tracker state per agent.
+    let runEnvironment: AgentRunEnvironment
+
+    /// Shared default environment backing agents constructed through public initializers.
+    /// All such agents observe one instance, preserving the former process-global
+    /// sharing semantics across agent copies.
+    static let defaultRunEnvironment = AgentRunEnvironment.live
+
+    /// Former process-global response tracker; delegates to ``defaultRunEnvironment``.
+    static var autoResponseTracker: ResponseTracker { defaultRunEnvironment.responseTracker }
+
+    /// Former process-global default-memory session tracker; delegates to ``defaultRunEnvironment``.
+    static var defaultMemorySessionTracker: DefaultMemorySessionTracker { defaultRunEnvironment.defaultMemorySessionTracker }
+
     private static let responseIDMetadataKey = "response.id"
     private static let transcriptSchemaVersionMetadataKey = "swarm.transcript.schema_version"
     private static let transcriptHashMetadataKey = "swarm.transcript.hash"
@@ -787,101 +835,14 @@ public struct Agent: AgentRuntime, Sendable {
         }
     }
 
-    private actor DefaultMemorySessionTracker {
-        private var sessionIDs: [ObjectIdentifier: String] = [:]
-        private var activeSessionIDs: [ObjectIdentifier: String] = [:]
-        private var activeCounts: [ObjectIdentifier: Int] = [:]
-        // Waiters are keyed by a per-call UUID so a cancellation can target the
-        // exact parked task without disturbing siblings. `endRun()` resumes any
-        // remaining waiters with success; cancellation resumes the targeted
-        // waiter with `CancellationError` and removes it from the map.
-        private var waiters: [ObjectIdentifier: [UUID: CheckedContinuation<Void, Error>]] = [:]
-
-        func beginRun(for key: ObjectIdentifier, sessionID: String) async throws -> Bool {
-            while let activeSessionID = activeSessionIDs[key],
-                  activeSessionID != sessionID
-            {
-                try Task.checkCancellation()
-                try await waitForSessionRelease(key: key)
-            }
-
-            // Final cancellation check after exiting the wait loop. Closes the
-            // race where `endRun` resumes the continuation just as the parent
-            // task is cancelled — without this, the resumed task would proceed
-            // to claim the slot and trigger memory-clear side effects.
-            try Task.checkCancellation()
-
-            let previous = sessionIDs[key]
-            sessionIDs[key] = sessionID
-            activeSessionIDs[key] = sessionID
-            activeCounts[key, default: 0] += 1
-            return previous != sessionID
-        }
-
-        func endRun(for key: ObjectIdentifier) {
-            let remaining = (activeCounts[key] ?? 1) - 1
-            if remaining > 0 {
-                activeCounts[key] = remaining
-                return
-            }
-
-            activeCounts[key] = nil
-            activeSessionIDs[key] = nil
-            let pendingWaiters = waiters.removeValue(forKey: key) ?? [:]
-            for (_, continuation) in pendingWaiters {
-                continuation.resume()
-            }
-        }
-
-        /// Park the calling task until either the active session releases (success)
-        /// or the calling task is cancelled (throws `CancellationError`). Without
-        /// the cancellation arm, a cancelled task would stay parked until the
-        /// holder of the active session calls `endRun()`, then wake up and claim
-        /// the slot — performing memory clears and other side effects before the
-        /// cancellation surfaces deeper in execution.
-        private func waitForSessionRelease(key: ObjectIdentifier) async throws {
-            let waiterID = UUID()
-            try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    if Task.isCancelled {
-                        continuation.resume(throwing: CancellationError())
-                        return
-                    }
-                    waiters[key, default: [:]][waiterID] = continuation
-                }
-            } onCancel: {
-                Task { await self.cancelWaiter(key: key, id: waiterID) }
-            }
-        }
-
-        private func cancelWaiter(key: ObjectIdentifier, id: UUID) {
-            if let continuation = waiters[key]?.removeValue(forKey: id) {
-                if waiters[key]?.isEmpty == true {
-                    waiters[key] = nil
-                }
-                continuation.resume(throwing: CancellationError())
-            }
-        }
-    }
-
     private func resolvedActiveTracer() -> (any Tracer)? {
-        let configured = tracer ?? AgentEnvironmentValues.current.tracer
-        let fallback = configuration.defaultTracingEnabled
-            ? SwiftLogTracer(minimumLevel: .debug)
-            : nil
-        let base = configured ?? fallback
-
-        guard configuration.autoAttachMetricsCollector, let collector = metricsCollector else {
-            return base
-        }
-
-        if let base {
-            if let existing = base as? MetricsCollector, existing === collector {
-                return collector
-            }
-            return CompositeTracer(tracers: [base, collector])
-        }
-        return collector
+        AgentDependencyResolver.activeTracer(
+            explicitTracer: tracer,
+            environmentTracer: AgentEnvironmentValues.current.tracer,
+            defaultTracingEnabled: configuration.defaultTracingEnabled,
+            autoAttachMetricsCollector: configuration.autoAttachMetricsCollector,
+            metricsCollector: metricsCollector
+        )
     }
 
     private func runInternal(
@@ -907,7 +868,7 @@ public struct Agent: AgentRuntime, Sendable {
         {
             let memoryKey = memoryObjectIdentifier(trackedSessionMemory)
             defaultMemoryRunKey = memoryKey
-            if try await Self.defaultMemorySessionTracker.beginRun(for: memoryKey, sessionID: session.sessionId) {
+            if try await runEnvironment.defaultMemorySessionTracker.beginRun(for: memoryKey, sessionID: session.sessionId) {
                 await trackedSessionMemory.clear()
             }
         }
@@ -1025,7 +986,7 @@ public struct Agent: AgentRuntime, Sendable {
             let result = resultBuilder.build()
             if configuration.autoPreviousResponseId, let session {
                 let response = makeResponse(from: result, responseID: responseID)
-                await Self.autoResponseTracker.recordResponse(response, sessionId: session.sessionId)
+                await runEnvironment.responseTracker.recordResponse(response, sessionId: session.sessionId)
             }
             await tracing.traceComplete(result: result, tokenUsage: resultBuilder.ownTokenUsage())
 
@@ -1036,7 +997,7 @@ public struct Agent: AgentRuntime, Sendable {
                 await endMemorySession()
             }
             if let defaultMemoryRunKey {
-                await Self.defaultMemorySessionTracker.endRun(for: defaultMemoryRunKey)
+                await runEnvironment.defaultMemorySessionTracker.endRun(for: defaultMemoryRunKey)
             }
             return InternalRunResult(agentResult: result, structuredOutput: toolLoopOutcome.structuredOutput)
         } catch {
@@ -1048,7 +1009,7 @@ public struct Agent: AgentRuntime, Sendable {
                 await endMemorySession()
             }
             if let defaultMemoryRunKey {
-                await Self.defaultMemorySessionTracker.endRun(for: defaultMemoryRunKey)
+                await runEnvironment.defaultMemorySessionTracker.endRun(for: defaultMemoryRunKey)
             }
             throw normalizedError
         }
@@ -1057,110 +1018,28 @@ public struct Agent: AgentRuntime, Sendable {
     // MARK: - Inference Provider Resolution
 
     private func resolvedInferenceProvider() async throws -> any InferenceProvider {
-        if configuration.inferencePolicy?.privacyRequired == true {
-            return try await resolvedPrivateInferenceProvider()
-        }
-
-        // 1. Explicit provider on Agent
-        if let inferenceProvider {
-            return transformedInferenceProvider(inferenceProvider)
-        }
-
-        // 2. TaskLocal via .environment()
-        if let environmentProvider = AgentEnvironmentValues.current.inferenceProvider {
-            return transformedInferenceProvider(environmentProvider)
-        }
-
-        // 3. Swarm.defaultProvider (global)
-        if let globalProvider = await Swarm.defaultProvider {
-            return transformedInferenceProvider(globalProvider)
-        }
-
-        // 4. Foundation Models (if available, on Apple platform)
-        if let foundationModelsProvider = DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() {
-            return transformedInferenceProvider(foundationModelsProvider)
-        }
-
-        // 5. No provider available
-        throw AgentError.inferenceProviderUnavailable(
-            reason: """
-            No inference provider configured and Apple Foundation Models are unavailable.
-
-            Configure a provider globally via `await Swarm.configure(provider: ...)` \
-            or pass one explicitly to Agent(...).
-            """
+        try await AgentDependencyResolver.inferenceProvider(
+            privacyRequired: configuration.inferencePolicy?.privacyRequired == true,
+            explicitProvider: inferenceProvider,
+            environment: AgentEnvironmentValues.current,
+            runEnvironment: runEnvironment
         )
-    }
-
-    private func resolvedPrivateInferenceProvider() async throws -> any InferenceProvider {
-        if let foundationModelsProvider = DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() {
-            return transformedInferenceProvider(foundationModelsProvider)
-        }
-
-        if let provider = privateInferenceProvider(inferenceProvider) {
-            return transformedInferenceProvider(provider)
-        }
-
-        if let provider = privateInferenceProvider(AgentEnvironmentValues.current.inferenceProvider) {
-            return transformedInferenceProvider(provider)
-        }
-
-        if let globalProvider = await Swarm.defaultProvider,
-           let provider = privateInferenceProvider(globalProvider)
-        {
-            return transformedInferenceProvider(provider)
-        }
-
-        throw AgentError.inferenceProviderUnavailable(
-            reason: """
-            AgentConfiguration.inferencePolicy.privacyRequired is true, but no private inference provider is available.
-
-            Use Apple Foundation Models on a supported device, or configure a provider that reports \
-            InferenceProviderCapabilities.privateInference via `await Swarm.configure(provider: ...)`.
-            """
-        )
-    }
-
-    private func privateInferenceProvider(_ provider: (any InferenceProvider)?) -> (any InferenceProvider)? {
-        guard let provider else {
-            return nil
-        }
-
-        let capabilities = InferenceProviderCapabilities.resolved(for: provider)
-        guard capabilities.contains(.privateInference) else {
-            return nil
-        }
-        return provider
-    }
-
-    private func transformedInferenceProvider(_ provider: any InferenceProvider) -> any InferenceProvider {
-        guard let transform = AgentEnvironmentValues.current.inferenceProviderTransform else {
-            return provider
-        }
-        return transform(provider)
     }
 
     private func resolvedMembraneAdapter() -> (any MembraneAgentAdapter)? {
-        let membrane = AgentEnvironmentValues.current.membrane ?? .enabled
-        guard membrane.isEnabled else {
-            return nil
-        }
-        if let adapter = membrane.adapter {
-            return adapter
-        }
-        return DefaultMembraneAgentAdapter(configuration: membrane.configuration)
+        AgentDependencyResolver.membraneAdapter(in: AgentEnvironmentValues.current)
     }
 
     private func runtimeEnvironment(for provider: any InferenceProvider) -> AgentEnvironment {
-        var environment = AgentEnvironmentValues.current
-        if let tokenCounter = provider.promptTokenCounter {
-            environment.promptTokenCounter = tokenCounter
-        }
-        return environment
+        AgentDependencyResolver.runtimeEnvironment(AgentEnvironmentValues.current, addingTokenCounterFrom: provider)
     }
 
     private func resolvedMemory() -> (any Memory)? {
-        memory ?? AgentEnvironmentValues.current.memory ?? defaultMemory
+        AgentDependencyResolver.memory(
+            explicitMemory: memory,
+            environmentMemory: AgentEnvironmentValues.current.memory,
+            defaultMemory: defaultMemory
+        )
     }
 
     private func shouldPersistNoSessionTurn(to activeMemory: any Memory) -> Bool {
@@ -1210,59 +1089,27 @@ public struct Agent: AgentRuntime, Sendable {
     }
 
     private func resolvedToolRegistry() async throws -> ToolRegistry {
-        let baseTools = await toolRegistry.allTools
-        #if SWARM_INTEGRATIONS
-        guard !baseTools.contains(where: { $0.name == "websearch" }) else {
-            return try ToolRegistry(tools: baseTools)
-        }
-
-        let taskLocalWeb = AgentEnvironmentValues.current.webSearch
-        let ambientWeb = if let taskLocalWeb { taskLocalWeb } else { await Swarm.webConfiguration }
-        guard let ambientWeb,
-              ambientWeb.enabled
-        else {
-            return try ToolRegistry(tools: baseTools)
-        }
-
-        var tools = baseTools
-        tools.append(WebSearchTool(configuration: ambientWeb))
-        return try ToolRegistry(tools: tools)
-        #else
-        return try ToolRegistry(tools: baseTools)
-        #endif
+        try await AgentDependencyResolver.toolRegistry(
+            baseTools: await toolRegistry.allTools,
+            taskLocalWebSearch: AgentEnvironmentValues.current.webSearch,
+            runEnvironment: runEnvironment
+        )
     }
 
     private func resolvedInferenceOptions(
         session: (any Session)?,
         provider: any InferenceProvider
     ) async -> InferenceOptions {
-        var options = configuration.inferenceOptions
-
-        let capabilities = providerCapabilities(for: provider)
-        guard capabilities.contains(.responseContinuation) else {
-            options.previousResponseId = nil
-            return options
-        }
-
-        if let explicit = configuration.previousResponseId?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !explicit.isEmpty {
-            options.previousResponseId = explicit
-            return options
-        }
-
-        guard configuration.autoPreviousResponseId, let session else {
-            return options
-        }
-
-        if let latestResponseID = await Self.autoResponseTracker.getLatestResponseId(for: session.sessionId) {
-            options.previousResponseId = latestResponseID
-        }
-
-        return options
+        await AgentDependencyResolver.inferenceOptions(
+            configuration: configuration,
+            capabilities: providerCapabilities(for: provider),
+            sessionID: session?.sessionId,
+            responseTracker: runEnvironment.responseTracker
+        )
     }
 
     private func providerCapabilities(for provider: any InferenceProvider) -> InferenceProviderCapabilities {
-        InferenceProviderCapabilities.resolved(for: provider)
+        AgentDependencyResolver.providerCapabilities(for: provider)
     }
 
     private func responseID(from result: AgentResult) -> String {
