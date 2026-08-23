@@ -282,24 +282,10 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         return try await generateWithToolCalls(messages: messages, tools: tools, options: options)
     }
 
-    public func streamWithToolCalls(
-        messages: [InferenceMessage],
-        tools: [ToolSchema],
-        options: InferenceOptions,
-        toolExecutor: ToolCallExecutor?
-    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error> {
-        // Foundation Models has no native tool-call stream; degrade the finished
-        // turn through the shared emitter so update ordering matches the
-        // default provider ladder exactly.
-        streamFinishedToolTurn {
-            try await self.generateWithToolCalls(
-                messages: messages,
-                tools: tools,
-                options: options,
-                toolExecutor: toolExecutor
-            )
-        }
-    }
+    // No `streamWithToolCalls` override: Foundation Models has no native
+    // tool-call stream, so the protocol default's shared finished-turn emitter
+    // is used verbatim. Its closure dispatches into
+    // `generateWithToolCalls(messages:tools:options:toolExecutor:)` below.
 
     public func generateWithToolCalls(
         messages: [InferenceMessage],

@@ -49,6 +49,26 @@ struct FinishedTurnStreamEmissionTests {
         #expect(updates.isEmpty)
     }
 
+    @Test("Omits usage when nil while remaining segments keep canonical order")
+    func omitsUsageWhenAbsent() async throws {
+        let toolCall = InferenceResponse.ParsedToolCall(id: "t2", name: "echo", arguments: [:])
+        let transcript = [InferenceMessage.assistant("", toolCalls: [InferenceMessage.ToolCall(toolCall)])]
+        let response = InferenceResponse(
+            content: "answer",
+            toolCalls: [toolCall],
+            finishReason: .toolCall,
+            usage: nil,
+            transcriptMessages: transcript
+        )
+
+        let updates = try await collect(streamFinishedToolTurn { response })
+
+        #expect(updates.count == 3)
+        #expect(updates[0] == .outputChunk("answer"))
+        #expect(updates[1] == .toolCallsCompleted([toolCall]))
+        #expect(updates[2] == .finishedTurn(response))
+    }
+
     @Test("Propagates generation errors to the stream consumer")
     func propagatesErrors() async {
         struct Boom: Error {}
