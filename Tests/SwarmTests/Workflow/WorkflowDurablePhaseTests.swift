@@ -148,6 +148,33 @@ struct WorkflowDurablePhaseTests {
         #expect(migratedSnapshot.output == "seed")
     }
 
+    @Test("legacy completed checkpoint with residual cursors folds to completed with its snapshot")
+    func legacyCompletedWithResidualCursorsFoldsToCompleted() async throws {
+        let backend = WorkflowInMemoryCheckpointStore()
+        let checkpointing = WorkflowCheckpointing(backend: backend)
+        let log = ExecutionLog()
+        let workflow = makeTwoStepWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-legacy-done-cursors")
+
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-done-cursors", signature: workflow.workflowSignature) {
+            $0["workflow.completed"] = encodedJSON(true)
+            $0["workflow.stepCursor"] = encodedJSON(1)
+            $0["workflow.iterationCursor"] = encodedJSON(1)
+            $0["workflow.lastResult"] = encodedJSON(Optional(WorkflowResultSnapshot(AgentResult(output: "B-out"))))
+            $0["workflow.currentInput"] = encodedJSON("residual-input")
+        }
+        try await backend.save(fixture)
+
+        let result = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-done-cursors")
+        // Completion wins over residual cursors: the fold must never produce
+        // .running, and the persisted snapshot — not the input-text fallback —
+        // becomes the result.
+        #expect(result.output == "B-out")
+
+        let counts = await log.counts
+        #expect(counts["A"] == nil)
+        #expect(counts["B"] == nil)
+    }
+
     @Test("legacy running checkpoint migrates cursors and finishes remaining steps")
     func legacyRunningCheckpointMigratesAndContinues() async throws {
         let backend = WorkflowInMemoryCheckpointStore()
