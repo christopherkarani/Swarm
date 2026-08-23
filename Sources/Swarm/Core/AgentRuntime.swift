@@ -188,10 +188,10 @@ public extension AgentRuntime {
         }
 
         return AgentResponse(
-            responseId: UUID().uuidString,
+            responseId: TurnEnvironment.live.newID(),
             output: result.output,
             agentName: configuration.name,
-            timestamp: Date(),
+            timestamp: TurnEnvironment.live.now(),
             metadata: result.metadata,
             toolCalls: toolCallRecords,
             usage: result.tokenUsage,

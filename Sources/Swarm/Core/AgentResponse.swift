@@ -96,7 +96,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
         toolName: String,
         arguments: [String: SendableValue] = [:],
         duration: Duration = .zero,
-        timestamp: Date = Date(),
+        timestamp: Date = TurnEnvironment.live.now(),
         outcome: Outcome
     ) {
         self.toolName = toolName
@@ -118,7 +118,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
         arguments: [String: SendableValue] = [:],
         result: SendableValue = .null,
         duration: Duration = .zero,
-        timestamp: Date = Date(),
+        timestamp: Date = TurnEnvironment.live.now(),
         isSuccess: Bool = true,
         errorMessage: String? = nil
     ) {
@@ -139,7 +139,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
         arguments: [String: SendableValue] = [:],
         result: SendableValue,
         duration: Duration = .zero,
-        timestamp: Date = Date()
+        timestamp: Date = TurnEnvironment.live.now()
     ) -> ToolCallRecord {
         ToolCallRecord(
             toolName: toolName,
@@ -156,7 +156,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
         arguments: [String: SendableValue] = [:],
         error: String,
         duration: Duration = .zero,
-        timestamp: Date = Date()
+        timestamp: Date = TurnEnvironment.live.now()
     ) -> ToolCallRecord {
         ToolCallRecord(
             toolName: toolName,
@@ -332,7 +332,7 @@ public struct AgentResponse: Sendable {
         var convertedToolResults: [ToolResult] = []
 
         for record in toolCalls {
-            let callId = UUID()
+            let callId = TurnEnvironment.live.newUUID()
             let toolCall = ToolCall(
                 id: callId,
                 toolName: record.toolName,
@@ -375,10 +375,10 @@ public struct AgentResponse: Sendable {
     ///   - usage: Token usage if available. Default: `nil`
     ///   - iterationCount: Number of agent iterations. Default: `1`
     public init(
-        responseId: String = UUID().uuidString,
+        responseId: String = TurnEnvironment.live.newID(),
         output: String,
         agentName: String,
-        timestamp: Date = Date(),
+        timestamp: Date = TurnEnvironment.live.now(),
         metadata: [String: SendableValue] = [:],
         toolCalls: [ToolCallRecord] = [],
         usage: TokenUsage? = nil,

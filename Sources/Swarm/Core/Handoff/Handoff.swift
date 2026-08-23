@@ -109,7 +109,7 @@ public struct HandoffResult: Sendable, Equatable {
         input: String,
         result: AgentResult,
         transferredContext: [String: SendableValue],
-        timestamp: Date = Date()
+        timestamp: Date = TurnEnvironment.live.now()
     ) {
         self.targetAgentName = targetAgentName
         self.input = input
@@ -325,7 +325,7 @@ actor HandoffCoordinator {
             input: request.input,
             result: result,
             transferredContext: request.context,
-            timestamp: Date()
+            timestamp: TurnEnvironment.live.now()
         )
     }
 
@@ -439,7 +439,7 @@ actor HandoffCoordinator {
             input: effectiveInput,
             result: result,
             transferredContext: effectiveContext,
-            timestamp: Date()
+            timestamp: TurnEnvironment.live.now()
         )
     }
 

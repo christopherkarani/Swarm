@@ -47,19 +47,27 @@ struct ResponseTrackerCleanupTests {
 
     @Test("Remove sessions by time interval")
     func removeSessionsByTimeInterval() async throws {
-        let tracker = ResponseTracker()
+        // Deterministic fake clock instead of Task.sleep (spec T1 / AC-002).
+        let clock = MutableTestClock(start: Date(timeIntervalSince1970: 1_000_000))
+        let tracker = ResponseTracker(now: { clock.now })
 
-        // Record some responses
-        await tracker.recordResponse(makeTestResponse(id: "resp_1"), sessionId: "session_1")
-        await tracker.recordResponse(makeTestResponse(id: "resp_2"), sessionId: "session_2")
-
-        // Wait a short time
-        try await Task.sleep(for: .milliseconds(100))
+        // Record some responses with explicit timestamps relative to the fake clock
+        await tracker.recordResponse(
+            makeTestResponse(id: "resp_1", timestamp: clock.now.addingTimeInterval(-0.1)),
+            sessionId: "session_1"
+        )
+        await tracker.recordResponse(
+            makeTestResponse(id: "resp_2", timestamp: clock.now.addingTimeInterval(-0.02)),
+            sessionId: "session_2"
+        )
 
         // Record another response for session_2 (making it more recent)
-        await tracker.recordResponse(makeTestResponse(id: "resp_3"), sessionId: "session_2")
+        await tracker.recordResponse(
+            makeTestResponse(id: "resp_3", timestamp: clock.now),
+            sessionId: "session_2"
+        )
 
-        // Remove sessions not accessed within 50ms
+        // Remove sessions not accessed within 50ms of the fake clock
         let removed = await tracker.removeSessions(notAccessedWithin: 0.05)
 
         // session_1 should be removed, session_2 should remain
@@ -159,14 +167,21 @@ struct ResponseTrackerCleanupTests {
     func sessionMetadataSortedByRecency() async throws {
         let tracker = ResponseTracker()
 
-        // Record sessions in order: A, B, C
-        await tracker.recordResponse(makeTestResponse(id: "a_1"), sessionId: "session_a")
-        try await Task.sleep(for: .milliseconds(10))
-
-        await tracker.recordResponse(makeTestResponse(id: "b_1"), sessionId: "session_b")
-        try await Task.sleep(for: .milliseconds(10))
-
-        await tracker.recordResponse(makeTestResponse(id: "c_1"), sessionId: "session_c")
+        // Record sessions in order: A, B, C using explicit increasing
+        // timestamps instead of Task.sleep (deterministic, spec T1 / AC-005).
+        let base = Date(timeIntervalSince1970: 2_000_000)
+        await tracker.recordResponse(
+            makeTestResponse(id: "a_1", timestamp: base),
+            sessionId: "session_a"
+        )
+        await tracker.recordResponse(
+            makeTestResponse(id: "b_1", timestamp: base.addingTimeInterval(10)),
+            sessionId: "session_b"
+        )
+        await tracker.recordResponse(
+            makeTestResponse(id: "c_1", timestamp: base.addingTimeInterval(20)),
+            sessionId: "session_c"
+        )
 
         let allMetadata = await tracker.getAllSessionMetadata()
 
