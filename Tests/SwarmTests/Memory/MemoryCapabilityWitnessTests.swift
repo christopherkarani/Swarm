@@ -70,6 +70,45 @@ struct MemoryCapabilityWitnessTests {
 
         #expect(await memory.importedBatches.isEmpty)
     }
+
+    @Test("Deprecated MemoryPromptDescriptor conformance still supplies prompt metadata through the bridge")
+    func deprecatedDescriptorConformanceResolvesThroughBridge() async throws {
+        let memory = BridgeOnlyMemory()
+        let hooks = MemoryHooks.resolved(from: memory)
+
+        // The constrained bridge extension (most-specialized witness) must win
+        // over the unconstrained {nil} default for marker-only conformers.
+        #expect(hooks.memoryPromptTitle == "Bridge Title")
+        #expect(hooks.memoryPromptGuidance == "Bridge guidance.")
+        #expect(hooks.memoryPriority == .secondary)
+    }
+}
+
+/// Conforms only to the deprecated ``MemoryPromptDescriptor`` marker; prompt
+/// metadata must flow through the `Memory where Self: MemoryPromptDescriptor`
+/// bridge without any direct implementation. Marked deprecated so referencing
+/// the deprecated protocol inside does not warn.
+@available(*, deprecated)
+private actor BridgeOnlyMemory: Memory, MemoryPromptDescriptor {
+    nonisolated let memoryPromptTitle = "Bridge Title"
+    nonisolated let memoryPromptGuidance: String? = "Bridge guidance."
+    nonisolated let memoryPriority: MemoryPriorityHint = .secondary
+
+    var count: Int { get async { 0 } }
+    var isEmpty: Bool { get async { true } }
+
+    func add(_ message: MemoryMessage) async {
+        _ = message
+    }
+
+    func context(for query: String, tokenLimit: Int) async -> String {
+        _ = query
+        _ = tokenLimit
+        return ""
+    }
+
+    func allMessages() async -> [MemoryMessage] { [] }
+    func clear() async {}
 }
 
 private actor WitnessOnlyMemory: Memory {

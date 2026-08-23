@@ -10,7 +10,8 @@ import Foundation
 /// ``Memory/context(for:tokenLimit:)``).
 ///
 /// - Note: `MemoryHooks` is not part of the public API. Generated `@AgentActor` `run()`
-///   still uses ``MemorySessionLifecycle`` directly so consumer modules can compile.
+///   calls the defaulted ``Memory`` requirements directly, so consumer modules
+///   compile without seeing this type.
 package struct MemoryHooks: Sendable {
     var beginMemorySession: (@Sendable () async -> Void)?
     var endMemorySession: (@Sendable () async -> Void)?

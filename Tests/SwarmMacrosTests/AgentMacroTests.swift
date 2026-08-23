@@ -104,7 +104,6 @@ final class AgentMacroTests: XCTestCase {
 
                         let activeTracer = tracer ?? AgentEnvironmentValues.current.tracer
                         let activeMemory = resolvedMemory()
-                        let lifecycleMemory = activeMemory as? any MemorySessionLifecycle
 
                         let tracing = TracingHelper(
                             tracer: activeTracer,
@@ -114,8 +113,8 @@ final class AgentMacroTests: XCTestCase {
 
                         await observer?.onAgentStart(context: nil, agent: self, input: input)
 
-                        if let lifecycleMemory {
-                            await lifecycleMemory.beginMemorySession()
+                        if let activeMemory {
+                            await activeMemory.beginMemorySession()
                         }
 
                         do {
@@ -172,16 +171,16 @@ final class AgentMacroTests: XCTestCase {
                             await tracing.traceComplete(result: result)
                             await observer?.onAgentEnd(context: nil, agent: self, result: result)
 
-                            if let lifecycleMemory {
-                                await lifecycleMemory.endMemorySession()
+                            if let activeMemory {
+                                await activeMemory.endMemorySession()
                             }
 
                             return result
                         } catch {
                             await observer?.onError(context: nil, agent: self, error: error)
                             await tracing.traceError(error)
-                            if let lifecycleMemory {
-                                await lifecycleMemory.endMemorySession()
+                            if let activeMemory {
+                                await activeMemory.endMemorySession()
                             }
                             throw error
                         }
@@ -401,7 +400,6 @@ final class AgentMacroTests: XCTestCase {
 
                         let activeTracer = tracer ?? AgentEnvironmentValues.current.tracer
                         let activeMemory = resolvedMemory()
-                        let lifecycleMemory = activeMemory as? any MemorySessionLifecycle
 
                         let tracing = TracingHelper(
                             tracer: activeTracer,
@@ -411,8 +409,8 @@ final class AgentMacroTests: XCTestCase {
 
                         await observer?.onAgentStart(context: nil, agent: self, input: input)
 
-                        if let lifecycleMemory {
-                            await lifecycleMemory.beginMemorySession()
+                        if let activeMemory {
+                            await activeMemory.beginMemorySession()
                         }
 
                         do {
@@ -469,16 +467,16 @@ final class AgentMacroTests: XCTestCase {
                             await tracing.traceComplete(result: result)
                             await observer?.onAgentEnd(context: nil, agent: self, result: result)
 
-                            if let lifecycleMemory {
-                                await lifecycleMemory.endMemorySession()
+                            if let activeMemory {
+                                await activeMemory.endMemorySession()
                             }
 
                             return result
                         } catch {
                             await observer?.onError(context: nil, agent: self, error: error)
                             await tracing.traceError(error)
-                            if let lifecycleMemory {
-                                await lifecycleMemory.endMemorySession()
+                            if let activeMemory {
+                                await activeMemory.endMemorySession()
                             }
                             throw error
                         }
