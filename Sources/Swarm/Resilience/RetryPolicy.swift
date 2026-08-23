@@ -59,6 +59,24 @@ public enum BackoffStrategy: Sendable {
     /// - Parameter attempt: The attempt number (1-indexed).
     /// - Returns: The delay in seconds before the next retry.
     public func delay(forAttempt attempt: Int) -> TimeInterval {
+        delay(forAttempt: attempt, random: { Double.random(in: $0) })
+    }
+
+    /// Calculates the delay using an explicit randomness source so that
+    /// jittered strategies produce reproducible sequences (e.g. seeded
+    /// generators under test).
+    /// - Parameters:
+    ///   - attempt: The attempt number (1-indexed).
+    ///   - random: Replacement for `Double.random(in:)`; receives exactly the
+    ///     range the live implementation would draw from. Implementations
+    ///     mirroring `Double.random(in:)` keep its precondition failure on
+    ///     inverted ranges, preserving historical crash behavior for
+    ///     degenerate configurations.
+    /// - Returns: The delay in seconds before the next retry.
+    func delay(
+        forAttempt attempt: Int,
+        random: @Sendable (ClosedRange<Double>) -> Double
+    ) -> TimeInterval {
         switch self {
         case let .fixed(delay):
             return delay
@@ -75,14 +93,14 @@ public enum BackoffStrategy: Sendable {
             let exponentialDelay = base * pow(multiplier, Double(attempt - 1))
             let cappedDelay = min(exponentialDelay, maxDelay)
             // Add random jitter between 0 and the calculated delay
-            let jitter = Double.random(in: 0...cappedDelay)
+            let jitter = random(0...cappedDelay)
             return jitter
 
         case let .decorrelatedJitter(base, maxDelay):
             // Decorrelated jitter: sleep = min(cap, random_between(base, sleep * 3))
             // For the first attempt, use base as the previous sleep
             let previousSleep = attempt == 1 ? base : base * pow(3.0, Double(attempt - 2))
-            let delay = Double.random(in: base...(previousSleep * 3.0))
+            let delay = random(base...(previousSleep * 3.0))
             return min(delay, maxDelay)
 
         case .immediate:
@@ -183,6 +201,16 @@ public struct RetryPolicy: Sendable {
     /// Optional callback invoked before each retry attempt.
     public let onRetry: (@Sendable (Int, Error) async -> Void)?
 
+    // MARK: Private
+
+    /// Clock used to suspend between retries. Defaults to `LiveSwarmClock`
+    /// (plain `Task.sleep`) so existing behavior is unchanged when nil.
+    private let clock: any SwarmClock
+
+    /// Randomness source consulted by jittered backoff strategies. Defaults
+    /// to `Double.random(in:)` so existing behavior is unchanged when nil.
+    private let randomSource: @Sendable (ClosedRange<Double>) -> Double
+
     // MARK: - Initialization
 
     /// Creates a new retry policy.
@@ -197,10 +225,37 @@ public struct RetryPolicy: Sendable {
         shouldRetry: @escaping @Sendable (Error) -> Bool = { _ in true },
         onRetry: (@Sendable (Int, Error) async -> Void)? = nil
     ) {
+        self.init(
+            maxAttempts: maxAttempts,
+            backoff: backoff,
+            shouldRetry: shouldRetry,
+            onRetry: onRetry,
+            clock: nil,
+            random: nil
+        )
+    }
+
+    /// Package-internal injection point for deterministic tests.
+    ///
+    /// `clock` replaces the default `Task.sleep(nanoseconds:)` suspension path;
+    /// `random` replaces `Double.random(in:)` for jittered backoff strategies.
+    /// Both default to the live behaviors when `nil`. Kept internal because
+    /// `SwarmClock` is `@_spi(ColonyInternal)` and cannot appear in a public
+    /// signature.
+    init(
+        maxAttempts: Int = 3,
+        backoff: BackoffStrategy = .exponential(base: 1.0, multiplier: 2.0, maxDelay: 60.0),
+        shouldRetry: @escaping @Sendable (Error) -> Bool = { _ in true },
+        onRetry: (@Sendable (Int, Error) async -> Void)? = nil,
+        clock: (any SwarmClock)? = nil,
+        random: (@Sendable (ClosedRange<Double>) -> Double)? = nil
+    ) {
         self.maxAttempts = max(0, maxAttempts)
         self.backoff = backoff
         self.shouldRetry = shouldRetry
         self.onRetry = onRetry
+        self.clock = clock ?? LiveSwarmClock.live
+        self.randomSource = random ?? { Double.random(in: $0) }
     }
 
     // MARK: - Execution
@@ -241,9 +296,11 @@ public struct RetryPolicy: Sendable {
                 await onRetry?(retryCount, error)
 
                 // Calculate and apply backoff delay
-                let delay = sanitizeBackoffDelay(backoff.delay(forAttempt: retryCount))
+                let delay = sanitizeBackoffDelay(
+                    backoff.delay(forAttempt: retryCount, random: randomSource)
+                )
                 if delay > 0 {
-                    try await Task.sleep(nanoseconds: delay)
+                    try await clock.sleep(nanoseconds: delay)
                 }
             }
         }
