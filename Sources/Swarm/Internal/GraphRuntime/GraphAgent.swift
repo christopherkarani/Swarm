@@ -339,7 +339,7 @@ struct GraphAgent: AgentRuntime, Sendable {
             if event.metadata[StreamEventMetadata.success] == "true" {
                 let result = ToolResult.success(
                     callId: call.id,
-                    output: event.metadata[StreamEventMetadata.output].map(SendableValue.init) ?? .null,
+                    output: event.metadata[StreamEventMetadata.output].map { SendableValue($0) } ?? .null,
                     duration: .zero
                 )
                 return .tool(.completed(call: call, result: result))
