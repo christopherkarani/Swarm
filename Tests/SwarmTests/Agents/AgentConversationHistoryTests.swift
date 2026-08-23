@@ -2,8 +2,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Agent Conversation History Fidelity")
+@Suite("Agent Conversation History Fidelity", .ephemeralDefaultStores)
 struct AgentConversationHistoryTests {
+
     @Test("Multi-turn session delivers exact role-tagged history to the provider")
     func multiTurnSessionDeliversExactMessageArray() async throws {
         let provider = MockInferenceProvider(responses: ["first reply", "second reply"])

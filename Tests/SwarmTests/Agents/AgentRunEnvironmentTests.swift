@@ -55,8 +55,9 @@ private func makeAgent(
 
 // MARK: - Environment Isolation & Default Sharing
 
-@Suite("AgentRunEnvironment")
+@Suite("AgentRunEnvironment", .ephemeralDefaultStores)
 struct AgentRunEnvironmentTests {
+
     private let config = AgentConfiguration.default.autoPreviousResponseId(true)
 
     @Test("two constructed environments carry fully isolated tracker state")
@@ -96,6 +97,27 @@ struct AgentRunEnvironmentTests {
         // Former process-global statics delegate to the shared default instance.
         #expect(Agent.autoResponseTracker === first.runEnvironment.responseTracker)
         #expect(Agent.defaultMemorySessionTracker === first.runEnvironment.defaultMemorySessionTracker)
+    }
+
+    @Test("explicit default memory store URL threads through to default memory creation")
+    func explicitDefaultMemoryStoreURLThreadsThrough() throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentRunEnvironmentTests", isDirectory: true)
+            .appendingPathComponent("\(UUID().uuidString).mv2s")
+
+        let agent = try makeAgent(
+            configuration: config,
+            provider: MockInferenceProvider(responses: ["ok"]),
+            environment: AgentRunEnvironment(defaultMemoryStoreURL: storeURL)
+        )
+
+        #expect(agent.runEnvironment.defaultMemoryStoreURL == storeURL)
+        #expect(AgentRunEnvironment.live.defaultMemoryStoreURL == nil)
+
+        #if SWARM_INTEGRATIONS && canImport(ContextCore)
+        let memory = try Agent.makeDefaultMemory(waxStoreURL: storeURL)
+        #expect(memory is DefaultAgentMemory)
+        #endif
     }
 
     @Test("agents using defaults share response tracking across copies")

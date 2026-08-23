@@ -301,7 +301,9 @@ public struct Agent: AgentRuntime, Sendable {
         self.instructions = instructions
         self.configuration = configuration
         self.memory = memory
-        self.defaultMemory = try memory == nil ? Self.makeDefaultMemory() : nil
+        self.defaultMemory = try memory == nil
+            ? Self.makeDefaultMemory(waxStoreURL: runEnvironment.defaultMemoryStoreURL)
+            : nil
         self.inferenceProvider = inferenceProvider
         self.tracer = tracer
         self.metricsCollector = configuration.autoAttachMetricsCollector
@@ -1070,18 +1072,21 @@ public struct Agent: AgentRuntime, Sendable {
     /// Without Integrations (lean default): ``SlidingWindowMemory``.
     /// Prefer this over constructing integration types from macros or client code so
     /// trait gating stays inside the Swarm module.
-    public static func makeDefaultMemory() throws -> any Memory {
+    /// - Parameter waxStoreURL: Explicit location of the durable Wax store.
+    ///   When `nil`, the store lands under the installed ephemeral root
+    ///   (``SwarmDefaultStoreLocation/installEphemeralRoot(_:)``) when one is
+    ///   present, and in the durable Application-Support location otherwise.
+    public static func makeDefaultMemory(waxStoreURL: URL? = nil) throws -> any Memory {
         #if SWARM_INTEGRATIONS && canImport(ContextCore)
-        if SwarmRuntimeEnvironment.isRunningTests {
-            let root = FileManager.default.temporaryDirectory
-                .appendingPathComponent("SwarmDefaultMemoryTests", isDirectory: true)
-                .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            return try DefaultAgentMemory(configuration: DefaultAgentMemory.Configuration(
-                waxStoreURL: root.appendingPathComponent("wax-memory.mv2s")
-            ))
+        let resolvedWaxStoreURL = waxStoreURL ?? SwarmDefaultStoreLocation.installedEphemeralRoot.map {
+            WaxMemory.makeEphemeralStoreURL(under: $0)
         }
-        return try DefaultAgentMemory()
+        guard let resolvedWaxStoreURL else {
+            return try DefaultAgentMemory()
+        }
+        return try DefaultAgentMemory(configuration: DefaultAgentMemory.Configuration(
+            waxStoreURL: resolvedWaxStoreURL
+        ))
         #else
         // Lean builds, or Integrations on non-Apple (no ContextCore link).
         return SlidingWindowMemory()

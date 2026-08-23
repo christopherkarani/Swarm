@@ -36,8 +36,9 @@ private struct PongTool: Tool {
 
 // MARK: - Agent V3 Modifiers Tests
 
-@Suite("Agent V3 Modifiers")
+@Suite("Agent V3 Modifiers", .ephemeralDefaultStores)
 struct AgentModifiersTests {
+
 
     // MARK: - Canonical Init
 

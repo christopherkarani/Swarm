@@ -4,8 +4,9 @@ import Testing
 
 // MARK: - SwarmConfigurationTests
 
-@Suite("SwarmConfiguration", .serialized)
+@Suite("SwarmConfiguration", .serialized, .ephemeralDefaultStores)
 struct SwarmConfigurationTests {
+
     // MARK: Internal
 
     @Test("configure sets global provider")
@@ -40,6 +41,29 @@ struct SwarmConfigurationTests {
             let agent = try Agent(instructions: "test")
             let result = try await agent.run("hello")
             #expect(result.output == "from global")
+        }
+    }
+
+    @Test("privacyRequired agent resolves a globally configured private provider")
+    func privacyRequiredAgentResolvesGlobalPrivateProvider() async throws {
+        try await withIsolatedConfiguration {
+            if DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() != nil {
+                return
+            }
+
+            let privateDefault = MockInferenceProvider(
+                responses: ["from global private"],
+                capabilities: [.privateInference]
+            )
+            await Swarm.configure(provider: privateDefault)
+
+            let configuration = AgentConfiguration.default
+                .inferencePolicy(InferencePolicy(privacyRequired: true))
+            let agent = try Agent(instructions: "Keep this private.", configuration: configuration)
+
+            let result = try await agent.run("hello")
+            #expect(result.output == "from global private")
+            #expect(await privateDefault.generateMessageCalls.count == 1)
         }
     }
 

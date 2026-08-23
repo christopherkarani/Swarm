@@ -37,8 +37,9 @@ private func readmeStreamingSwitchSurface(_ event: AgentEvent) {
     }
 }
 
-@Suite("README Provider Compile Tests")
+@Suite("README Provider Compile Tests", .ephemeralDefaultStores)
 struct ReadmeProviderCompileTests {
+
     @Test("README-style provider factories compile through public import")
     func readmeProviderFactoriesCompile() throws {
         if #available(macOS 26.0, iOS 26.0, tvOS 26.0, watchOS 26.0, visionOS 26.0, *) {

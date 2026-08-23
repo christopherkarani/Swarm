@@ -7,8 +7,9 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Provider-owned tool loop")
+@Suite("Provider-owned tool loop", .ephemeralDefaultStores)
 struct ProviderOwnedToolLoopTests {
+
     private static let transient = AgentError.generationFailed(reason: "transient 503 after tool")
 
     @Test("Owned-loop adapter does not retry tools after a retryable inference error")

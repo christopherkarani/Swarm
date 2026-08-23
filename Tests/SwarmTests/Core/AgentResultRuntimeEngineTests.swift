@@ -6,8 +6,9 @@
 import Testing
 @testable import Swarm
 
-@Suite("AgentResult.runtimeEngine")
+@Suite("AgentResult.runtimeEngine", .ephemeralDefaultStores)
 struct AgentResultRuntimeEngineTests {
+
 
     @Test("returns nil when metadata has no runtime.engine key")
     func returnsNilWhenAbsent() {

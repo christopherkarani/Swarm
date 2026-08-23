@@ -25,7 +25,8 @@ struct MembraneIntegrationTests {
                 contextMode: .strict4k,
                 defaultTracingEnabled: false
             ),
-            inferenceProvider: provider
+            inferenceProvider: provider,
+            runEnvironment: AgentRunEnvironment(defaultMemoryStoreURL: temporaryWaxStoreURL())
         ).environment(
             \.membrane,
             MembraneEnvironment(
@@ -76,7 +77,8 @@ struct MembraneIntegrationTests {
                 contextMode: .strict4k,
                 defaultTracingEnabled: false
             ),
-            inferenceProvider: provider
+            inferenceProvider: provider,
+            runEnvironment: AgentRunEnvironment(defaultMemoryStoreURL: temporaryWaxStoreURL())
         ).environment(
             \.membrane,
             MembraneEnvironment(
@@ -118,7 +120,8 @@ struct MembraneIntegrationTests {
                 contextMode: .strict4k,
                 defaultTracingEnabled: false
             ),
-            inferenceProvider: provider
+            inferenceProvider: provider,
+            runEnvironment: AgentRunEnvironment(defaultMemoryStoreURL: temporaryWaxStoreURL())
         ).environment(
             \.membrane,
             MembraneEnvironment(isEnabled: true, adapter: throwingAdapter)
@@ -143,7 +146,8 @@ struct MembraneIntegrationTests {
                 maxIterations: 4,
                 defaultTracingEnabled: false
             ),
-            inferenceProvider: provider
+            inferenceProvider: provider,
+            runEnvironment: AgentRunEnvironment(defaultMemoryStoreURL: temporaryWaxStoreURL())
         ).environment(
             \.membrane,
             MembraneEnvironment(
