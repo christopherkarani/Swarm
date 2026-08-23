@@ -213,13 +213,10 @@ private struct GuardrailTimeoutError: Error, LocalizedError, Sendable {
 /// single sequential executor and a single parallel executor serve every
 /// guardrail kind.
 private struct GuardrailUnit: Sendable {
-    /// Kind of guardrail being executed. Drives observer event payloads and
-    /// selects the tripwire error case.
-    let kind: GuardrailType
-
-    /// Subject referenced by tripwire errors: the agent name for `.output`,
-    /// the tool name for `.toolInput`/`.toolOutput`, unused for `.input`.
-    let subjectName: String
+    /// The guardrail kind paired with the subject its tripwire errors reference.
+    /// Modeling kind and subject as one value makes a mismatched pairing
+    /// unrepresentable (e.g. an `.input` unit carrying a tool name).
+    let subject: Subject
 
     /// Name of the guardrail itself, used in results and errors.
     let name: String
@@ -229,6 +226,26 @@ private struct GuardrailUnit: Sendable {
 
     /// Runs this guardrail's validation once.
     let validate: @Sendable () async throws -> GuardrailResult
+
+    /// Kind of guardrail being executed. Drives observer event payloads.
+    var kind: GuardrailType {
+        switch subject {
+        case .input: .input
+        case .output: .output
+        case .toolInput: .toolInput
+        case .toolOutput: .toolOutput
+        }
+    }
+
+    /// Subject referenced by tripwire errors, tied to the guardrail kind:
+    /// nothing for `.input`, the agent name for `.output`, and the tool name
+    /// for `.toolInput`/`.toolOutput`.
+    enum Subject: Sendable {
+        case input
+        case output(agentName: String)
+        case toolInput(toolName: String)
+        case toolOutput(toolName: String)
+    }
 }
 
 // MARK: - GuardrailRunner
@@ -246,9 +263,10 @@ private struct GuardrailUnit: Sendable {
 /// - **Stop on first**: Immediately throw when a tripwire is triggered
 /// - **Run all**: Execute all guardrails, then throw if any tripwired
 ///
-/// **Note:** When running in parallel mode, the order of results in the returned
-/// array may not match the order of guardrails in the input array due to the
-/// non-deterministic nature of concurrent execution.
+/// **Note:** Parallel mode executes guardrails concurrently and sorts completed
+/// results back into input order before returning. Under stop-on-first-tripwire
+/// semantics, the error thrown corresponds to whichever guardrail finished
+/// first, which may differ from input order.
 ///
 /// **Example:**
 /// ```swift
@@ -313,8 +331,7 @@ public actor GuardrailRunner {
 
     /// Single tripwire error-construction table across all guardrail kinds.
     private static func tripwireError(
-        kind: GuardrailType,
-        subjectName: String,
+        subject: GuardrailUnit.Subject,
         guardrailName: String,
         result: GuardrailResult
     ) -> GuardrailError? {
@@ -322,31 +339,31 @@ public actor GuardrailRunner {
         case .passed:
             nil
         case let .tripwire(message, outputInfo, _):
-            switch kind {
+            switch subject {
             case .input:
                 .inputTripwireTriggered(
                     guardrailName: guardrailName,
                     message: message,
                     outputInfo: outputInfo
                 )
-            case .output:
+            case let .output(agentName):
                 .outputTripwireTriggered(
                     guardrailName: guardrailName,
-                    agentName: subjectName,
+                    agentName: agentName,
                     message: message,
                     outputInfo: outputInfo
                 )
-            case .toolInput:
+            case let .toolInput(toolName):
                 .toolInputTripwireTriggered(
                     guardrailName: guardrailName,
-                    toolName: subjectName,
+                    toolName: toolName,
                     message: message,
                     outputInfo: outputInfo
                 )
-            case .toolOutput:
+            case let .toolOutput(toolName):
                 .toolOutputTripwireTriggered(
                     guardrailName: guardrailName,
-                    toolName: subjectName,
+                    toolName: toolName,
                     message: message,
                     outputInfo: outputInfo
                 )
@@ -415,8 +432,7 @@ public actor GuardrailRunner {
     ) async throws -> [GuardrailExecutionResult] {
         try await execute(guardrails.map { guardrail in
             GuardrailUnit(
-                kind: .input,
-                subjectName: "",
+                subject: .input,
                 name: guardrail.name,
                 observerContext: context,
                 validate: { try await guardrail.validate(input, context: context) }
@@ -450,8 +466,7 @@ public actor GuardrailRunner {
         let agentName = agent.configuration.name
         return try await execute(guardrails.map { guardrail in
             GuardrailUnit(
-                kind: .output,
-                subjectName: agentName,
+                subject: .output(agentName: agentName),
                 name: guardrail.name,
                 observerContext: context,
                 validate: { try await guardrail.validate(output, agent: agent, context: context) }
@@ -481,8 +496,7 @@ public actor GuardrailRunner {
         let toolName = data.tool.name
         return try await execute(guardrails.map { guardrail in
             GuardrailUnit(
-                kind: .toolInput,
-                subjectName: toolName,
+                subject: .toolInput(toolName: toolName),
                 name: guardrail.name,
                 observerContext: data.context,
                 validate: { try await guardrail.validate(data) }
@@ -514,8 +528,7 @@ public actor GuardrailRunner {
         let toolName = data.tool.name
         return try await execute(guardrails.map { guardrail in
             GuardrailUnit(
-                kind: .toolOutput,
-                subjectName: toolName,
+                subject: .toolOutput(toolName: toolName),
                 name: guardrail.name,
                 observerContext: data.context,
                 validate: { try await guardrail.validate(data, output: output) }
@@ -552,8 +565,7 @@ extension GuardrailRunner {
                 results.append(executionResult)
 
                 if let error = Self.tripwireError(
-                    kind: unit.kind,
-                    subjectName: unit.subjectName,
+                    subject: unit.subject,
                     guardrailName: unit.name,
                     result: result
                 ) {
@@ -580,8 +592,7 @@ extension GuardrailRunner {
         // Check if any tripwires were triggered (when not stopping on first)
         if let tripwired = zip(units, results).first(where: { $0.1.didTriggerTripwire }),
            let error = Self.tripwireError(
-               kind: tripwired.0.kind,
-               subjectName: tripwired.0.subjectName,
+               subject: tripwired.0.subject,
                guardrailName: tripwired.1.guardrailName,
                result: tripwired.1.result
            ) {
@@ -624,8 +635,7 @@ extension GuardrailRunner {
                 let unit = units[index]
                 if configuration.stopOnFirstTripwire,
                    let error = Self.tripwireError(
-                       kind: unit.kind,
-                       subjectName: unit.subjectName,
+                       subject: unit.subject,
                        guardrailName: executionResult.guardrailName,
                        result: executionResult.result
                    ) {
@@ -657,8 +667,7 @@ extension GuardrailRunner {
                     )
                 }
                 if let error = Self.tripwireError(
-                    kind: firstTripwire.0.kind,
-                    subjectName: firstTripwire.0.subjectName,
+                    subject: firstTripwire.0.subject,
                     guardrailName: firstTripwire.1.guardrailName,
                     result: firstTripwire.1.result
                 ) {
