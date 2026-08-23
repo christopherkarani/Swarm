@@ -855,19 +855,3 @@ private final class TimeoutTaskRef: @unchecked Sendable {
         }
     }
 }
-
-// MARK: - MergeErrorStrategy
-
-/// Strategy for handling errors when merging multiple streams.
-public enum MergeErrorStrategy: Sendable {
-    /// Fail immediately on the first error from any stream.
-    case failFast
-
-    /// Continue processing other streams and collect errors as events.
-    /// Errors are yielded as `.failed` events.
-    case continueAndCollect
-
-    /// Ignore all errors from individual streams (legacy behavior).
-    /// Use with caution - errors will be silently swallowed.
-    case ignoreErrors
-}

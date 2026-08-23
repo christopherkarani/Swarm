@@ -505,22 +505,12 @@ public actor MetricsCollector: Tracer {
 
 // MARK: - MetricsReporter
 
-/// Protocol for exporting metrics to external systems.
+/// Internal contract for exporting metrics snapshots to a destination.
 ///
-/// `MetricsReporter` defines the contract for formatting and exporting
-/// metrics snapshots to various destinations (files, APIs, telemetry systems).
-///
-/// ## Example Implementation
-///
-/// ```swift
-/// struct LogMetricsReporter: MetricsReporter {
-///     func report(_ snapshot: MetricsSnapshot) async throws {
-///         print("=== Metrics Report ===")
-///         print("Total Executions: \(snapshot.totalExecutions)")
-///         print("Success Rate: \(snapshot.successRate)%")
-///     }
-/// }
-/// ```
+/// `MetricsReporter` is not part of the public API; external conformances are
+/// not possible. Use the module-provided `JSONMetricsReporter` to export
+/// snapshots as JSON, and read `MetricsSnapshot` values directly for any
+/// custom reporting pipeline.
 protocol MetricsReporter: Sendable {
     /// Reports a metrics snapshot.
     ///

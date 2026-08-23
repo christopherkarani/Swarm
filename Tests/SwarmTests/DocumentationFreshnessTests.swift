@@ -105,6 +105,7 @@ struct DocumentationFreshnessTests {
         #expect(!catalog.contains("| SwarmEmbeddingProviderAdapter |"))
         #expect(!catalog.contains("| InferenceStreamingProvider |"))
         #expect(!catalog.contains("| MetricsReporter |"))
+        #expect(!catalog.contains("MergeErrorStrategy"))
     }
 
     @Test("T1 surface shrink leaves demoted declarations internal in source")
@@ -119,7 +120,7 @@ struct DocumentationFreshnessTests {
 
         // Deleted dead types stay gone; surviving neighbors keep their access level.
         #expect(!streamOperations.contains("enum AgentEventStream"))
-        #expect(streamOperations.contains("public enum MergeErrorStrategy"))
+        #expect(!streamOperations.contains("MergeErrorStrategy"))
         #expect(!mcpServer.contains("MCPServerState"))
         #expect(inferenceStreamEvent.contains("public enum InferenceStreamEvent"))
         #expect(!inferenceStreamEvent.contains("protocol InferenceStreamingProvider"))

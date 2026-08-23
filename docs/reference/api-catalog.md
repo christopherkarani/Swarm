@@ -4,7 +4,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
 - Source files scanned: 183
-- Public/open symbols cataloged: 2312
+- Public/open symbols cataloged: 2310
 
 ## 1. Swarm (entry point)
 
@@ -1050,10 +1050,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 719 | func | public | AsyncThrowingStream.compactMap(_:) | `public func compactMap<T>(_ transform: @escaping (AgentEvent) async throws -> T?) -> AsyncThrowingStream<T, any Error> where T : Sendable` |
 | 747 | func | public | AsyncThrowingStream.distinctUntilChanged() | `public func distinctUntilChanged() -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 798 | func | public | AsyncThrowingStream.scan(_:_:) | `public func scan<T>(_ initial: T, _ combine: @escaping (T, AgentEvent) async throws -> T) -> AsyncThrowingStream<T, any Error> where T : Sendable` |
-| 817 | enum | public | MergeErrorStrategy | `public enum MergeErrorStrategy` |
-| 819 | case | public | MergeErrorStrategy.failFast | `public case failFast` |
-| 823 | case | public | MergeErrorStrategy.continueAndCollect | `public case continueAndCollect` |
-| 827 | case | public | MergeErrorStrategy.ignoreErrors | `public case ignoreErrors` |
 
 ### Core/SwarmConfiguration.swift
 
