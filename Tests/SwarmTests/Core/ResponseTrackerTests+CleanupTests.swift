@@ -56,10 +56,16 @@ struct ResponseTrackerCleanupTests {
             makeTestResponse(id: "resp_1", timestamp: clock.now.addingTimeInterval(-0.1)),
             sessionId: "session_1"
         )
-        await tracker.recordResponse(makeTestResponse(id: "resp_2"), sessionId: "session_2")
+        await tracker.recordResponse(
+            makeTestResponse(id: "resp_2", timestamp: clock.now.addingTimeInterval(-0.02)),
+            sessionId: "session_2"
+        )
 
         // Record another response for session_2 (making it more recent)
-        await tracker.recordResponse(makeTestResponse(id: "resp_3"), sessionId: "session_2")
+        await tracker.recordResponse(
+            makeTestResponse(id: "resp_3", timestamp: clock.now),
+            sessionId: "session_2"
+        )
 
         // Remove sessions not accessed within 50ms of the fake clock
         let removed = await tracker.removeSessions(notAccessedWithin: 0.05)
