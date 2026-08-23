@@ -123,7 +123,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 29 | case | public | AgentError.invalidLoop(reason:) | `public case invalidLoop(reason: String)` |
 | 34 | case | public | AgentError.toolNotFound(name:) | `public case toolNotFound(name: String)` |
 | 37 | case | public | AgentError.toolExecutionFailed(toolName:underlyingError:) | `public case toolExecutionFailed(toolName: String, underlyingError: String)` |
-| 304 | case | public | AgentError.toolFailure(toolName:message:cause:) | `public case toolFailure(toolName: String, message: String?, cause: (any Error)?)` |
+| 305 | case | public | AgentError.toolFailure(toolName:message:cause:) | `public case toolFailure(toolName: String, message: String?, cause: (any Error)?)` |
 | 40 | case | public | AgentError.invalidToolArguments(toolName:reason:) | `public case invalidToolArguments(toolName: String, reason: String)` |
 | 45 | case | public | AgentError.inferenceProviderUnavailable(reason:) | `public case inferenceProviderUnavailable(reason: String)` |
 | 48 | case | public | AgentError.contextWindowExceeded(tokenCount:limit:) | `public case contextWindowExceeded(tokenCount: Int, limit: Int)` |
@@ -138,7 +138,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 81 | case | public | AgentError.internalError(reason:) | `public case internalError(reason: String)` |
 | 84 | case | public | AgentError.toolCallingUnsupported | `public case toolCallingUnsupported` |
 | 593 | case | public | AgentError.providerOwnedToolLoopRequiresExecutor | `public case providerOwnedToolLoopRequiresExecutor` |
-| 627 | func | public | AgentError.==(_:_:) | `public static func == (lhs: AgentError, rhs: AgentError) -> Bool` |
+| 628 | func | public | AgentError.==(_:_:) | `public static func == (lhs: AgentError, rhs: AgentError) -> Bool` |
 | 90 | var | public | AgentError.errorDescription | `public var errorDescription: String? { get }` |
 | 139 | var | public | AgentError.recoverySuggestion | `public var recoverySuggestion: String? { get }` |
 | 152 | var | public | AgentError.debugDescription | `public var debugDescription: String { get }` |
