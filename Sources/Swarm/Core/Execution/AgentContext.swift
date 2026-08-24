@@ -317,8 +317,12 @@ public actor AgentContext {
         let otherRawValues = await other.rawValues()
         let otherSlots = await other.valueSlotStore()
 
+        // Typed slot names occupy the key for overwrite:false even though
+        // they live outside the raw namespace. Copying parent raw under a
+        // live local slot would steal the snapshot (raw wins) and survive
+        // removeTyped as a shadow.
         for (key, value) in otherRawValues {
-            if overwrite || values[key] == nil {
+            if overwrite || (values[key] == nil && !slots.containsValueName(key)) {
                 values[key] = value
             }
         }

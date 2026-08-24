@@ -544,4 +544,24 @@ struct ContextStoreUnificationTests {
         await child.removeTyped(ContextKey<Int>("user_id"))
         #expect(await child.snapshot["user_id"] == .string("parent-user"))
     }
+
+    @Test("merge without overwrite does not let parent raw steal a local typed snapshot name")
+    func mergeWithoutOverwriteKeepsLocalTypedNameAgainstParentRaw() async throws {
+        let parent = AgentContext(input: "parent")
+        await parent.set("user_id", value: .string("parent-raw"))
+
+        let child = AgentContext(input: "child")
+        await child.setTyped(ContextKey<Int>("user_id"), value: 42)
+
+        await child.merge(from: parent, overwrite: false)
+
+        #expect(await child.getTyped(ContextKey<Int>("user_id")) == 42)
+        #expect(await child.snapshot["user_id"] == .int(42))
+        #expect(await child.get("user_id") == nil)
+
+        await child.removeTyped(ContextKey<Int>("user_id"))
+        #expect(await child.getTyped(ContextKey<Int>("user_id")) == nil)
+        #expect(await child.get("user_id") == nil)
+        #expect(await child.snapshot["user_id"] == nil)
+    }
 }

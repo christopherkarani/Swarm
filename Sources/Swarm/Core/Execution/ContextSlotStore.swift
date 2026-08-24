@@ -214,6 +214,15 @@ struct ContextSlotStore {
         Set(valueSlots.keys.map(\.name)).sorted()
     }
 
+    /// Returns whether any value slot occupies `name`, regardless of the
+    /// owning value type.
+    ///
+    /// - Parameter name: The string name to look up.
+    /// - Returns: True when at least one slot uses this name.
+    func containsValueName(_ name: String) -> Bool {
+        valueSlots.contains { $0.key.name == name }
+    }
+
     // MARK: - Provided Slots (deprecated shim)
 
     /// Stores `instance` in the slot identified by its concrete type and
