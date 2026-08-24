@@ -310,6 +310,21 @@ struct ContextStoreUnificationTests {
         #expect(merged.valuePayload(for: ContextKey<String>("recency_name")) == .string("newest"))
     }
 
+    @Test("store-level merge without overwrite restamps same-name ids below the local winner")
+    func storeMergeDoesNotLetDifferentTypedSameNameStealProjection() {
+        var local = ContextSlotStore()
+        local.setValuePayload(ContextKey<Int>("user_id"), payload: .int(42))
+
+        var incoming = ContextSlotStore()
+        incoming.setValuePayload(ContextKey<String>("user_id"), payload: .string("parent-user"))
+
+        local.mergeValueSlots(from: incoming, overwrite: false)
+
+        #expect(local.projectedValues()["user_id"] == .int(42))
+        #expect(local.valuePayload(for: ContextKey<Int>("user_id")) == .int(42))
+        #expect(local.valuePayload(for: ContextKey<String>("user_id")) == .string("parent-user"))
+    }
+
     // MARK: - Copy Behavior
 
     @Test("copy carries typed values and lands additionalValues in the raw namespace")
@@ -491,5 +506,42 @@ struct ContextStoreUnificationTests {
         // Typed namespace still received the merged slot.
         #expect(await child.getTyped(.userID) == "from-slot")
         #expect(await child.get("user_id") == .string("raw-local"))
+    }
+
+    @Test("merge of typed-only parent then removeTyped leaves no raw shadow")
+    func mergeThenRemoveTypedDoesNotLeaveRawShadow() async throws {
+        let parent = AgentContext(input: "parent")
+        await parent.setTyped(.userID, value: "p-user")
+
+        let child = AgentContext(input: "child")
+        await child.merge(from: parent, overwrite: false)
+
+        #expect(await child.getTyped(.userID) == "p-user")
+        #expect(await child.snapshot["user_id"] == .string("p-user"))
+        // Merge must not copy the projection into raw storage.
+        #expect(await child.get("user_id") == nil)
+
+        await child.removeTyped(.userID)
+        #expect(await child.getTyped(.userID) == nil)
+        #expect(await child.get("user_id") == nil)
+        #expect(await child.snapshot["user_id"] == nil)
+    }
+
+    @Test("merge without overwrite keeps a local typed snapshot winner across value types")
+    func mergeWithoutOverwriteKeepsLocalSameNameSnapshotWinner() async throws {
+        let parent = AgentContext(input: "parent")
+        await parent.setTyped(ContextKey<String>("user_id"), value: "parent-user")
+
+        let child = AgentContext(input: "child")
+        await child.setTyped(ContextKey<Int>("user_id"), value: 42)
+
+        await child.merge(from: parent, overwrite: false)
+
+        #expect(await child.getTyped(ContextKey<Int>("user_id")) == 42)
+        #expect(await child.getTyped(ContextKey<String>("user_id")) == "parent-user")
+        #expect(await child.snapshot["user_id"] == .int(42))
+
+        await child.removeTyped(ContextKey<Int>("user_id"))
+        #expect(await child.snapshot["user_id"] == .string("parent-user"))
     }
 }

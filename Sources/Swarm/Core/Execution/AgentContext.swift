@@ -324,19 +324,10 @@ public actor AgentContext {
         }
 
         // Merge typed value slots so reads through `getTyped(_:)` observe
-        // merged state. Their encoded payloads also project into the raw
-        // namespace by name, matching where such values lived before typed
-        // storage was unified; projections never displace an existing raw
-        // entry or a same-named local slot unless overwriting. Provided
-        // slots are intentionally not merged; they were historically
-        // instance-specific.
-        let projection = otherSlots.projectedValues()
-        for (name, payload) in projection {
-            if overwrite || (values[name] == nil && !slots.containsValueName(name)) {
-                values[name] = payload
-            }
-        }
-
+        // merged state. Snapshot already projects those slots by name; they
+        // are not copied into the raw namespace, matching `setTyped` and
+        // `copy(additionalValues:)`. Provided slots are intentionally not
+        // merged; they were historically instance-specific.
         slots.mergeValueSlots(from: otherSlots, overwrite: overwrite)
 
         // Merge messages

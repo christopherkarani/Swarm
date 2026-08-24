@@ -118,21 +118,76 @@ struct ContextSlotStore {
 
     /// Merges value slots from `other` into this store.
     ///
+    /// Incoming slots are re-stamped in source-recency order so the relative
+    /// order that `projectedValues` resolves ties by survives the merge
+    /// regardless of dictionary iteration order.
+    ///
+    /// When `overwrite` is false, existing slots are left untouched. Incoming
+    /// slots that share a name with a local slot but have a different value
+    /// type are still inserted so typed reads of the incoming type work, but
+    /// they receive a write stamp strictly below the current same-name winner
+    /// so they cannot steal the snapshot projection.
+    ///
     /// - Parameters:
     ///   - other: The store whose value slots are copied in.
-    ///   - overwrite: When false, existing slots are left untouched.
+    ///   - overwrite: When false, existing slots are left untouched and
+    ///     same-name newcomers stay below the local projection winner.
     mutating func mergeValueSlots(from other: ContextSlotStore, overwrite: Bool) {
-        // Re-stamp in source-recency order so the relative order that
-        // `projectedValues` resolves ties by survives the merge regardless
-        // of dictionary iteration order.
-        for (id, entry) in other.valueSlots.sorted(by: { $0.value.writeStamp < $1.value.writeStamp }) {
-            if overwrite || valueSlots[id] == nil {
+        let incoming = other.valueSlots.sorted(by: { $0.value.writeStamp < $1.value.writeStamp })
+
+        if overwrite {
+            for (id, entry) in incoming {
                 nextWriteStamp += 1
                 valueSlots[id] = ContextSlotEntry(
                     payload: entry.payload,
                     writeStamp: nextWriteStamp
                 )
             }
+            return
+        }
+
+        var winnerStampByName: [String: Int] = [:]
+        var usedStampsByName: [String: Set<Int>] = [:]
+        for (id, entry) in valueSlots {
+            usedStampsByName[id.name, default: []].insert(entry.writeStamp)
+            if let current = winnerStampByName[id.name], current >= entry.writeStamp {
+                continue
+            }
+            winnerStampByName[id.name] = entry.writeStamp
+        }
+
+        var newNames: [(id: ContextSlotID, entry: ContextSlotEntry)] = []
+        var belowWinnerByName: [String: [(id: ContextSlotID, entry: ContextSlotEntry)]] = [:]
+        for (id, entry) in incoming {
+            guard valueSlots[id] == nil else { continue }
+            if winnerStampByName[id.name] != nil {
+                belowWinnerByName[id.name, default: []].append((id, entry))
+            } else {
+                newNames.append((id, entry))
+            }
+        }
+
+        for (name, entries) in belowWinnerByName {
+            guard var nextBelow = winnerStampByName[name] else { continue }
+            var used = usedStampsByName[name] ?? []
+            // Newest incoming first so relative recency among newcomers is
+            // preserved, all strictly below the local winner.
+            for (id, entry) in entries.reversed() {
+                nextBelow -= 1
+                while used.contains(nextBelow) {
+                    nextBelow -= 1
+                }
+                valueSlots[id] = ContextSlotEntry(payload: entry.payload, writeStamp: nextBelow)
+                used.insert(nextBelow)
+            }
+        }
+
+        for (id, entry) in newNames {
+            nextWriteStamp += 1
+            valueSlots[id] = ContextSlotEntry(
+                payload: entry.payload,
+                writeStamp: nextWriteStamp
+            )
         }
     }
 
@@ -157,15 +212,6 @@ struct ContextSlotStore {
     /// The distinct slot names held in value slots.
     var valueNames: [String] {
         Set(valueSlots.keys.map(\.name)).sorted()
-    }
-
-    /// Returns whether any value slot occupies `name`, regardless of the
-    /// owning value type.
-    ///
-    /// - Parameter name: The string name to look up.
-    /// - Returns: True when at least one slot uses this name.
-    func containsValueName(_ name: String) -> Bool {
-        valueSlots.contains { $0.key.name == name }
     }
 
     // MARK: - Provided Slots (deprecated shim)
