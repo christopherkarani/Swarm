@@ -30,8 +30,10 @@ import Foundation
 /// }
 ///
 /// // Use with type safety
+/// await context.set(.originalInput, "User query")
+/// let input: String? = await context.get(.originalInput)
 /// await context.setTyped(.userID, value: "user-123")
-/// let id: String? = await context.getTyped(.userID)  // Type-safe!
+/// let id: String? = await context.getTyped(.userID)
 /// ```
 public struct ContextKey<Value: Sendable>: Hashable, Sendable {
     /// The string name of the key.
@@ -74,6 +76,15 @@ public extension ContextKey where Value == String {
 
     /// API version being used.
     static let apiVersion = ContextKey("api_version")
+
+    /// The original input that started orchestration (`original_input`).
+    static let originalInput = ContextKey("original_input")
+
+    /// The output from the previous agent in the chain (`previous_output`).
+    static let previousOutput = ContextKey("previous_output")
+
+    /// The name of the current executing agent (`current_agent_name`).
+    static let currentAgentName = ContextKey("current_agent_name")
 }
 
 // MARK: - Standard Int Keys
@@ -119,6 +130,9 @@ public extension ContextKey where Value == [String] {
 
     /// Feature flags enabled.
     static let featureFlags = ContextKey("feature_flags")
+
+    /// The execution path as a list of agent names (`execution_path`).
+    static let executionPath = ContextKey("execution_path")
 }
 
 // MARK: - Standard Date Keys
@@ -129,6 +143,9 @@ public extension ContextKey where Value == Date {
 
     /// Expiration time.
     static let expiresAt = ContextKey("expires_at")
+
+    /// The start time of orchestration (`start_time`).
+    static let startTime = ContextKey("start_time")
 }
 
 // MARK: - AgentContext Typed Extensions
@@ -142,6 +159,85 @@ public extension ContextKey where Value == Date {
 /// write and decoded once on read by `ContextValueCodec`; no runtime casting
 /// participates in typed reads.
 public extension AgentContext {
+    /// Stores a string under a typed context key.
+    ///
+    /// Writes the slot store and clears any raw entry of the same name so
+    /// ``snapshot`` projects this value.
+    func set(_ key: ContextKey<String>, _ value: String) {
+        setTyped(key, value: value)
+        _ = remove(key.name)
+    }
+
+    /// Reads a string stored under a typed context key, falling back to the
+    /// raw namespace when the slot is empty.
+    func get(_ key: ContextKey<String>) -> String? {
+        getTyped(key) ?? get(key.name)?.stringValue
+    }
+
+    /// Stores an integer under a typed context key.
+    func set(_ key: ContextKey<Int>, _ value: Int) {
+        setTyped(key, value: value)
+        _ = remove(key.name)
+    }
+
+    /// Reads an integer stored under a typed context key.
+    func get(_ key: ContextKey<Int>) -> Int? {
+        getTyped(key) ?? get(key.name)?.intValue
+    }
+
+    /// Stores a Boolean under a typed context key.
+    func set(_ key: ContextKey<Bool>, _ value: Bool) {
+        setTyped(key, value: value)
+        _ = remove(key.name)
+    }
+
+    /// Reads a Boolean stored under a typed context key.
+    func get(_ key: ContextKey<Bool>) -> Bool? {
+        getTyped(key) ?? get(key.name)?.boolValue
+    }
+
+    /// Stores a double under a typed context key.
+    func set(_ key: ContextKey<Double>, _ value: Double) {
+        setTyped(key, value: value)
+        _ = remove(key.name)
+    }
+
+    /// Reads a double stored under a typed context key.
+    func get(_ key: ContextKey<Double>) -> Double? {
+        getTyped(key) ?? get(key.name)?.doubleValue
+    }
+
+    /// Stores a string array under a typed context key.
+    func set(_ key: ContextKey<[String]>, _ value: [String]) {
+        setTyped(key, value: value)
+        _ = remove(key.name)
+    }
+
+    /// Reads a string array stored under a typed context key.
+    func get(_ key: ContextKey<[String]>) -> [String]? {
+        if let typed = getTyped(key) {
+            return typed
+        }
+        return get(key.name)?.arrayValue?.compactMap(\.stringValue)
+    }
+
+    /// Stores a date under a typed context key.
+    func set(_ key: ContextKey<Date>, _ value: Date) {
+        setTyped(key, value: value)
+        _ = remove(key.name)
+    }
+
+    /// Reads a date stored under a typed context key.
+    func get(_ key: ContextKey<Date>) -> Date? {
+        if let typed = getTyped(key) {
+            return typed
+        }
+        guard let timestamp = get(key.name)?.doubleValue else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: timestamp)
+    }
+
     /// Sets a typed value in the context.
     ///
     /// The value is encoded into the unified slot store under this key's
