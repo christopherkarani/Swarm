@@ -4,7 +4,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
 - Source files scanned: 183
-- Public/open symbols cataloged: 2350
+- Public/open symbols cataloged: 2310
 
 ## 1. Swarm (entry point)
 
@@ -646,28 +646,18 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 35 | struct | public | HandoffBuilder | `public struct HandoffBuilder<Target> where Target : AgentRuntime` |
-| 43 | func | public | HandoffBuilder.init(to:) | `public init(to target: Target)` |
-| 63 | func | public | HandoffBuilder.toolName(_:) | `public func toolName(_ name: String) -> HandoffBuilder<Target>` |
-| 82 | func | public | HandoffBuilder.toolDescription(_:) | `public func toolDescription(_ description: String) -> HandoffBuilder<Target>` |
-| 105 | func | public | HandoffBuilder.onTransfer(_:) | `public func onTransfer(_ callback: @escaping OnTransferCallback) -> HandoffBuilder<Target>` |
-| 128 | func | public | HandoffBuilder.transform(_:) | `public func transform(_ filter: @escaping TransformCallback) -> HandoffBuilder<Target>` |
-| 150 | func | public | HandoffBuilder.when(_:) | `public func when(_ check: @escaping WhenCallback) -> HandoffBuilder<Target>` |
-| 170 | func | public | HandoffBuilder.history(_:) | `public func history(_ history: HandoffHistory) -> HandoffBuilder<Target>` |
-| 189 | func | public | HandoffBuilder.build() | `public func build() -> HandoffConfiguration<Target>` |
-| 227 | func | public | handoff(to:name:description:onTransfer:transform:when:history:) | `public func handoff<T>(to target: T, name: String? = nil, description: String? = nil, onTransfer: OnTransferCallback? = nil, transform: TransformCallback? = nil, when: WhenCallback? = nil, history: HandoffHistory = .none) -> HandoffConfiguration<T> where T : AgentRuntime` |
-| 262 | struct | public | AnyHandoffConfiguration | `public struct AnyHandoffConfiguration` |
-| 264 | var | public | AnyHandoffConfiguration.targetAgent | `public let targetAgent: any AgentRuntime` |
-| 267 | var | public | AnyHandoffConfiguration.toolNameOverride | `public let toolNameOverride: String?` |
-| 270 | var | public | AnyHandoffConfiguration.toolDescription | `public let toolDescription: String?` |
-| 273 | var | public | AnyHandoffConfiguration.onTransfer | `public let onTransfer: OnTransferCallback?` |
-| 276 | var | public | AnyHandoffConfiguration.transform | `public let transform: TransformCallback?` |
-| 279 | var | public | AnyHandoffConfiguration.when | `public let when: WhenCallback?` |
-| 282 | var | public | AnyHandoffConfiguration.nestHandoffHistory | `public let nestHandoffHistory: Bool` |
-| 289 | func | public | AnyHandoffConfiguration.init(_:) | `public init(_ configuration: HandoffConfiguration<some AgentRuntime>)` |
-| 309 | func | public | AnyHandoffConfiguration.init(targetAgent:toolNameOverride:toolDescription:onTransfer:transform:when:nestHandoffHistory:) | `public init(targetAgent: any AgentRuntime, toolNameOverride: String? = nil, toolDescription: String? = nil, onTransfer: OnTransferCallback? = nil, transform: TransformCallback? = nil, when: WhenCallback? = nil, nestHandoffHistory: Bool = false)` |
-| 332 | var | public | AnyHandoffConfiguration.effectiveToolName | `public var effectiveToolName: String { get }` |
-| 341 | var | public | AnyHandoffConfiguration.effectiveToolDescription | `public var effectiveToolDescription: String { get }` |
+| 23 | struct | public | AnyHandoffConfiguration | `public struct AnyHandoffConfiguration` |
+| 25 | var | public | AnyHandoffConfiguration.targetAgent | `public let targetAgent: any AgentRuntime` |
+| 28 | var | public | AnyHandoffConfiguration.toolNameOverride | `public let toolNameOverride: String?` |
+| 31 | var | public | AnyHandoffConfiguration.toolDescription | `public let toolDescription: String?` |
+| 34 | var | public | AnyHandoffConfiguration.onTransfer | `public let onTransfer: OnTransferCallback?` |
+| 37 | var | public | AnyHandoffConfiguration.transform | `public let transform: TransformCallback?` |
+| 40 | var | public | AnyHandoffConfiguration.when | `public let when: WhenCallback?` |
+| 43 | var | public | AnyHandoffConfiguration.nestHandoffHistory | `public let nestHandoffHistory: Bool` |
+| 50 | func | public | AnyHandoffConfiguration.init(_:) | `public init(_ configuration: HandoffConfiguration<some AgentRuntime>)` |
+| 70 | func | public | AnyHandoffConfiguration.init(targetAgent:toolNameOverride:toolDescription:onTransfer:transform:when:nestHandoffHistory:) | `public init(targetAgent: any AgentRuntime, toolNameOverride: String? = nil, toolDescription: String? = nil, onTransfer: OnTransferCallback? = nil, transform: TransformCallback? = nil, when: WhenCallback? = nil, nestHandoffHistory: Bool = false)` |
+| 93 | var | public | AnyHandoffConfiguration.effectiveToolName | `public var effectiveToolName: String { get }` |
+| 102 | var | public | AnyHandoffConfiguration.effectiveToolDescription | `public var effectiveToolDescription: String { get }` |
 
 ### Core/Handoff/HandoffConfiguration.swift
 
@@ -774,8 +764,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 27 | case | public | InferenceStreamEvent.finishReason(_:) | `public case finishReason(String)` |
 | 30 | case | public | InferenceStreamEvent.usage(promptTokens:completionTokens:) | `public case usage(promptTokens: Int, completionTokens: Int)` |
 | 33 | case | public | InferenceStreamEvent.done | `public case done` |
-| 39 | protocol | public | InferenceStreamingProvider | `public protocol InferenceStreamingProvider : Sendable` |
-| 47 | func | public | InferenceStreamingProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamEvent, any Error>` |
 
 ### Core/Logger+Swarm.swift
 
@@ -1062,16 +1050,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 719 | func | public | AsyncThrowingStream.compactMap(_:) | `public func compactMap<T>(_ transform: @escaping (AgentEvent) async throws -> T?) -> AsyncThrowingStream<T, any Error> where T : Sendable` |
 | 747 | func | public | AsyncThrowingStream.distinctUntilChanged() | `public func distinctUntilChanged() -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 798 | func | public | AsyncThrowingStream.scan(_:_:) | `public func scan<T>(_ initial: T, _ combine: @escaping (T, AgentEvent) async throws -> T) -> AsyncThrowingStream<T, any Error> where T : Sendable` |
-| 817 | enum | public | MergeErrorStrategy | `public enum MergeErrorStrategy` |
-| 819 | case | public | MergeErrorStrategy.failFast | `public case failFast` |
-| 823 | case | public | MergeErrorStrategy.continueAndCollect | `public case continueAndCollect` |
-| 827 | case | public | MergeErrorStrategy.ignoreErrors | `public case ignoreErrors` |
-| 833 | enum | public | AgentEventStream | `public enum AgentEventStream` |
-| 860 | func | public | AgentEventStream.merge(_:errorStrategy:) | `public static func merge(_ streams: AsyncThrowingStream<AgentEvent, any Error>..., errorStrategy: MergeErrorStrategy = .continueAndCollect) -> AsyncThrowingStream<AgentEvent, any Error>` |
-| 904 | func | public | AgentEventStream.empty() | `public static func empty() -> AsyncThrowingStream<AgentEvent, any Error>` |
-| 923 | func | public | AgentEventStream.from(_:) | `public static func from(_ events: [AgentEvent]) -> AsyncThrowingStream<AgentEvent, any Error>` |
-| 936 | func | public | AgentEventStream.just(_:) | `public static func just(_ event: AgentEvent) -> AsyncThrowingStream<AgentEvent, any Error>` |
-| 944 | func | public | AgentEventStream.fail(_:) | `public static func fail(_ error: any Error) -> AsyncThrowingStream<AgentEvent, any Error>` |
 
 ### Core/SwarmConfiguration.swift
 
@@ -2115,8 +2093,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 374 | func | public | MetricsCollector.getToolCalls() | `public func getToolCalls() -> [String : Int]` |
 | 379 | func | public | MetricsCollector.getToolErrors() | `public func getToolErrors() -> [String : Int]` |
 | 384 | func | public | MetricsCollector.getToolDurations() | `public func getToolDurations() -> [String : [TimeInterval]]` |
-| 446 | protocol | public | MetricsReporter | `public protocol MetricsReporter : Sendable` |
-| 451 | func | public | MetricsReporter.report(_:) | `public func report(_ snapshot: MetricsSnapshot) async throws` |
 | 471 | struct | public | JSONMetricsReporter | `public struct JSONMetricsReporter` |
 | 473 | var | public | JSONMetricsReporter.outputPath | `public let outputPath: String?` |
 | 476 | var | public | JSONMetricsReporter.prettyPrint | `public let prettyPrint: Bool` |
@@ -2696,15 +2672,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 276 | func | public | MCPServerConnection.requireToolsCapability() | `public func requireToolsCapability() async throws` |
 | 288 | func | public | MCPServerConnection.requireResourcesCapability() | `public func requireResourcesCapability() async throws` |
 | — | typealias | public | MCPServer | `@available(*, deprecated, renamed: "MCPServerConnection") public typealias MCPServer = MCPServerConnection` |
-| 301 | enum | public | MCPServerState | `public enum MCPServerState` |
-| 305 | var | public | MCPServerState.isReady | `public var isReady: Bool { get }` |
-| 310 | var | public | MCPServerState.isTerminated | `public var isTerminated: Bool { get }` |
-| 321 | case | public | MCPServerState.created | `public case created` |
-| 324 | case | public | MCPServerState.initializing | `public case initializing` |
-| 327 | case | public | MCPServerState.ready | `public case ready` |
-| 330 | case | public | MCPServerState.closing | `public case closing` |
-| 333 | case | public | MCPServerState.closed | `public case closed` |
-| 336 | case | public | MCPServerState.error(_:) | `public case error(String)` |
 
 ### MCP/MCPToolBridge.swift
 
@@ -2888,20 +2855,13 @@ Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationMo
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 5 | struct | public | SwarmEmbeddingProviderAdapter | `public struct SwarmEmbeddingProviderAdapter` |
-| 6 | var | public | SwarmEmbeddingProviderAdapter.base | `public let base: any EmbeddingProvider` |
-| 8 | func | public | SwarmEmbeddingProviderAdapter.init(_:) | `public init(_ base: any EmbeddingProvider)` |
-| 12 | var | public | SwarmEmbeddingProviderAdapter.dimensions | `public var dimensions: Int { get }` |
-| 14 | var | public | SwarmEmbeddingProviderAdapter.modelIdentifier | `public var modelIdentifier: String { get }` |
-| 18 | func | public | SwarmEmbeddingProviderAdapter.embed(_:) | `public func embed(_ text: String) async throws -> [Float]` |
-| 22 | func | public | SwarmEmbeddingProviderAdapter.embed(_:) | `public func embed(_ texts: [String]) async throws -> [[Float]]` |
-| 38 | struct | public | WaxEmbeddingProviderAdapter | `public struct WaxEmbeddingProviderAdapter` |
-| 39 | var | public | WaxEmbeddingProviderAdapter.base | `public let base: any EmbeddingProvider` |
-| 40 | var | public | WaxEmbeddingProviderAdapter.normalize | `public let normalize: Bool` |
-| 41 | var | public | WaxEmbeddingProviderAdapter.identity | `public let identity: EmbeddingIdentity?` |
-| 43 | func | public | WaxEmbeddingProviderAdapter.init(_:normalize:providerName:) | `public init(_ base: any EmbeddingProvider, normalize: Bool = false, providerName: String? = "swarm")` |
-| 58 | var | public | WaxEmbeddingProviderAdapter.dimensions | `public var dimensions: Int { get }` |
-| 60 | func | public | WaxEmbeddingProviderAdapter.embed(_:) | `public func embed(_ text: String) async throws -> [Float]` |
+| 4 | struct | public | WaxEmbeddingProviderAdapter | `public struct WaxEmbeddingProviderAdapter` |
+| 5 | var | public | WaxEmbeddingProviderAdapter.base | `public let base: any EmbeddingProvider` |
+| 6 | var | public | WaxEmbeddingProviderAdapter.normalize | `public let normalize: Bool` |
+| 7 | var | public | WaxEmbeddingProviderAdapter.identity | `public let identity: EmbeddingIdentity?` |
+| 9 | func | public | WaxEmbeddingProviderAdapter.init(_:normalize:providerName:) | `public init(_ base: any EmbeddingProvider, normalize: Bool = false, providerName: String? = "swarm")` |
+| 24 | var | public | WaxEmbeddingProviderAdapter.dimensions | `public var dimensions: Int { get }` |
+| 26 | func | public | WaxEmbeddingProviderAdapter.embed(_:) | `public func embed(_ text: String) async throws -> [Float]` |
 
 ### Integration/Wax/WaxIntegration.swift
 

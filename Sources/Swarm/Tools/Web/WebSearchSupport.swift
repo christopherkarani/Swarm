@@ -24,7 +24,7 @@ import Glibc
 import PDFKit
 #endif
 
-public enum WebPageType: String, Codable, Sendable, Equatable {
+enum WebPageType: String, Codable, Sendable, Equatable {
     case docs
     case apiReference
     case blog
@@ -35,7 +35,7 @@ public enum WebPageType: String, Codable, Sendable, Equatable {
     case generic
 }
 
-public enum WebHostTrustProfile: String, Codable, Sendable, Equatable {
+enum WebHostTrustProfile: String, Codable, Sendable, Equatable {
     case officialDocs
     case officialProduct
     case reference
@@ -44,17 +44,17 @@ public enum WebHostTrustProfile: String, Codable, Sendable, Equatable {
     case unknown
 }
 
-public struct WebSearchHit: Codable, Sendable, Equatable {
-    public var id: String
-    public var title: String
-    public var url: String
-    public var snippet: String
-    public var score: Double
-    public var source: String
-    public var cached: Bool
-    public var artifactID: String?
+struct WebSearchHit: Codable, Sendable, Equatable {
+    var id: String
+    var title: String
+    var url: String
+    var snippet: String
+    var score: Double
+    var source: String
+    var cached: Bool
+    var artifactID: String?
 
-    public init(
+    init(
         id: String,
         title: String,
         url: String,
@@ -75,14 +75,14 @@ public struct WebSearchHit: Codable, Sendable, Equatable {
     }
 }
 
-public struct CitationRecord: Codable, Sendable, Equatable {
-    public var artifactID: String
-    public var sectionID: String
-    public var url: String
-    public var title: String
-    public var snippet: String
+struct CitationRecord: Codable, Sendable, Equatable {
+    var artifactID: String
+    var sectionID: String
+    var url: String
+    var title: String
+    var snippet: String
 
-    public init(
+    init(
         artifactID: String,
         sectionID: String,
         url: String,
@@ -97,16 +97,16 @@ public struct CitationRecord: Codable, Sendable, Equatable {
     }
 }
 
-public struct WebSectionChunk: Codable, Sendable, Equatable {
-    public var id: String
-    public var artifactID: String
-    public var heading: String
-    public var text: String
-    public var index: Int
-    public var pageType: WebPageType
-    public var citations: [CitationRecord]
+struct WebSectionChunk: Codable, Sendable, Equatable {
+    var id: String
+    var artifactID: String
+    var heading: String
+    var text: String
+    var index: Int
+    var pageType: WebPageType
+    var citations: [CitationRecord]
 
-    public init(
+    init(
         id: String,
         artifactID: String,
         heading: String,
@@ -125,21 +125,21 @@ public struct WebSectionChunk: Codable, Sendable, Equatable {
     }
 }
 
-public struct WebArtifactRecord: Codable, Sendable, Equatable {
-    public var artifactID: String
-    public var canonicalURL: String
-    public var title: String
-    public var contentType: String
-    public var fetchedAt: Date
-    public var contentHash: String
-    public var etag: String?
-    public var lastModified: String?
-    public var pageType: WebPageType
-    public var hostTrust: WebHostTrustProfile
-    public var freshnessScore: Double
-    public var rawArtifactRef: String
+struct WebArtifactRecord: Codable, Sendable, Equatable {
+    var artifactID: String
+    var canonicalURL: String
+    var title: String
+    var contentType: String
+    var fetchedAt: Date
+    var contentHash: String
+    var etag: String?
+    var lastModified: String?
+    var pageType: WebPageType
+    var hostTrust: WebHostTrustProfile
+    var freshnessScore: Double
+    var rawArtifactRef: String
 
-    public init(
+    init(
         artifactID: String,
         canonicalURL: String,
         title: String,
@@ -168,17 +168,17 @@ public struct WebArtifactRecord: Codable, Sendable, Equatable {
     }
 }
 
-public struct NormalizedWebDocument: Codable, Sendable, Equatable {
-    public var artifactID: String
-    public var canonicalURL: String
-    public var title: String
-    public var summary: String
-    public var pageType: WebPageType
-    public var contentType: String
-    public var fetchedAt: Date
-    public var sections: [WebSectionChunk]
+struct NormalizedWebDocument: Codable, Sendable, Equatable {
+    var artifactID: String
+    var canonicalURL: String
+    var title: String
+    var summary: String
+    var pageType: WebPageType
+    var contentType: String
+    var fetchedAt: Date
+    var sections: [WebSectionChunk]
 
-    public init(
+    init(
         artifactID: String,
         canonicalURL: String,
         title: String,
@@ -199,14 +199,14 @@ public struct NormalizedWebDocument: Codable, Sendable, Equatable {
     }
 }
 
-public struct GroundedEvidence: Codable, Sendable, Equatable {
-    public var query: String
-    public var answer: String
-    public var evidenceSections: [WebSectionChunk]
-    public var citations: [CitationRecord]
-    public var bundleID: String?
+struct GroundedEvidence: Codable, Sendable, Equatable {
+    var query: String
+    var answer: String
+    var evidenceSections: [WebSectionChunk]
+    var citations: [CitationRecord]
+    var bundleID: String?
 
-    public init(
+    init(
         query: String,
         answer: String,
         evidenceSections: [WebSectionChunk],
@@ -221,16 +221,16 @@ public struct GroundedEvidence: Codable, Sendable, Equatable {
     }
 }
 
-public struct EvidenceBundleRecord: Codable, Sendable, Equatable {
-    public var bundleID: String
-    public var query: String
-    public var artifactIDs: [String]
-    public var sectionIDs: [String]
-    public var summary: String
-    public var createdAt: Date
-    public var updatedAt: Date
+struct EvidenceBundleRecord: Codable, Sendable, Equatable {
+    var bundleID: String
+    var query: String
+    var artifactIDs: [String]
+    var sectionIDs: [String]
+    var summary: String
+    var createdAt: Date
+    var updatedAt: Date
 
-    public init(
+    init(
         bundleID: String,
         query: String,
         artifactIDs: [String],
@@ -249,23 +249,23 @@ public struct EvidenceBundleRecord: Codable, Sendable, Equatable {
     }
 }
 
-public struct WebSearchEnvelope: Codable, Sendable, Equatable {
-    public var mode: String
-    public var summary: String
-    public var final4KAnswer: String
-    public var semanticCore: String?
-    public var hits: [WebSearchHit]
-    public var artifact: WebArtifactRecord?
-    public var normalizedDocument: NormalizedWebDocument?
-    public var sectionChunks: [WebSectionChunk]
-    public var groundedEvidence: GroundedEvidence?
-    public var citations: [CitationRecord]
-    public var artifactRefs: [String]
-    public var bundle: EvidenceBundleRecord?
-    public var cacheStatus: String
-    public var rawArtifactRef: String?
+struct WebSearchEnvelope: Codable, Sendable, Equatable {
+    var mode: String
+    var summary: String
+    var final4KAnswer: String
+    var semanticCore: String?
+    var hits: [WebSearchHit]
+    var artifact: WebArtifactRecord?
+    var normalizedDocument: NormalizedWebDocument?
+    var sectionChunks: [WebSectionChunk]
+    var groundedEvidence: GroundedEvidence?
+    var citations: [CitationRecord]
+    var artifactRefs: [String]
+    var bundle: EvidenceBundleRecord?
+    var cacheStatus: String
+    var rawArtifactRef: String?
 
-    public init(
+    init(
         mode: String,
         summary: String,
         final4KAnswer: String,

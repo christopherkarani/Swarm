@@ -109,4 +109,71 @@ struct V2SurfaceAuditTests {
         )
         #expect(result.runtimeEngine == "graph")
     }
+
+    // MARK: - AnyHandoffConfiguration (retained after HandoffBuilder removal)
+
+    @Test("AnyHandoffConfiguration stays public at module level")
+    func anyHandoffConfigurationPublic() {
+        let erased = AnyHandoffConfiguration(
+            targetAgent: MockAgentRuntime(),
+            toolNameOverride: nil,
+            toolDescription: nil,
+            onTransfer: nil,
+            transform: nil,
+            when: nil,
+            nestHandoffHistory: false
+        )
+        #expect(erased.nestHandoffHistory == false)
+        #expect(!erased.effectiveToolName.isEmpty)
+    }
+
+    @Test("AnyHandoffConfiguration erases a typed configuration")
+    func anyHandoffConfigurationTypeErasurePublic() {
+        let erased = AnyHandoffConfiguration(
+            targetAgent: MockAgentRuntime(instructions: "Specialist")
+        )
+        #expect(erased.effectiveToolName == "handoff_to_mock_agent_runtime")
+        #expect(erased.effectiveToolDescription.contains("MockAgentRuntime"))
+    }
+
+    // MARK: - ToolExecutionSemantics (usable public type, not a public shell)
+
+    @Test("ToolExecutionSemantics members stay public from another module")
+    func toolExecutionSemanticsMembersStayPublic() {
+        let semantics = ToolExecutionSemantics(
+            sideEffectLevel: .readOnly,
+            retryPolicy: .safe,
+            approvalRequirement: .never,
+            resultDurability: .artifactBacked
+        )
+        #expect(semantics.sideEffectLevel == .readOnly)
+        #expect(semantics.retryPolicy == .safe)
+        #expect(semantics.approvalRequirement == .never)
+        #expect(semantics.resultDurability == .artifactBacked)
+
+        let automatic: ToolExecutionSemantics = .automatic
+        #expect(automatic == ToolExecutionSemantics())
+
+        let tool = FunctionTool(
+            name: "echo",
+            description: "Echo",
+            executionSemantics: .automatic
+        ) { _ in .string("ok") }
+        #expect(tool.executionSemantics.retryPolicy == .automatic)
+
+        let custom = FunctionTool(
+            name: "mutate",
+            description: "Mutate",
+            executionSemantics: semantics
+        ) { _ in .null }
+        #expect(custom.executionSemantics == semantics)
+
+        let schema = ToolSchema(
+            name: "schema",
+            description: "Schema",
+            parameters: [],
+            executionSemantics: semantics
+        )
+        #expect(schema.executionSemantics.retryPolicy == .safe)
+    }
 }

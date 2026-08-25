@@ -3,8 +3,8 @@ import Foundation
 /// Portable SHA-256 for lean Swarm.
 ///
 /// Linux has no CryptoKit, and `swift-crypto` is Integrations-only, so core
-/// hashing cannot import either. This implementation is used by
-/// ``SwarmTranscript/transcriptHash()``.
+/// hashing cannot import either. This implementation backs
+/// `SwarmTranscript.transcriptHash()`.
 enum SwarmSHA256: Sendable {
     static func hash(_ data: Data) -> [UInt8] {
         var hasher = Hasher()

@@ -225,10 +225,10 @@ public struct Agent: AgentRuntime, Sendable {
     ///
     /// ## Adding Handoffs
     /// ```swift
-    /// let agent = try Agent("Route requests to the right specialist.") {
-    ///     handoff(to: billingAgent)
-    ///     handoff(to: supportAgent)
-    /// }
+    /// let agent = try Agent(
+    ///     "Route requests to the right specialist.",
+    ///     handoffs: [billingAgent.asHandoff(), supportAgent.asHandoff()]
+    /// )
     /// ```
     ///
     /// See ``AnyHandoffConfiguration`` and ``HandoffOptions`` for more details.

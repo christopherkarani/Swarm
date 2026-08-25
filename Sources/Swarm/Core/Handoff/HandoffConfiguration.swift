@@ -161,8 +161,9 @@ public typealias WhenCallback = @Sendable (AgentContext, any AgentRuntime) async
 /// - Dynamic enablement based on context
 /// - History nesting options
 ///
-/// Use `HandoffBuilder` for a fluent API to construct configurations,
-/// or the `handoff(to:)` convenience function.
+/// Use `AgentRuntime.asHandoff()` or `Agent.Builder.handoff(to:configure:)`
+/// to construct configurations, and `AnyHandoffConfiguration` to store them
+/// type-erased.
 ///
 /// Example:
 /// ```swift
