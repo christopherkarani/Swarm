@@ -709,43 +709,11 @@ private actor CancellationController {
 
 // MARK: - TrackedRunRegistry
 
-/// Keyed registry of in-flight runs supporting concurrent registrations.
+/// Keyed registry of in-flight Hive runs.
 ///
-/// Ownership rules:
-/// - ``begin(_:onCancel:)`` records a run without touching other entries;
-///   registering a newer run must never cancel an older one.
-/// - ``finish(_:)`` removes exactly one settled run.
-/// - ``cancelAll()`` cancels every tracked run once and clears the registry.
-///
-/// Each entry stores the cancellation action for its run (typically the
-/// outcome task's `cancel()`), so cancellation always targets explicit
-/// handles rather than "the last registered" slot.
-///
-/// Generic over the key so the Hive bridge keys by `HiveRunID` while unit
-/// tests exercise identical semantics with plain identifiers.
-actor TrackedRunRegistry<Key: Hashable & Sendable> {
-    private var cancellers: [Key: @Sendable () -> Void] = [:]
-
-    /// Records a run's cancellation action under `key`.
-    func begin(_ key: Key, onCancel: @escaping @Sendable () -> Void) {
-        cancellers[key] = onCancel
-    }
-
-    /// Forgets one settled run without cancelling it.
-    func finish(_ key: Key) {
-        cancellers[key] = nil
-    }
-
-    /// Cancels every tracked run and clears the registry.
-    func cancelAll() {
-        for cancel in cancellers.values {
-            cancel()
-        }
-        cancellers.removeAll()
-    }
-
-    /// Number of runs currently tracked.
-    var trackedCount: Int {
-        cancellers.count
-    }
-}
+/// W3-T2 consolidation: the implementation moved to the always-compiled
+/// ``KeyedRunRegistry`` (Sources/Swarm/Internal/TurnEngine), shared with the
+/// agent facade's `ActiveRunRegistry`, so begin/finish/cancel semantics can
+/// no longer drift between the two call sites. This alias keeps the graph
+/// runtime's `HiveRunID`-keyed spelling.
+typealias TrackedRunRegistry = KeyedRunRegistry

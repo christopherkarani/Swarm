@@ -9,6 +9,18 @@ import Foundation
 ///
 /// This serves as the bridge between the internal hook-based observation system
 /// and the external stream-based observation API.
+///
+/// ## Emission-order invariant (REQ-008)
+///
+/// Events are yielded in observer-callback order, which pins the observable
+/// stream shape: ``AgentEvent/lifecycle(.started)`` first, then per-iteration
+/// `.lifecycle(.iterationStarted/.iterationCompleted)` around LLM/tool/output
+/// events, and finally `.lifecycle(.completed)` or `.lifecycle(.failed)`.
+/// A failed tool emits `.tool(.completed)` (carrying the failure result)
+/// *followed immediately by* `.tool(.failed)` from the same `onToolEnd`
+/// callback — a deliberate double emission kept for backward compatibility.
+/// Changing that order is a future deprecation-cycle decision; the TurnEngine
+/// characterization tests pin it element-for-element.
 internal struct EventStreamObserver: AgentObserver {
     /// The continuation to yield events to.
     private let continuation: AsyncThrowingStream<AgentEvent, Error>.Continuation
@@ -47,6 +59,10 @@ internal struct EventStreamObserver: AgentObserver {
         continuation.yield(.tool(.partial(update: update)))
     }
 
+    /// Yields `.tool(.completed)` for every settled tool call, then — only when
+    /// the result is a failure — a second `.tool(.failed)` event for the same
+    /// call. The completed-then-failed adjacency is the pinned REQ-008 order;
+    /// do not reorder without a deprecation cycle.
     func onToolEnd(context _: AgentContext?, agent _: any AgentRuntime, result: ToolResult) async {
         let call = await toolCallStore.take(id: result.callId)
             ?? ToolCall(id: result.callId, toolName: "unknown", arguments: [:])
