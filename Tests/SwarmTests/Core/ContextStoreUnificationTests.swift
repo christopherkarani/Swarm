@@ -564,4 +564,96 @@ struct ContextStoreUnificationTests {
         #expect(await child.get("user_id") == nil)
         #expect(await child.snapshot["user_id"] == nil)
     }
+
+    @Test("merge captures parent raw and slots together so a typed-to-raw replacement is not dropped")
+    func mergeDoesNotDropReplacementWhenParentMovesTypedToRawBetweenFormerHops() async throws {
+        let parent = AgentContext(input: "parent")
+        await parent.setTyped(.userID, value: "typed")
+
+        // Former merge hops: `rawValues()` then `valueSlotStore()`. Mutating
+        // the parent between them captures empty raw with empty slots and
+        // drops the replacement.
+        let staleRaw = await parent.rawValuesAndValueSlots().raw
+        await parent.removeTyped(.userID)
+        await parent.set("user_id", value: .string("raw-replacement"))
+        let freshSlots = await parent.rawValuesAndValueSlots().slots
+        #expect(staleRaw["user_id"] == nil)
+        #expect(freshSlots.valuePayload(for: .userID) == nil)
+
+        let child = AgentContext(input: "child")
+        await child.merge(from: parent, overwrite: true)
+
+        #expect(await child.get("user_id") == .string("raw-replacement"))
+        #expect(await child.getTyped(.userID) == nil)
+        #expect(await child.snapshot["user_id"] == .string("raw-replacement"))
+        await child.removeTyped(.userID)
+        #expect(await child.get("user_id") == .string("raw-replacement"))
+        #expect(await child.snapshot["user_id"] == .string("raw-replacement"))
+    }
+
+    @Test("merge captures parent raw and slots together so a raw-to-typed replacement is not duplicated")
+    func mergeDoesNotDuplicateReplacementWhenParentMovesRawToTypedBetweenFormerHops() async throws {
+        let parent = AgentContext(input: "parent")
+        await parent.set("user_id", value: .string("raw"))
+
+        let staleRaw = await parent.rawValuesAndValueSlots().raw
+        await parent.remove("user_id")
+        await parent.setTyped(.userID, value: "typed-replacement")
+        let freshSlots = await parent.rawValuesAndValueSlots().slots
+        #expect(staleRaw["user_id"] == .string("raw"))
+        #expect(freshSlots.valuePayload(for: .userID) == .string("typed-replacement"))
+
+        let child = AgentContext(input: "child")
+        await child.merge(from: parent, overwrite: true)
+
+        #expect(await child.get("user_id") == nil)
+        #expect(await child.getTyped(.userID) == "typed-replacement")
+        #expect(await child.snapshot["user_id"] == .string("typed-replacement"))
+        await child.removeTyped(.userID)
+        #expect(await child.getTyped(.userID) == nil)
+        #expect(await child.get("user_id") == nil)
+        #expect(await child.snapshot["user_id"] == nil)
+    }
+
+    @Test("merge does not duplicate a raw-to-typed replacement that races the parent capture")
+    func mergeDoesNotDuplicateWhenParentMovesRawToTypedConcurrently() async throws {
+        // Parent never holds both namespaces during this replacement. A split
+        // capture (rawValues then valueSlotStore) can still copy stale raw
+        // plus the new slot, so snapshot/getTyped/removeTyped disagree.
+        for _ in 0..<40 {
+            let parent = AgentContext(input: "parent")
+            await parent.set("user_id", value: .string("raw"))
+
+            let child = AgentContext(input: "child")
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    await child.merge(from: parent, overwrite: true)
+                }
+                group.addTask {
+                    await parent.remove("user_id")
+                    await parent.setTyped(.userID, value: "typed-replacement")
+                }
+            }
+
+            let snap = await child.snapshot["user_id"]
+            let typed = await child.getTyped(.userID)
+            let raw = await child.get("user_id")
+            #expect(raw == nil || typed == nil)
+
+            if typed == "typed-replacement" {
+                #expect(raw == nil)
+                #expect(snap == .string("typed-replacement"))
+                await child.removeTyped(.userID)
+                #expect(await child.get("user_id") == nil)
+                #expect(await child.snapshot["user_id"] == nil)
+            } else if raw == .string("raw") {
+                #expect(typed == nil)
+                #expect(snap == .string("raw"))
+            } else {
+                #expect(typed == nil)
+                #expect(raw == nil)
+                #expect(snap == nil)
+            }
+        }
+    }
 }

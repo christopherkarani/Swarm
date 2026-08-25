@@ -314,8 +314,11 @@ public actor AgentContext {
     /// // Only adds keys that don't exist in current context
     /// ```
     public func merge(from other: AgentContext, overwrite: Bool = false) async {
-        let otherRawValues = await other.rawValues()
-        let otherSlots = await other.valueSlotStore()
+        // Raw and slots must come from one parent hop. ContextKey data used
+        // to live in `values` as a single snapshot; two awaits let another
+        // task mutate `other` in between and drop a replacement or duplicate
+        // it across namespaces so snapshot, getTyped, and removeTyped disagree.
+        let (otherRawValues, otherSlots) = await other.rawValuesAndValueSlots()
 
         // Typed slot names occupy the key for overwrite:false even though
         // they live outside the raw namespace. Copying parent raw under a
@@ -465,19 +468,12 @@ public actor AgentContext {
         slots.hasValuePayload(key)
     }
 
-    /// Returns a copy of this context's raw string-keyed namespace.
-    /// Package-internal; used by `merge(from:)` across actor boundaries.
-    ///
-    /// - Returns: The raw key-value storage.
-    func rawValues() -> [String: SendableValue] {
-        values
-    }
-
-    /// Returns a copy of this context's unified slot store for merging and
-    /// copying. Package-internal; used by `merge(from:)` across actor
-    /// boundaries and by the typed-access helpers in this directory.
-    func valueSlotStore() -> ContextSlotStore {
-        slots
+    /// Returns a copy of this context's raw namespace and typed slot store
+    /// captured together. Package-internal; used by `merge(from:)` so a
+    /// concurrent mutation of the parent cannot tear ContextKey data across
+    /// the two namespaces.
+    func rawValuesAndValueSlots() -> (raw: [String: SendableValue], slots: ContextSlotStore) {
+        (values, slots)
     }
 
     // MARK: Private
