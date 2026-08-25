@@ -609,8 +609,9 @@ public protocol InferenceProvider: Sendable {
 
 Agent reads ``InferenceProviderCapabilities`` and ``InferenceProvider/promptTokenCounter``
 on ``InferenceProvider``. Observability integrations read
-``InferenceProvider/metadata`` (default `nil`) instead of probing
-``InferenceProviderMetadata`` conformance; wrappers such as ``MultiProvider``
+``InferenceProvider/metadata`` (default `nil`) — that property is the seam,
+not ``InferenceProviderMetadata`` conformance. Leftover conformers are bridged
+onto the property. Wrappers such as ``MultiProvider``
 and the OpenTelemetry instrumentation forward the resolved backend's metadata.
 Deprecated leftover protocols
 (`ToolCallStreamingInferenceProvider`, `StructuredOutputInferenceProvider`,

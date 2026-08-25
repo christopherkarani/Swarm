@@ -38,6 +38,10 @@ public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecke
     }
 
     /// The wrapped provider's observability metadata, forwarded unchanged.
+    ///
+    /// Type-level so this beats the leftover ``InferenceProviderMetadata``
+    /// `{ self }` bridge. ``providerName`` reads this property, so `{ self }`
+    /// would recurse.
     public var metadata: (any InferenceProviderMetadata)? {
         base.metadata
     }

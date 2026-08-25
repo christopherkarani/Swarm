@@ -186,6 +186,66 @@ private struct MetadataSnapshotProvider: InferenceProvider {
     }
 }
 
+/// Conforms only to leftover ``InferenceProviderMetadata``; does not implement
+/// ``InferenceProvider/metadata``. The constrained bridge must supply `{ self }`.
+private struct LeftoverMetadataOnlyProvider: InferenceProvider, InferenceProviderMetadata {
+    var providerName: String? { "leftover" }
+    var modelName: String? { "leftover-model" }
+    var endpointURL: URL? { URL(string: "https://leftover.example/v1") }
+
+    func generate(messages _: [InferenceMessage], options _: InferenceOptions) async throws -> String {
+        "ok"
+    }
+}
+
+@Test("Leftover InferenceProviderMetadata conformer still surfaces through OTel wrappers")
+func leftoverMetadataConformerSurfacesThroughOpenTelemetryWrappers() async throws {
+    let leftover = LeftoverMetadataOnlyProvider()
+    let provider: any InferenceProvider = leftover
+    let resolved = try #require(provider.metadata)
+    #expect(resolved.providerName == "leftover")
+    #expect(resolved.modelName == "leftover-model")
+
+    let genericProvider: any InferenceProvider = OpenTelemetryInferenceProvider(leftover)
+    let erasedProvider: any InferenceProvider = OpenTelemetryAnyInferenceProvider(
+        leftover,
+        tracer: OpenTelemetry.instance.tracerProvider.get(instrumentationName: "test.llm"),
+        captureContent: false
+    )
+
+    #expect(genericProvider.metadata?.providerName == "leftover")
+    #expect(genericProvider.metadata?.modelName == "leftover-model")
+    #expect(genericProvider.metadata?.endpointURL == URL(string: "https://leftover.example/v1"))
+    #expect(erasedProvider.metadata?.providerName == "leftover")
+    #expect(erasedProvider.metadata?.modelName == "leftover-model")
+    #expect(erasedProvider.metadata?.endpointURL == URL(string: "https://leftover.example/v1"))
+
+    let exporter = RecordingSpanExporter()
+    let tracerProvider = TracerProviderBuilder()
+        .add(
+            spanProcessor: SimpleSpanProcessor(spanExporter: exporter)
+                .reportingOnlySampled(sampled: false)
+        )
+        .build()
+    let tracer = tracerProvider.get(instrumentationName: "test.llm")
+
+    _ = try await OpenTelemetryInferenceProvider(leftover, tracer: tracer)
+        .generate(prompt: "hello", options: .default)
+    _ = try await OpenTelemetryAnyInferenceProvider(
+        leftover,
+        tracer: tracer,
+        captureContent: false
+    ).generate(prompt: "hello", options: .default)
+    tracerProvider.forceFlush()
+
+    let llmSpans = exporter.spans.filter { $0.name == "chat leftover-model" }
+    #expect(llmSpans.count == 2)
+    for span in llmSpans {
+        #expect(span.attributes["gen_ai.provider.name"] == .string("leftover"))
+        #expect(span.attributes["gen_ai.request.model"] == .string("leftover-model"))
+    }
+}
+
 @Test("OTel wrappers forward provider metadata without casting")
 func openTelemetryWrappersForwardProviderMetadataWithoutCasting() {
     let snapshot = InferenceProviderMetadataSnapshot(

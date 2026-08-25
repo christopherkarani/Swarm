@@ -7,10 +7,12 @@ import Foundation
 
 /// Optional provider metadata used by observability integrations.
 ///
-/// Inference providers can conform to this protocol to expose stable, non-sensitive
-/// details about the backend handling LLM requests. Providers that do not conform
-/// still work normally; observability integrations simply omit the unavailable
-/// attributes.
+/// Observability integrations read ``InferenceProvider/metadata``, not
+/// conformance to this protocol. Return a snapshot from that property, or
+/// conform here and rely on the constrained
+/// `InferenceProvider where Self: InferenceProviderMetadata` bridge, which
+/// supplies `{ self }`. Providers that expose neither still work; integrations
+/// omit the unavailable attributes.
 public protocol InferenceProviderMetadata: Sendable {
     /// Best-known provider name, for example `openai`, `anthropic`, or `ollama`.
     var providerName: String? { get }
@@ -33,4 +35,11 @@ public struct InferenceProviderMetadataSnapshot: InferenceProviderMetadata, Equa
         self.modelName = modelName
         self.endpointURL = endpointURL
     }
+}
+
+public extension InferenceProvider where Self: InferenceProviderMetadata {
+    /// Bridges leftover ``InferenceProviderMetadata`` conformances onto the
+    /// defaulted ``InferenceProvider/metadata`` requirement so existing
+    /// conformers keep their observability attributes without source changes.
+    var metadata: (any InferenceProviderMetadata)? { self }
 }

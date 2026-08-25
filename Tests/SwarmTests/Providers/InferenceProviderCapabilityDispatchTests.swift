@@ -122,6 +122,19 @@ struct InferenceProviderCapabilityDispatchTests {
         #expect(provider.generateCallCount() == 2)
     }
 
+    @Test("Leftover InferenceProviderMetadata conformance still supplies metadata through the bridge")
+    func leftoverMetadataConformanceResolvesThroughBridge() throws {
+        let leftover = LeftoverMetadataOnlyProvider()
+        let provider: any InferenceProvider = leftover
+
+        // The constrained bridge (InferenceProvider where Self: InferenceProviderMetadata)
+        // must win over the unconstrained {nil} default for leftover-only conformers.
+        let resolved = try #require(provider.metadata)
+        #expect(resolved.providerName == "leftover")
+        #expect(resolved.modelName == "leftover-model")
+        #expect(resolved.endpointURL == URL(string: "https://leftover.example/v1"))
+    }
+
     @Test("Providers expose observability metadata through the defaulted requirement")
     func providersSurfaceMetadataWithoutLeftoverCasts() throws {
         let carrier = MetadataCarrierProvider(
@@ -225,6 +238,26 @@ private struct TokenPropertyProvider: InferenceProvider, MessagesFromPromptInfer
     let counter: RecordingPromptTokenCounter
 
     var promptTokenCounter: (any PromptTokenCounter)? { counter }
+
+    func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
+        "ok"
+    }
+
+    func stream(prompt _: String, options _: InferenceOptions) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield("ok")
+            continuation.finish()
+        }
+    }
+}
+
+/// Conforms only to leftover ``InferenceProviderMetadata``; metadata must
+/// flow through the `InferenceProvider where Self: InferenceProviderMetadata`
+/// bridge without any direct `metadata` implementation.
+private struct LeftoverMetadataOnlyProvider: InferenceProvider, InferenceProviderMetadata, MessagesFromPromptInference {
+    var providerName: String? { "leftover" }
+    var modelName: String? { "leftover-model" }
+    var endpointURL: URL? { URL(string: "https://leftover.example/v1") }
 
     func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
         "ok"
