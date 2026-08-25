@@ -1190,7 +1190,6 @@ public struct Agent: AgentRuntime, Sendable {
     ) async throws -> ToolLoopOutcome {
         let toolRegistry = dependencies.toolRegistry
         let provider = dependencies.provider
-        var iteration = 0
         let startTime = ContinuousClock.now
         var inferenceOptions = await resolvedInferenceOptions(session: session, provider: provider)
         if let structuredOutputRequest {
@@ -1239,8 +1238,25 @@ public struct Agent: AgentRuntime, Sendable {
         let useToolStreaming = enableStreaming && capabilities.contains(.streamingToolCalls)
         let membraneAdapter = dependencies.membraneAdapter
 
-        while iteration < configuration.maxIterations {
-            iteration += 1
+        var iteration = 0
+        var turnState = AgentTurnKernel.TurnState(
+            iteration: 0,
+            maxIterations: configuration.maxIterations
+        )
+
+        while true {
+            // Kernel: admit the next iteration before any per-iteration effects
+            // run (mirrors the previous `while iteration < maxIterations` head).
+            switch AgentTurnKernel.transition(turnState, .startNextIteration) {
+            case .fail(let error):
+                throw error
+            case .performInference(let admitted):
+                turnState = admitted
+                iteration = admitted.iteration
+            default:
+                throw AgentError.internalError(reason: "Unexpected admission transition")
+            }
+
             _ = resultBuilder.incrementIteration()
             await observer?.onIterationStart(context: nil, agent: self, number: iteration)
 
@@ -1282,13 +1298,18 @@ public struct Agent: AgentRuntime, Sendable {
                     messages: conversationHistory.map(\.inferenceMessage),
                     profile: configuration.effectiveContextProfile
                 )
-                let useProviderOwnedToolLoop = provider.capabilities.contains(.providerOwnedToolLoop)
-                try AgentTurnKernel.requireOwnedLoopGate(
-                    useProviderOwnedToolLoop: useProviderOwnedToolLoop,
+                // REQ-003: the turn mode is derived in exactly one place.
+                let mode = try AgentTurnKernel.resolveMode(
+                    toolSchemasEmpty: toolSchemas.isEmpty,
+                    providerOwnsToolLoop: provider.capabilities.contains(.providerOwnedToolLoop),
+                    streamsToolCalls: useToolStreaming,
                     hasExecutionGate: executionGate != nil
                 )
+                turnState.mode = mode
+                turnState.hasToolSchemas = !toolSchemas.isEmpty
+
                 let toolExecutor: ToolCallExecutor?
-                if useProviderOwnedToolLoop, let executionGate {
+                if case .ownedLoopTools = mode, let executionGate {
                     toolExecutor = makeToolCallExecutor(
                         toolRegistry: toolRegistry,
                         resultBuilder: resultBuilder,
@@ -1302,15 +1323,9 @@ public struct Agent: AgentRuntime, Sendable {
                     toolExecutor = nil
                 }
 
-                let inferenceKind = AgentTurnKernel.inferenceKind(
-                    toolSchemasEmpty: toolSchemas.isEmpty,
-                    useProviderOwnedToolLoop: useProviderOwnedToolLoop,
-                    streamingToolCalls: useToolStreaming
-                )
-
                 // If no tools defined, generate without tool calling unless the
                 // adapter owns the tool loop (empty tool list).
-                if inferenceKind == .withoutTools {
+                if mode == .textOnly {
                     let loopInferenceOptions = inferenceOptions
                     let response = try await executeProviderInference(
                         startTime: startTime,
@@ -1346,12 +1361,12 @@ public struct Agent: AgentRuntime, Sendable {
                 let loopInferenceOptions = inferenceOptions
                 // Owned-loop tools run inside inference; retrying would replay them.
                 let ownedLoopInferenceRetryPolicy = AgentTurnKernel.ownedLoopInferenceRetryPolicy(
-                    useProviderOwnedToolLoop: useProviderOwnedToolLoop,
+                    mode: mode,
                     hasToolSchemas: !toolSchemas.isEmpty
                 )
                 let response: InferenceResponse
                 do {
-                    let streamToolCalls = inferenceKind == .withTools(streaming: true)
+                    let streamToolCalls = mode.streamsToolCalls
                     response = if streamToolCalls {
                         try await executeProviderInference(
                             startTime: startTime,
@@ -1429,14 +1444,11 @@ public struct Agent: AgentRuntime, Sendable {
                 }
                 recordUsage(response.usage, on: resultBuilder)
 
-                switch AgentTurnKernel.afterInference(
-                    useProviderOwnedToolLoop: useProviderOwnedToolLoop,
-                    response: response
-                ) {
-                case .failMissingContent:
-                    throw AgentError.generationFailed(reason: "Model returned no content or tool calls")
+                switch AgentTurnKernel.transition(turnState, .inferenceCompleted(response)) {
+                case .fail(let error):
+                    throw error
 
-                case let .finishAssistant(content):
+                case .finish(let content):
                     let finalResponse = try finalizeAssistantResponse(
                         content: content,
                         request: structuredOutputRequest,
@@ -1454,7 +1466,8 @@ public struct Agent: AgentRuntime, Sendable {
                         transcriptMessages: transcriptMessages
                     )
 
-                case .processHostToolCalls:
+                case .executeTools(let toolsState):
+                    turnState = toolsState
                     let handoffResult = try await processToolCallsWithHandoffs(
                         response: response,
                         toolRegistry: toolRegistry,
@@ -1477,14 +1490,14 @@ public struct Agent: AgentRuntime, Sendable {
                         )
                     }
                     await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
+                default:
+                    throw AgentError.internalError(reason: "Unexpected inference transition")
                 }
             } catch {
                 await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
                 throw normalizeCancellation(error)
             }
         }
-
-        throw AgentError.maxIterationsExceeded(iterations: iteration)
     }
 
     /// Builds the initial conversation history from session history and user input.
