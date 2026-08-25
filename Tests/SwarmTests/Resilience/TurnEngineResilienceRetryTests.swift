@@ -319,14 +319,14 @@ struct TurnEngineResilienceRetryTests {
 
         let result = try await ResilienceRetry.run(policy: policy, clock: clock, onRetryAttempt: { attempt, _ in
             log.record("hook:\(attempt)")
-        }) { () -> String in
+        }, operation: { () -> String in
             let attempt = await counter.increment()
             log.record("op:\(attempt)")
             if attempt == 1 {
                 throw AgentError.rateLimitExceeded(retryAfter: nil)
             }
             return "ok"
-        }
+        })
 
         #expect(result == "ok")
         // Historical agent-path order: the composed callback ran the user

@@ -946,16 +946,16 @@ extension ChatGraph {
     ///   W3-T3 REQ-010 / AC-301 documented-divergence clause). A classifier
     ///   closure alone cannot reconcile these, so this local loop is kept:
     ///   1. Attempt accounting — here `maxAttempts` counts **total** attempts
-    ///      (`for attempt in 0 ..< maxAttempts`, line ~959); the agent path
+    ///      (`for attempt in 0 ..< maxAttempts`, line ~983); the agent path
     ///      treats `maxAttempts` as retries *after* the initial attempt
     ///      (`retryCount < maxAttempts` guard).
     ///   2. Exhaustion surface — the last operation error is rethrown verbatim
-    ///      (lines ~973–974) so graph-runtime errors (e.g.
+    ///      (lines ~997–998) so graph-runtime errors (e.g.
     ///      `SwarmRuntimeError.modelStreamInvalid`) reach `HiveRunResult`
     ///      unchanged; the agent path wraps exhaustion in
     ///      `ResilienceError.retriesExhausted(attempts:lastError:)`.
     ///   3. Retry gating — every caught error is retried unconditionally,
-    ///      including `CancellationError` (catch at lines ~962–971 has no
+    ///      including `CancellationError` (catch at lines ~986–995 has no
     ///      cancellation short-circuit); the agent path hard-gates on
     ///      `InferenceRetryability.isRetryable` + user `shouldRetry` and never
     ///      retries cancellation.
