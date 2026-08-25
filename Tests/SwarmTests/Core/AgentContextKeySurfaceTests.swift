@@ -130,6 +130,18 @@ struct AgentContextKeySurfaceTests {
         await context.set(AgentContextKey.previousOutput, value: .string("legacy"))
         #expect(await context.get(AgentContextKey.previousOutput)?.stringValue == "legacy")
         #expect(await context.get(.previousOutput) == "legacy")
+
+        await context.set(AgentContextKey.originalInput, value: .string("legacy-original"))
+        #expect(await context.get(.originalInput) == "legacy-original")
+        #expect(await context.get(AgentContextKey.originalInput)?.stringValue == "legacy-original")
+
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        await context.set(AgentContextKey.startTime, value: .double(start.timeIntervalSince1970))
+        #expect(await context.get(.startTime)?.timeIntervalSince1970 == 1_700_000_000)
+
+        await context.set("original_input", value: .string("raw-original"))
+        #expect(await context.get(.originalInput) == "raw-original")
+        #expect(await context.snapshot["original_input"] == .string("raw-original"))
     }
 
     // MARK: - Type-Indexed Typed Contexts (REQ-006, AC-003)

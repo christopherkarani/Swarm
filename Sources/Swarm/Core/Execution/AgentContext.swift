@@ -224,6 +224,10 @@ public actor AgentContext {
     ///   - value: The value to store.
     public func set(_ key: String, value: SendableValue) {
         values[key] = value
+        // Orchestration names are also typed slots. A raw write must drop the
+        // matching slot so `get(.originalInput)` cannot keep serving init's
+        // seed after this name has been overwritten.
+        clearTypedOrchestrationSlot(named: key)
     }
 
     /// Stores a value by predefined context key.
@@ -234,7 +238,41 @@ public actor AgentContext {
     @available(*, deprecated, message: "Use typed ContextKey accessors such as set(.originalInput, _).")
     @_disfavoredOverload
     public func set(_ key: AgentContextKey, value: SendableValue) {
+        switch key {
+        case .originalInput:
+            if let string = value.stringValue {
+                set(ContextKey<String>.originalInput, string)
+                return
+            }
+        case .previousOutput:
+            if let string = value.stringValue {
+                set(ContextKey<String>.previousOutput, string)
+                return
+            }
+        case .currentAgentName:
+            if let string = value.stringValue {
+                set(ContextKey<String>.currentAgentName, string)
+                return
+            }
+        case .executionPath:
+            if let elements = value.arrayValue {
+                let path = elements.compactMap(\.stringValue)
+                if path.count == elements.count {
+                    set(ContextKey<[String]>.executionPath, path)
+                    return
+                }
+            }
+        case .startTime:
+            if let timestamp = value.doubleValue {
+                set(ContextKey<Date>.startTime, Date(timeIntervalSince1970: timestamp))
+                return
+            }
+        case .metadata:
+            break
+        }
+
         values[key.rawValue] = value
+        clearTypedOrchestrationSlot(named: key.rawValue)
     }
 
     /// Removes a value by string key.
@@ -487,6 +525,25 @@ public actor AgentContext {
     /// the two namespaces.
     func rawValuesAndValueSlots() -> (raw: [String: SendableValue], slots: ContextSlotStore) {
         (values, slots)
+    }
+
+    /// Drops the typed orchestration slot for `name`, if this name is one of
+    /// the five slots that also live behind `ContextKey` statics.
+    private func clearTypedOrchestrationSlot(named name: String) {
+        switch name {
+        case ContextKey<String>.originalInput.name:
+            removeTyped(ContextKey<String>.originalInput)
+        case ContextKey<String>.previousOutput.name:
+            removeTyped(ContextKey<String>.previousOutput)
+        case ContextKey<String>.currentAgentName.name:
+            removeTyped(ContextKey<String>.currentAgentName)
+        case ContextKey<[String]>.executionPath.name:
+            removeTyped(ContextKey<[String]>.executionPath)
+        case ContextKey<Date>.startTime.name:
+            removeTyped(ContextKey<Date>.startTime)
+        default:
+            break
+        }
     }
 
     // MARK: Private

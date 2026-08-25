@@ -567,23 +567,23 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 206 | func | public | AgentContext.get(_:) | `public func get(_ key: String) -> SendableValue?` |
 | 216 | func | public | AgentContext.get(_:) | `public func get(_ key: AgentContextKey) -> SendableValue?` _(Availability: * (deprecated); Use typed ContextKey accessors such as get(.originalInput).)_ |
 | 225 | func | public | AgentContext.set(_:value:) | `public func set(_ key: String, value: SendableValue)` |
-| 236 | func | public | AgentContext.set(_:value:) | `public func set(_ key: AgentContextKey, value: SendableValue)` _(Availability: * (deprecated); Use typed ContextKey accessors such as set(.originalInput, _).)_ |
-| 245 | func | public | AgentContext.remove(_:) | `public @discardableResult func remove(_ key: String) -> SendableValue?` |
-| 254 | func | public | AgentContext.addMessage(_:) | `public func addMessage(_ message: MemoryMessage)` |
-| 264 | func | public | AgentContext.getMessages() | `public func getMessages() -> [MemoryMessage]` |
-| 269 | func | public | AgentContext.clearMessages() | `public func clearMessages()` |
-| 281 | func | public | AgentContext.recordExecution(agentName:) | `public func recordExecution(agentName: String)` |
-| 290 | func | public | AgentContext.getExecutionPath() | `public func getExecutionPath() -> [String]` |
-| 302 | func | public | AgentContext.setPreviousOutput(_:) | `public func setPreviousOutput(_ result: AgentResult)` |
-| 309 | func | public | AgentContext.getPreviousOutput() | `public func getPreviousOutput() -> String?` |
-| 329 | func | public | AgentContext.merge(from:overwrite:) | `public func merge(from other: AgentContext, overwrite: Bool = false) async` |
-| 383 | func | public | AgentContext.copy(additionalValues:) | `public func copy(additionalValues: [String : SendableValue] = [:]) -> AgentContext` |
-| 415 | func | public | AgentContext.setTyped(_:) | `public func setTyped<T>(_ context: T) where T : AgentContextProviding` |
-| 423 | func | public | AgentContext.typed(_:) | `public func typed<T>(_: T.Type) -> T? where T : AgentContextProviding` |
-| 432 | func | public | AgentContext.removeTyped(_:) | `public @discardableResult func removeTyped<T>(_: T.Type) -> T? where T : AgentContextProviding` |
-| 440 | func | public | AgentContext.hasTyped(_:) | `public func hasTyped<T>(_: T.Type) -> Bool where T : AgentContextProviding` |
-| 517 | var | public | AgentContext.description | `public nonisolated var description: String { get }` |
-| 531 | var | public | AgentContext.debugDescription | `public nonisolated var debugDescription: String { get }` |
+| 240 | func | public | AgentContext.set(_:value:) | `public func set(_ key: AgentContextKey, value: SendableValue)` _(Availability: * (deprecated); Use typed ContextKey accessors such as set(.originalInput, _).)_ |
+| 283 | func | public | AgentContext.remove(_:) | `public @discardableResult func remove(_ key: String) -> SendableValue?` |
+| 292 | func | public | AgentContext.addMessage(_:) | `public func addMessage(_ message: MemoryMessage)` |
+| 302 | func | public | AgentContext.getMessages() | `public func getMessages() -> [MemoryMessage]` |
+| 307 | func | public | AgentContext.clearMessages() | `public func clearMessages()` |
+| 319 | func | public | AgentContext.recordExecution(agentName:) | `public func recordExecution(agentName: String)` |
+| 328 | func | public | AgentContext.getExecutionPath() | `public func getExecutionPath() -> [String]` |
+| 340 | func | public | AgentContext.setPreviousOutput(_:) | `public func setPreviousOutput(_ result: AgentResult)` |
+| 347 | func | public | AgentContext.getPreviousOutput() | `public func getPreviousOutput() -> String?` |
+| 367 | func | public | AgentContext.merge(from:overwrite:) | `public func merge(from other: AgentContext, overwrite: Bool = false) async` |
+| 421 | func | public | AgentContext.copy(additionalValues:) | `public func copy(additionalValues: [String : SendableValue] = [:]) -> AgentContext` |
+| 453 | func | public | AgentContext.setTyped(_:) | `public func setTyped<T>(_ context: T) where T : AgentContextProviding` |
+| 461 | func | public | AgentContext.typed(_:) | `public func typed<T>(_: T.Type) -> T? where T : AgentContextProviding` |
+| 470 | func | public | AgentContext.removeTyped(_:) | `public @discardableResult func removeTyped<T>(_: T.Type) -> T? where T : AgentContextProviding` |
+| 478 | func | public | AgentContext.hasTyped(_:) | `public func hasTyped<T>(_: T.Type) -> Bool where T : AgentContextProviding` |
+| 574 | var | public | AgentContext.description | `public nonisolated var description: String { get }` |
+| 588 | var | public | AgentContext.debugDescription | `public nonisolated var debugDescription: String { get }` |
 
 ### Core/Execution/ContextKey.swift
 
