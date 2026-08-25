@@ -91,6 +91,8 @@ struct DocumentationFreshnessTests {
         #expect(!catalog.contains("CallableAgent"))
         #expect(!catalog.contains("Tools/ToolChainBuilder.swift"))
         #expect(!catalog.contains("| ToolChain |"))
+        #expect(catalog.contains("Dictionary<String, SendableValue>.subscript(key:)"))
+        #expect(!catalog.contains("Dictionary<String, String>.subscript(key:)"))
     }
 
     @Test("API catalog excludes symbols removed or demoted by the T1 surface shrink")
