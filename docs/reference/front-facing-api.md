@@ -557,6 +557,11 @@ public protocol InferenceProvider: Sendable {
     var capabilities: InferenceProviderCapabilities { get }
     var promptTokenCounter: (any PromptTokenCounter)? { get }
 
+    // Observability metadata (default nil). Built-in providers return their
+    // own; MultiProvider and the OpenTelemetry wrappers forward the resolved
+    // backend's metadata.
+    var metadata: (any InferenceProviderMetadata)? { get }
+
     func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String
 
     func stream(
@@ -603,7 +608,12 @@ public protocol InferenceProvider: Sendable {
 ```
 
 Agent reads ``InferenceProviderCapabilities`` and ``InferenceProvider/promptTokenCounter``
-on ``InferenceProvider``. Deprecated leftover protocols
+on ``InferenceProvider``. Observability integrations read
+``InferenceProvider/metadata`` (default `nil`) — that property is the seam,
+not ``InferenceProviderMetadata`` conformance. Leftover conformers are bridged
+onto the property. Wrappers such as ``MultiProvider``
+and the OpenTelemetry instrumentation forward the resolved backend's metadata.
+Deprecated leftover protocols
 (`ToolCallStreamingInferenceProvider`, `StructuredOutputInferenceProvider`,
 `PromptTokenCountingInferenceProvider`) are not the Agent seam.
 

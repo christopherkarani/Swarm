@@ -226,6 +226,13 @@ public protocol InferenceProvider: Sendable {
     /// The default is `nil`, which keeps the environment heuristic counter.
     var promptTokenCounter: (any PromptTokenCounter)? { get }
 
+    /// Observability metadata for this backend, if any.
+    ///
+    /// Observability integrations read this property instead of probing
+    /// ``InferenceProviderMetadata`` conformance. The default is `nil`,
+    /// which omits provider attributes from emitted spans.
+    var metadata: (any InferenceProviderMetadata)? { get }
+
     /// Generates a response for the given prompt.
     ///
     /// Deprecated as the Agent seam. The protocol default wraps `prompt` as

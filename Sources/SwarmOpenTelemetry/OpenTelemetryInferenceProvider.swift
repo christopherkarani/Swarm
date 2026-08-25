@@ -8,10 +8,10 @@ import Swarm
 /// An inference-provider wrapper that emits OpenTelemetry GenAI spans.
 ///
 /// The wrapper forwards ``InferenceProvider`` methods, ``promptTokenCounter``,
-/// and advertised capability bits. Leftover capability protocols remain as
-/// deprecated identities for native backends; this wrapper does not dispatch
-/// through those identities. Callers read the bitset; they do not probe extra
-/// protocols.
+/// provider ``InferenceProvider/metadata``, and advertised capability bits.
+/// Leftover capability protocols remain as deprecated identities for native
+/// backends; this wrapper does not dispatch through those identities. Callers
+/// read the bitset; they do not probe extra protocols.
 public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecked Sendable,
     CapabilityReportingInferenceProvider,
     InferenceProviderMetadata
@@ -35,6 +35,15 @@ public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecke
 
     public var promptTokenCounter: (any PromptTokenCounter)? {
         base.promptTokenCounter
+    }
+
+    /// The wrapped provider's observability metadata, forwarded unchanged.
+    ///
+    /// Type-level so this beats the leftover ``InferenceProviderMetadata``
+    /// `{ self }` bridge. ``providerName`` reads this property, so `{ self }`
+    /// would recurse.
+    public var metadata: (any InferenceProviderMetadata)? {
+        base.metadata
     }
 
     public var providerName: String? {
@@ -205,10 +214,6 @@ public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecke
     fileprivate let base: Base
     fileprivate let tracer: any OpenTelemetryApi.Tracer
     fileprivate let captureContent: Bool
-
-    fileprivate var metadata: (any InferenceProviderMetadata)? {
-        base as? any InferenceProviderMetadata
-    }
 }
 
 extension OpenTelemetryInferenceProvider: ConversationInferenceProvider where Base: ConversationInferenceProvider {}

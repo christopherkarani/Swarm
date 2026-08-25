@@ -17,6 +17,9 @@ struct OpenTelemetryAnyBaseInferenceProvider: @unchecked Sendable,
     let core: OpenTelemetryAnyInferenceProviderCore
 
     var capabilities: InferenceProviderCapabilities { core.capabilities }
+    /// Type-level so this unambiguously beats the leftover
+    /// ``InferenceProviderMetadata`` `{ self }` bridge.
+    var metadata: (any InferenceProviderMetadata)? { core.metadata }
     var providerName: String? { core.metadata?.providerName }
     var modelName: String? { core.metadata?.modelName }
     var endpointURL: URL? { core.metadata?.endpointURL }

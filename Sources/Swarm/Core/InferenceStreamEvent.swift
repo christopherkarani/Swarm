@@ -32,4 +32,3 @@ public enum InferenceStreamEvent: Sendable, Equatable {
     /// Stream completed (received terminal marker).
     case done
 }
-

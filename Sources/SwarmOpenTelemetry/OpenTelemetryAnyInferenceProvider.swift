@@ -28,6 +28,10 @@ extension OpenTelemetryAnyForwarding {
         core.promptTokenCounter
     }
 
+    var metadata: (any InferenceProviderMetadata)? {
+        core.metadata
+    }
+
     func streamWithToolCalls(
         prompt: String,
         tools: [ToolSchema],
@@ -89,7 +93,7 @@ final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
     let captureContent: Bool
 
     var metadata: (any InferenceProviderMetadata)? {
-        base as? any InferenceProviderMetadata
+        base.metadata
     }
 
     var capabilities: InferenceProviderCapabilities {

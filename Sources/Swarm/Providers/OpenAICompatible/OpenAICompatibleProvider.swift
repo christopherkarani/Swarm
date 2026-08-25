@@ -71,6 +71,9 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     public var modelName: String? { configuration.model }
     public var endpointURL: URL? { configuration.baseURL }
 
+    /// This provider's own metadata; the configuration is the single source.
+    public var metadata: (any InferenceProviderMetadata)? { self }
+
     public var capabilities: InferenceProviderCapabilities {
         [
             .conversationMessages,
