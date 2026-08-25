@@ -177,6 +177,27 @@ struct DocumentationFreshnessTests {
         #expect(agentSource.contains("guardrails sequentially and stops on the first failure"))
     }
 
+    @Test("Agent split keeps turn-kernel snapshot and private conversation state")
+    func agentSplitKeepsKernelSnapshotAndPrivateState() throws {
+        let agent = try readRepoFile("Sources/Swarm/Agents/Agent.swift")
+        let loop = try readRepoFile("Sources/Swarm/Agents/Agent+ToolLoop.swift")
+        let memory = try readRepoFile("Sources/Swarm/Agents/Agent+Memory.swift")
+
+        #expect(agent.contains("private var toolRegistry"))
+        #expect(!agent.contains("enum ConversationMessage"))
+        #expect(loop.contains("private enum ConversationMessage"))
+        #expect(loop.contains("dependencies: AgentTurnDependencies"))
+        #expect(loop.contains("AgentTurnKernel."))
+        #expect(!loop.contains("struct ToolLoopEngine"))
+        #expect(!memory.contains("func resolvedMemory"))
+        #expect(!memory.contains("MemoryRetrievalPolicyAware"))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: repoRoot.appendingPathComponent("Sources/Swarm/Internal/ToolLoopEngine.swift").path
+            )
+        )
+    }
+
     @Test("front-facing provider docs match the live messages seam")
     func providerDocsUseLiveMessagesSeam() throws {
         let docs = try readRepoFile("docs/reference/front-facing-api.md")
