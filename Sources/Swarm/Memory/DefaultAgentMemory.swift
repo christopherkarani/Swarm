@@ -13,7 +13,7 @@ import Foundation
 ///
 /// ContextCore remains the primary working-memory layer for multi-turn coding
 /// context. Wax is used as the durable long-term layer for persisted recall.
-public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, MemorySessionImportPolicy, MemorySessionReplayAware, MemoryRetrievalPolicyAware {
+public actor DefaultAgentMemory: Memory {
     public struct Configuration: Sendable {
         public static var `default`: Self {
             Configuration()
@@ -55,6 +55,14 @@ public actor DefaultAgentMemory: Memory, MemoryPromptDescriptor, MemorySessionLi
     public nonisolated let memoryPromptGuidance: String?
     public nonisolated let memoryPriority: MemoryPriorityHint = .primary
     public nonisolated let allowsAutomaticSessionSeeding = true
+
+    public nonisolated var memoryPromptMetadata: MemoryPromptMetadata? {
+        MemoryPromptMetadata(
+            title: memoryPromptTitle,
+            guidance: memoryPromptGuidance,
+            priority: memoryPriority
+        )
+    }
 
     /// Whether this memory stack can produce real semantic embeddings.
     ///

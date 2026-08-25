@@ -4,25 +4,41 @@ import Testing
 
 @Suite("Memory Hooks")
 struct MemoryHooksTests {
-    @Test("Memory that does not conform to lifecycle resolves to empty hooks")
-    func memoryWithoutLifecycleResolvesToEmptyHooks() async {
+    @Test("Memory without capability implementations resolves defaulted hooks")
+    func memoryWithoutCapabilitiesResolvesDefaultedHooks() async throws {
         let memory = ConversationMemory()
         let hooks = MemoryHooks.resolved(from: memory)
 
-        #expect(hooks.beginMemorySession == nil)
-        #expect(hooks.endMemorySession == nil)
-        #expect(hooks.contextForQuery == nil)
+        // Capability closures always wrap witnesses, defaulted ones included.
+        let begin = try #require(hooks.beginMemorySession)
+        let end = try #require(hooks.endMemorySession)
+        await begin()
+        await end()
+
+        let contextForQuery = try #require(hooks.contextForQuery)
+        let context = await contextForQuery(
+            MemoryQuery(text: "query", tokenLimit: 10, maxItems: 1, maxItemTokens: 10)
+        )
+        #expect(context == "")
+
+        // Prompt metadata defaults to nil for memories without descriptor data.
         #expect(hooks.memoryPromptTitle == nil)
         #expect(hooks.memoryPromptGuidance == nil)
         #expect(hooks.memoryPriority == nil)
         #expect(hooks.trackedSessionMemory == nil)
         #expect(hooks.allowsAutomaticSessionSeeding)
-        #expect(hooks.shouldImportSessionHistory == nil)
-        #expect(hooks.importSessionHistory == nil)
+
+        // Default seed gate mirrors isEmpty; default replay appends via add(_:).
+        let shouldImport = try #require(hooks.shouldImportSessionHistory)
+        #expect(await shouldImport())
+
+        let importHistory = try #require(hooks.importSessionHistory)
+        await importHistory([.user("seeded")])
+        #expect(await memory.count == 1)
     }
 
-    @Test("Public marker protocols still fill hooks through the shim")
-    func publicMarkerProtocolsFillHooks() async throws {
+    @Test("Implemented capabilities fill hooks through witness dispatch")
+    func implementedCapabilitiesFillHooks() async throws {
         let memory = RecordingLifecycleMemory()
         let hooks = MemoryHooks.resolved(from: memory)
 
@@ -64,10 +80,18 @@ struct MemoryHooksTests {
     }
 }
 
-private actor RecordingLifecycleMemory: Memory, MemorySessionLifecycle, MemoryPromptDescriptor, MemoryRetrievalPolicyAware {
+private actor RecordingLifecycleMemory: Memory {
     nonisolated let memoryPromptTitle = "Recording Title"
     nonisolated let memoryPromptGuidance: String? = "Use recorded context."
     nonisolated let memoryPriority: MemoryPriorityHint = .primary
+
+    nonisolated var memoryPromptMetadata: MemoryPromptMetadata? {
+        MemoryPromptMetadata(
+            title: memoryPromptTitle,
+            guidance: memoryPromptGuidance,
+            priority: memoryPriority
+        )
+    }
 
     private(set) var beginCount = 0
     private(set) var endCount = 0

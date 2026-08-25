@@ -171,9 +171,71 @@ public protocol Memory: Actor, Sendable {
     /// Removes all messages from memory.
     ///
     /// After calling this method, ``isEmpty`` should return `true` and
-    /// ``count`` should return `0`. This is typically used when starting
+    /// `count` should return `0`. This is typically used when starting
     /// a new conversation or resetting the agent state.
     func clear() async
+
+    // MARK: - Optional Memory Capabilities
+
+    /// Marks the beginning of an agent run / stream session.
+    ///
+    /// Implement this to scope per-session state such as session tagging in
+    /// persistent stores. The default implementation is a no-op, so memories
+    /// without session lifecycle needs simply conform and do nothing.
+    ///
+    /// - Note: Implementing this method is the opt-in. No additional marker
+    ///   protocol conformance is required or consulted.
+    func beginMemorySession() async
+
+    /// Marks the end of an agent run / stream session (success or failure).
+    ///
+    /// The default implementation is a no-op.
+    ///
+    /// - Note: Implementing this method is the opt-in. No additional marker
+    ///   protocol conformance is required or consulted.
+    func endMemorySession() async
+
+    /// Retrieves context relevant to the query while respecting item-level
+    /// budgets.
+    ///
+    /// Implement this when simple token-limit retrieval is not enough — for
+    /// example to honor ``MemoryQuery/maxItems`` or per-item budgets. The
+    /// default implementation falls back to ``context(for:tokenLimit:)`` using
+    /// ``MemoryQuery/text`` and ``MemoryQuery/tokenLimit``.
+    func context(for query: MemoryQuery) async -> String
+
+    /// Imports a batch of replayed session history messages.
+    ///
+    /// Implement this when replayed history needs memory-specific handling
+    /// such as deduplication against persisted content. The default
+    /// implementation appends each message through ``add(_:)``.
+    func importSessionHistory(_ messages: [MemoryMessage]) async
+
+    /// Whether the agent runtime may seed session history into this memory.
+    ///
+    /// The default implementation returns ``isEmpty``, which seeds only fresh
+    /// memories and prevents duplicate imports into stores that already hold
+    /// content.
+    func shouldImportSessionHistory() async -> Bool
+
+    /// The memory layer that owns per-session clearing and serialization for
+    /// composite stacks.
+    ///
+    /// Default: `nil`. Composite memories return the layer that should be
+    /// cleared between sessions; single-layer memories return `nil`.
+    nonisolated var trackedSessionMemory: (any Memory)? { get }
+
+    /// Whether the agent runtime may seed session history automatically.
+    ///
+    /// Default: `true`. Return `false` to opt out of automatic seeding.
+    nonisolated var allowsAutomaticSessionSeeding: Bool { get }
+
+    /// Prompt metadata describing how retrieved memory context should be
+    /// presented to the model.
+    ///
+    /// Default: `nil`, which renders memory context under the generic
+    /// "Relevant Context from Memory" heading with no guidance text.
+    nonisolated var memoryPromptMetadata: MemoryPromptMetadata? { get }
 }
 
 // MARK: - MemoryMessage Context Formatting

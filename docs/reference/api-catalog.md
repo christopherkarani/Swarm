@@ -4,7 +4,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
 - Source files scanned: 183
-- Public/open symbols cataloged: 2310
+- Public/open symbols cataloged: 2325
 
 ## 1. Swarm (entry point)
 
@@ -1405,15 +1405,23 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 47 | protocol | public | Memory | `public protocol Memory : Actor` |
-| 49 | var | public | Memory.count | `public var count: Int { get async }` |
-| 55 | var | public | Memory.isEmpty | `public var isEmpty: Bool { get async }` |
-| 60 | func | public | Memory.add(_:) | `public func add(_ message: MemoryMessage) async` |
-| 72 | func | public | Memory.context(for:tokenLimit:) | `public func context(for query: String, tokenLimit: Int) async -> String` |
-| 77 | func | public | Memory.allMessages() | `public func allMessages() async -> [MemoryMessage]` |
-| 80 | func | public | Memory.clear() | `public func clear() async` |
-| 96 | func | public | MemoryMessage.formatContext(_:tokenLimit:tokenEstimator:) | `public static func formatContext(_ messages: [MemoryMessage], tokenLimit: Int, tokenEstimator: any TokenEstimator = CharacterBasedTokenEstimator.shared) -> String` |
-| 128 | func | public | MemoryMessage.formatContext(_:tokenLimit:separator:tokenEstimator:) | `public static func formatContext(_ messages: [MemoryMessage], tokenLimit: Int, separator: String, tokenEstimator: any TokenEstimator = CharacterBasedTokenEstimator.shared) -> String` |
+| 101 | protocol | public | Memory | `public protocol Memory : Actor` |
+| 110 | var | public | Memory.count | `public var count: Int { get async }` |
+| 120 | var | public | Memory.isEmpty | `public var isEmpty: Bool { get async }` |
+| 132 | func | public | Memory.add(_:) | `public func add(_ message: MemoryMessage) async` |
+| 158 | func | public | Memory.context(for:tokenLimit:) | `public func context(for query: String, tokenLimit: Int) async -> String` |
+| 169 | func | public | Memory.allMessages() | `public func allMessages() async -> [MemoryMessage]` |
+| 176 | func | public | Memory.clear() | `public func clear() async` |
+| 188 | func | public | Memory.beginMemorySession() | `public func beginMemorySession() async` |
+| 196 | func | public | Memory.endMemorySession() | `public func endMemorySession() async` |
+| 205 | func | public | Memory.context(for:) | `public func context(for query: MemoryQuery) async -> String` |
+| 212 | func | public | Memory.importSessionHistory(_:) | `public func importSessionHistory(_ messages: [MemoryMessage]) async` |
+| 219 | func | public | Memory.shouldImportSessionHistory() | `public func shouldImportSessionHistory() async -> Bool` |
+| 226 | var | public | Memory.trackedSessionMemory | `public nonisolated var trackedSessionMemory: (any Memory)? { get }` |
+| 231 | var | public | Memory.allowsAutomaticSessionSeeding | `public nonisolated var allowsAutomaticSessionSeeding: Bool { get }` |
+| 238 | var | public | Memory.memoryPromptMetadata | `public nonisolated var memoryPromptMetadata: MemoryPromptMetadata? { get }` |
+| 274 | func | public | MemoryMessage.formatContext(_:tokenLimit:tokenEstimator:) | `public static func formatContext(_ messages: [MemoryMessage], tokenLimit: Int, tokenEstimator: any TokenEstimator = CharacterBasedTokenEstimator.shared) -> String` |
+| 318 | func | public | MemoryMessage.formatContext(_:tokenLimit:separator:tokenEstimator:) | `public static func formatContext(_ messages: [MemoryMessage], tokenLimit: Int, separator: String, tokenEstimator: any TokenEstimator = CharacterBasedTokenEstimator.shared) -> String` |
 ### Memory/Backends/InMemoryBackend.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -1609,18 +1617,25 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 9 | enum | public | MemoryPriorityHint | `public enum MemoryPriorityHint` |
 | 10 | case | public | MemoryPriorityHint.primary | `public case primary` |
 | 11 | case | public | MemoryPriorityHint.secondary | `public case secondary` |
-| 18 | protocol | public | MemoryPromptDescriptor | `public protocol MemoryPromptDescriptor : Sendable` |
-| 20 | var | public | MemoryPromptDescriptor.memoryPromptTitle | `public var memoryPromptTitle: String { get }` |
-| 23 | var | public | MemoryPromptDescriptor.memoryPromptGuidance | `public var memoryPromptGuidance: String? { get }` |
-| 26 | var | public | MemoryPromptDescriptor.memoryPriority | `public var memoryPriority: MemoryPriorityHint { get }` |
+| 19 | struct | public | MemoryPromptMetadata | `public struct MemoryPromptMetadata: Sendable` |
+| 21 | var | public | MemoryPromptMetadata.title | `public var title: String` |
+| 24 | var | public | MemoryPromptMetadata.guidance | `public var guidance: String?` |
+| 27 | var | public | MemoryPromptMetadata.priority | `public var priority: MemoryPriorityHint` |
+| 29 | init | public | MemoryPromptMetadata.init(title:guidance:priority:) | `public init(title: String, guidance: String?, priority: MemoryPriorityHint)` |
+| 47 | protocol | public | MemoryPromptDescriptor | `public protocol MemoryPromptDescriptor : Sendable` |
+| 49 | var | public | MemoryPromptDescriptor.memoryPromptTitle | `public var memoryPromptTitle: String { get }` |
+| 52 | var | public | MemoryPromptDescriptor.memoryPromptGuidance | `public var memoryPromptGuidance: String? { get }` |
+| 55 | var | public | MemoryPromptDescriptor.memoryPriority | `public var memoryPriority: MemoryPriorityHint { get }` |
 
 ### Memory/MemorySessionLifecycle.swift
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 7 | protocol | public | MemorySessionLifecycle | `public protocol MemorySessionLifecycle : Memory` |
-| 9 | func | public | MemorySessionLifecycle.beginMemorySession() | `public func beginMemorySession() async` |
-| 12 | func | public | MemorySessionLifecycle.endMemorySession() | `public func endMemorySession() async` |
+| 9 | protocol | public | MemorySessionLifecycle | `public protocol MemorySessionLifecycle : Memory` |
+| 11 | func | public | MemorySessionLifecycle.beginMemorySession() | `public func beginMemorySession() async` |
+| 14 | func | public | MemorySessionLifecycle.endMemorySession() | `public func endMemorySession() async` |
+| 24 | protocol | public | MemorySessionReplayAware | `public protocol MemorySessionReplayAware : Memory` |
+| 26 | func | public | MemorySessionReplayAware.importSessionHistory(_:) | `public func importSessionHistory(_ messages: [MemoryMessage]) async` |
 
 ### Memory/PersistentMemory.swift
 

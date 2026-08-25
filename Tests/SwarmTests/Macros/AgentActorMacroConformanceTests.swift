@@ -92,6 +92,51 @@ struct AgentActorMacroConformanceTests {
         #expect(seedableContext.contains("prism-session marker"))
         #expect(seedableContext.contains("current turn"))
     }
+
+    @Test("Generated run dispatches lifecycle to defaulted Memory requirements without marker conformance")
+    func generatedRunDispatchesLifecycleWithoutMarkerConformance() async throws {
+        let memory = WitnessLifecycleMemory()
+        let agent = MacroEchoAgent(memory: memory)
+
+        _ = try await agent.run("lifecycle probe")
+
+        let counts = await memory.sessionCounts()
+        #expect(counts.begins == 1)
+        #expect(counts.ends == 1)
+    }
+}
+
+private actor WitnessLifecycleMemory: Memory {
+    private(set) var beginCount = 0
+    private(set) var endCount = 0
+
+    var count: Int { get async { 0 } }
+    var isEmpty: Bool { get async { true } }
+
+    func add(_ message: MemoryMessage) async {
+        _ = message
+    }
+
+    func context(for query: String, tokenLimit: Int) async -> String {
+        _ = query
+        _ = tokenLimit
+        return ""
+    }
+
+    func allMessages() async -> [MemoryMessage] { [] }
+    func clear() async {}
+
+    func beginMemorySession() async {
+        beginCount += 1
+    }
+
+    func endMemorySession() async {
+        endCount += 1
+    }
+
+    func sessionCounts() -> (begins: Int, ends: Int) {
+        (beginCount, endCount)
+    }
 }
 
 private actor StaticMacroContextMemory: Memory, MemorySessionImportPolicy {
