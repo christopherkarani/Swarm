@@ -202,11 +202,11 @@ public struct RetryPolicy: Sendable {
 
     /// Clock used to suspend between retries. Defaults to `LiveSwarmClock`
     /// (plain `Task.sleep`) so existing behavior is unchanged when nil.
-    let clock: any SwarmClock
+    private let clock: any SwarmClock
 
     /// Randomness source consulted by jittered backoff strategies. Defaults
     /// to `Double.random(in:)` so existing behavior is unchanged when nil.
-    let randomSource: @Sendable (ClosedRange<Double>) -> Double
+    private let randomSource: @Sendable (ClosedRange<Double>) -> Double
 
     // MARK: - Initialization
 

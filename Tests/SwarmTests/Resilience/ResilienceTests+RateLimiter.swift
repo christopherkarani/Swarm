@@ -44,8 +44,12 @@ struct RateLimiterTests {
         // First token should always be available after sanitization.
         #expect(await limiter.tryAcquire() == true)
 
-        // Refill path should remain safe and not produce invalid sleep math.
-        try await limiter.acquire()
+        // Acquire wait uses the sanitized 1 token/s rate; drive it through the
+        // virtual clock so the refill path is proven without a wall-clock sleep.
+        let (virtualLimiter, clock) = makeVirtualLimiter(maxTokens: -10, refillRatePerSecond: 0)
+        #expect(await virtualLimiter.tryAcquire() == true)
+        try await virtualLimiter.acquire()
+        #expect(clock.recordedSleeps == [1_000_000_000])
     }
 
     @Test("Nil clock falls back to the live clock")
