@@ -940,6 +940,30 @@ extension ChatGraph {
     /// Uses the Hive clock for deterministic backoff sleep — no jitter is applied.
     /// Returns immediately on the first success, or rethrows the last error
     /// after all attempts are exhausted.
+    ///
+    /// - Note: Deliberate divergence from the canonical agent-inference retry
+    ///   seam (`Sources/Swarm/Internal/TurnEngine/ResilienceRetry.swift`,
+    ///   W3-T3 REQ-010 / AC-301 documented-divergence clause). A classifier
+    ///   closure alone cannot reconcile these, so this local loop is kept:
+    ///   1. Attempt accounting — here `maxAttempts` counts **total** attempts
+    ///      (`for attempt in 0 ..< maxAttempts`, line ~959); the agent path
+    ///      treats `maxAttempts` as retries *after* the initial attempt
+    ///      (`retryCount < maxAttempts` guard).
+    ///   2. Exhaustion surface — the last operation error is rethrown verbatim
+    ///      (lines ~973–974) so graph-runtime errors (e.g.
+    ///      `SwarmRuntimeError.modelStreamInvalid`) reach `HiveRunResult`
+    ///      unchanged; the agent path wraps exhaustion in
+    ///      `ResilienceError.retriesExhausted(attempts:lastError:)`.
+    ///   3. Retry gating — every caught error is retried unconditionally,
+    ///      including `CancellationError` (catch at lines ~962–971 has no
+    ///      cancellation short-circuit); the agent path hard-gates on
+    ///      `InferenceRetryability.isRetryable` + user `shouldRetry` and never
+    ///      retries cancellation.
+    ///   4. Backoff math — saturating `delay * factor` growth where the cap is
+    ///      applied per-sleep (`min(delay, maxNs)`) and growth happens after
+    ///      each sleep; the agent path evaluates
+    ///      `BackoffStrategy.delay(forAttempt:)` (including jitter strategies)
+    ///      sanitized to a fixed one-hour ceiling before sleeping.
     private static func withRetry<T>(
         policy: HiveRetryPolicy?,
         clock: any HiveClock,

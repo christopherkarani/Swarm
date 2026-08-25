@@ -74,6 +74,13 @@ extension Agent {
         return try await invoke()
     }
 
+    /// Retries provider inference under the canonical internal seam
+    /// ``ResilienceRetry`` (W3-T3), which pins the historical semantics:
+    /// hard gate (`InferenceRetryability`) conjoined with `shouldRetry`,
+    /// initial attempt + `maxAttempts` retries, immediate cancellation
+    /// rethrow, and `ResilienceError.retriesExhausted` on budget exhaustion.
+    /// This wrapper only layers agent-path side effects onto each retry:
+    /// warning log, observer callback, trace metric.
     private static func invokeWithRetry<T: Sendable>(
         policy: RetryPolicy,
         agent: any AgentRuntime,
@@ -81,31 +88,17 @@ extension Agent {
         tracing: TracingHelper?,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        guard policy.maxAttempts > 0 else {
-            return try await operation()
-        }
-
-        let retryPolicy = RetryPolicy(
-            maxAttempts: policy.maxAttempts,
-            backoff: policy.backoff,
-            shouldRetry: { error in
-                InferenceRetryability.isRetryable(error) && policy.shouldRetry(error)
-            },
-            onRetry: { attempt, error in
-                await policy.onRetry?(attempt, error)
-                Log.agents.warning(
-                    "Inference retry attempt \(attempt): \(error.localizedDescription)"
-                )
-                await observer?.onInferenceRetry(
-                    context: nil,
-                    agent: agent,
-                    attempt: attempt,
-                    error: error
-                )
-                await tracing?.traceInferenceRetry(attempt: attempt, error: error)
-            }
-        )
-
-        return try await retryPolicy.execute(operation)
+        try await ResilienceRetry.run(policy: policy, onRetryAttempt: { attempt, error in
+            Log.agents.warning(
+                "Inference retry attempt \(attempt): \(error.localizedDescription)"
+            )
+            await observer?.onInferenceRetry(
+                context: nil,
+                agent: agent,
+                attempt: attempt,
+                error: error
+            )
+            await tracing?.traceInferenceRetry(attempt: attempt, error: error)
+        }, operation: operation)
     }
 }
