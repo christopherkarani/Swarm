@@ -729,9 +729,16 @@ public struct Agent: AgentRuntime, Sendable {
     ///
     /// Unlike the single-slot state it replaces, this supports multiple
     /// concurrent runs on one agent value: `cancelAll()` reaches every
-    /// in-flight run, while `finish(_:)` removes exactly the run that
-    /// completed so finished runs never shadow live ones. Each entry stores
-    /// its run task's cancellation action, mirroring ``TrackedRunRegistry``.
+    /// in-flight run and empties the registry, while `finish(_:)` removes
+    /// exactly the run that completed so finished runs never shadow live
+    /// ones. Each entry stores its run task's cancellation action.
+    ///
+    /// Deliberately mirrors ``TrackedRunRegistry`` in GraphAgent.swift: the
+    /// graph runtime copy cannot be shared from here because Package.swift
+    /// excludes `Internal/GraphRuntime` from lean (`SWARM_OMIT_
+    /// INTEGRATION_TARGETS=1`) builds, where this type must still compile.
+    /// Keep begin/finish/cancel semantics identical in both copies until a
+    /// follow-up consolidates them into one always-compiled registry.
     ///
     /// Internal (not private) so deterministic tests can drive the registry
     /// directly; adds no public API surface.
@@ -754,6 +761,7 @@ public struct Agent: AgentRuntime, Sendable {
             for cancel in cancellers.values {
                 cancel()
             }
+            cancellers.removeAll()
         }
 
         /// Number of runs currently tracked.
