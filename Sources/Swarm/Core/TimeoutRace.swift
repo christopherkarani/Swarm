@@ -3,11 +3,11 @@
 //
 // Shared completion machinery for async operations raced against a timeout,
 // consolidating the per-site coordinator/race classes that previously lived
-// in GuardrailRunner and Workflow+Timeout. Two timeout sites deliberately
-// keep their own machinery: Agent.executeWithinRemainingTimeout ties race
-// settlement to its ProviderOwnedLoopGate execution-gate state, and
-// StreamOperations.timeout(after:) is a stream-lifetime operator rather than
-// a one-shot race.
+// in GuardrailRunner and Workflow+Timeout and in Agent's
+// TimedOperationCoordinator (whose owned-loop-gate deactivation now rides on
+// the `onSettle` hook). One timeout site deliberately keeps its own
+// machinery: StreamOperations.timeout(after:) is a stream-lifetime operator
+// rather than a one-shot race.
 
 import Foundation
 
@@ -20,6 +20,13 @@ import Foundation
 /// recorded before `install(continuation:)` runs (e.g. a cancellation handler
 /// firing in that window) is applied as soon as the continuation arrives, so
 /// no registration order can leak or strand it.
+///
+/// `onSettle` fires exactly once per race — at settlement time, before the
+/// worker tasks are cancelled and the continuation is resumed — with `nil`
+/// for success or the settled error. It runs even when settlement precedes
+/// continuation installation, mirroring how callers release outcome-specific
+/// resources (e.g. owned-loop gate deactivation) regardless of whether a
+/// continuation was installed yet.
 final class TimeoutRace<T: Sendable>: @unchecked Sendable {
     private enum Outcome {
         case success(T)
@@ -27,10 +34,15 @@ final class TimeoutRace<T: Sendable>: @unchecked Sendable {
     }
 
     private let lock = NSLock()
+    private let onSettle: (@Sendable (Error?) -> Void)?
     private var continuation: CheckedContinuation<T, Error>?
     private var operationTask: Task<Void, Never>?
     private var timeoutTask: Task<Void, Never>?
     private var outcome: Outcome?
+
+    init(onSettle: (@Sendable (Error?) -> Void)? = nil) {
+        self.onSettle = onSettle
+    }
 
     func install(continuation: CheckedContinuation<T, Error>) {
         lock.lock()
@@ -88,6 +100,12 @@ final class TimeoutRace<T: Sendable>: @unchecked Sendable {
         timeoutTask = nil
         lock.unlock()
 
+        switch newOutcome {
+        case .success:
+            onSettle?(nil)
+        case let .failure(error):
+            onSettle?(error)
+        }
         pendingOperationTask?.cancel()
         pendingTimeoutTask?.cancel()
         if let pendingContinuation {
@@ -132,15 +150,23 @@ final class TimeoutRace<T: Sendable>: @unchecked Sendable {
 ///
 /// Sleep failures other than cancellation surface through the continuation;
 /// `LiveSwarmClock` suspension only ever throws `CancellationError`.
+///
+/// `onSettle`, when provided, fires exactly once with the settled outcome —
+/// `nil` for success or the winning error — before the losing task is
+/// cancelled and the continuation resumes. Callers use it to release state
+/// tied to specific outcomes (e.g. deactivating a `ProviderOwnedLoopGate`
+/// only on `CancellationError`/timeout) without re-introducing per-site
+/// settlement coordinators.
 func withTimeoutRace<T: Sendable>(
     timeout: Duration,
     clock: any SwarmClock = LiveSwarmClock.live,
     cancelsOnParentCancellation: Bool = true,
     priority: TaskPriority? = nil,
     timeoutError: @autoclosure @escaping @Sendable () -> Error,
+    onSettle: (@Sendable (_ error: Error?) -> Void)? = nil,
     operation: @escaping @Sendable () async throws -> T
 ) async throws -> T {
-    let race = TimeoutRace<T>()
+    let race = TimeoutRace<T>(onSettle: onSettle)
 
     func run() async throws -> T {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in

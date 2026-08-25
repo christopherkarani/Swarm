@@ -120,7 +120,14 @@ struct GraphAgent: AgentRuntime, Sendable {
             )
             await cancellation.track(handle)
 
-            let outcome = try await handle.outcome.value
+            let outcome: HiveRunOutcome<ChatGraph.Schema>
+            do {
+                outcome = try await handle.outcome.value
+            } catch {
+                await cancellation.untrack(handle.runID)
+                throw error
+            }
+            await cancellation.untrack(handle.runID)
             let result = try buildResult(from: outcome, builder: resultBuilder)
 
             await observer?.onAgentEnd(context: nil, agent: self, result: result)
@@ -228,8 +235,10 @@ struct GraphAgent: AgentRuntime, Sendable {
                     outcome = try await handle.outcome.value
                 } catch {
                     eventsTask.cancel()
+                    await cancellation.untrack(handle.runID)
                     throw error
                 }
+                await cancellation.untrack(handle.runID)
 
                 // Wait for all events to be consumed before building the result.
                 await eventsTask.value
@@ -263,7 +272,7 @@ struct GraphAgent: AgentRuntime, Sendable {
         }
     }
 
-    /// Cancels any ongoing Hive run.
+    /// Cancels every Hive run currently tracked on this agent.
     func cancel() async {
         await cancellation.cancelCurrent()
     }
@@ -666,27 +675,77 @@ extension GraphAgent: ConversationBranchingRuntime {
 
 // MARK: - CancellationController
 
-/// Actor that safely tracks and cancels the current Hive run handle.
+/// Actor that safely tracks and cancels in-flight Hive run handles.
 ///
-/// Stores the actual `HiveRunHandle` so cancellation propagates to the Hive runtime,
-/// not just to an awaiting wrapper task.
+/// Runs are keyed by `HiveRunID`, so registering a new run never disturbs
+/// previously tracked ones and cancellation targets explicit runs instead of
+/// whatever happened to register last. Stores the actual
+/// `HiveRunHandle` outcome tasks so cancellation propagates to the Hive
+/// runtime, not just to an awaiting wrapper task.
 private actor CancellationController {
-    private var currentHandle: HiveRunHandle<ChatGraph.Schema>?
+    private let registry = TrackedRunRegistry<HiveRunID>()
 
-    /// Records a new run handle for potential cancellation.
-    func track(_ handle: HiveRunHandle<ChatGraph.Schema>) {
-        // Cancel any previously tracked run.
-        currentHandle?.outcome.cancel()
-        currentHandle = handle
+    /// Records a new run handle without cancelling any previously tracked run.
+    func track(_ handle: HiveRunHandle<ChatGraph.Schema>) async {
+        await registry.begin(handle.runID) { [outcome = handle.outcome] in
+            outcome.cancel()
+        }
     }
 
-    /// Cancels the currently tracked run.
-    func cancelCurrent() {
-        currentHandle?.outcome.cancel()
-        currentHandle = nil
+    /// Removes a finished run from tracking without cancelling it.
+    func untrack(_ runID: HiveRunID) async {
+        await registry.finish(runID)
+    }
+
+    /// Cancels every currently tracked run and clears the registry.
+    func cancelCurrent() async {
+        await registry.cancelAll()
     }
 }
 
 // HiveChatRole typed constants are defined in ChatGraph.swift (internal)
 // and shared across the HiveSwarm module.
 #endif
+
+// MARK: - TrackedRunRegistry
+
+/// Keyed registry of in-flight runs supporting concurrent registrations.
+///
+/// Ownership rules:
+/// - ``begin(_:onCancel:)`` records a run without touching other entries;
+///   registering a newer run must never cancel an older one.
+/// - ``finish(_:)`` removes exactly one settled run.
+/// - ``cancelAll()`` cancels every tracked run once and clears the registry.
+///
+/// Each entry stores the cancellation action for its run (typically the
+/// outcome task's `cancel()`), so cancellation always targets explicit
+/// handles rather than "the last registered" slot.
+///
+/// Generic over the key so the Hive bridge keys by `HiveRunID` while unit
+/// tests exercise identical semantics with plain identifiers.
+actor TrackedRunRegistry<Key: Hashable & Sendable> {
+    private var cancellers: [Key: @Sendable () -> Void] = [:]
+
+    /// Records a run's cancellation action under `key`.
+    func begin(_ key: Key, onCancel: @escaping @Sendable () -> Void) {
+        cancellers[key] = onCancel
+    }
+
+    /// Forgets one settled run without cancelling it.
+    func finish(_ key: Key) {
+        cancellers[key] = nil
+    }
+
+    /// Cancels every tracked run and clears the registry.
+    func cancelAll() {
+        for cancel in cancellers.values {
+            cancel()
+        }
+        cancellers.removeAll()
+    }
+
+    /// Number of runs currently tracked.
+    var trackedCount: Int {
+        cancellers.count
+    }
+}

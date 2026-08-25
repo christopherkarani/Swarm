@@ -517,7 +517,9 @@ public struct Agent: AgentRuntime, Sendable {
         let task = Task { [self] in
             try await runInternal(input, session: session, observer: observer, structuredOutputRequest: nil)
         }
-        await cancellationState.begin(runID: runID, task: task)
+        await activeRuns.begin(runID) { [task] in
+            task.cancel()
+        }
 
         do {
             let result = try await withTaskCancellationHandler(
@@ -528,11 +530,11 @@ public struct Agent: AgentRuntime, Sendable {
                     task.cancel()
                 }
             )
-            await cancellationState.finish(runID: runID)
+            await activeRuns.finish(runID)
             return result
         } catch {
             task.cancel()
-            await cancellationState.finish(runID: runID)
+            await activeRuns.finish(runID)
             throw normalizeCancellation(error)
         }
     }
@@ -548,7 +550,9 @@ public struct Agent: AgentRuntime, Sendable {
         let task = Task { [self] in
             try await runInternal(input, session: session, observer: observer, structuredOutputRequest: request)
         }
-        await cancellationState.begin(runID: runID, task: task)
+        await activeRuns.begin(runID) { [task] in
+            task.cancel()
+        }
 
         do {
             let result = try await withTaskCancellationHandler(
@@ -559,7 +563,7 @@ public struct Agent: AgentRuntime, Sendable {
                     task.cancel()
                 }
             )
-            await cancellationState.finish(runID: runID)
+            await activeRuns.finish(runID)
 
             guard let structuredOutput = result.structuredOutput else {
                 throw AgentError.generationFailed(reason: "Structured output request completed without a structured result")
@@ -568,15 +572,21 @@ public struct Agent: AgentRuntime, Sendable {
             return StructuredAgentResult(agentResult: result.agentResult, structuredOutput: structuredOutput)
         } catch {
             task.cancel()
-            await cancellationState.finish(runID: runID)
+            await activeRuns.finish(runID)
             throw normalizeCancellation(error)
         }
     }
 
-    /// Cancels any ongoing execution.
+    /// Cancels every in-flight execution on this agent.
     ///
+    /// All runs started through ``run(_:session:observer:)`` or
+    /// ``runStructured(_:request:session:observer:)`` that have not finished
+    /// yet are cancelled, including runs started concurrently on copies of
+    /// this agent value. Earlier releases cancelled only the most recently
+    /// registered run; the run registry now tracks every concurrent run by
+    /// ID, so cancellation reaches all of them.
     public func cancel() async {
-        await cancellationState.cancelCurrent()
+        await activeRuns.cancelAll()
     }
 
     /// Streams the agent's execution, yielding events as they occur.
@@ -669,7 +679,9 @@ public struct Agent: AgentRuntime, Sendable {
     // MARK: - Internal State
 
     private var toolRegistry: ToolRegistry
-    private let cancellationState = ActiveRunCancellationState()
+    /// Registry of in-flight runs; copies of this value share the actor, so
+    /// every run started through any copy is reachable from ``cancel()``.
+    private let activeRuns = ActiveRunRegistry()
     /// Created from ``AgentConfiguration/resilience`` at init. Copies of this value share the actor.
     let inferenceCircuitBreaker: CircuitBreaker?
     /// Created from ``AgentConfiguration/resilience`` at init. Copies of this value share the actor.
@@ -713,127 +725,40 @@ public struct Agent: AgentRuntime, Sendable {
         let structuredOutput: StructuredOutputResult?
     }
 
-    private actor ActiveRunCancellationState {
-        private var activeRunID: UUID?
-        private var activeTask: Task<InternalRunResult, Error>?
+    /// Registry of in-flight runs keyed by run ID.
+    ///
+    /// Unlike the single-slot state it replaces, this supports multiple
+    /// concurrent runs on one agent value: `cancelAll()` reaches every
+    /// in-flight run, while `finish(_:)` removes exactly the run that
+    /// completed so finished runs never shadow live ones. Each entry stores
+    /// its run task's cancellation action, mirroring ``TrackedRunRegistry``.
+    ///
+    /// Internal (not private) so deterministic tests can drive the registry
+    /// directly; adds no public API surface.
+    actor ActiveRunRegistry {
+        private var cancellers: [UUID: @Sendable () -> Void] = [:]
 
-        func begin(runID: UUID, task: Task<InternalRunResult, Error>) {
-            activeRunID = runID
-            activeTask = task
+        func begin(_ id: UUID, onCancel: @escaping @Sendable () -> Void) {
+            cancellers[id] = onCancel
         }
 
-        func finish(runID: UUID) {
-            guard activeRunID == runID else { return }
-            activeRunID = nil
-            activeTask = nil
+        func finish(_ id: UUID) {
+            cancellers[id] = nil
         }
 
-        func cancelCurrent() {
-            activeTask?.cancel()
-        }
-    }
-
-    private final class TimedOperationCoordinator<T: Sendable>: @unchecked Sendable {
-        private let lock = NSLock()
-        private var continuation: CheckedContinuation<T, Error>?
-        private var operationTask: Task<Void, Never>?
-        private var timeoutTask: Task<Void, Never>?
-        private var ownedLoopGate: ProviderOwnedLoopGate?
-        private var completed = false
-
-        func setOwnedLoopGate(_ gate: ProviderOwnedLoopGate?) {
-            lock.lock()
-            defer { lock.unlock() }
-            ownedLoopGate = gate
+        func cancel(_ id: UUID) {
+            cancellers[id]?()
         }
 
-        func install(continuation: CheckedContinuation<T, Error>) {
-            lock.lock()
-            defer { lock.unlock() }
-            self.continuation = continuation
-        }
-
-        func setOperationTask(_ task: Task<Void, Never>) {
-            lock.lock()
-            defer { lock.unlock() }
-            operationTask = task
-        }
-
-        func setTimeoutTask(_ task: Task<Void, Never>) {
-            lock.lock()
-            defer { lock.unlock() }
-            timeoutTask = task
-        }
-
-        func finish(returning value: T) {
-            complete(deactivateOwnedLoop: false) { continuation in
-                continuation.resume(returning: value)
+        func cancelAll() {
+            for cancel in cancellers.values {
+                cancel()
             }
         }
 
-        func finish(throwing error: Error) {
-            complete(deactivateOwnedLoop: Self.shouldDeactivateOwnedLoop(for: error)) { continuation in
-                continuation.resume(throwing: error)
-            }
-        }
-
-        func cancelPending(with error: Error) {
-            let pendingState = takePendingState()
-            if Self.shouldDeactivateOwnedLoop(for: error) {
-                pendingState.ownedLoopGate?.deactivate()
-            }
-            pendingState.operationTask?.cancel()
-            pendingState.timeoutTask?.cancel()
-            pendingState.continuation?.resume(throwing: error)
-        }
-
-        private func complete(
-            deactivateOwnedLoop: Bool,
-            _ resume: (CheckedContinuation<T, Error>) -> Void
-        ) {
-            let pendingState = takePendingState()
-            if deactivateOwnedLoop {
-                pendingState.ownedLoopGate?.deactivate()
-            }
-            pendingState.operationTask?.cancel()
-            pendingState.timeoutTask?.cancel()
-            guard let continuation = pendingState.continuation else { return }
-            resume(continuation)
-        }
-
-        private static func shouldDeactivateOwnedLoop(for error: Error) -> Bool {
-            if error is CancellationError {
-                return true
-            }
-            if case .timeout = error as? AgentError {
-                return true
-            }
-            return false
-        }
-
-        private func takePendingState() -> (
-            continuation: CheckedContinuation<T, Error>?,
-            operationTask: Task<Void, Never>?,
-            timeoutTask: Task<Void, Never>?,
-            ownedLoopGate: ProviderOwnedLoopGate?
-        ) {
-            lock.lock()
-            defer { lock.unlock() }
-
-            guard completed == false else {
-                return (nil, nil, nil, nil)
-            }
-
-            completed = true
-            let pendingContinuation = continuation
-            let pendingOperationTask = operationTask
-            let pendingTimeoutTask = timeoutTask
-            let pendingGate = ownedLoopGate
-            continuation = nil
-            operationTask = nil
-            timeoutTask = nil
-            ownedLoopGate = nil
-            return (pendingContinuation, pendingOperationTask, pendingTimeoutTask, pendingGate)
+        /// Number of runs currently tracked.
+        var trackedCount: Int {
+            cancellers.count
         }
     }
 
@@ -1560,9 +1485,29 @@ public struct Agent: AgentRuntime, Sendable {
         }
     }
 
+    /// Runs `operation` bounded by the remaining run timeout.
+    ///
+    /// Delegates to the shared ``withTimeoutRace`` settlement primitive, so
+    /// outcomes recorded before the continuation installs are replayed and
+    /// worker tasks registered after settlement are cancelled. Owned-loop-gate
+    /// deactivation rides on the race's `onSettle` hook: the gate is
+    /// deactivated exactly when settlement fails with `CancellationError` or
+    /// `AgentError.timeout` (see `shouldDeactivateOwnedLoop`), never on
+    /// success or unrelated failures.
+    ///
+    /// The remaining budget is computed from `startTime` and consumed through
+    /// the injected `SwarmClock`, keeping the sleep on the same fake-clock
+    /// seam used by resilience code.
+    ///
+    /// - Parameters:
+    ///   - startTime: Run start instant used to compute the remaining budget.
+    ///   - executionGate: Optional owned-loop gate deactivated on cancellation/timeout.
+    ///   - clock: Clock driving the timeout suspension; inject a fake clock in tests.
+    ///   - operation: The work to bound.
     func executeWithinRemainingTimeout<T: Sendable>(
         startTime: ContinuousClock.Instant,
         executionGate: ProviderOwnedLoopGate? = nil,
+        clock: any SwarmClock = LiveSwarmClock.live,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         try Task.checkCancellation()
@@ -1572,41 +1517,28 @@ public struct Agent: AgentRuntime, Sendable {
             throw AgentError.timeout(duration: configuration.timeout)
         }
 
-        let coordinator = TimedOperationCoordinator<T>()
-        coordinator.setOwnedLoopGate(executionGate)
-
-        return try await withTaskCancellationHandler(
-            operation: {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
-                    coordinator.install(continuation: continuation)
-
-                    let operationTask = Task {
-                        do {
-                            coordinator.finish(returning: try await operation())
-                        } catch {
-                            coordinator.finish(throwing: error)
-                        }
-                    }
-                    coordinator.setOperationTask(operationTask)
-
-                    let timeoutTask = Task { [timeout = configuration.timeout, remaining] in
-                        do {
-                            try await Task.sleep(for: remaining)
-                            operationTask.cancel()
-                            coordinator.finish(throwing: AgentError.timeout(duration: timeout))
-                        } catch is CancellationError {
-                            return
-                        } catch {
-                            coordinator.finish(throwing: error)
-                        }
-                    }
-                    coordinator.setTimeoutTask(timeoutTask)
-                }
+        return try await withTimeoutRace(
+            timeout: remaining,
+            clock: clock,
+            timeoutError: AgentError.timeout(duration: configuration.timeout),
+            onSettle: { error in
+                guard let error, Self.shouldDeactivateOwnedLoop(for: error) else { return }
+                executionGate?.deactivate()
             },
-            onCancel: {
-                coordinator.cancelPending(with: CancellationError())
-            }
+            operation: operation
         )
+    }
+
+    /// Owned-loop gates deactivate only when a run dies by cancellation or
+    /// timeout; ordinary inference/tool failures must leave the gate armed.
+    private static func shouldDeactivateOwnedLoop(for error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+        if case .timeout = error as? AgentError {
+            return true
+        }
+        return false
     }
 
     private func normalizeCancellation(_ error: Error) -> Error {
