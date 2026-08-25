@@ -43,26 +43,44 @@ public enum AgentContextKey: String, Sendable {
 
 /// A protocol for providing typed context to agents and tools.
 ///
-/// Conform to this protocol to create strongly-typed context objects
-/// that can be stored in and retrieved from `AgentContext`, eliminating
-/// stringly-typed dictionary access patterns.
+/// - Deprecated: Store typed values with ``ContextKey`` instead. Define a
+/// `ContextKey<Value>` for your value type and use
+/// ``AgentContext/setTyped(_:value:)`` /
+/// ``AgentContext/getTyped(_:)``, which pair keys and values at compile
+/// time. This protocol remains functional over the unified context store
+/// but will be removed in a future release.
+///
+/// - Migration hazard: `ContextKey<Value>` writes live in a namespace
+/// separate from untyped string storage. Values written through the typed
+/// API are no longer visible to raw reads such as
+/// ``AgentContext/get(_:)`` or string-keyed snapshot entries, so any code
+/// still reading a migrated value by its raw string must switch to
+/// ``AgentContext/getTyped(_:)`` with the same key name.
 ///
 /// Example:
 /// ```swift
-/// struct UserContext: AgentContextProviding {
-///     static let contextKey = "user_context"
+/// extension ContextKey where Value == String {
+///     static let userContext = ContextKey("user_context")
+/// }
+///
+/// struct UserContext: Codable, Sendable {
 ///     let userId: String
 ///     let isAdmin: Bool
 /// }
 ///
 /// // Store:
-/// await context.setTyped(UserContext(userId: "123", isAdmin: true))
+/// await context.setTyped(.userContext, value: UserContext(userId: "123", isAdmin: true))
 ///
 /// // Retrieve:
-/// if let user: UserContext = await context.typed(UserContext.self) {
+/// if let user = await context.getTyped(.userContext) {
 ///     print(user.userId)
 /// }
 /// ```
+@available(
+    *,
+    deprecated,
+    message: "Use ContextKey<Value> with setTyped(_:value:)/getTyped(_:) instead"
+)
 public protocol AgentContextProviding: Sendable {
     /// The key used to store this context in the key-value storage.
     static var contextKey: String { get }
@@ -108,16 +126,30 @@ public actor AgentContext {
     nonisolated public let createdAt: Date
 
     /// All current keys in the context.
+    ///
+    /// Includes raw string keys plus the names of any typed slots written
+    /// through `setTyped(_:value:)`.
     public var allKeys: [String] {
-        Array(values.keys)
+        var keys = Array(values.keys)
+        for name in slots.valueNames where values[name] == nil {
+            keys.append(name)
+        }
+        return keys
     }
 
     /// A snapshot copy of all values.
     ///
-    /// Returns a copy of the current key-value storage.
+    /// Returns a copy of the current key-value storage with typed slot
+    /// payloads projected in by name. Raw namespace entries take precedence
+    /// over same-named typed slots; when several typed slots share a name
+    /// across different value types, the most recently written one wins.
     /// Changes to the returned dictionary do not affect the context.
     public var snapshot: [String: SendableValue] {
-        values
+        var projected = values
+        for (name, payload) in slots.projectedValues() where projected[name] == nil {
+            projected[name] = payload
+        }
+        return projected
     }
 
     // MARK: - Initialization
@@ -128,10 +160,24 @@ public actor AgentContext {
     ///   - input: The original input that started orchestration.
     ///   - initialValues: Optional initial key-value pairs. Default: [:]
     public init(input: String, initialValues: [String: SendableValue] = [:]) {
+        self.init(input: input, initialValues: initialValues, slots: ContextSlotStore())
+    }
+
+    /// Creates a new agent context preloaded with typed slots.
+    ///
+    /// Package-internal seed used by `copy(additionalValues:)` to carry
+    /// typed slot state into the new context.
+    ///
+    /// - Parameters:
+    ///   - input: The original input that started orchestration.
+    ///   - initialValues: Initial raw key-value pairs.
+    ///   - slots: Typed slots carried over from a source context.
+    init(input: String, initialValues: [String: SendableValue], slots: ContextSlotStore) {
         originalInput = input
         executionId = TurnEnvironment.live.newUUID()
         createdAt = TurnEnvironment.live.now()
         values = initialValues
+        self.slots = slots
         messages = []
         executionPath = []
 
@@ -268,13 +314,28 @@ public actor AgentContext {
     /// // Only adds keys that don't exist in current context
     /// ```
     public func merge(from other: AgentContext, overwrite: Bool = false) async {
-        let otherSnapshot = await other.snapshot
+        // Raw and slots must come from one parent hop. ContextKey data used
+        // to live in `values` as a single snapshot; two awaits let another
+        // task mutate `other` in between and drop a replacement or duplicate
+        // it across namespaces so snapshot, getTyped, and removeTyped disagree.
+        let (otherRawValues, otherSlots) = await other.rawValuesAndValueSlots()
 
-        for (key, value) in otherSnapshot {
-            if overwrite || values[key] == nil {
+        // Typed slot names occupy the key for overwrite:false even though
+        // they live outside the raw namespace. Copying parent raw under a
+        // live local slot would steal the snapshot (raw wins) and survive
+        // removeTyped as a shadow.
+        for (key, value) in otherRawValues {
+            if overwrite || (values[key] == nil && !slots.containsValueName(key)) {
                 values[key] = value
             }
         }
+
+        // Merge typed value slots so reads through `getTyped(_:)` observe
+        // merged state. Snapshot already projects those slots by name; they
+        // are not copied into the raw namespace, matching `setTyped` and
+        // `copy(additionalValues:)`. Provided slots are intentionally not
+        // merged; they were historically instance-specific.
+        slots.mergeValueSlots(from: otherSlots, overwrite: overwrite)
 
         // Merge messages
         let otherMessages = await other.getMessages()
@@ -314,7 +375,14 @@ public actor AgentContext {
             copiedValues[key] = value
         }
 
-        let newContext = AgentContext(input: originalInput, initialValues: copiedValues)
+        // Carry typed value slots so reads through `getTyped(_:)` observe
+        // copied state. Provided slots are intentionally not copied; they
+        // are instance-specific.
+        let newContext = AgentContext(
+            input: originalInput,
+            initialValues: copiedValues,
+            slots: slots.copyingValueSlots()
+        )
 
         // Note: Messages and execution path are not copied to the new context
         // to avoid confusion. They are instance-specific.
@@ -323,24 +391,24 @@ public actor AgentContext {
         return newContext
     }
 
-    // MARK: - Typed Context
+    // MARK: - Typed Context (deprecated shim)
 
     /// Stores a typed context object.
     ///
-    /// The context is stored under its `contextKey` and can be retrieved
-    /// using `typed(_:)`.
+    /// The context is stored in the unified slot store keyed by its concrete
+    /// type and `contextKey`, and can be retrieved using `typed(_:)`.
     ///
     /// - Parameter context: The typed context to store.
     public func setTyped<T: AgentContextProviding>(_ context: T) {
-        typedContexts[T.contextKey] = context
+        slots.setProvided(context)
     }
 
     /// Retrieves a typed context object.
     ///
     /// - Parameter type: The type of context to retrieve.
-    /// - Returns: The stored context, or nil if not found or wrong type.
+    /// - Returns: The stored context, or nil if not found.
     public func typed<T: AgentContextProviding>(_: T.Type) -> T? {
-        typedContexts[T.contextKey] as? T
+        slots.provided(of: T.self)
     }
 
     /// Removes a typed context.
@@ -349,7 +417,7 @@ public actor AgentContext {
     /// - Returns: The removed context, or nil if not found.
     @discardableResult
     public func removeTyped<T: AgentContextProviding>(_: T.Type) -> T? {
-        typedContexts.removeValue(forKey: T.contextKey) as? T
+        slots.removeProvided(of: T.self)
     }
 
     /// Returns true if a typed context of the given type is stored.
@@ -357,7 +425,55 @@ public actor AgentContext {
     /// - Parameter type: The type to check for.
     /// - Returns: Whether a context of this type exists.
     public func hasTyped<T: AgentContextProviding>(_: T.Type) -> Bool {
-        typedContexts[T.contextKey] != nil
+        slots.containsProvided(of: T.self)
+    }
+
+    // MARK: - Slot Storage Bridge (package-internal)
+
+    /// Stores an encoded payload in the slot identified by `key`.
+    /// Package-internal; used by the typed-access helpers in this directory.
+    ///
+    /// - Parameters:
+    ///   - key: The typed key identifying the slot.
+    ///   - payload: The encoded value to store.
+    func setValueSlot<T>(_ key: ContextKey<T>, payload: SendableValue) {
+        slots.setValuePayload(key, payload: payload)
+    }
+
+    /// Returns the encoded payload stored for `key`, if any.
+    /// Package-internal; used by the typed-access helpers in this directory.
+    ///
+    /// - Parameter key: The typed key identifying the slot.
+    /// - Returns: The stored payload, or nil when the slot is empty.
+    func valueSlotPayload<T>(for key: ContextKey<T>) -> SendableValue? {
+        slots.valuePayload(for: key)
+    }
+
+    /// Removes the slot identified by `key`.
+    /// Package-internal; used by the typed-access helpers in this directory.
+    ///
+    /// - Parameter key: The typed key identifying the slot.
+    /// - Returns: The removed payload, or nil when the slot was empty.
+    @discardableResult
+    func removeValueSlot<T>(_ key: ContextKey<T>) -> SendableValue? {
+        slots.removeValuePayload(key)
+    }
+
+    /// Returns whether a slot exists for `key`.
+    /// Package-internal; used by the typed-access helpers in this directory.
+    ///
+    /// - Parameter key: The typed key identifying the slot.
+    /// - Returns: True when the slot holds a value.
+    func hasValueSlot<T>(_ key: ContextKey<T>) -> Bool {
+        slots.hasValuePayload(key)
+    }
+
+    /// Returns a copy of this context's raw namespace and typed slot store
+    /// captured together. Package-internal; used by `merge(from:)` so a
+    /// concurrent mutation of the parent cannot tear ContextKey data across
+    /// the two namespaces.
+    func rawValuesAndValueSlots() -> (raw: [String: SendableValue], slots: ContextSlotStore) {
+        (values, slots)
     }
 
     // MARK: Private
@@ -365,6 +481,9 @@ public actor AgentContext {
     // MARK: - Private Storage
 
     /// Key-value storage for arbitrary data.
+    ///
+    /// This is the raw string-keyed namespace. Typed `ContextKey<Value>`
+    /// values live in `slots` and are projected into snapshots by name.
     private var values: [String: SendableValue]
 
     /// Message history for conversation continuity.
@@ -373,8 +492,10 @@ public actor AgentContext {
     /// List of agent names that have executed.
     private var executionPath: [String]
 
-    /// Typed context storage keyed by context key string.
-    private var typedContexts: [String: any AgentContextProviding] = [:]
+    /// Unified typed slot storage shared by `ContextKey<Value>` accessors
+    /// and the deprecated `AgentContextProviding` shim. See
+    /// `ContextSlotStore`.
+    private var slots: ContextSlotStore
 }
 
 // MARK: CustomStringConvertible
