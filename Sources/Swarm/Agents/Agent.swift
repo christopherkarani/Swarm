@@ -630,7 +630,9 @@ public struct Agent: AgentRuntime, Sendable {
 
     // MARK: Private
 
-    var _handoffs: [AnyHandoffConfiguration]
+    /// Internal read so ``TurnEngine`` can resolve handoff tools; only this
+    /// file may mutate the list (construction and builder hand-off).
+    private(set) var _handoffs: [AnyHandoffConfiguration]
 
     // MARK: - Internal State
 

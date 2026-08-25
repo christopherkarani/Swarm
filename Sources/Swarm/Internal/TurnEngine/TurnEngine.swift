@@ -306,7 +306,9 @@ struct TurnEngine: Sendable {
                         }
                     }
                 } catch let request as OwnedLoopHandoffRequest {
-                    pendingHandoff.take()
+                    // Drain any stored handoff so the typed request below is
+                    // the single source of truth for the transfer.
+                    _ = pendingHandoff.take()
                     let handoffOutcome = try await completeOwnedLoopHandoff(
                         request,
                         toolRegistry: toolRegistry,
