@@ -4,7 +4,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
 - Source files scanned: 185
-- Public/open symbols cataloged: 2343
+- Public/open symbols cataloged: 2342
 
 ## 1. Swarm (entry point)
 
@@ -799,7 +799,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 152 | subscript | public | Dictionary<String, SendableValue>.subscript(key:) | `public subscript(key: MetadataKey<Int>) -> Int? { get set }` |
 | 161 | subscript | public | Dictionary<String, SendableValue>.subscript(key:) | `public subscript(key: MetadataKey<Double>) -> Double? { get set }` |
 | 169 | subscript | public | Dictionary<String, SendableValue>.subscript(key:) | `public subscript(key: MetadataKey<Bool>) -> Bool? { get set }` |
-| 178 | subscript | public | Dictionary<String, String>.subscript(key:) | `public subscript(key: MetadataKey<String>) -> String? { get set }` |
 
 ### Core/ModelSettings.swift
 
