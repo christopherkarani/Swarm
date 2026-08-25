@@ -129,11 +129,22 @@ struct DocumentationFreshnessTests {
         #expect(webSearchSupport.contains("struct WebSearchEnvelope: Codable, Sendable, Equatable"))
         #expect(webSearchSupport.contains("enum WebPageType: String, Codable, Sendable, Equatable"))
         #expect(swarmTranscript.contains("struct SwarmTranscript: Codable, Sendable, Equatable"))
-        #expect(toolSemantics.contains("enum ToolRetryPolicy: String, Codable, Sendable, Equatable"))
         #expect(metricsCollector.contains("\nprotocol MetricsReporter: Sendable {"))
 
-        // The load-bearing struct keeps its escape-hatched public status.
+        // ToolExecutionSemantics stays a usable public type: payload enums,
+        // stored properties, init, and `.automatic` must remain public so other
+        // modules can construct and inspect it (not a public shell).
+        #expect(toolSemantics.contains("public enum ToolSideEffectLevel"))
+        #expect(toolSemantics.contains("public enum ToolRetryPolicy"))
+        #expect(toolSemantics.contains("public enum ToolApprovalRequirement"))
+        #expect(toolSemantics.contains("public enum ToolResultDurability"))
         #expect(toolSemantics.contains("public struct ToolExecutionSemantics"))
+        #expect(toolSemantics.contains("public var sideEffectLevel: ToolSideEffectLevel"))
+        #expect(toolSemantics.contains("public var retryPolicy: ToolRetryPolicy"))
+        #expect(toolSemantics.contains("public var approvalRequirement: ToolApprovalRequirement"))
+        #expect(toolSemantics.contains("public var resultDurability: ToolResultDurability"))
+        #expect(toolSemantics.contains("public init("))
+        #expect(toolSemantics.contains("public static let automatic"))
     }
 
     @Test("public memory docs do not advertise removed builder APIs")
