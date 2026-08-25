@@ -837,16 +837,6 @@ public struct Agent: AgentRuntime, Sendable {
         }
     }
 
-    private func resolvedActiveTracer() -> (any Tracer)? {
-        AgentDependencyResolver.activeTracer(
-            explicitTracer: tracer,
-            environmentTracer: AgentEnvironmentValues.current.tracer,
-            defaultTracingEnabled: configuration.defaultTracingEnabled,
-            autoAttachMetricsCollector: configuration.autoAttachMetricsCollector,
-            metricsCollector: metricsCollector
-        )
-    }
-
     private func runInternal(
         _ input: String,
         session: (any Session)? = nil,
@@ -857,16 +847,14 @@ public struct Agent: AgentRuntime, Sendable {
             throw AgentError.invalidInput(reason: "Input cannot be empty")
         }
 
-        let activeTracer = resolvedActiveTracer()
-        let activeMemory = resolvedMemory()
-        let memoryHooks = activeMemory.map { MemoryHooks.resolved(from: $0) } ?? .empty
-        let trackedSessionMemory = activeMemory.flatMap { memory in
-            resolvedTrackedSessionMemory(from: memory, defaultMemory: defaultMemory)
-        }
+        let dependencies = try await resolveTurnDependencies()
+        let activeTracer = dependencies.tracer
+        let activeMemory = dependencies.memory
+        let memoryHooks = dependencies.memoryHooks
         var defaultMemoryRunKey: ObjectIdentifier?
 
         if let session,
-           let trackedSessionMemory
+           let trackedSessionMemory = dependencies.trackedSessionMemory
         {
             let memoryKey = memoryObjectIdentifier(trackedSessionMemory)
             defaultMemoryRunKey = memoryKey
@@ -879,7 +867,6 @@ public struct Agent: AgentRuntime, Sendable {
             tracer: activeTracer,
             agentName: configuration.name.isEmpty ? "Agent" : configuration.name
         )
-        let runtimeToolRegistry = try await resolvedToolRegistry()
         await tracing.traceStart(input: input)
 
         // Notify observer of agent start
@@ -924,9 +911,9 @@ public struct Agent: AgentRuntime, Sendable {
             let userMessage = SwarmTranscriptCodec.encodeMessage(role: .user, content: input)
 
             // Execute the tool calling loop with session context
-            let provider = try await resolvedInferenceProvider()
+            let provider = dependencies.provider
             let executionContext = AgentContext(input: input)
-            let runtimeEnvironment = runtimeEnvironment(for: provider)
+            let runtimeEnvironment = runtimeEnvironment(for: provider, snapshot: dependencies.environmentSnapshot)
             let ownsToolLoop = provider.capabilities.contains(.providerOwnedToolLoop)
             let executionGate = ownsToolLoop ? ProviderOwnedLoopGate() : nil
             let pendingHandoff = OwnedLoopPendingHandoff()
@@ -934,8 +921,7 @@ public struct Agent: AgentRuntime, Sendable {
             let toolLoopOutcome = try await AgentEnvironmentValues.$current.withValue(runtimeEnvironment) {
                 try await executeToolCallingLoop(
                     input: input,
-                    toolRegistry: runtimeToolRegistry,
-                    provider: provider,
+                    dependencies: dependencies,
                     sessionHistory: sessionHistory,
                     session: session,
                     resultBuilder: resultBuilder,
@@ -973,7 +959,7 @@ public struct Agent: AgentRuntime, Sendable {
                 if let transcriptHash = try? persistedTranscript.transcriptHash() {
                     _ = resultBuilder.setMetadata(Self.transcriptHashMetadataKey, .string(transcriptHash))
                 }
-            } else if let activeMemory, shouldPersistNoSessionTurn(to: activeMemory) {
+            } else if let activeMemory, dependencies.shouldPersistNoSessionTurnToDefaultMemory {
                 await persistNoSessionTurn(
                     userMessage: userMessage,
                     transcriptMessages: toolLoopOutcome.transcriptMessages,
@@ -1017,39 +1003,33 @@ public struct Agent: AgentRuntime, Sendable {
         }
     }
 
-    // MARK: - Inference Provider Resolution
+    // MARK: - Turn Dependency Resolution
 
-    private func resolvedInferenceProvider() async throws -> any InferenceProvider {
-        try await AgentDependencyResolver.inferenceProvider(
-            privacyRequired: configuration.inferencePolicy?.privacyRequired == true,
+    /// Gathers every resolution channel for one turn — explicit configuration,
+    /// the TaskLocal environment snapshot, package globals, and the agent's
+    /// base tools — and resolves them exactly once into an
+    /// ``AgentTurnDependencies`` value.
+    private func resolveTurnDependencies() async throws -> AgentTurnDependencies {
+        let query = AgentTurnDependencyQuery(
+            configuration: configuration,
             explicitProvider: inferenceProvider,
-            environment: AgentEnvironmentValues.current,
-            runEnvironment: runEnvironment
-        )
-    }
-
-    private func resolvedMembraneAdapter() -> (any MembraneAgentAdapter)? {
-        AgentDependencyResolver.membraneAdapter(in: AgentEnvironmentValues.current)
-    }
-
-    private func runtimeEnvironment(for provider: any InferenceProvider) -> AgentEnvironment {
-        AgentDependencyResolver.runtimeEnvironment(AgentEnvironmentValues.current, addingTokenCounterFrom: provider)
-    }
-
-    private func resolvedMemory() -> (any Memory)? {
-        AgentDependencyResolver.memory(
             explicitMemory: memory,
-            environmentMemory: AgentEnvironmentValues.current.memory,
-            defaultMemory: defaultMemory
+            defaultMemory: defaultMemory,
+            explicitTracer: tracer,
+            metricsCollector: metricsCollector,
+            baseTools: await toolRegistry.allTools,
+            environment: AgentEnvironmentValues.current,
+            globalProvider: await runEnvironment.defaultProvider(),
+            globalWebSearch: await runEnvironment.webConfiguration()
         )
+        return try AgentTurnDependencyResolver.resolve(query)
     }
 
-    private func shouldPersistNoSessionTurn(to activeMemory: any Memory) -> Bool {
-        guard let defaultMemory else {
-            return false
-        }
-
-        return memoriesAreSameInstance(activeMemory, defaultMemory)
+    private func runtimeEnvironment(
+        for provider: any InferenceProvider,
+        snapshot: AgentEnvironment
+    ) -> AgentEnvironment {
+        AgentDependencyResolver.runtimeEnvironment(snapshot, addingTokenCounterFrom: provider)
     }
 
     private func persistNoSessionTurn(
@@ -1091,14 +1071,6 @@ public struct Agent: AgentRuntime, Sendable {
         // Lean builds, or Integrations on non-Apple (no ContextCore link).
         return SlidingWindowMemory()
         #endif
-    }
-
-    private func resolvedToolRegistry() async throws -> ToolRegistry {
-        try await AgentDependencyResolver.toolRegistry(
-            baseTools: await toolRegistry.allTools,
-            taskLocalWebSearch: AgentEnvironmentValues.current.webSearch,
-            runEnvironment: runEnvironment
-        )
     }
 
     private func resolvedInferenceOptions(
@@ -1205,8 +1177,7 @@ public struct Agent: AgentRuntime, Sendable {
 
     private func executeToolCallingLoop(
         input: String,
-        toolRegistry: ToolRegistry,
-        provider: any InferenceProvider,
+        dependencies: AgentTurnDependencies,
         sessionHistory: [MemoryMessage] = [],
         session: (any Session)?,
         resultBuilder: AgentResult.Builder,
@@ -1217,6 +1188,8 @@ public struct Agent: AgentRuntime, Sendable {
         executionGate: ProviderOwnedLoopGate?,
         pendingHandoff: OwnedLoopPendingHandoff
     ) async throws -> ToolLoopOutcome {
+        let toolRegistry = dependencies.toolRegistry
+        let provider = dependencies.provider
         var iteration = 0
         let startTime = ContinuousClock.now
         var inferenceOptions = await resolvedInferenceOptions(session: session, provider: provider)
@@ -1224,9 +1197,13 @@ public struct Agent: AgentRuntime, Sendable {
             inferenceOptions.structuredOutput = structuredOutputRequest
         }
         inferenceOptions.conversationId = session?.sessionId ?? UUID().uuidString
+        inferenceOptions = optionsWithMembraneRuntimeSettings(
+            inferenceOptions,
+            membrane: dependencies.membraneEnvironment
+        )
 
         // Retrieve relevant context from memory (enables RAG for VectorMemory)
-        let activeMemory = resolvedMemory()
+        let activeMemory = dependencies.memory
         var memoryContext = ""
         if let mem = activeMemory {
             let contextProfile = configuration.effectiveContextProfile
@@ -1260,7 +1237,7 @@ public struct Agent: AgentRuntime, Sendable {
         let enableStreaming = configuration.enableStreaming && observer != nil
         let capabilities = providerCapabilities(for: provider)
         let useToolStreaming = enableStreaming && capabilities.contains(.streamingToolCalls)
-        let membraneAdapter = resolvedMembraneAdapter()
+        let membraneAdapter = dependencies.membraneAdapter
 
         while iteration < configuration.maxIterations {
             iteration += 1
@@ -1418,6 +1395,8 @@ public struct Agent: AgentRuntime, Sendable {
                     let handoffOutcome = try await completeOwnedLoopHandoff(
                         request,
                         toolRegistry: toolRegistry,
+                        memory: activeMemory,
+                        membraneAdapter: membraneAdapter,
                         conversationHistory: conversationHistory,
                         transcriptMessages: &transcriptMessages,
                         resultBuilder: resultBuilder,
@@ -1433,6 +1412,8 @@ public struct Agent: AgentRuntime, Sendable {
                         let handoffOutcome = try await completeOwnedLoopHandoff(
                             OwnedLoopHandoffRequest(name: pending.name, arguments: pending.arguments),
                             toolRegistry: toolRegistry,
+                            memory: activeMemory,
+                            membraneAdapter: membraneAdapter,
                             conversationHistory: conversationHistory,
                             transcriptMessages: &transcriptMessages,
                             resultBuilder: resultBuilder,
@@ -1477,6 +1458,7 @@ public struct Agent: AgentRuntime, Sendable {
                     let handoffResult = try await processToolCallsWithHandoffs(
                         response: response,
                         toolRegistry: toolRegistry,
+                        memory: activeMemory,
                         conversationHistory: &conversationHistory,
                         transcriptMessages: &transcriptMessages,
                         resultBuilder: resultBuilder,
@@ -1640,7 +1622,7 @@ public struct Agent: AgentRuntime, Sendable {
     ) async throws -> FinalAssistantResponse {
         await observer?.notifyLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
 
-        let options = optionsWithMembraneRuntimeSettings(inferenceOptions)
+        let options = inferenceOptions
         let content: String
         let structuredOutput: StructuredOutputResult?
         if let request = options.structuredOutput {
@@ -1676,6 +1658,7 @@ public struct Agent: AgentRuntime, Sendable {
     private func executeSingleToolCall(
         parsedCall: InferenceResponse.ParsedToolCall,
         toolRegistry: ToolRegistry,
+        memory: (any Memory)?,
         conversationHistory: inout [ConversationMessage],
         transcriptMessages: inout [MemoryMessage],
         resultBuilder: AgentResult.Builder,
@@ -1685,7 +1668,7 @@ public struct Agent: AgentRuntime, Sendable {
         membraneAdapter: (any MembraneAgentAdapter)?,
         startTime: ContinuousClock.Instant
     ) async throws {
-        let activeMemory = resolvedMemory()
+        let activeMemory = memory
 
         // Handoff I/O lives in `processToolCallsWithHandoffs`. A `.handoff` kind
         // here is the missing-configuration fallback and must not take the
@@ -1957,6 +1940,7 @@ public struct Agent: AgentRuntime, Sendable {
     private func processToolCallsWithHandoffs(
         response: InferenceResponse,
         toolRegistry: ToolRegistry,
+        memory: (any Memory)?,
         conversationHistory: inout [ConversationMessage],
         transcriptMessages: inout [MemoryMessage],
         resultBuilder: AgentResult.Builder,
@@ -1993,6 +1977,7 @@ public struct Agent: AgentRuntime, Sendable {
                     try await executeSingleToolCall(
                         parsedCall: parsedCall,
                         toolRegistry: toolRegistry,
+                        memory: memory,
                         conversationHistory: &conversationHistory,
                         transcriptMessages: &transcriptMessages,
                         resultBuilder: resultBuilder,
@@ -2187,6 +2172,7 @@ public struct Agent: AgentRuntime, Sendable {
                 try await executeSingleToolCall(
                     parsedCall: parsedCall,
                     toolRegistry: toolRegistry,
+                    memory: memory,
                     conversationHistory: &conversationHistory,
                     transcriptMessages: &transcriptMessages,
                     resultBuilder: resultBuilder,
@@ -2334,8 +2320,7 @@ public struct Agent: AgentRuntime, Sendable {
         emitOutputTokens: Bool = false,
         toolExecutor: ToolCallExecutor? = nil
     ) async throws -> InferenceResponse {
-        var options = inferenceOptions
-        options = optionsWithMembraneRuntimeSettings(options)
+        let options = inferenceOptions
 
         // Notify observer of LLM start
         await observer?.notifyLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
@@ -2369,8 +2354,7 @@ public struct Agent: AgentRuntime, Sendable {
         observer: (any AgentObserver)? = nil,
         toolExecutor: ToolCallExecutor? = nil
     ) async throws -> InferenceResponse {
-        var options = inferenceOptions
-        options = optionsWithMembraneRuntimeSettings(options)
+        let options = inferenceOptions
 
         await observer?.notifyLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
 
@@ -2430,8 +2414,11 @@ public struct Agent: AgentRuntime, Sendable {
         )
     }
 
-    func optionsWithMembraneRuntimeSettings(_ base: InferenceOptions) -> InferenceOptions {
-        guard let membrane = AgentEnvironmentValues.current.membrane, membrane.isEnabled else {
+    func optionsWithMembraneRuntimeSettings(
+        _ base: InferenceOptions,
+        membrane: MembraneEnvironment?
+    ) -> InferenceOptions {
+        guard let membrane, membrane.isEnabled else {
             return base
         }
 
@@ -2503,6 +2490,8 @@ public struct Agent: AgentRuntime, Sendable {
     private func completeOwnedLoopHandoff(
         _ request: OwnedLoopHandoffRequest,
         toolRegistry: ToolRegistry,
+        memory: (any Memory)?,
+        membraneAdapter: (any MembraneAgentAdapter)?,
         conversationHistory: [ConversationMessage],
         transcriptMessages: inout [MemoryMessage],
         resultBuilder: AgentResult.Builder,
@@ -2526,12 +2515,13 @@ public struct Agent: AgentRuntime, Sendable {
         let handoffOutput = try await processToolCallsWithHandoffs(
             response: response,
             toolRegistry: toolRegistry,
+            memory: memory,
             conversationHistory: &history,
             transcriptMessages: &transcriptMessages,
             resultBuilder: resultBuilder,
             observer: observer,
             tracing: tracing,
-            membraneAdapter: resolvedMembraneAdapter(),
+            membraneAdapter: membraneAdapter,
             context: context,
             startTime: startTime
         )
