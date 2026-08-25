@@ -9,16 +9,18 @@ import Foundation
 
 /// Predefined keys for common agent context values.
 ///
-/// Use these standardized keys when storing and retrieving common
-/// orchestration data from `AgentContext`.
+/// Use typed ``ContextKey`` orchestration statics such as
+/// ``ContextKey/originalInput``. These string keys remain for source
+/// compatibility.
 ///
 /// Example:
 /// ```swift
-/// await context.set(.originalInput, value: .string("User query"))
-/// if let input = await context.get(.originalInput)?.stringValue {
+/// await context.set(.originalInput, "User query")
+/// if let input = await context.get(.originalInput) {
 ///     print("Original: \(input)")
 /// }
 /// ```
+@available(*, deprecated, message: "Use typed ContextKey orchestration statics such as ContextKey.originalInput.")
 public enum AgentContextKey: String, Sendable {
     /// The original input that started orchestration.
     case originalInput = "original_input"
@@ -181,9 +183,18 @@ public actor AgentContext {
         messages = []
         executionPath = []
 
-        // Store original input in values
-        values[AgentContextKey.originalInput.rawValue] = .string(input)
-        values[AgentContextKey.startTime.rawValue] = .double(createdAt.timeIntervalSince1970)
+        // Isolated ContextKey setters cannot run from init. Seed the same
+        // raw names and typed slots the orchestration setters use.
+        values[ContextKey<String>.originalInput.name] = .string(input)
+        values[ContextKey<Date>.startTime.name] = .double(createdAt.timeIntervalSince1970)
+        self.slots.setValuePayload(
+            ContextKey<String>.originalInput,
+            payload: ContextValueCodec.encode(input)
+        )
+        self.slots.setValuePayload(
+            ContextKey<Date>.startTime,
+            payload: ContextValueCodec.encode(createdAt)
+        )
     }
 
     // MARK: - Key-Value Storage
@@ -200,8 +211,10 @@ public actor AgentContext {
     ///
     /// - Parameter key: The context key to look up.
     /// - Returns: The stored value, or nil if not found.
+    @available(*, deprecated, message: "Use typed ContextKey accessors such as get(.originalInput).")
+    @_disfavoredOverload
     public func get(_ key: AgentContextKey) -> SendableValue? {
-        values[key.rawValue]
+        snapshot[key.rawValue]
     }
 
     /// Stores a value by string key.
@@ -211,6 +224,10 @@ public actor AgentContext {
     ///   - value: The value to store.
     public func set(_ key: String, value: SendableValue) {
         values[key] = value
+        // Orchestration names are also typed slots. A raw write must drop the
+        // matching slot so `get(.originalInput)` cannot keep serving init's
+        // seed after this name has been overwritten.
+        clearTypedOrchestrationSlot(named: key)
     }
 
     /// Stores a value by predefined context key.
@@ -218,8 +235,44 @@ public actor AgentContext {
     /// - Parameters:
     ///   - key: The context key to store under.
     ///   - value: The value to store.
+    @available(*, deprecated, message: "Use typed ContextKey accessors such as set(.originalInput, _).")
+    @_disfavoredOverload
     public func set(_ key: AgentContextKey, value: SendableValue) {
+        switch key {
+        case .originalInput:
+            if let string = value.stringValue {
+                set(ContextKey<String>.originalInput, string)
+                return
+            }
+        case .previousOutput:
+            if let string = value.stringValue {
+                set(ContextKey<String>.previousOutput, string)
+                return
+            }
+        case .currentAgentName:
+            if let string = value.stringValue {
+                set(ContextKey<String>.currentAgentName, string)
+                return
+            }
+        case .executionPath:
+            if let elements = value.arrayValue {
+                let path = elements.compactMap(\.stringValue)
+                if path.count == elements.count {
+                    set(ContextKey<[String]>.executionPath, path)
+                    return
+                }
+            }
+        case .startTime:
+            if let timestamp = value.doubleValue {
+                set(ContextKey<Date>.startTime, Date(timeIntervalSince1970: timestamp))
+                return
+            }
+        case .metadata:
+            break
+        }
+
         values[key.rawValue] = value
+        clearTypedOrchestrationSlot(named: key.rawValue)
     }
 
     /// Removes a value by string key.
@@ -265,10 +318,8 @@ public actor AgentContext {
     /// - Parameter agentName: The name of the agent that executed.
     public func recordExecution(agentName: String) {
         executionPath.append(agentName)
-        values[AgentContextKey.executionPath.rawValue] = .array(
-            executionPath.map { .string($0) }
-        )
-        values[AgentContextKey.currentAgentName.rawValue] = .string(agentName)
+        set(.executionPath, executionPath)
+        set(.currentAgentName, agentName)
     }
 
     /// Gets the execution path.
@@ -287,14 +338,14 @@ public actor AgentContext {
     ///
     /// - Parameter result: The result from the previous agent.
     public func setPreviousOutput(_ result: AgentResult) {
-        values[AgentContextKey.previousOutput.rawValue] = .string(result.output)
+        set(.previousOutput, result.output)
     }
 
     /// Gets the previous agent's output.
     ///
     /// - Returns: The previous output, or nil if not set.
     public func getPreviousOutput() -> String? {
-        values[AgentContextKey.previousOutput.rawValue]?.stringValue
+        get(.previousOutput)
     }
 
     // MARK: - Merging
@@ -474,6 +525,25 @@ public actor AgentContext {
     /// the two namespaces.
     func rawValuesAndValueSlots() -> (raw: [String: SendableValue], slots: ContextSlotStore) {
         (values, slots)
+    }
+
+    /// Drops the typed orchestration slot for `name`, if this name is one of
+    /// the five slots that also live behind `ContextKey` statics.
+    private func clearTypedOrchestrationSlot(named name: String) {
+        switch name {
+        case ContextKey<String>.originalInput.name:
+            removeTyped(ContextKey<String>.originalInput)
+        case ContextKey<String>.previousOutput.name:
+            removeTyped(ContextKey<String>.previousOutput)
+        case ContextKey<String>.currentAgentName.name:
+            removeTyped(ContextKey<String>.currentAgentName)
+        case ContextKey<[String]>.executionPath.name:
+            removeTyped(ContextKey<[String]>.executionPath)
+        case ContextKey<Date>.startTime.name:
+            removeTyped(ContextKey<Date>.startTime)
+        default:
+            break
+        }
     }
 
     // MARK: Private

@@ -444,6 +444,14 @@ public protocol OutputGuardrail: Sendable {
 }
 ```
 
+`AgentContext` orchestration slots (`originalInput`, `previousOutput`,
+`currentAgentName`, `executionPath`, `startTime`) are typed `ContextKey`
+statics. Prefer `set(.originalInput, "…")` / `get(.originalInput)` over the
+deprecated `AgentContextKey` get/set. Typed `ContextKey` writes stay in the
+slot store introduced with the unified context; `snapshot` still projects
+those names. `AgentContextProviding` remains a deprecated shim keyed by
+concrete type plus `contextKey`.
+
 ## 9) Memory factories
 
 Dot-syntax memory factories are contextual. Use them where Swift can infer a
