@@ -1638,7 +1638,7 @@ public struct Agent: AgentRuntime, Sendable {
         enableStreaming: Bool = false,
         observer: (any AgentObserver)?
     ) async throws -> FinalAssistantResponse {
-        await observer?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
+        await observer?.notifyLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
 
         let options = optionsWithMembraneRuntimeSettings(inferenceOptions)
         let content: String
@@ -2338,7 +2338,7 @@ public struct Agent: AgentRuntime, Sendable {
         options = optionsWithMembraneRuntimeSettings(options)
 
         // Notify observer of LLM start
-        await observer?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
+        await observer?.notifyLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
 
         let response = try await provider.generateWithToolCalls(
             messages: messages,
@@ -2372,7 +2372,7 @@ public struct Agent: AgentRuntime, Sendable {
         var options = inferenceOptions
         options = optionsWithMembraneRuntimeSettings(options)
 
-        await observer?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
+        await observer?.notifyLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: messages)
 
         var content = ""
         content.reserveCapacity(1024)

@@ -107,7 +107,7 @@ struct AgentObserverDefaultImplementationTests {
         await observer.onHandoff(context: nil, fromAgent: agent, toAgent: agent)
         await observer.onToolStart(context: nil, agent: agent, call: ToolCall(toolName: "test_tool", arguments: [:]))
         await observer.onToolEnd(context: nil, agent: agent, result: ToolResult.success(callId: UUID(), output: .string("result"), duration: .seconds(1)))
-        await observer.onLLMStart(context: nil, agent: agent, systemPrompt: nil, inputMessages: [])
+        await observer.onLLMStart(context: nil, agent: agent, systemPrompt: nil, inputMessages: [InferenceMessage]())
         await observer.onLLMEnd(context: nil, agent: agent, response: "response", usage: nil)
         await observer.onGuardrailTriggered(
             context: nil,
@@ -243,7 +243,7 @@ struct CompositeAgentObserverTests {
         let toolCall = ToolCall(toolName: "calculator", arguments: ["x": .int(5)])
         await composite.onToolStart(context: context, agent: agent, call: toolCall)
         await composite.onToolEnd(context: context, agent: agent, result: ToolResult.success(callId: toolCall.id, output: .int(10), duration: .seconds(1)))
-        await composite.onLLMStart(context: context, agent: agent, systemPrompt: "You are helpful", inputMessages: [])
+        await composite.onLLMStart(context: context, agent: agent, systemPrompt: "You are helpful", inputMessages: [InferenceMessage]())
         await composite.onLLMEnd(context: context, agent: agent, response: "response", usage: nil)
         await composite.onGuardrailTriggered(
             context: context,
@@ -613,7 +613,7 @@ struct AgentObserverEdgeCaseTests {
         // removed unused tool
 
         await observer.onToolStart(context: nil, agent: agent, call: ToolCall(toolName: "tool", arguments: [:]))
-        await observer.onLLMStart(context: nil, agent: agent, systemPrompt: nil, inputMessages: [])
+        await observer.onLLMStart(context: nil, agent: agent, systemPrompt: nil, inputMessages: [InferenceMessage]())
 
         let events = await observer.getEvents()
         #expect(events.count == 2)
@@ -624,7 +624,7 @@ struct AgentObserverEdgeCaseTests {
         let observer = RecordingObserver()
         let agent = MockAgentForAgentObserver()
 
-        await observer.onLLMStart(context: nil, agent: agent, systemPrompt: nil, inputMessages: [])
+        await observer.onLLMStart(context: nil, agent: agent, systemPrompt: nil, inputMessages: [InferenceMessage]())
         await observer.onLLMEnd(context: nil, agent: agent, response: "response", usage: nil)
 
         let events = await observer.getEvents()
