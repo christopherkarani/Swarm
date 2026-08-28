@@ -314,7 +314,7 @@ struct ProviderOwnedToolLoopTests {
         #expect(result.output == "from target")
     }
 
-    @Test("Capture adapter still iterates with the default configuration")
+    @Test("Deprecated nativeSession flag does not stop Agent iterating a capture adapter")
     func deprecatedFlagDoesNotChooseTheLoop() async throws {
         let spy = MockTool(
             name: "test_tool",
@@ -339,6 +339,7 @@ struct ProviderOwnedToolLoopTests {
         ])
 
         let config = AgentConfiguration.default
+            .foundationModelsExecution(.nativeSession)
             .defaultTracingEnabled(false)
         let agent = try Agent(
             tools: [spy],

@@ -137,9 +137,20 @@ struct AgentConfigurationTests {
         #expect(config.maxIterations == 10)
         #expect(config.timeout == .seconds(60))
         #expect(config.temperature == 1.0)
+        #expect(config.foundationModelsExecution == .capture)
         #expect(config.resilience == .disabled)
         #expect(config.resilience.retryPolicy == .noRetry)
         #expect(config.autoAttachMetricsCollector == false)
+    }
+
+    @Test("Native session execution is opt-in and does not mutate capture default")
+    func nativeSessionExecutionIsOptIn() {
+        let original = AgentConfiguration.default
+        let native = original.foundationModelsExecution(.nativeSession)
+
+        #expect(original.foundationModelsExecution == .capture)
+        #expect(native.foundationModelsExecution == .nativeSession)
+        #expect(native.maxIterations == original.maxIterations)
     }
 
     @Test("Custom initialization")

@@ -1,13 +1,20 @@
-// AgentToolLoopProviderTests.swift
+// FoundationModelsExecutionModeTests.swift
 //
-// Non-FM adapters keep the Agent-owned tool loop.
+// Deprecated flag is a no-op. Non-FM adapters keep the Agent tool loop.
 
 import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Agent Tool Loop Provider", .ephemeralDefaultStores)
-struct AgentToolLoopProviderTests {
+@Suite("FoundationModels Execution Mode", .ephemeralDefaultStores)
+struct FoundationModelsExecutionModeTests {
+
+    @Test("Capture remains the stored AgentConfiguration default")
+    func captureIsDefault() {
+        #expect(AgentConfiguration.default.foundationModelsExecution == .capture)
+        #expect(AgentConfiguration().foundationModelsExecution == .capture)
+    }
+
     @Test("Non-FM providers keep the Swarm tool loop")
     func nonFMProvidersKeepSwarmToolLoop() async throws {
         let spy = MockTool(

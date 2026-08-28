@@ -645,7 +645,8 @@ Opt in to a provider-owned tool loop with
 ``InferenceProviderCapabilities/providerOwnedToolLoop`` and always calls
 ``InferenceProvider/generateWithToolCalls(messages:tools:options:toolExecutor:)``
 (or the streaming counterpart). It never type-casts the adapter.
-Structured outputs use guided generation when the JSON Schema maps;
+``AgentConfiguration/foundationModelsExecution`` is ignored. Capture remains
+the default. Structured outputs use guided generation when the JSON Schema maps;
 otherwise prompt+parse. Agent never type-casts leftover capability protocols.
 See the [Foundation Models guide](/guide/foundation-models).
 
