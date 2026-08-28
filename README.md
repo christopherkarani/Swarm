@@ -201,6 +201,16 @@ Foundation Models and some memory and platform integrations are Apple-only.
 On Linux and in CI, use an OpenAI-compatible provider, inject a mock, or run
 the deterministic examples.
 
+To configure one provider globally for the default graph:
+
+```swift
+await Swarm.configure(provider: myProvider)
+```
+
+The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog require supported Apple
+platforms; on Linux and in CI, use an OpenAI-compatible provider or inject a
+mock.
+
 ## Documentation
 
 | Guide | Covers |
