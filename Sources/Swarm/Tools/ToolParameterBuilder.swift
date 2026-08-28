@@ -308,7 +308,7 @@ public struct ToolBuilder {
 
         /// Wraps a user-authored `FoundationModels.Tool` into a `ToolCollection`.
         ///
-        /// - Experiment: Intended for ``FoundationModelsExecutionMode/nativeSession``.
+        /// - Experiment: Intended for a provider-owned Foundation Models tool loop.
         @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
         @available(tvOS, unavailable)
         @available(watchOS, unavailable)

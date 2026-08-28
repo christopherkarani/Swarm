@@ -112,57 +112,6 @@ private extension InferencePolicy {
     }
 }
 
-// MARK: - FoundationModelsExecutionMode
-
-/// How Apple Foundation Models should run tool-calling turns.
-///
-/// Ignored. Construct ``InferenceProvider/foundationModelsOwningToolLoop()``
-/// for a provider-owned tool loop. This flag does not choose the loop.
-///
-/// - Warning: Deprecated. Remove in the next minor.
-///
-/// ## Capture vs native session
-///
-/// | | ``capture`` (default) | ``nativeSession`` (experimental) |
-/// |---|---|---|
-/// | Tool loop owner | Swarm agent loop | InferenceProvider (`LanguageModelSession`) |
-/// | Parallel tool calls | No (one captured call per turn) | Yes (Apple's session loop) |
-/// | Transcript / KV reuse | No (session rebuilt every turn) | Yes (session kept for the agent run) |
-/// | Token streaming with tools | No | Yes (`Agent.stream` yields incremental tokens) |
-/// | Per-iteration memory injection | Yes | **No** — memory is injected when the native session starts |
-/// | Swarm `maxIterations` cap | Yes | **No** — Apple owns the inner loop |
-/// | Mid-loop checkpoints | Yes | **No** |
-/// | Per-turn guardrail interception | Yes (wraps Swarm's loop) | **No** — input/tool guardrails run **inside** each tool body |
-///
-/// - Experiment: Native session mode may change in a minor release. Capture remains
-///   the supported default because Swarm-side control (guardrails, checkpoints,
-///   memory injection) is the framework's differentiator.
-///
-/// ```swift
-/// let agent = try Agent(
-///     "Be helpful.",
-///     inferenceProvider: .foundationModelsOwningToolLoop()
-/// ) {
-///     WeatherTool()
-/// }
-/// ```
-@available(*, deprecated, message: "Choose a provider-owned tool loop by constructing the InferenceProvider adapter (.foundationModelsOwningToolLoop()). This flag is ignored.")
-public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
-    /// Swarm owns the tool loop. Foundation Models tools throw a capture error so
-    /// Swarm can execute tools with guardrails, observers, retries, and
-    /// per-iteration memory injection. This is the default.
-    case capture
-
-    /// Let the Foundation Models adapter run a provider-owned tool loop on a
-    /// persistent `LanguageModelSession`.
-    ///
-    /// - Experiment: Opt-in. Unlocks parallel tool calls, transcript/KV reuse, and
-    ///   real token streaming with tools. Loses per-iteration memory injection,
-    ///   Swarm-side max-iteration caps, mid-loop checkpoints, and per-turn
-    ///   guardrail interception (guardrails move inside tool bodies).
-    case nativeSession
-}
-
 // MARK: - AgentConfiguration
 
 /// Configuration settings for agent execution.
@@ -220,7 +169,6 @@ public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
 /// - ``autoPreviousResponseId(_:)`` - Set auto response tracking
 /// - ``defaultTracingEnabled(_:)`` - Set default tracing
 /// - ``autoAttachMetricsCollector(_:)`` - Auto-attach a ``MetricsCollector``
-/// - ``foundationModelsExecution(_:)`` - Set Foundation Models execution mode (experimental)
 /// - ``resilience(_:)`` - Set retry, circuit-breaker, and rate-limit policies for inference
 ///
 /// ## Thread Safety
@@ -662,16 +610,6 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   ``Agent/metricsCollector``
     public var autoAttachMetricsCollector: Bool
 
-    // MARK: - Foundation Models Execution
-
-    /// Ignored. Construct a provider-owned tool loop adapter instead of setting this flag.
-    ///
-    /// Default: ``FoundationModelsExecutionMode/capture``.
-    ///
-    /// - SeeAlso: ``InferenceProvider/foundationModelsOwningToolLoop()``
-    @available(*, deprecated, message: "Choose a provider-owned tool loop by constructing the InferenceProvider adapter. This flag is ignored.")
-    public var foundationModelsExecution: FoundationModelsExecutionMode
-
     // MARK: - Resilience Settings
 
     /// Retry, circuit-breaker, and rate-limit policies for **provider inference**.
@@ -712,7 +650,6 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - autoPreviousResponseId: Enable auto response ID tracking. Default: false
     ///   - defaultTracingEnabled: Enable default tracing when no tracer configured. Default: true
     ///   - autoAttachMetricsCollector: Auto-attach a ``MetricsCollector``. Default: false
-    ///   - foundationModelsExecution: Foundation Models tool-loop mode. Default: ``FoundationModelsExecutionMode/capture``
     ///   - resilience: Retry / circuit-breaker / rate-limit policies for inference. Default: ``ResilienceConfiguration/disabled``
     public init(
         name: String = "Agent",
@@ -735,7 +672,6 @@ public struct AgentConfiguration: Sendable, Equatable {
         autoPreviousResponseId: Bool = false,
         defaultTracingEnabled: Bool = true,
         autoAttachMetricsCollector: Bool = false,
-        foundationModelsExecution: FoundationModelsExecutionMode = .capture,
         resilience: ResilienceConfiguration = .disabled
     ) {
         self.name = name
@@ -759,7 +695,6 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.autoPreviousResponseId = autoPreviousResponseId
         self.defaultTracingEnabled = defaultTracingEnabled
         self.autoAttachMetricsCollector = autoAttachMetricsCollector
-        self.foundationModelsExecution = foundationModelsExecution
         self.resilience = resilience
     }
 }
@@ -1314,21 +1249,6 @@ extension AgentConfiguration {
         return copy
     }
 
-    // MARK: Foundation Models Execution
-
-    /// Ignored. Construct a provider-owned tool loop adapter instead of setting this flag.
-    ///
-    /// - Parameter value: Previously selected the Foundation Models tool loop. Ignored.
-    /// - Returns: A new configuration with the stored (ignored) flag.
-    @available(*, deprecated, message: "Choose a provider-owned tool loop by constructing the InferenceProvider adapter. This flag is ignored.")
-    @discardableResult public func foundationModelsExecution(
-        _ value: FoundationModelsExecutionMode
-    ) -> AgentConfiguration {
-        var copy = self
-        copy.foundationModelsExecution = value
-        return copy
-    }
-
     // MARK: Resilience Settings
 
     /// Sets retry, circuit-breaker, and rate-limit policies for provider inference.
@@ -1381,41 +1301,8 @@ extension AgentConfiguration: CustomStringConvertible {
             autoPreviousResponseId: \(autoPreviousResponseId),
             defaultTracingEnabled: \(defaultTracingEnabled),
             autoAttachMetricsCollector: \(autoAttachMetricsCollector),
-            foundationModelsExecution: \(foundationModelsExecution),
             resilience: \(String(describing: resilience))
         )
         """
-    }
-
-    func warnIfDeprecatedNativeSessionFlag() {
-        FoundationModelsExecutionModeNag.warnIfNeeded(foundationModelsExecution)
-    }
-}
-
-enum FoundationModelsExecutionModeNag {
-    private static let once = OnceFlag()
-
-    static func warnIfNeeded(_ mode: FoundationModelsExecutionMode) {
-        guard mode == .nativeSession else { return }
-        guard once.take() else { return }
-        Log.agents.warning(
-            """
-            AgentConfiguration.foundationModelsExecution is ignored. \
-            Construct .foundationModelsOwningToolLoop() for a provider-owned tool loop.
-            """
-        )
-    }
-}
-
-private final class OnceFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var done = false
-
-    func take() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        if done { return false }
-        done = true
-        return true
     }
 }
