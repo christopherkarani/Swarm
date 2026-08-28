@@ -7,16 +7,8 @@
 @testable import Swarm
 import Testing
 
-@Suite("Wax Integration Tests")
-struct WaxIntegrationTests {
-    @Test("Wax integration is enabled by default")
-    func waxIntegrationIsEnabled() {
-        let integration = WaxIntegration()
-
-        #expect(integration.isEnabled == true)
-        #expect(WaxIntegration.debugDescription == "Wax integration is enabled")
-    }
-
+@Suite("Wax Embedding Provider Adapter Tests")
+struct WaxEmbeddingProviderAdapterTests {
     @Test("Wax embedding adapter normalizes vectors when requested")
     func waxEmbeddingAdapterNormalizesVectorsWhenRequested() async throws {
         let adapter = WaxEmbeddingProviderAdapter(FixedEmbeddingProvider(vector: [3, 4]), normalize: true)
