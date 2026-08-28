@@ -647,6 +647,13 @@ Built-in inference is Apple Foundation Models (on-device) and
 ``InferenceProvider`` and are passed explicitly (or via
 `await Swarm.configure(provider:)`).
 
+Prompt-string methods remain for one minor so existing backends compile. Agent
+and tests call the messages methods only. Prompt-string methods default to
+wrapping `prompt` as a user message. Capability bits and the structured-message
+methods are the live dispatch surface. Deprecated marker protocols remain
+available for source compatibility: `PromptTokenCountingInferenceProvider`,
+`StructuredOutputInferenceProvider`, and `ToolCallStreamingInferenceProvider`.
+
 ```swift
 .foundationModels()                 // On-device first-class provider
 .foundationModels(profile: profile) // Dynamic profile re-resolved each turn
