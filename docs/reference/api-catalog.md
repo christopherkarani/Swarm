@@ -2898,6 +2898,15 @@ Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationMo
 | 24 | var | public | WaxEmbeddingProviderAdapter.dimensions | `public var dimensions: Int { get }` |
 | 26 | func | public | WaxEmbeddingProviderAdapter.embed(_:) | `public func embed(_ text: String) async throws -> [Float]` |
 
+### Integration/Wax/WaxIntegration.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 8 | struct | public | WaxIntegration | `@available(*, deprecated, message: "Use IntegrationsTrait.isEnabled, WaxMemory, or WaxEmbeddingProviderAdapter instead.") public struct WaxIntegration` |
+| 10 | func | public | WaxIntegration.init() | `@available(*, deprecated, message: "WaxIntegration is retained only for source compatibility.") public init()` |
+| 14 | var | public | WaxIntegration.isEnabled | `@available(*, deprecated, message: "Use IntegrationsTrait.isEnabled instead.") public var isEnabled: Bool { get }` |
+| 20 | var | public | WaxIntegration.debugDescription | `@available(*, deprecated, message: "WaxIntegration.debugDescription is retained only for source compatibility.") public static var debugDescription: String { get }` |
+
 ### Integration/Wax/WaxMemory.swift
 
 | Line | Kind | Access | Name | Signature |

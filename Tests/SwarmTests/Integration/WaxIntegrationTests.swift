@@ -2,13 +2,21 @@
 // WaxIntegrationTests.swift
 // SwarmTests
 //
-// Tests for Wax integration being available as a core dependency.
+// Tests for the Wax embedding adapter and deprecated integration compatibility.
 
 @testable import Swarm
 import Testing
 
-@Suite("Wax Embedding Provider Adapter Tests")
+@Suite("Wax Integration Compatibility and Embedding Provider Adapter Tests")
 struct WaxEmbeddingProviderAdapterTests {
+    @Test("Deprecated Wax integration marker remains source-compatible")
+    func deprecatedWaxIntegrationRemainsSourceCompatible() {
+        let integration = WaxIntegration()
+
+        #expect(integration.isEnabled == true)
+        #expect(WaxIntegration.debugDescription == "Wax integration is enabled")
+    }
+
     @Test("Wax embedding adapter normalizes vectors when requested")
     func waxEmbeddingAdapterNormalizesVectorsWhenRequested() async throws {
         let adapter = WaxEmbeddingProviderAdapter(FixedEmbeddingProvider(vector: [3, 4]), normalize: true)
