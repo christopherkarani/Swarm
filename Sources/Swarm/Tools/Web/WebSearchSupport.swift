@@ -1212,7 +1212,7 @@ internal struct TavilySearchBackend: Sendable {
         Log.agents.info("[TavilySearchBackend] POST api.tavily.com/search — query='\(query)', maxResults=\(maxResults)")
 
         guard let url = URL(string: "https://api.tavily.com/search") else {
-            throw AgentError.toolExecutionFailed(toolName: "websearch", underlyingError: "Invalid Tavily URL")
+            throw AgentError.toolFailure(toolName: "websearch", message: "Invalid Tavily URL", cause: nil)
         }
 
         var body: [String: Any] = [
@@ -1238,14 +1238,15 @@ internal struct TavilySearchBackend: Sendable {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            throw AgentError.toolExecutionFailed(toolName: "websearch", underlyingError: "Tavily returned a non-HTTP response")
+            throw AgentError.toolFailure(toolName: "websearch", message: "Tavily returned a non-HTTP response", cause: nil)
         }
         guard http.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? "(no body)"
             Log.agents.error("[TavilySearchBackend] HTTP \(http.statusCode) — \(errorBody)")
-            throw AgentError.toolExecutionFailed(
+            throw AgentError.toolFailure(
                 toolName: "websearch",
-                underlyingError: "Tavily request failed (HTTP \(http.statusCode)): \(errorBody)"
+                message: "Tavily request failed (HTTP \(http.statusCode)): \(errorBody)",
+                cause: nil
             )
         }
 
@@ -1309,7 +1310,7 @@ internal struct SafeWebFetcher: Sendable {
         let response: URLResponse
         (data, response) = try await fetchDelegate.fetch(request, using: session)
         guard let http = response as? HTTPURLResponse else {
-            throw AgentError.toolExecutionFailed(toolName: "websearch", underlyingError: "Fetch returned a non-HTTP response")
+            throw AgentError.toolFailure(toolName: "websearch", message: "Fetch returned a non-HTTP response", cause: nil)
         }
         try Self.validate(url: http.url ?? url)
 
@@ -1327,16 +1328,18 @@ internal struct SafeWebFetcher: Sendable {
         }
 
         guard (200 ..< 300).contains(http.statusCode) else {
-            throw AgentError.toolExecutionFailed(
+            throw AgentError.toolFailure(
                 toolName: "websearch",
-                underlyingError: "Fetch failed for \(url.absoluteString) (HTTP \(http.statusCode))"
+                message: "Fetch failed for \(url.absoluteString) (HTTP \(http.statusCode))",
+                cause: nil
             )
         }
 
         guard data.count <= configuration.maxBodyBytes else {
-            throw AgentError.toolExecutionFailed(
+            throw AgentError.toolFailure(
                 toolName: "websearch",
-                underlyingError: "Fetched body exceeded limit of \(configuration.maxBodyBytes) bytes"
+                message: "Fetched body exceeded limit of \(configuration.maxBodyBytes) bytes",
+                cause: nil
             )
         }
 
@@ -1539,9 +1542,10 @@ private final class SafeWebFetchDelegateState: @unchecked Sendable {
             isFinished = true
             guard let response else {
                 let result: Result<(Data, URLResponse), Error> = .failure(
-                    AgentError.toolExecutionFailed(
+                    AgentError.toolFailure(
                         toolName: "websearch",
-                        underlyingError: "Fetch returned no response"
+                        message: "Fetch returned no response",
+                        cause: nil
                     )
                 )
                 finishedResult = result
@@ -1601,9 +1605,10 @@ internal struct SafeWebBodyAccumulator: Sendable {
     mutating func append(_ newData: Data, maxBodyBytes: Int) throws {
         let nextCount = data.count + newData.count
         guard nextCount <= maxBodyBytes else {
-            throw AgentError.toolExecutionFailed(
+            throw AgentError.toolFailure(
                 toolName: "websearch",
-                underlyingError: "Fetched body exceeded limit of \(maxBodyBytes) bytes"
+                message: "Fetched body exceeded limit of \(maxBodyBytes) bytes",
+                cause: nil
             )
         }
         data.append(newData)

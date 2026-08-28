@@ -484,7 +484,7 @@ extension Agent {
                 }
                 await observer?.onToolEnd(context: nil, agent: self, result: result)
                 if configuration.stopOnToolError {
-                    throw AgentError.toolExecutionFailed(toolName: parsedCall.name, underlyingError: message)
+                    throw AgentError.toolFailure(toolName: parsedCall.name, message: message, cause: error)
                 }
                 turnTranscript.appendToolResult(
                     toolName: parsedCall.name,
@@ -561,7 +561,7 @@ extension Agent {
                 }
 
                 if configuration.stopOnToolError {
-                    throw AgentError.toolExecutionFailed(toolName: parsedCall.name, underlyingError: errorMessage)
+                    throw AgentError.toolFailure(toolName: parsedCall.name, message: errorMessage, cause: nil)
                 }
             }
         }
@@ -722,7 +722,7 @@ extension Agent {
                     _ = resultBuilder.addToolResult(result)
 
                     if configuration.stopOnToolError {
-                        throw AgentError.toolExecutionFailed(toolName: parsedCall.name, underlyingError: message)
+                        throw AgentError.toolFailure(toolName: parsedCall.name, message: message, cause: nil)
                     }
 
                     let toolError = AgentTurnKernel.toolFailureConversationText(message: message)

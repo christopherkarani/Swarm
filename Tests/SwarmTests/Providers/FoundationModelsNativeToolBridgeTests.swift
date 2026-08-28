@@ -604,7 +604,7 @@ struct FoundationModelsExecutingToolTests {
         let swarmTool = MockTool(
             name: "boom",
             description: "Always fails",
-            handler: { _ in throw AgentError.toolExecutionFailed(toolName: "boom", underlyingError: "nope") }
+            handler: { _ in throw AgentError.toolFailure(toolName: "boom", message: "nope", cause: nil) }
         )
         let executor = ToolCallExecutor { _, _ in
             throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "nope"])
