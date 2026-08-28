@@ -617,6 +617,12 @@ for source compatibility, but capability bits and the structured-message methods
 are the single provider integration seam. Agent does not dispatch through marker
 protocol identities.
 
+Use ``InferenceProviderCapabilities/resolved(for:)`` for canonical capability
+resolution. The deprecated ``InferenceProviderCapabilities/inferred(from:)``
+helper remains available as a forwarding compatibility shim until a future
+breaking boundary is explicitly documented; it has the same capability
+semantics as ``resolved(for:)``.
+
 ### Provider factories (dot-syntax)
 
 Built-in inference is Apple Foundation Models (on-device) and

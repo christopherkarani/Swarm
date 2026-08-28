@@ -27,6 +27,14 @@ struct V2SurfaceAuditTests {
         #expect(Swarm.version == "0.6.2")
     }
 
+    @Test("Deprecated inferred(from:) remains a public forwarding compatibility shim")
+    func deprecatedInferredCapabilitiesRemainPublic() {
+        let provider = V2CapabilityProvider()
+        let resolved = InferenceProviderCapabilities.resolved(for: provider)
+
+        #expect(InferenceProviderCapabilities.inferred(from: provider) == resolved)
+    }
+
     // MARK: - TokenUsage (module-level, not nested)
 
     @Test("TokenUsage is public at module level")
@@ -175,5 +183,16 @@ struct V2SurfaceAuditTests {
             executionSemantics: semantics
         )
         #expect(schema.executionSemantics.retryPolicy == .safe)
+    }
+}
+
+private struct V2CapabilityProvider: InferenceProvider {
+    let capabilities: InferenceProviderCapabilities = [.responseContinuation]
+
+    func generate(
+        messages _: [InferenceMessage],
+        options _: InferenceOptions
+    ) async throws -> String {
+        "ok"
     }
 }
