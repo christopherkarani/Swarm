@@ -443,6 +443,55 @@ struct ToolResultTests {
         #expect(failure.output == .null)
     }
 
+    @Test("Deprecated ToolResult initializer cannot store success-with-error")
+    func deprecatedInitDropsErrorOnSuccess() {
+        let result = ToolResult(
+            callId: UUID(),
+            isSuccess: true,
+            output: .string("ok"),
+            duration: .zero,
+            errorMessage: "ignored"
+        )
+        #expect(result.isSuccess)
+        #expect(result.errorMessage == nil)
+        guard case let .success(value) = result.outcome else {
+            Issue.record("expected success outcome")
+            return
+        }
+        #expect(value == .string("ok"))
+    }
+
+    @Test("Deprecated ToolResult initializer cannot store failure-with-success-output")
+    func deprecatedInitDropsOutputOnFailure() {
+        let result = ToolResult(
+            callId: UUID(),
+            isSuccess: false,
+            output: .string("should not be kept"),
+            duration: .milliseconds(10),
+            errorMessage: "boom"
+        )
+        #expect(result.isSuccess == false)
+        #expect(result.output == .null)
+        #expect(result.errorMessage == "boom")
+        guard case let .failure(message) = result.outcome else {
+            Issue.record("expected failure outcome")
+            return
+        }
+        #expect(message == "boom")
+    }
+
+    @Test("Deprecated ToolResult failure initializer fills a default message when nil")
+    func deprecatedInitNilFailureMessage() {
+        let result = ToolResult(
+            callId: UUID(),
+            isSuccess: false,
+            output: .null,
+            duration: .zero
+        )
+        #expect(result.isSuccess == false)
+        #expect(result.errorMessage == "Tool execution failed")
+    }
+
     // MARK: - Legacy Codable
 
     private struct LegacyToolResultPayload: Encodable {

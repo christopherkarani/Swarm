@@ -731,6 +731,15 @@ public struct ToolResult: Sendable {
     public var isSuccess: Bool { get }
     public var output: SendableValue { get }       // `.null` on failure
     public var errorMessage: String? { get }      // `nil` on success
+
+    @available(*, deprecated, message: "Use ToolResult.success(...) or .failure(callId:error:duration:)")
+    public init(
+        callId: UUID,
+        isSuccess: Bool,
+        output: SendableValue,
+        duration: Duration,
+        errorMessage: String? = nil
+    )
 }
 
 public struct ToolCallRecord: Sendable {
@@ -750,7 +759,7 @@ public struct ToolCallRecord: Sendable {
 }
 ```
 
-Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The independent `isSuccess` + `errorMessage` memberwise initializers remain as deprecated compatibility shims. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
+Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The deprecated `ToolResult.init(callId:isSuccess:output:duration:errorMessage:)` and `ToolCallRecord` compatibility initializer remain available until the documented breaking boundary. They map independently supplied fields to the closed outcome using the historical rules: success ignores `errorMessage`, failure ignores `output`, and a nil failure message becomes `"Tool execution failed"`. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
 
 ### Tool failure errors
 

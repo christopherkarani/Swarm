@@ -323,6 +323,28 @@ public struct ToolResult: Sendable, Equatable, Codable {
         self.outcome = outcome
     }
 
+    /// Creates a new tool result from independently specified success flags.
+    ///
+    /// Prefer ``success(callId:output:duration:)`` or ``failure(callId:error:duration:)``.
+    /// A failure with a nil message is stored as `"Tool execution failed"`.
+    /// Success ignores `errorMessage`; failure ignores `output`.
+    @available(*, deprecated, message: "Use ToolResult.success(...) or .failure(callId:error:duration:)")
+    public init(
+        callId: UUID,
+        isSuccess: Bool,
+        output: SendableValue,
+        duration: Duration,
+        errorMessage: String? = nil
+    ) {
+        self.callId = callId
+        self.duration = duration
+        if isSuccess {
+            outcome = .success(output)
+        } else {
+            outcome = .failure(message: errorMessage ?? "Tool execution failed")
+        }
+    }
+
     /// Creates a successful result.
     /// - Parameters:
     ///   - callId: The ID of the tool call.
