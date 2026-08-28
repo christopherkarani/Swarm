@@ -619,4 +619,43 @@ private struct RetryPolicyDeterminismTests {
         #expect(await retryRecorder.getAll().isEmpty)
         #expect(clock.recordedSleeps.isEmpty)
     }
+
+    @Test("Cancellation during onRetry does not start another attempt")
+    func cancellationDuringOnRetryDoesNotRetryAgain() async throws {
+        let clock = VirtualClock()
+        let counter = TestCounter()
+        let (startedRetry, startedRetryContinuation) = AsyncStream<Void>.makeStream()
+
+        let work = Task<String, Error> {
+            let policy = RetryPolicy(
+                maxAttempts: 5,
+                backoff: .immediate,
+                onRetry: { _, _ in
+                    startedRetryContinuation.yield()
+                    while !Task.isCancelled {
+                        await Task.yield()
+                    }
+                },
+                clock: clock
+            )
+            return try await policy.execute {
+                _ = await counter.increment()
+                throw TestError.transient
+            }
+        }
+
+        _ = await startedRetry.first { _ in true }
+        work.cancel()
+
+        do {
+            _ = try await work.value
+            Issue.record("Expected CancellationError after cancel during onRetry")
+        } catch is CancellationError {
+        } catch {
+            Issue.record("Expected CancellationError, got \(error)")
+        }
+
+        #expect(await counter.get() == 1)
+        #expect(clock.recordedSleeps.isEmpty)
+    }
 }

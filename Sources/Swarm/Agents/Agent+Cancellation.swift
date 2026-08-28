@@ -7,140 +7,28 @@
 import Foundation
 
 extension Agent {
-    actor ActiveRunCancellationState {
-        private var activeRunID: UUID?
-        private var activeTask: Task<InternalRunResult, Error>?
-
-        func begin(runID: UUID, task: Task<InternalRunResult, Error>) {
-            activeRunID = runID
-            activeTask = task
-        }
-
-        func finish(runID: UUID) {
-            guard activeRunID == runID else { return }
-            activeRunID = nil
-            activeTask = nil
-        }
-
-        func cancelCurrent() {
-            activeTask?.cancel()
-        }
-    }
-
-    final class TimedOperationCoordinator<T: Sendable>: @unchecked Sendable {
-        private let lock = NSLock()
-        private var continuation: CheckedContinuation<T, Error>?
-        private var operationTask: Task<Void, Never>?
-        private var timeoutTask: Task<Void, Never>?
-        private var ownedLoopGate: ProviderOwnedLoopGate?
-        private var completed = false
-
-        func setOwnedLoopGate(_ gate: ProviderOwnedLoopGate?) {
-            lock.lock()
-            defer { lock.unlock() }
-            ownedLoopGate = gate
-        }
-
-        func install(continuation: CheckedContinuation<T, Error>) {
-            lock.lock()
-            defer { lock.unlock() }
-            self.continuation = continuation
-        }
-
-        func setOperationTask(_ task: Task<Void, Never>) {
-            lock.lock()
-            defer { lock.unlock() }
-            operationTask = task
-        }
-
-        func setTimeoutTask(_ task: Task<Void, Never>) {
-            lock.lock()
-            defer { lock.unlock() }
-            timeoutTask = task
-        }
-
-        func finish(returning value: T) {
-            complete(deactivateOwnedLoop: false) { continuation in
-                continuation.resume(returning: value)
-            }
-        }
-
-        func finish(throwing error: Error) {
-            complete(deactivateOwnedLoop: Self.shouldDeactivateOwnedLoop(for: error)) { continuation in
-                continuation.resume(throwing: error)
-            }
-        }
-
-        func cancelPending(with error: Error) {
-            let pendingState = takePendingState()
-            if Self.shouldDeactivateOwnedLoop(for: error) {
-                pendingState.ownedLoopGate?.deactivate()
-            }
-            pendingState.operationTask?.cancel()
-            pendingState.timeoutTask?.cancel()
-            pendingState.continuation?.resume(throwing: error)
-        }
-
-        private func complete(
-            deactivateOwnedLoop: Bool,
-            _ resume: (CheckedContinuation<T, Error>) -> Void
-        ) {
-            let pendingState = takePendingState()
-            if deactivateOwnedLoop {
-                pendingState.ownedLoopGate?.deactivate()
-            }
-            pendingState.operationTask?.cancel()
-            pendingState.timeoutTask?.cancel()
-            guard let continuation = pendingState.continuation else { return }
-            resume(continuation)
-        }
-
-        private static func shouldDeactivateOwnedLoop(for error: Error) -> Bool {
-            if error is CancellationError {
-                return true
-            }
-            if case .timeout = error as? AgentError {
-                return true
-            }
-            return false
-        }
-
-        private func takePendingState() -> (
-            continuation: CheckedContinuation<T, Error>?,
-            operationTask: Task<Void, Never>?,
-            timeoutTask: Task<Void, Never>?,
-            ownedLoopGate: ProviderOwnedLoopGate?
-        ) {
-            lock.lock()
-            defer { lock.unlock() }
-
-            guard completed == false else {
-                return (nil, nil, nil, nil)
-            }
-
-            completed = true
-            let pendingContinuation = continuation
-            let pendingOperationTask = operationTask
-            let pendingTimeoutTask = timeoutTask
-            let pendingGate = ownedLoopGate
-            continuation = nil
-            operationTask = nil
-            timeoutTask = nil
-            ownedLoopGate = nil
-            return (pendingContinuation, pendingOperationTask, pendingTimeoutTask, pendingGate)
-        }
-    }
-
-    /// Cancels any ongoing execution.
+    /// Registry of in-flight runs keyed by run ID.
     ///
+    /// Unlike the single-slot state it replaces, this supports multiple
+    /// concurrent runs on one agent value: `cancelAll()` reaches every
+    /// in-flight run, while `finish(_:)` removes exactly the run that
+    /// completed so finished runs never shadow live ones.
+    typealias ActiveRunRegistry = KeyedRunRegistry<UUID>
+
+    /// Cancels every in-flight execution on this agent.
+    ///
+    /// All runs started through ``run(_:session:observer:)`` or
+    /// ``runStructured(_:request:session:observer:)`` that have not finished
+    /// yet are cancelled, including runs started concurrently on copies of
+    /// this agent value. Earlier releases cancelled only the most recently
+    /// registered run; the run registry now tracks every concurrent run by
+    /// ID, so cancellation reaches all of them.
     public func cancel() async {
-        await cancellationState.cancelCurrent()
+        await activeRuns.cancelAll()
     }
 
     /// Checks for cancellation and timeout conditions.
     func checkCancellationAndTimeout(startTime: ContinuousClock.Instant) throws {
-        // Use Task.checkCancellation() for reliable cancellation detection
-        // This is the standard Swift concurrency pattern
         try Task.checkCancellation()
 
         let elapsed = ContinuousClock.now - startTime
@@ -149,53 +37,66 @@ extension Agent {
         }
     }
 
+    /// Runs `operation` bounded by the remaining run timeout.
+    ///
+    /// Delegates to the shared ``withTimeoutRace`` settlement primitive, so
+    /// outcomes recorded before the continuation installs are replayed and
+    /// worker tasks registered after settlement are cancelled. Owned-loop-gate
+    /// deactivation rides on the race's `onSettle` hook: the gate is
+    /// deactivated exactly when settlement fails with `CancellationError` or
+    /// `AgentError.timeout` (see `shouldDeactivateOwnedLoop`), never on
+    /// success or unrelated failures.
+    ///
+    /// The remaining budget is computed from `startTime` and consumed through
+    /// the injected `SwarmClock`, keeping the sleep on the same fake-clock
+    /// seam used by resilience code.
     func executeWithinRemainingTimeout<T: Sendable>(
         startTime: ContinuousClock.Instant,
         executionGate: ProviderOwnedLoopGate? = nil,
+        clock: any SwarmClock = LiveSwarmClock.live,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try Task.checkCancellation()
+        let deactivateIfNeeded: @Sendable (Error) -> Void = { error in
+            guard Self.shouldDeactivateOwnedLoop(for: error) else { return }
+            executionGate?.deactivate()
+        }
+
+        do {
+            try Task.checkCancellation()
+        } catch {
+            deactivateIfNeeded(error)
+            throw error
+        }
 
         let remaining = configuration.timeout - (ContinuousClock.now - startTime)
         if remaining <= .zero {
-            throw AgentError.timeout(duration: configuration.timeout)
+            let timeout = AgentError.timeout(duration: configuration.timeout)
+            deactivateIfNeeded(timeout)
+            throw timeout
         }
 
-        let coordinator = TimedOperationCoordinator<T>()
-        coordinator.setOwnedLoopGate(executionGate)
-
-        return try await withTaskCancellationHandler(
-            operation: {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
-                    coordinator.install(continuation: continuation)
-
-                    let operationTask = Task {
-                        do {
-                            coordinator.finish(returning: try await operation())
-                        } catch {
-                            coordinator.finish(throwing: error)
-                        }
-                    }
-                    coordinator.setOperationTask(operationTask)
-
-                    let timeoutTask = Task { [timeout = configuration.timeout, remaining] in
-                        do {
-                            try await Task.sleep(for: remaining)
-                            operationTask.cancel()
-                            coordinator.finish(throwing: AgentError.timeout(duration: timeout))
-                        } catch is CancellationError {
-                            return
-                        } catch {
-                            coordinator.finish(throwing: error)
-                        }
-                    }
-                    coordinator.setTimeoutTask(timeoutTask)
-                }
+        return try await withTimeoutRace(
+            timeout: remaining,
+            clock: clock,
+            timeoutError: AgentError.timeout(duration: configuration.timeout),
+            onSettle: { error in
+                guard let error else { return }
+                deactivateIfNeeded(error)
             },
-            onCancel: {
-                coordinator.cancelPending(with: CancellationError())
-            }
+            operation: operation
         )
+    }
+
+    /// Owned-loop gates deactivate only when a run dies by cancellation or
+    /// timeout; ordinary inference/tool failures must leave the gate armed.
+    static func shouldDeactivateOwnedLoop(for error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+        if case .timeout = error as? AgentError {
+            return true
+        }
+        return false
     }
 
     func normalizeCancellation(_ error: Error) -> Error {
