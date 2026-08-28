@@ -216,7 +216,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 300 | var | public | ToolResult.output | `public var output: SendableValue { get }` |
 | 310 | var | public | ToolResult.errorMessage | `public var errorMessage: String? { get }` |
 | 321 | func | public | ToolResult.init(callId:duration:outcome:) | `public init(callId: UUID, duration: Duration, outcome: ToolResult.Outcome)` |
-| 332 | func | public | ToolResult.init(callId:isSuccess:output:duration:errorMessage:) | `public init(callId: UUID, isSuccess: Bool, output: SendableValue, duration: Duration, errorMessage: String? = nil)` (deprecated) |
 | 355 | func | public | ToolResult.success(callId:output:duration:) | `public static func success(callId: UUID, output: SendableValue, duration: Duration) -> ToolResult` |
 | 365 | func | public | ToolResult.failure(callId:error:duration:) | `public static func failure(callId: UUID, error: String, duration: Duration) -> ToolResult` |
 | 400 | var | public | ToolCall.description | `public var description: String { get }` |
