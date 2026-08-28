@@ -12,7 +12,3 @@
 
 // Re-export key resilience types
 @_exported import struct Foundation.TimeInterval
-
-/// Re-export resilience types for convenient access
-public typealias Retry = RetryPolicy
-public typealias Fallback = FallbackChain
