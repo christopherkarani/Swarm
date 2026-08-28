@@ -108,6 +108,23 @@ struct WorkflowDurableTests {
         #expect(resumed.output == "done")
     }
 
+    @Test("deprecated durable run forwards execution and resume")
+    func deprecatedRunForwardsExecutionAndResume() async throws {
+        let checkpointing = WorkflowCheckpointing.inMemory()
+        let workflow = Workflow()
+            .step(MockAgentRuntime(response: "done"))
+            .durable
+            .checkpoint(id: "wf-run-compatibility", policy: .everyStep)
+            .durable
+            .checkpointing(checkpointing)
+
+        let first = try await workflow.durable.run("start")
+        #expect(first.output == "done")
+
+        let resumed = try await workflow.durable.run("ignored", resumeFrom: "wf-run-compatibility")
+        #expect(resumed.output == "done")
+    }
+
     @Test("durable resume throws when checkpoint is missing")
     func resumeMissingCheckpoint() async throws {
         let checkpointing = WorkflowCheckpointing.inMemory()
