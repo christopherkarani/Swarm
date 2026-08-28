@@ -61,8 +61,8 @@ struct ContextSlotEntry {
 /// The single unified store for `AgentContext` typed values.
 ///
 /// `ContextKey<Value>` writes land in value slots keyed by
-/// `(Value type identity, key name)`; the deprecated `AgentContextProviding`
-/// shim stores instances in provided slots keyed by
+/// `(Value type identity, key name)`; the deprecated
+/// `AgentContextProviding` shim stores instances in provided slots keyed by
 /// `(concrete type identity, contextKey)`. Untyped string access remains a
 /// separate raw `[String: SendableValue]` namespace owned by `AgentContext`.
 struct ContextSlotStore {
@@ -261,7 +261,7 @@ struct ContextSlotStore {
     /// Returns whether a provided slot exists for `type`.
     ///
     /// - Parameter type: The concrete context type to look up.
-    /// - Returns: True when an instance of this type is stored.
+    /// - Returns: True when an instance is stored.
     func containsProvided<T: AgentContextProviding>(of type: T.Type) -> Bool {
         providedSlots[ContextSlotID(valueType: T.self, name: T.contextKey)] != nil
     }
@@ -295,12 +295,6 @@ struct ContextSlotStore {
     /// Crosses the `any AgentContextProviding` existential boundary after
     /// slot identity already established the stored instance has type
     /// `Value`.
-    ///
-    /// This is not a speculative runtime check like the removed string-keyed
-    /// lookup: the slot identifier pins the concrete conformer type, so the
-    /// conversion below can neither fail nor produce a wrong-typed value. It
-    /// exists only because Swift has no way to recover a concrete type from
-    /// an existential without one checked conversion at the storage boundary.
     private func extract<Value: AgentContextProviding>(
         _ type: Value.Type,
         from slot: (any AgentContextProviding)?
@@ -308,4 +302,5 @@ struct ContextSlotStore {
         guard let slot else { return nil }
         return slot as? Value
     }
+
 }
