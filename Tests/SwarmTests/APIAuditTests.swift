@@ -239,6 +239,56 @@ final class APIAuditTests: XCTestCase {
         XCTAssertEqual(handoffs.first?.targetAgent.name, "Billing")
     }
 
+    // MARK: - Agent.Builder Compatibility Tests
+
+    func testAgentBuilderHandoffToAddsSingleTarget() async throws {
+        let billing = try Agent(name: "Billing", instructions: "Handle billing")
+
+        let triage = try Agent.Builder()
+            .instructions("Route requests")
+            .handoff(to: billing)
+            .build()
+
+        XCTAssertEqual(triage.handoffs.count, 1)
+        XCTAssertEqual(triage.handoffs.first?.targetAgent.name, "Billing")
+    }
+
+    func testAgentBuilderVariadicHandoffsAddsAllTargets() async throws {
+        let billing = try Agent(name: "Billing", instructions: "Handle billing")
+        let support = try Agent(name: "Support", instructions: "Handle support")
+        let sales = try Agent(name: "Sales", instructions: "Handle sales")
+
+        let triage = try Agent.Builder()
+            .instructions("Route requests")
+            .handoffs(billing, support, sales)
+            .build()
+
+        XCTAssertEqual(triage.handoffs.count, 3)
+        XCTAssertEqual(triage.handoffs[0].targetAgent.name, "Billing")
+        XCTAssertEqual(triage.handoffs[1].targetAgent.name, "Support")
+        XCTAssertEqual(triage.handoffs[2].targetAgent.name, "Sales")
+    }
+
+    func testAgentBuilderHandoffOptionsMapToConfiguration() async throws {
+        let billing = try Agent(name: "Billing", instructions: "Handle billing")
+
+        let triage = try Agent.Builder()
+            .instructions("Route requests")
+            .handoff(to: billing) {
+                $0
+                    .name("transfer_to_billing")
+                    .description("Transfer billing/refund issues")
+                    .policy(.strict)
+                    .history(.summarized(maxTokens: 300))
+            }
+            .build()
+
+        XCTAssertEqual(triage.handoffs.count, 1)
+        XCTAssertEqual(triage.handoffs[0].toolNameOverride, "transfer_to_billing")
+        XCTAssertEqual(triage.handoffs[0].toolDescription, "Transfer billing/refund issues")
+        XCTAssertTrue(triage.handoffs[0].nestHandoffHistory)
+    }
+
     // MARK: - AgentTool Tests
 
     func testAgentToolCreation() async throws {

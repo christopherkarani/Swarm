@@ -1121,6 +1121,29 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 303 | func | public | Agent.cancel() | `public func cancel() async` |
 | 313 | func | public | Agent.stream(_:session:observer:) | `public func stream(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 336 | func | public | Agent.runWithResponse(_:session:observer:) | `public func runWithResponse(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
+| 1259 | struct | public | Agent.Builder | `@available(*, deprecated, message: "Use an Agent initializer or withTools(_:). Agent.Builder compatibility will be removed in 0.7.0.") public struct Builder` |
+| 1265 | func | public | Agent.Builder.init() | `public init()` |
+| 1273 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [any AnyJSONTool]) -> Agent.Builder` (deprecated) |
+| 1283 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [some Tool]) -> Agent.Builder` |
+| 1293 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: some AnyJSONTool) -> Agent.Builder` (deprecated) |
+| 1303 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: any AnyJSONTool) -> Agent.Builder` (deprecated) |
+| 1313 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: some Tool) -> Agent.Builder` |
+| 1322 | func | public | Agent.Builder.withBuiltInTools() | `public @discardableResult func withBuiltInTools() -> Agent.Builder` |
+| 1332 | func | public | Agent.Builder.instructions(_:) | `public @discardableResult func instructions(_ instructions: String) -> Agent.Builder` |
+| 1342 | func | public | Agent.Builder.configuration(_:) | `public @discardableResult func configuration(_ configuration: AgentConfiguration) -> Agent.Builder` |
+| 1352 | func | public | Agent.Builder.memory(_:) | `public @discardableResult func memory(_ memory: any Memory) -> Agent.Builder` |
+| 1362 | func | public | Agent.Builder.inferenceProvider(_:) | `public @discardableResult func inferenceProvider(_ provider: any InferenceProvider) -> Agent.Builder` |
+| 1372 | func | public | Agent.Builder.tracer(_:) | `public @discardableResult func tracer(_ tracer: any Tracer) -> Agent.Builder` |
+| 1382 | func | public | Agent.Builder.inputGuardrails(_:) | `public @discardableResult func inputGuardrails(_ guardrails: [any InputGuardrail]) -> Agent.Builder` |
+| 1392 | func | public | Agent.Builder.addInputGuardrail(_:) | `public @discardableResult func addInputGuardrail(_ guardrail: any InputGuardrail) -> Agent.Builder` |
+| 1402 | func | public | Agent.Builder.outputGuardrails(_:) | `public @discardableResult func outputGuardrails(_ guardrails: [any OutputGuardrail]) -> Agent.Builder` |
+| 1412 | func | public | Agent.Builder.addOutputGuardrail(_:) | `public @discardableResult func addOutputGuardrail(_ guardrail: any OutputGuardrail) -> Agent.Builder` |
+| 1422 | func | public | Agent.Builder.guardrailRunnerConfiguration(_:) | `public @discardableResult func guardrailRunnerConfiguration(_ configuration: GuardrailRunnerConfiguration) -> Agent.Builder` |
+| 1432 | func | public | Agent.Builder.handoffs(_:) | `public @discardableResult func handoffs(_ handoffs: [AnyHandoffConfiguration]) -> Agent.Builder` |
+| 1442 | func | public | Agent.Builder.addHandoff(_:) | `public @discardableResult func addHandoff(_ handoff: AnyHandoffConfiguration) -> Agent.Builder` |
+| 1457 | func | public | Agent.Builder.handoff(to:configure:) | `public @discardableResult func handoff<Target>(to target: Target, configure: (HandoffOptions<Target>) -> HandoffOptions<Target> = { $0 }) -> Agent.Builder where Target : AgentRuntime` |
+| 1476 | func | public | Agent.Builder.handoffs(_:) | `public @discardableResult func handoffs<each Target>(_ targets: repeat each Target) -> Agent.Builder where repeat each Target : AgentRuntime` |
+| 1485 | func | public | Agent.Builder.build() | `public func build() throws -> Agent` |
 | 1542 | func | public | Agent.init(name:instructions:tools:inferenceProvider:memory:tracer:configuration:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:) | `public init(name: String, instructions: String = "", tools: [any AnyJSONTool] = [], inferenceProvider: (any InferenceProvider)? = nil, memory: (any Memory)? = nil, tracer: (any Tracer)? = nil, configuration: AgentConfiguration = .default, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffs: [AnyHandoffConfiguration] = []) throws` |
 | 1604 | func | public | Agent.init(name:instructions:tools:inferenceProvider:memory:tracer:configuration:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffAgents:) | `public init(name: String, instructions: String = "", tools: [any AnyJSONTool] = [], inferenceProvider: (any InferenceProvider)? = nil, memory: (any Memory)? = nil, tracer: (any Tracer)? = nil, configuration: AgentConfiguration = .default, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffAgents: [any AgentRuntime]) throws` |
 
