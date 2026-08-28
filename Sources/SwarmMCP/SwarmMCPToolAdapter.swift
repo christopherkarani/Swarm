@@ -1,3 +1,4 @@
+#if SWARM_MCP
 import Foundation
 import Swarm
 
@@ -45,3 +46,4 @@ public actor SwarmMCPToolRegistryAdapter: SwarmMCPToolCatalog, SwarmMCPToolExecu
         try await registry.execute(toolNamed: toolName, arguments: arguments)
     }
 }
+#endif

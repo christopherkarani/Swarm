@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
@@ -441,3 +442,4 @@ private final class OTLPRecordingURLProtocol: URLProtocol, @unchecked Sendable {
         return data
     }
 }
+#endif

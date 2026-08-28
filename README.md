@@ -30,7 +30,7 @@ Two agents, one pipeline, compiled to a DAG. Crash recovery is opt-in — enable
 
 Default **link** is **lean**: core Swarm + on-device Foundation Models. Graph/memory/web/Hive paths are trait-gated (off by default) and are not linked into Swarm unless you enable Integrations.
 
-HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve never pulls Hive/Membrane/ContextCore/Conduit **package identities**, and (with trait-gated product edges) also does **not** pin Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, or SwiftSoup. Default remotes remain (swift-syntax via the default-on **Macros** trait, swift-log, MCP sdk, OTel, plus NIO transitives — including `swift-collections` via NIO). Disable Macros with `traits: []` to drop swift-syntax; use `FunctionTool` instead of `@Tool`. `SWARM_CORE_ONLY=1` drops the integration package block entirely. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML MiniLM model that is **not** bundled — call `SemanticEmbeddingAvailability.ensureModelAvailable()` to download it on demand. Without the model, ContextCore falls back to deterministic pseudo-embeddings, logs a once-per-process warning naming that API, and `DefaultAgentMemory.isSemanticMemoryAvailable` reports `false`.
+HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve never pulls Hive/Membrane/ContextCore/Conduit **package identities**, and (with trait-gated product edges) also does **not** pin Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, SwiftSoup, the MCP Swift SDK, or OpenTelemetry. Default remotes are **swift-syntax** (via the default-on **Macros** trait) and **swift-log**. Enable `traits: ["MCP"]` for `SwarmMCP` / the MCP Swift SDK (and its NIO tree), or `traits: ["OpenTelemetry"]` for `SwarmOpenTelemetry`. Disable Macros with `traits: []` to drop swift-syntax; use `FunctionTool` instead of `@Tool`. `SWARM_CORE_ONLY=1` drops the integration package block entirely. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML MiniLM model that is **not** bundled — call `SemanticEmbeddingAvailability.ensureModelAvailable()` to download it on demand. Without the model, ContextCore falls back to deterministic pseudo-embeddings, logs a once-per-process warning naming that API, and `DefaultAgentMemory.isSemanticMemoryAvailable` reports `false`.
 
 **Root-package note:** bare `swift build` / `swift test` on this repo compile every registered target, so integration modules need either `--traits Integrations` or the lean CI helper (`scripts/ci/lean-build-test.sh`). App consumers only build reachable targets and stay lean without that helper.
 
@@ -44,6 +44,20 @@ HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (i
     url: "https://github.com/christopherkarani/Swarm.git",
     from: "0.6.2",
     traits: ["Integrations"]
+)
+
+// MCP server adapter (SwarmMCP + MCP Swift SDK). Also enables Macros.
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["MCP"]
+)
+
+// OpenTelemetry wrappers (SwarmOpenTelemetry). Also enables Macros.
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["OpenTelemetry"]
 )
 
 // Macro-free lean: drops swift-syntax. You lose @Tool, @Parameter, #Prompt,
@@ -73,13 +87,15 @@ From a checkout of this package:
 
 ```bash
 # Lean (root package): product-scoped build, or scripts/ci/lean-build-test.sh
-swift build --product Swarm --product SwarmMCP --product SwarmOpenTelemetry \
-  --product SwarmMembrane --product SwarmCapabilityShowcase
+swift build --product Swarm --product SwarmMembrane --product SwarmCapabilityShowcase
+# Companion products need their traits (otherwise the modules are hollow):
+swift build --traits MCP --product SwarmMCP
+swift build --traits OpenTelemetry --product SwarmOpenTelemetry
 # SwarmMembrane is a deprecated hollow re-export of Swarm; import Swarm
 # instead. The product will be removed in 0.7.0.
 # Full graph
 swift build --traits Integrations
-swift test --no-parallel --traits Integrations
+swift test --no-parallel --traits Integrations,MCP,OpenTelemetry
 swift run --traits Integrations SwarmCapabilityShowcase matrix
 ```
 

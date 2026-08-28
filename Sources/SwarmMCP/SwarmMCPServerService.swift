@@ -1,3 +1,4 @@
+#if SWARM_MCP
 import Foundation
 import MCP
 import Swarm
@@ -304,3 +305,4 @@ public actor SwarmMCPServerService {
         metrics.cumulativeCallToolLatencyMs += ms
     }
 }
+#endif

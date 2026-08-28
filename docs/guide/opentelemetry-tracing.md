@@ -24,7 +24,11 @@ If your app already configures OpenTelemetry, add `SwarmOpenTelemetry` to the
 target that creates agents. Swarm `0.6.2` is the current published tag:
 
 ```swift
-.package(url: "https://github.com/christopherkarani/Swarm.git", from: "0.6.2")
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["OpenTelemetry"]
+)
 
 .target(
     name: "YourApp",

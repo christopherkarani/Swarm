@@ -518,6 +518,26 @@ struct DocumentationFreshnessTests {
         #expect(workflow.contains("swift test --no-parallel"))
     }
 
+    @Test("lean default docs do not advertise MCP SDK or OTel as default remotes")
+    func leanDefaultDocsDoNotAdvertiseMCPOrOTelAsDefaultRemotes() throws {
+        let package = try readRepoFile("Package.swift")
+        let readme = try readRepoFile("README.md")
+        let gettingStarted = try readRepoFile("docs/guide/getting-started.md")
+        let frontFacing = try readRepoFile("docs/reference/front-facing-api.md")
+
+        #expect(package.contains("let mcpTrait = \"MCP\""))
+        #expect(package.contains("let otelTrait = \"OpenTelemetry\""))
+        #expect(package.contains("condition: .when(traits: [mcpTrait])"))
+        #expect(package.contains("condition: .when(traits: [otelTrait])"))
+
+        for file in ["README.md", "docs/guide/getting-started.md", "docs/reference/front-facing-api.md"] {
+            let text = file == "README.md" ? readme : file.contains("getting-started") ? gettingStarted : frontFacing
+            #expect(!text.contains("MCP sdk, OTel, plus NIO"), "\(file) should not list MCP/OTel as default remotes")
+            #expect(text.contains("traits: [\"MCP\"]"), "\(file) should document the MCP trait")
+            #expect(text.contains("traits: [\"OpenTelemetry\"]"), "\(file) should document the OpenTelemetry trait")
+        }
+    }
+
     @Test("public Linux docs qualify default graph support")
     func publicLinuxDocsQualifyDefaultGraphSupport() throws {
         let checkedFiles = [

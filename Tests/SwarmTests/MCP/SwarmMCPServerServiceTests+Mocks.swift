@@ -1,3 +1,4 @@
+#if SWARM_MCP
 import Foundation
 import Logging
 import MCP
@@ -122,3 +123,4 @@ actor DelayedTransport: Transport {
         }
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 // OTLPHTTPTraceExporter.swift
 // SwarmOpenTelemetry
 
@@ -245,3 +246,4 @@ public enum OpenTelemetryTracing {
         return exporter
     }
 }
+#endif
