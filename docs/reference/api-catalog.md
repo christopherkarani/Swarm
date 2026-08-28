@@ -1642,6 +1642,33 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 24 | var | public | MemoryPromptMetadata.guidance | `public var guidance: String?` |
 | 27 | var | public | MemoryPromptMetadata.priority | `public var priority: MemoryPriorityHint` |
 | 29 | init | public | MemoryPromptMetadata.init(title:guidance:priority:) | `public init(title: String, guidance: String?, priority: MemoryPriorityHint)` |
+| 47 | protocol | public | MemoryPromptDescriptor | `public protocol MemoryPromptDescriptor : Sendable` _(Availability: * (deprecated); Return MemoryPromptMetadata from your Memory conformance's memoryPromptMetadata instead.)_ |
+| 49 | var | public | MemoryPromptDescriptor.memoryPromptTitle | `public var memoryPromptTitle: String { get }` |
+| 52 | var | public | MemoryPromptDescriptor.memoryPromptGuidance | `public var memoryPromptGuidance: String? { get }` |
+| 55 | var | public | MemoryPromptDescriptor.memoryPriority | `public var memoryPriority: MemoryPriorityHint { get }` |
+
+`MemoryPromptDescriptor` remains a source-compatibility marker. The constrained
+`Memory where Self: MemoryPromptDescriptor` extension bridges its members into
+`Memory.memoryPromptMetadata`, preserving prompt labels for existing conformers.
+
+### Memory/MemoryRetrievalPolicy.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 42 | protocol | public | MemoryRetrievalPolicyAware | `public protocol MemoryRetrievalPolicyAware : Memory` _(Availability: * (deprecated); Implement context(for: MemoryQuery) on your Memory conformance instead.)_ |
+| 44 | func | public | MemoryRetrievalPolicyAware.context(for:) | `public func context(for query: MemoryQuery) async -> String` |
+| 61 | protocol | public | MemorySessionImportPolicy | `public protocol MemorySessionImportPolicy : Sendable` _(Availability: * (deprecated); Implement allowsAutomaticSessionSeeding on your Memory conformance instead.)_ |
+| 63 | var | public | MemorySessionImportPolicy.allowsAutomaticSessionSeeding | `public var allowsAutomaticSessionSeeding: Bool { get }` |
+
+### Memory/MemorySessionLifecycle.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 9 | protocol | public | MemorySessionLifecycle | `public protocol MemorySessionLifecycle : Memory` _(Availability: * (deprecated); Implement beginMemorySession() and endMemorySession() on your Memory conformance instead.)_ |
+| 11 | func | public | MemorySessionLifecycle.beginMemorySession() | `public func beginMemorySession() async` |
+| 14 | func | public | MemorySessionLifecycle.endMemorySession() | `public func endMemorySession() async` |
+| 24 | protocol | public | MemorySessionReplayAware | `public protocol MemorySessionReplayAware : Memory` _(Availability: * (deprecated); Implement importSessionHistory(_:) on your Memory conformance instead.)_ |
+| 26 | func | public | MemorySessionReplayAware.importSessionHistory(_:) | `public func importSessionHistory(_ messages: [MemoryMessage]) async` |
 
 ### Memory/PersistentMemory.swift
 

@@ -4,7 +4,7 @@ import Wax
 import WaxVectorSearch
 
 /// Wax-backed memory implementation using the public Memory API.
-public actor WaxMemory: Memory {
+public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, MemoryRetrievalPolicyAware {
     // MARK: Public
 
     /// Configuration for Wax memory behavior.
@@ -31,6 +31,15 @@ public actor WaxMemory: Memory {
 
     public var count: Int { persistedMessages.count }
     public var isEmpty: Bool { persistedMessages.isEmpty }
+
+    @available(*, deprecated, message: "Return memoryPromptMetadata instead.")
+    public nonisolated var memoryPromptTitle: String { configuration.promptTitle }
+
+    @available(*, deprecated, message: "Return memoryPromptMetadata instead.")
+    public nonisolated var memoryPromptGuidance: String? { configuration.promptGuidance }
+
+    @available(*, deprecated, message: "Return memoryPromptMetadata instead.")
+    public nonisolated var memoryPriority: MemoryPriorityHint { .primary }
 
     public nonisolated var memoryPromptMetadata: MemoryPromptMetadata? {
         MemoryPromptMetadata(

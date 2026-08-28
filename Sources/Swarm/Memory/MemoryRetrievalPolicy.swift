@@ -34,10 +34,31 @@ public struct MemoryQuery: Sendable, Equatable {
     }
 }
 
+/// Optional memory extension for retrieval implementations that need more than a token limit.
+///
+/// Item-aware retrieval is now a defaulted requirement on ``Memory``; implement
+/// ``Memory/context(for:)`` directly instead of conforming to this protocol.
+@available(*, deprecated, message: "Implement context(for: MemoryQuery) on your Memory conformance instead.")
+public protocol MemoryRetrievalPolicyAware: Memory {
+    /// Retrieves context relevant to the query while respecting item-level budgets.
+    func context(for query: MemoryQuery) async -> String
+}
+
 public extension Memory {
     /// Default item-aware retrieval: falls back to ``Memory/context(for:tokenLimit:)``
     /// using the query text and total token budget, ignoring per-item budgets.
     func context(for query: MemoryQuery) async -> String {
         await context(for: query.text, tokenLimit: query.tokenLimit)
     }
+}
+
+/// Optional policy hook for memories that should not ingest session history automatically.
+///
+/// The seeding policy is now a defaulted requirement on ``Memory``; implement
+/// ``Memory/allowsAutomaticSessionSeeding`` directly instead of conforming to
+/// this protocol.
+@available(*, deprecated, message: "Implement allowsAutomaticSessionSeeding on your Memory conformance instead.")
+public protocol MemorySessionImportPolicy: Sendable {
+    /// Whether the agent runtime may seed session history into this memory store.
+    var allowsAutomaticSessionSeeding: Bool { get }
 }

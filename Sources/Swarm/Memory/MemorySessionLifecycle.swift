@@ -1,5 +1,31 @@
 import Foundation
 
+/// Optional lifecycle observer for memory implementations that need session scoping.
+///
+/// Session begin/end are now defaulted requirements on ``Memory``; implement
+/// ``Memory/beginMemorySession()`` and ``Memory/endMemorySession()`` directly
+/// instead of conforming to this protocol.
+@available(*, deprecated, message: "Implement beginMemorySession() and endMemorySession() on your Memory conformance instead.")
+public protocol MemorySessionLifecycle: Memory {
+    /// Called at the beginning of an agent `run` / `stream`.
+    func beginMemorySession() async
+
+    /// Called at the end of an agent `run` / `stream` (success or failure).
+    func endMemorySession() async
+}
+
+/// Optional hook for memories that want custom handling when session history is replayed
+/// into a fresh memory instance.
+///
+/// History import is now a defaulted requirement on ``Memory``; implement
+/// ``Memory/importSessionHistory(_:)`` directly instead of conforming to this
+/// protocol.
+@available(*, deprecated, message: "Implement importSessionHistory(_:) on your Memory conformance instead.")
+public protocol MemorySessionReplayAware: Memory {
+    /// Imports a batch of session history messages using memory-specific logic.
+    func importSessionHistory(_ messages: [MemoryMessage]) async
+}
+
 // MARK: - Defaulted capability implementations
 
 public extension Memory {
