@@ -762,9 +762,9 @@ strings alone, such as trait-gate or configuration errors):
 public case toolFailure(toolName: String, message: String?, cause: (any Error)?)
 ```
 
-The previous `AgentError.toolExecutionFailed(toolName:underlyingError:)` case is deprecated
-but remains fully constructible and matchable; `message` carries the same flattened string
-that `underlyingError` used to.
+Tool failures now use `AgentError.toolFailure(toolName:message:cause:)`; string-only failures
+place their diagnostic text in `message`, while failures from a throwing tool preserve the
+original error in `cause`.
 
 ## 13) Public macros
 

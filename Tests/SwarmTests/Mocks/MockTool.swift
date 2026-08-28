@@ -103,7 +103,7 @@ public struct FailingTool: AnyJSONTool, Sendable {
     ///   - outputGuardrails: Output guardrails for the tool.
     public init(
         name: String = "failing_tool",
-        error: Error = AgentError.toolExecutionFailed(toolName: "failing_tool", underlyingError: "Intentional failure"),
+        error: Error = AgentError.toolFailure(toolName: "failing_tool", message: "Intentional failure", cause: nil),
         inputGuardrails: [any ToolInputGuardrail] = [],
         outputGuardrails: [any ToolOutputGuardrail] = []
     ) {

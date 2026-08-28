@@ -122,7 +122,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 26 | case | public | AgentError.timeout(duration:) | `public case timeout(duration: Duration)` |
 | 29 | case | public | AgentError.invalidLoop(reason:) | `public case invalidLoop(reason: String)` |
 | 34 | case | public | AgentError.toolNotFound(name:) | `public case toolNotFound(name: String)` |
-| 37 | case | public | AgentError.toolExecutionFailed(toolName:underlyingError:) | `public case toolExecutionFailed(toolName: String, underlyingError: String)` |
 | 305 | case | public | AgentError.toolFailure(toolName:message:cause:) | `public case toolFailure(toolName: String, message: String?, cause: (any Error)?)` |
 | 40 | case | public | AgentError.invalidToolArguments(toolName:reason:) | `public case invalidToolArguments(toolName: String, reason: String)` |
 | 45 | case | public | AgentError.inferenceProviderUnavailable(reason:) | `public case inferenceProviderUnavailable(reason: String)` |

@@ -35,18 +35,6 @@ struct AgentErrorCauseTests {
         #expect(cause == nil)
     }
 
-    @Test("deprecated string case still constructs and matches")
-    func deprecatedCaseStillWorks() {
-        let error = AgentError.toolExecutionFailed(toolName: "legacy", underlyingError: "boom")
-        #expect(error.isRetryable == false)
-        if case let .toolExecutionFailed(name, underlying) = error {
-            #expect(name == "legacy")
-            #expect(underlying == "boom")
-        } else {
-            Issue.record("expected toolExecutionFailed")
-        }
-    }
-
     @Test("toolFailure is classified non-retryable like its predecessor")
     func retryabilityClassification() {
         let error = AgentError.toolFailure(toolName: "t", message: nil, cause: Boom())
