@@ -11,18 +11,19 @@ import Foundation
 /// Default `SwarmClock` backed by Swift's sleep-inclusive continuous clock and
 /// task suspension.
 ///
-/// `nowNanoseconds()` reads `ContinuousClock.Instant.durationSinceReference`,
-/// so elapsed time includes system sleep and remains monotonic without being
-/// tied to wall-clock calendar time.
+/// `nowNanoseconds()` measures from a stored `ContinuousClock.Instant`, so
+/// elapsed time includes system sleep and remains monotonic without being tied
+/// to wall-clock calendar time.
 /// `sleep(nanoseconds:)` suspends via `Task.sleep`, propagating cancellation
 /// as `CancellationError`. Durations beyond `Int64.max` nanoseconds
 /// (~292 years) saturate instead of trapping.
 struct LiveSwarmClock: SwarmClock {
     /// Shared instance; `LiveSwarmClock` is stateless and value-semantic.
     static let live = LiveSwarmClock()
+    private static let reference = ContinuousClock.now
 
     func nowNanoseconds() -> UInt64 {
-        ContinuousClock.now.durationSinceReference.swarmNanoseconds
+        Self.reference.duration(to: ContinuousClock.now).swarmNanoseconds
     }
 
     func sleep(nanoseconds: UInt64) async throws {

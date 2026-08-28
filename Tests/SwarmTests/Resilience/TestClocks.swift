@@ -256,13 +256,15 @@ private struct DurationNanosecondConversionTests {
 
 @Suite("LiveSwarmClock Tests")
 private struct LiveSwarmClockTests {
-    @Test("Reads monotonic uptime")
-    func readsMonotonicUptime() {
+    @Test("Reads nonnegative monotonic time across suspension")
+    func readsNonnegativeMonotonicTimeAcrossSuspension() async throws {
         let clock = LiveSwarmClock()
         let first = clock.nowNanoseconds()
-        let second = clock.nowNanoseconds()
 
-        #expect(first > 0)
+        try await Task.sleep(nanoseconds: 1_000_000)
+
+        let second = clock.nowNanoseconds()
+        #expect(first >= 0)
         #expect(second >= first)
     }
 
