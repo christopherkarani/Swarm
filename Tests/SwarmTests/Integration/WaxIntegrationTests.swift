@@ -2,15 +2,15 @@
 // WaxIntegrationTests.swift
 // SwarmTests
 //
-// Tests for Wax integration being available as a core dependency.
+// Tests for the Wax embedding adapter and deprecated integration compatibility.
 
 @testable import Swarm
 import Testing
 
-@Suite("Wax Integration Tests")
-struct WaxIntegrationTests {
-    @Test("Wax integration is enabled by default")
-    func waxIntegrationIsEnabled() {
+@Suite("Wax Integration Compatibility and Embedding Provider Adapter Tests")
+struct WaxEmbeddingProviderAdapterTests {
+    @Test("Deprecated Wax integration marker remains source-compatible")
+    func deprecatedWaxIntegrationRemainsSourceCompatible() {
         let integration = WaxIntegration()
 
         #expect(integration.isEnabled == true)
