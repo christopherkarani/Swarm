@@ -252,7 +252,7 @@ extension ToolCallRecord: CustomDebugStringConvertible {
 ///     agentName: "CalculatorAgent",
 ///     metadata: ["confidence": 0.95],
 ///     toolCalls: [
-///         ToolCallRecord(
+///         ToolCallRecord.success(
 ///             toolName: "calculator",
 ///             arguments: ["expression": "6 * 7"],
 ///             result: .int(42),
