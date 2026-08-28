@@ -468,23 +468,6 @@ extension Memory where Self == PersistentMemory {
         )
     }
 
-    /// Creates a ``PersistentMemory`` backed by ``InMemoryBackend``.
-    ///
-    /// - Warning: Despite the name, this overload does **not** persist.
-    ///   ``InMemoryBackend`` drops all messages when the process exits.
-    ///   Pass an explicit `backend:` instead. This overload will be removed
-    ///   in 0.7.0.
-    @available(*, deprecated, message: "`.persistent()` defaults to InMemoryBackend, which does not survive process exit. Pass an explicit backend such as SwiftDataBackend.persistent() (Apple) or InMemoryBackend() if ephemeral storage is intentional. The no-backend overload will be removed in 0.7.0.")
-    public static func persistent(
-        conversationId: String = UUID().uuidString,
-        maxMessages: Int = 0
-    ) -> PersistentMemory {
-        persistent(
-            backend: InMemoryBackend(),
-            conversationId: conversationId,
-            maxMessages: maxMessages
-        )
-    }
 }
 
 extension Memory where Self == HybridMemory {
