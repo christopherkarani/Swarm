@@ -266,20 +266,21 @@ struct DocumentationFreshnessTests {
         #expect(!package.contains("Conduit"), "Package.swift must not mention Conduit after the 0.6 hard break")
     }
 
-    @Test("front-facing docs cover supported companion products")
-    func frontFacingDocsCoverSupportedCompanionProducts() throws {
+    @Test("front-facing docs cover exported companion products")
+    func frontFacingDocsCoverExportedCompanionProducts() throws {
         let docs = try readRepoFile("docs/reference/front-facing-api.md")
         let package = try readRepoFile("Package.swift")
 
         #expect(package.contains(".library(name: \"SwarmOpenTelemetry\""))
+        #expect(package.contains(".library(name: \"SwarmMembrane\""))
         #expect(package.contains(".library(name: \"SwarmMCP\""))
 
         #expect(docs.contains("SwarmOpenTelemetry"))
         #expect(docs.contains("instrumentedWithOpenTelemetry"))
+        #expect(docs.contains("SwarmMembrane"))
+        #expect(docs.contains("@_exported import Swarm"))
         #expect(docs.contains("SwarmMCPServerService"))
         #expect(docs.contains("SwarmMCPToolRegistryAdapter"))
-        #expect(!package.contains("SwarmMembrane"))
-        #expect(!docs.contains("SwarmMembrane"))
     }
 
     @Test("public macro docs include the inline tool macro")

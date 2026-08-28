@@ -29,7 +29,7 @@ Enable Integrations when you need any of:
 |------------|----------------------------|----------------------------------|
 | Default agent memory | `SlidingWindowMemory` | ContextCore + Wax `DefaultAgentMemory` |
 | Durable Hive checkpoint/resume | Configuration type-checks; factories warn immediately; execute with checkpoint/resume configured throws | Full durable engine |
-| Membrane adapters | No-op / unavailable backends | Real Membrane session adapters (`import Swarm`) |
+| Membrane adapters | No-op / unavailable backends | Real Membrane session adapters (`import Swarm`; do not take a `SwarmMembrane` dependency — that product is deprecated and will be removed in 0.7.0) |
 | Web helpers (`websearch`, page fetch/HTML parse) | Not injected / gated | Full web tool support |
 
 ```swift

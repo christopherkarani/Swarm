@@ -20,6 +20,8 @@ let registerAppleIntegrationTargets = true
 var packageProducts: [Product] = [
     .library(name: "Swarm", targets: ["Swarm"]),
     .library(name: "SwarmOpenTelemetry", targets: ["SwarmOpenTelemetry"]),
+    // Deprecated hollow re-export; remove the product in 0.7.0.
+    .library(name: "SwarmMembrane", targets: ["SwarmMembrane"]),
     .library(name: "SwarmMCP", targets: ["SwarmMCP"]),
 ]
 
@@ -185,6 +187,14 @@ var packageTargets: [Target] = [
             .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
         ],
+        swiftSettings: swarmSwiftSettings
+    ),
+    .target(
+        name: "SwarmMembrane",
+        dependencies: [
+            "Swarm",
+        ],
+        path: "Sources/SwarmMembrane",
         swiftSettings: swarmSwiftSettings
     ),
     .target(
