@@ -2528,6 +2528,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 141 | case | public | Workflow.MergeStrategy.structured | `public case structured` |
 | 158 | case | public | Workflow.MergeStrategy.indexed | `public case indexed` |
 | 174 | case | public | Workflow.MergeStrategy.firstCompleted | `public case firstCompleted` |
+| 182 | case | public | Workflow.MergeStrategy.first | `public case first` _(Availability: * (deprecated); renamed to firstCompleted)_ |
 | 202 | case | public | Workflow.MergeStrategy.custom(_:) | `public case custom(@Sendable ([AgentResult]) -> String)` |
 | 218 | func | public | Workflow.init() | `public init()` |
 | 238 | func | public | Workflow.step(_:) | `public func step(_ agent: some AgentRuntime) -> Workflow` |
@@ -2539,7 +2540,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 423 | func | public | Workflow.timeout(_:) | `public func timeout(_ duration: Duration) -> Workflow` |
 | 449 | func | public | Workflow.observed(by:) | `public func observed(by observer: some AgentObserver) -> Workflow` |
 | 476 | func | public | Workflow.run(_:) | `public func run(_ input: String) async throws -> AgentResult` |
-| 502 | func | public | Workflow.stream(_:) | `public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>` |
+| 511 | func | public | Workflow.stream(_:) | `public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>` |
 
 ### Workflow/WorkflowCheckpointing.swift
 

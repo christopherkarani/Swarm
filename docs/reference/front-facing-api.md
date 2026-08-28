@@ -322,6 +322,7 @@ public struct Workflow: Sendable {
         case structured
         case indexed
         case firstCompleted
+        case first // deprecated, renamed: firstCompleted
         case custom(@Sendable ([AgentResult]) -> String)
     }
 

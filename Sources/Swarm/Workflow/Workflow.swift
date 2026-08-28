@@ -123,6 +123,7 @@ public struct Workflow: Sendable {
     /// - ``structured``
     /// - ``indexed``
     /// - ``firstCompleted``
+    /// - ``first``
     /// - ``custom(_:)``
     public enum MergeStrategy: Sendable {
         /// Merges results into a JSON object: `{"0": "output0", "1": "output1", ...}`.
@@ -173,6 +174,14 @@ public struct Workflow: Sendable {
         /// // result.output contains output from whichever agent finished first
         /// ```
         case firstCompleted
+
+        /// Returns the output of the first agent to complete.
+        ///
+        /// - Important: Use ``firstCompleted`` instead. This case is a deprecated
+        ///   alias with the same first-to-complete semantics, including cancelling
+        ///   remaining agents after a winner is chosen.
+        @available(*, deprecated, renamed: "firstCompleted")
+        case first
 
         /// Applies a custom merge function to combine all parallel results.
         ///
@@ -700,7 +709,17 @@ func workflowDurableSignatureMismatch(
     checkpointSignature: String,
     currentSignature: String
 ) -> WorkflowError? {
-    guard checkpointSignature != currentSignature else {
+    let legacyMergeSignature = ":first"
+    let normalizedCheckpointSignature = checkpointSignature
+        .split(separator: "|", omittingEmptySubsequences: false)
+        .map { component in
+            component.hasSuffix(legacyMergeSignature)
+                ? String(component.dropLast(legacyMergeSignature.count)) + ":firstCompleted"
+                : String(component)
+        }
+        .joined(separator: "|")
+
+    guard normalizedCheckpointSignature != currentSignature else {
         return nil
     }
     if checkpointSignature.contains(":source:") {
@@ -718,11 +737,12 @@ func workflowDurableSignatureMismatch(
 }
 
 extension Workflow.MergeStrategy {
+    /// Deprecated `.first` is an alias of `.firstCompleted`.
     fileprivate var cancelsLosersAfterFirstResult: Bool {
         switch self {
         case .structured, .indexed, .custom:
             return false
-        case .firstCompleted:
+        case .first, .firstCompleted:
             return true
         }
     }
@@ -745,7 +765,7 @@ extension Workflow.MergeStrategy {
             }.joined(separator: "\n")
         case .custom(let transform):
             return transform(results)
-        case .firstCompleted:
+        case .first, .firstCompleted:
             return results.first?.output ?? ""
         }
     }
@@ -756,7 +776,7 @@ extension Workflow.MergeStrategy {
             return "structured"
         case .indexed:
             return "indexed"
-        case .firstCompleted:
+        case .first, .firstCompleted:
             return "firstCompleted"
         case .custom:
             return customMerge?.value ?? "custom:opaque"
