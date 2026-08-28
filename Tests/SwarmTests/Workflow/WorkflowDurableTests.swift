@@ -5,6 +5,73 @@ import Testing
 
 @Suite("Workflow Advanced")
 struct WorkflowDurableTests {
+    @Test("direct and durable repeat execution share limits and result fidelity")
+    func directAndDurableRepeatParity() async throws {
+        for maxIterations in [1, 2] {
+            let directLog = WorkflowInvocationLog()
+            let direct = Workflow()
+                .step(WorkflowRecordingAgent(log: directLog))
+                .repeatUntil(maxIterations: maxIterations) { _ in false }
+
+            let checkpointing = WorkflowCheckpointing.inMemory()
+            let durableLog = WorkflowInvocationLog()
+            let durable = Workflow()
+                .step(WorkflowRecordingAgent(log: durableLog))
+                .repeatUntil(maxIterations: maxIterations) { _ in false }
+                .durable
+                .checkpoint(id: "wf-parity-\(maxIterations)", policy: .everyStep)
+                .durable
+                .checkpointing(checkpointing)
+
+            let directResult = try await direct.run("start")
+            let durableResult = try await durable.durable.execute("start")
+
+            #expect(directResult == durableResult)
+            #expect(await directLog.inputs == ["start"] + Array(repeating: "result", count: maxIterations - 1))
+            #expect(await durableLog.inputs == ["start"] + Array(repeating: "result", count: maxIterations - 1))
+        }
+    }
+
+    @Test("direct and durable execution reject invalid workflows before agent invocation")
+    func invalidWorkflowParity() async throws {
+        let directEmpty = Workflow()
+        await #expect(throws: WorkflowError.self) {
+            _ = try await directEmpty.run("ignored")
+        }
+
+        let directAgentLog = WorkflowInvocationLog()
+        let directRepeating = Workflow()
+            .step(WorkflowRecordingAgent(log: directAgentLog))
+            .repeatUntil(maxIterations: 0) { _ in false }
+        await #expect(throws: WorkflowError.self) {
+            _ = try await directRepeating.run("ignored")
+        }
+        #expect(await directAgentLog.inputs.isEmpty)
+
+        let checkpointing = WorkflowCheckpointing.inMemory()
+        let durableAgentLog = WorkflowInvocationLog()
+        let durableEmpty = Workflow()
+            .durable
+            .checkpoint(id: "wf-empty", policy: .everyStep)
+            .durable
+            .checkpointing(checkpointing)
+        await #expect(throws: WorkflowError.self) {
+            _ = try await durableEmpty.durable.execute("ignored")
+        }
+
+        let durableRepeating = Workflow()
+            .step(WorkflowRecordingAgent(log: durableAgentLog))
+            .repeatUntil(maxIterations: 0) { _ in false }
+            .durable
+            .checkpoint(id: "wf-zero-repeat", policy: .everyStep)
+            .durable
+            .checkpointing(checkpointing)
+        await #expect(throws: WorkflowError.self) {
+            _ = try await durableRepeating.durable.execute("ignored")
+        }
+        #expect(await durableAgentLog.inputs.isEmpty)
+    }
+
     @Test("durable checkpoint requires explicit checkpoint store")
     func checkpointRequiresStore() async throws {
         let workflow = Workflow()
@@ -226,6 +293,48 @@ struct WorkflowDurableTests {
         #expect(result.output == "backup")
         #expect(result.metadata["workflow.fallback.used"] == .bool(true))
     }
+}
+
+private actor WorkflowInvocationLog {
+    private(set) var inputs: [String] = []
+
+    func record(_ input: String) {
+        inputs.append(input)
+    }
+}
+
+private actor WorkflowRecordingAgent: AgentRuntime {
+    nonisolated let tools: [any AnyJSONTool] = []
+    nonisolated let instructions = "WorkflowRecordingAgent"
+    nonisolated let configuration = AgentConfiguration(name: "WorkflowRecordingAgent")
+    nonisolated let handoffs: [AnyHandoffConfiguration] = []
+
+    private let log: WorkflowInvocationLog
+
+    init(log: WorkflowInvocationLog) {
+        self.log = log
+    }
+
+    func run(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) async throws -> AgentResult {
+        await log.record(input)
+        return AgentResult(
+            output: "result",
+            iterationCount: 2,
+            metadata: ["marker": .string("preserved")]
+        )
+    }
+
+    nonisolated func stream(
+        _ input: String,
+        session: (any Session)?,
+        observer: (any AgentObserver)?
+    ) -> AsyncThrowingStream<AgentEvent, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            continuation.finish(throwing: AgentError.internalError(reason: "recording agent does not stream"))
+        }
+    }
+
+    func cancel() async {}
 }
 
 private func repeatClosureIdentityWorkflow(
