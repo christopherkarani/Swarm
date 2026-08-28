@@ -185,7 +185,7 @@ struct DocumentationFreshnessTests {
 
         #expect(agent.contains("private var toolRegistry"))
         #expect(!agent.contains("enum ConversationMessage"))
-        #expect(loop.contains("private enum ConversationMessage"))
+        #expect(loop.contains("private typealias ConversationMessage = AgentTurnTranscript.Message"))
         #expect(loop.contains("dependencies: AgentTurnDependencies"))
         #expect(loop.contains("AgentTurnKernel."))
         #expect(!loop.contains("struct ToolLoopEngine"))

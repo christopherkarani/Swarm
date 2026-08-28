@@ -207,8 +207,7 @@ To configure one provider globally for the default graph:
 await Swarm.configure(provider: myProvider)
 ```
 
-The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only
-features such as Foundation Models, SwiftData, OSLog require supported Apple
+The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog require supported Apple
 platforms; on Linux and in CI, use an OpenAI-compatible provider or inject a
 mock.
 
