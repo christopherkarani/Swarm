@@ -245,7 +245,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 72 | var | public | ToolCallRecord.isSuccess | `public var isSuccess: Bool { get }` |
 | 82 | var | public | ToolCallRecord.errorMessage | `public var errorMessage: String? { get }` |
 | 95 | func | public | ToolCallRecord.init(toolName:arguments:duration:timestamp:outcome:) | `public init(toolName: String, arguments: [String : SendableValue] = [:], duration: Duration = .zero, timestamp: Date = Date(), outcome: ToolCallRecord.Outcome)` |
-| 116 | func | public | ToolCallRecord.init(toolName:arguments:result:duration:timestamp:isSuccess:errorMessage:) | `public init(toolName: String, arguments: [String : SendableValue] = [:], result: SendableValue = .null, duration: Duration = .zero, timestamp: Date = Date(), isSuccess: Bool = true, errorMessage: String? = nil)` (deprecated) |
 | 136 | func | public | ToolCallRecord.success(toolName:arguments:result:duration:timestamp:) | `public static func success(toolName: String, arguments: [String : SendableValue] = [:], result: SendableValue, duration: Duration = .zero, timestamp: Date = Date()) -> ToolCallRecord` |
 | 152 | func | public | ToolCallRecord.failure(toolName:arguments:error:duration:timestamp:) | `public static func failure(toolName: String, arguments: [String : SendableValue] = [:], error: String, duration: Duration = .zero, timestamp: Date = Date()) -> ToolCallRecord` |
 | 84 | var | public | ToolCallRecord.description | `public var description: String { get }` |

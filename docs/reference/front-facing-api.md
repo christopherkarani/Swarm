@@ -750,7 +750,7 @@ public struct ToolCallRecord: Sendable {
 }
 ```
 
-Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The independent `isSuccess` + `errorMessage` memberwise initializers remain as deprecated compatibility shims. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
+Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The compatibility accessors remain available for inspecting the closed outcomes. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
 
 ### Tool failure errors
 

@@ -106,33 +106,6 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
         self.outcome = outcome
     }
 
-    /// Creates a new tool call record from independently specified success flags.
-    ///
-    /// Prefer ``success(toolName:arguments:result:duration:timestamp:)`` or
-    /// ``failure(toolName:arguments:error:duration:timestamp:)``.
-    /// A failure with a nil message is stored as `"Tool execution failed"`.
-    /// Success ignores `errorMessage`; failure ignores `result`.
-    @available(*, deprecated, message: "Use ToolCallRecord.success(...) or .failure(...)")
-    public init(
-        toolName: String,
-        arguments: [String: SendableValue] = [:],
-        result: SendableValue = .null,
-        duration: Duration = .zero,
-        timestamp: Date = TurnEnvironment.live.now(),
-        isSuccess: Bool = true,
-        errorMessage: String? = nil
-    ) {
-        self.toolName = toolName
-        self.arguments = arguments
-        self.duration = duration
-        self.timestamp = timestamp
-        if isSuccess {
-            outcome = .success(result)
-        } else {
-            outcome = .failure(message: errorMessage ?? "Tool execution failed")
-        }
-    }
-
     /// Creates a successful tool call record.
     public static func success(
         toolName: String,
@@ -252,7 +225,7 @@ extension ToolCallRecord: CustomDebugStringConvertible {
 ///     agentName: "CalculatorAgent",
 ///     metadata: ["confidence": 0.95],
 ///     toolCalls: [
-///         ToolCallRecord(
+///         ToolCallRecord.success(
 ///             toolName: "calculator",
 ///             arguments: ["expression": "6 * 7"],
 ///             result: .int(42),
