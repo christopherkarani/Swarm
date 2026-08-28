@@ -348,10 +348,10 @@ struct GuardrailResultTests {
         #expect(result.message == "blocked")
     }
 
-    @Test("Deprecated tripwire initializer fills a default message when nil")
-    func deprecatedInitNilTripwireMessage() {
-        let tripwire = GuardrailResult(tripwireTriggered: true)
-        let passed = GuardrailResult(tripwireTriggered: false)
+    @Test("Tripwire and passed cases expose their outcome")
+    func casesExposeTheirOutcome() {
+        let tripwire = GuardrailResult.tripwire(message: "Tripwire triggered")
+        let passed = GuardrailResult.passed()
         #expect(tripwire.message == "Tripwire triggered")
         #expect(tripwire.tripwireTriggered)
         #expect(passed.message == nil)

@@ -1955,7 +1955,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 81 | var | public | GuardrailResult.outputInfo | `public var outputInfo: SendableValue? { get }` |
 | 92 | var | public | GuardrailResult.message | `public var message: String? { get }` |
 | 102 | var | public | GuardrailResult.metadata | `public var metadata: [String : SendableValue] { get }` |
-| 116 | func | public | GuardrailResult.init(tripwireTriggered:outputInfo:message:metadata:) | `public init(tripwireTriggered: Bool, outputInfo: SendableValue? = nil, message: String? = nil, metadata: [String : SendableValue] = [:])` |
 | 140 | var | public | GuardrailResult.debugDescription | `public var debugDescription: String { get }` |
 
 ### Guardrails/GuardrailRunner.swift

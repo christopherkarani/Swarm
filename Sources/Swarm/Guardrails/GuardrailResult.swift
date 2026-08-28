@@ -11,7 +11,7 @@ import Foundation
 /// The result of a guardrail validation check.
 ///
 /// `GuardrailResult` is a closed outcome: validation either passed or a tripwire
-/// fired. Construct values with the enum cases (the historical factory names):
+/// fired. Construct values with the enum cases:
 ///
 /// | Case | Purpose | Tripwire |
 /// |------|---------|----------|
@@ -106,32 +106,6 @@ public enum GuardrailResult: Sendable, Equatable {
         }
     }
 
-    /// Creates a result from the historical boolean stored-property shape.
-    ///
-    /// Prefer ``passed(message:outputInfo:metadata:)`` or
-    /// ``tripwire(message:outputInfo:metadata:)``. A tripwire with a nil message
-    /// is stored as `"Tripwire triggered"`.
-    @available(*, deprecated, message: "Use GuardrailResult.passed(...) or .tripwire(message:)")
-    public init(
-        tripwireTriggered: Bool,
-        outputInfo: SendableValue? = nil,
-        message: String? = nil,
-        metadata: [String: SendableValue] = [:]
-    ) {
-        if tripwireTriggered {
-            self = .tripwire(
-                message: message ?? "Tripwire triggered",
-                outputInfo: outputInfo,
-                metadata: metadata
-            )
-        } else {
-            self = .passed(
-                message: message,
-                outputInfo: outputInfo,
-                metadata: metadata
-            )
-        }
-    }
 }
 
 // MARK: CustomDebugStringConvertible

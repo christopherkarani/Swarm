@@ -76,12 +76,12 @@ struct AgentRunGuardrailBehaviorTests {
         #expect(await memory.addCalls.isEmpty)
     }
 
-    @Test("Deprecated nil tripwire message is forwarded on GuardrailError")
-    func deprecatedNilTripwireMessageReachesError() async throws {
+    @Test("Tripwire message is forwarded on GuardrailError")
+    func tripwireMessageReachesError() async throws {
         let provider = MockInferenceProvider(responses: ["should not be used"])
         let session = InMemorySession(sessionId: "legacy-tripwire")
         let guardrail = InputGuard("legacy") { _ in
-            GuardrailResult(tripwireTriggered: true)
+            .tripwire(message: "Tripwire triggered")
         }
         let agent = try Agent(
             instructions: "Respond briefly.",
