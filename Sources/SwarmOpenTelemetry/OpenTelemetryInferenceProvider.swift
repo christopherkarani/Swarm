@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 // OpenTelemetryInferenceProvider.swift
 // SwarmOpenTelemetry
 
@@ -365,3 +366,4 @@ public extension InferenceProvider {
         )
     }
 }
+#endif

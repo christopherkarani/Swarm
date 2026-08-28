@@ -1,3 +1,4 @@
+#if SWARM_MCP
 import Foundation
 import MCP
 import Swarm
@@ -96,3 +97,4 @@ enum SwarmMCPToolMapper {
             .map(Value.string)
     }
 }
+#endif

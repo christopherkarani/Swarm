@@ -92,8 +92,8 @@ from the repo root.
 swift package resolve         # Resolve dependencies (lean pins without Integrations)
 bash scripts/ci/lean-build-test.sh   # Cold lean resolve + product build + lean tests
 swift build --traits Integrations
-swift test --no-parallel --traits Integrations
-swift test --no-parallel --traits Integrations --filter HiveSwarmTests
+swift test --no-parallel --traits Integrations,MCP,OpenTelemetry
+swift test --no-parallel --traits Integrations,MCP,OpenTelemetry --filter HiveSwarmTests
 swift test --filter SwarmTests.WorkflowTests   # Run a single suite
 # Note: bare `swift build`/`swift test` without --traits Integrations still
 # compile every registered target (orphans need trait-gated remotes). Prefer
@@ -115,10 +115,10 @@ Integrations is on. ContextCore / full Membrane session stack are Apple-only
 Wax remains a remote package + trait-gated product; MetalANNS stays remote for
 the ContextCore chain. Lean resolve must not pull package identities `hive`,
 `membrane`, `contextcore`, or `conduit`, and must not pin Wax/MetalANNS/GRDB/
-crypto/mutex/SwiftSoup (trait-gated product edges). Default-on: swift-syntax
-(via the Macros trait; disable with `traits: []`),
-swift-log, MCP sdk, OTel (+ NIO transitives; `swift-collections` via NIO is
-OK). CI: `scripts/ci/lean-build-test.sh` (cold resolve + product-scoped lean
+crypto/mutex/SwiftSoup/MCP SDK/OTel/NIO (trait-gated product edges). Default-on:
+swift-syntax (via the Macros trait; disable with `traits: []`) and swift-log.
+Opt-in: `traits: ["MCP"]` for SwarmMCP, `traits: ["OpenTelemetry"]` for
+SwarmOpenTelemetry. CI: `scripts/ci/lean-build-test.sh` (cold resolve + product-scoped lean
 build + `SWARM_OMIT_INTEGRATION_TARGETS=1` tests) and
 `scripts/ci/verify-lean-resolve.sh`. Bare root `swift build` without
 `--traits Integrations` compiles every registered target — use the lean helper
@@ -126,7 +126,7 @@ or product flags; consumers only build reachable targets.
 
 ```bash
 swift build --traits Integrations
-swift test --no-parallel --traits Integrations
+swift test --no-parallel --traits Integrations,MCP,OpenTelemetry
 ```
 
 Consumer `Package.swift`:

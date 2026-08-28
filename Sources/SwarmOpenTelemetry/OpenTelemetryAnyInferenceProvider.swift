@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 // OpenTelemetryAnyInferenceProvider.swift
 // SwarmOpenTelemetry
 
@@ -373,3 +374,4 @@ final class OpenTelemetryAnyInferenceProviderCore: @unchecked Sendable {
         }
     }
 }
+#endif

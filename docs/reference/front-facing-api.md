@@ -27,10 +27,11 @@ HiveCore, Membrane, and ContextCore are native in-tree `Sources/` targets
 (internal modules, not separate products), linked only with Integrations.
 Wax remains a remote package + trait-gated product. Lean resolve never pulls
 Hive/Membrane/ContextCore/Conduit package identities, and trait-gated product
-edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, and SwiftSoup
-off the lean pin list. Default remotes remain (swift-syntax via the default-on
-**Macros** trait, swift-log, MCP sdk, OTel, plus NIO transitives including
-`swift-collections`). Disable Macros with `traits: []` to drop swift-syntax
+edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, SwiftSoup,
+the MCP Swift SDK, and OpenTelemetry off the lean pin list. Default remotes
+are **swift-syntax** (via the default-on **Macros** trait) and **swift-log**.
+Enable `traits: ["MCP"]` for `SwarmMCP`, or `traits: ["OpenTelemetry"]` for
+`SwarmOpenTelemetry`. Disable Macros with `traits: []` to drop swift-syntax
 and use ``FunctionTool`` instead of `@Tool`.
 `SWARM_CORE_ONLY=1` drops the integration package block. ContextCore / full
 Membrane session stack are Apple-only (Metal/CoreML); Linux Integrations keeps
@@ -792,11 +793,15 @@ The package exports four public library products:
 | Product | Source surface | Public entry points |
 |---------|----------------|---------------------|
 | `Swarm` | `Sources/Swarm` | Agents, tools, workflows, memory, guardrails, providers, MCP client/bridge, workspace, resilience, observability, macros |
-| `SwarmOpenTelemetry` | `Sources/SwarmOpenTelemetry` | `OpenTelemetryInferenceProvider`, `InferenceProvider.instrumentedWithOpenTelemetry(...)`, `AgentRuntime.instrumentedWithOpenTelemetry(...)`, `OTLPHTTPTraceExporter`, `OpenTelemetryTracing`, `OpenTelemetryTracePropagation`, and `SwarmRuntimeTracer` |
+| `SwarmOpenTelemetry` | `Sources/SwarmOpenTelemetry` | Requires `traits: ["OpenTelemetry"]`. `OpenTelemetryInferenceProvider`, `InferenceProvider.instrumentedWithOpenTelemetry(...)`, `AgentRuntime.instrumentedWithOpenTelemetry(...)`, `OTLPHTTPTraceExporter`, `OpenTelemetryTracing`, `OpenTelemetryTracePropagation`, and `SwarmRuntimeTracer` |
 | `SwarmMembrane` | `Sources/SwarmMembrane` | **Deprecated.** Hollow re-export (`@_exported import Swarm`). Import `Swarm` and use `MembraneEnvironment`, `MembraneFeatureConfiguration`, `MembraneAgentAdapter`, and `DefaultMembraneAgentAdapter` under `Sources/Swarm/Integration/Membrane/`. The product will be removed in 0.7.0. |
-| `SwarmMCP` | `Sources/SwarmMCP` | `SwarmMCPServerService`, `SwarmMCPToolCatalog`, `SwarmMCPToolExecutor`, `SwarmMCPToolExecutionError`, and `SwarmMCPToolRegistryAdapter` |
+| `SwarmMCP` | `Sources/SwarmMCP` | Requires `traits: ["MCP"]`. `SwarmMCPServerService`, `SwarmMCPToolCatalog`, `SwarmMCPToolExecutor`, `SwarmMCPToolExecutionError`, and `SwarmMCPToolRegistryAdapter`. Swarm's MCP *client* stays in the `Swarm` product and does not need this trait. |
 
 ### OpenTelemetry wrappers
+
+Requires the **OpenTelemetry** SwiftPM trait (`traits: ["OpenTelemetry"]`).
+Selecting the `SwarmOpenTelemetry` product in Xcode without the trait leaves
+the module hollow.
 
 ```swift
 import Swarm
@@ -859,7 +864,8 @@ Swarm does not implement prompts or sampling — those capability flags stay
 `false` on connections. `MCPClient` aggregates multiple connections and
 `MCPToolBridge` exposes remote MCP tools as Swarm JSON tools.
 
-`SwarmMCPServerService` exposes a `SwarmMCPToolCatalog` and
+`SwarmMCPServerService` requires the **MCP** SwiftPM trait
+(`traits: ["MCP"]`) and exposes a `SwarmMCPToolCatalog` and
 `SwarmMCPToolExecutor` over the MCP Swift SDK transport. For a Swarm
 `ToolRegistry`, use `SwarmMCPToolRegistryAdapter` as both catalog and executor:
 

@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
@@ -521,3 +522,4 @@ private struct RolePreservingToolStreamingProvider: InferenceProvider {
         try await inner.generateStructured(messages: messages, request: request, options: options)
     }
 }
+#endif

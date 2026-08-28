@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 // OpenTelemetryAgentRuntime.swift
 // SwarmOpenTelemetry
 
@@ -230,3 +231,4 @@ public extension AgentRuntime {
         )
     }
 }
+#endif

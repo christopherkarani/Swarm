@@ -31,6 +31,9 @@ if [[ -f Package.resolved ]]; then
     echo "FAIL: swift-syntax is pinned in the Macros-disabled Package.resolved" >&2
     exit 1
   fi
+  SWARM_PACKAGE_RESOLVED="$FIXTURE_DIR/Package.resolved" \
+    SWARM_LEAN_ALLOWED_IDS="swift-log,swift-sdk,opentelemetry-swift-core,eventsource,swift-nio,swift-atomics,swift-system,swift-collections" \
+    bash "$ROOT_DIR/scripts/ci/verify-lean-resolve.sh"
 fi
 
 echo "verify-macros-disabled-consumer: build + FunctionTool smoke test"

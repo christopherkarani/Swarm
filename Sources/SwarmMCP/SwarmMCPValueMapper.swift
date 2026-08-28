@@ -1,3 +1,4 @@
+#if SWARM_MCP
 import Foundation
 import MCP
 import Swarm
@@ -48,3 +49,4 @@ enum SwarmMCPValueMapper {
         object.mapValues { sendableValue(from: $0) }
     }
 }
+#endif

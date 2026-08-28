@@ -44,12 +44,17 @@ HiveCore, Membrane, and ContextCore are native in-tree modules under Swarm
 `Sources/` (internal targets, not separate products). Wax remains an external
 package and is linked only with Integrations. Omitting the trait does **not**
 link Integrations modules into your app. Lean resolve never pulls
-Hive/Membrane/ContextCore/Conduit **package identities**, and trait-gated
-product edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, and
-SwiftSoup off the lean pin list. Default remotes remain (swift-syntax via the
-default-on **Macros** trait, swift-log, MCP sdk, OTel, plus NIO transitives —
-including `swift-collections` via NIO). Disable Macros with `traits: []` to
-drop swift-syntax. `SWARM_CORE_ONLY=1` drops the integration package block entirely.
+Hive/Membrane/ContextCore/Conduit **package identities** from the reachable
+lean targets. The MCP Swift SDK and OpenTelemetry package declarations remain
+resolved because SwiftPM cannot conditionally declare package dependencies from
+a package trait; their target/product links are trait-gated. Enable
+`traits: ["MCP"]` for `SwarmMCP`, or `traits: ["OpenTelemetry"]` for
+`SwarmOpenTelemetry`. The root-only `SWARM_OMIT_INTEGRATION_TARGETS=1` helper
+also removes the in-tree integration targets and their package-dependency block
+for lean root-package verification. Default remotes include **swift-syntax**
+(via the default-on **Macros** trait), **swift-log**, and the unconditional
+MCP/OpenTelemetry package graph. Disable Macros with `traits: []` to drop
+swift-syntax. `SWARM_CORE_ONLY=1` drops the integration package block entirely.
 
 **Platform note:** ContextCore and the full Membrane session stack need Apple
 frameworks (Metal/CoreML/Accelerate). On Linux, Integrations still enables Hive
@@ -107,9 +112,38 @@ let agent = try Agent(
 }
 ```
 
+### MCP and OpenTelemetry traits
+
+The **`MCP`** and **`OpenTelemetry`** SwiftPM traits are **off by default**.
+They gate target/product linking, not package dependency resolution: SwiftPM
+still resolves the declared MCP/OpenTelemetry packages. Swarm's built-in MCP
+*client* (`MCPClient`, `HTTPMCPServer`) stays in the `Swarm` product and does
+not need the MCP trait.
+
+```swift
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["MCP"]
+)
+
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["OpenTelemetry"]
+)
+```
+
+Specifying traits replaces defaults, so both of those keep macros (each trait
+enables Macros). Combine with Integrations as
+`traits: ["Integrations", "MCP", "OpenTelemetry"]`.
+
 ### Xcode
 
 **File → Add Package Dependencies →** `https://github.com/christopherkarani/Swarm.git`
+
+Select only the `Swarm` product for a lean app. Enable package traits under
+the dependency's traits inspector if you need `MCP` or `OpenTelemetry`.
 
 ## Your First Agent
 

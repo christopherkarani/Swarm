@@ -2978,6 +2978,10 @@ exports companion products with small public entry surfaces.
 
 ### SwarmOpenTelemetry
 
+Requires the **OpenTelemetry** SwiftPM trait (`traits: ["OpenTelemetry"]`).
+Without it this product is a hollow module exposing ``OpenTelemetryTrait``.
+
+
 #### Sources/SwarmOpenTelemetry/OpenTelemetryInferenceProvider.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -3050,6 +3054,9 @@ integration APIs cataloged in section 12 under
 | 8 | enum | public | SwarmMembraneProduct | `@available(*, deprecated, message: "Import Swarm instead. SwarmMembrane is a hollow re-export and will be removed in 0.7.0.") public enum SwarmMembraneProduct: Sendable` |
 
 ### SwarmMCP
+
+Requires the **MCP** SwiftPM trait (`traits: ["MCP"]`). Without it this product
+is a hollow module exposing ``MCPTrait``.
 
 #### Sources/SwarmMCP/SwarmMCPServerService.swift
 

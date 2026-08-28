@@ -1,3 +1,4 @@
+#if SWARM_MCP
 import Foundation
 import MCP
 @testable import Swarm
@@ -436,3 +437,4 @@ private func metadataObject(from content: [MCP.Tool.Content]) throws -> [String:
     Issue.record("Expected JSON metadata in tool content")
     return [:]
 }
+#endif

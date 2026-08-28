@@ -81,7 +81,8 @@ Demo executables are not part of the default package graph. Opt into them with
 ```bash
 SWARM_INCLUDE_DEMO=1 swift build
 SWARM_INCLUDE_DEMO=1 swift run SwarmDemo
-SWARM_INCLUDE_DEMO=1 swift run SwarmMCPServerDemo
+SWARM_INCLUDE_DEMO=1 swift build --traits MCP --product SwarmMCPServerDemo
+SWARM_INCLUDE_DEMO=1 swift run --traits MCP SwarmMCPServerDemo
 ```
 
 ## Live Smoke Requirements

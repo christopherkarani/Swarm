@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 // OTLPJSON.swift
 // SwarmOpenTelemetry
 
@@ -272,3 +273,4 @@ enum OTLPJSON {
         }
     }
 }
+#endif

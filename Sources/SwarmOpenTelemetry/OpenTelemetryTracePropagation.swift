@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 // OpenTelemetryTracePropagation.swift
 // SwarmOpenTelemetry
 
@@ -64,3 +65,4 @@ extension TraceContextHeaders {
         )
     }
 }
+#endif

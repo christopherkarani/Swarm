@@ -67,6 +67,24 @@ ContextCore and Wax memory, Membrane adapters, and web helpers:
 )
 ```
 
+The `MCP` and `OpenTelemetry` traits are opt-in. Enable `MCP` when you use
+the `SwarmMCP` server adapter, or `OpenTelemetry` when you use the
+`SwarmOpenTelemetry` wrappers; each trait also enables macros:
+
+```swift
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["MCP"]
+)
+
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["OpenTelemetry"]
+)
+```
+
 Macros are enabled by default. If you want a macro-free build, use
 `traits: []` and define tools with `FunctionTool`.
 
