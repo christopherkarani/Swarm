@@ -1121,12 +1121,12 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 303 | func | public | Agent.cancel() | `public func cancel() async` |
 | 313 | func | public | Agent.stream(_:session:observer:) | `public func stream(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 336 | func | public | Agent.runWithResponse(_:session:observer:) | `public func runWithResponse(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
-| 1259 | struct | public | Agent.Builder | `public struct Builder` |
+| 1259 | struct | public | Agent.Builder | `@available(*, deprecated, message: "Use an Agent initializer or withTools(_:). Agent.Builder compatibility will be removed in 0.7.0.") public struct Builder` |
 | 1265 | func | public | Agent.Builder.init() | `public init()` |
-| 1273 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [any AnyJSONTool]) -> Agent.Builder` |
+| 1273 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [any AnyJSONTool]) -> Agent.Builder` (deprecated) |
 | 1283 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [some Tool]) -> Agent.Builder` |
-| 1293 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: some AnyJSONTool) -> Agent.Builder` |
-| 1303 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: any AnyJSONTool) -> Agent.Builder` |
+| 1293 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: some AnyJSONTool) -> Agent.Builder` (deprecated) |
+| 1303 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: any AnyJSONTool) -> Agent.Builder` (deprecated) |
 | 1313 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: some Tool) -> Agent.Builder` |
 | 1322 | func | public | Agent.Builder.withBuiltInTools() | `public @discardableResult func withBuiltInTools() -> Agent.Builder` |
 | 1332 | func | public | Agent.Builder.instructions(_:) | `public @discardableResult func instructions(_ instructions: String) -> Agent.Builder` |
