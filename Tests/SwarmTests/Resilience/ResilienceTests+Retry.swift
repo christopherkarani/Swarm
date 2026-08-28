@@ -619,4 +619,59 @@ private struct RetryPolicyDeterminismTests {
         #expect(await retryRecorder.getAll().isEmpty)
         #expect(clock.recordedSleeps.isEmpty)
     }
+
+    @Test("Cancellation after an injected sleep prevents the next retry")
+    func cancellationAfterInjectedSleepPreventsNextRetry() async throws {
+        let clock = CancellationIgnoringClock()
+        let counter = TestCounter()
+        let policy = RetryPolicy(
+            maxAttempts: 1,
+            backoff: .fixed(delay: 1.0),
+            clock: clock
+        )
+
+        let task = Task {
+            try await policy.execute {
+                let attempt = await counter.increment()
+                if attempt == 1 {
+                    throw TestError.transient
+                }
+                return "should not run"
+            }
+        }
+
+        while clock.recordedSleeps.isEmpty {
+            await Task.yield()
+        }
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            Issue.record("Expected CancellationError")
+        } catch is CancellationError {
+            // Expected: cancellation is checked after the injected sleep.
+        }
+
+        #expect(await counter.get() == 1)
+    }
+}
+
+// MARK: - CancellationIgnoringClock
+
+/// A test clock that completes after cancellation without throwing it.
+/// RetryPolicy must retain cancellation semantics independently of the clock.
+private final class CancellationIgnoringClock: SwarmClock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var sleeps: [UInt64] = []
+
+    var recordedSleeps: [UInt64] {
+        lock.withLock { sleeps }
+    }
+
+    func nowNanoseconds() -> UInt64 { 0 }
+
+    func sleep(nanoseconds duration: UInt64) async throws {
+        lock.withLock { sleeps.append(duration) }
+        try? await Task.sleep(for: .seconds(60))
+    }
 }

@@ -291,6 +291,7 @@ public struct RetryPolicy: Sendable {
 
                 // Invoke retry callback
                 await onRetry?(retryCount, error)
+                try Task.checkCancellation()
 
                 // Calculate and apply backoff delay
                 let delay = sanitizeBackoffDelay(
@@ -298,6 +299,7 @@ public struct RetryPolicy: Sendable {
                 )
                 if delay > 0 {
                     try await clock.sleep(nanoseconds: delay)
+                    try Task.checkCancellation()
                 }
             }
         }
