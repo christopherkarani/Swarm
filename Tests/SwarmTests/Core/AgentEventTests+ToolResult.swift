@@ -114,17 +114,15 @@ struct ToolResultTests {
         }
     }
 
-    // MARK: - Direct Initialization
+    // MARK: - Direct Outcome Initialization
 
-    @Test("ToolResult direct initialization - success")
+    @Test("ToolResult outcome initialization - success")
     func directInitializationSuccess() {
         let callId = UUID()
         let result = ToolResult(
             callId: callId,
-            isSuccess: true,
-            output: .int(100),
             duration: .seconds(1),
-            errorMessage: nil
+            outcome: .success(.int(100))
         )
 
         #expect(result.callId == callId)
@@ -134,15 +132,13 @@ struct ToolResultTests {
         #expect(result.errorMessage == nil)
     }
 
-    @Test("ToolResult direct initialization - failure")
+    @Test("ToolResult outcome initialization - failure")
     func directInitializationFailure() {
         let callId = UUID()
         let result = ToolResult(
             callId: callId,
-            isSuccess: false,
-            output: .null,
             duration: .milliseconds(500),
-            errorMessage: "Failed"
+            outcome: .failure(message: "Failed")
         )
 
         #expect(result.callId == callId)
@@ -474,7 +470,7 @@ struct ToolResultTests {
             duration: .milliseconds(10),
             errorMessage: "boom"
         )
-        #expect(!result.isSuccess)
+        #expect(result.isSuccess == false)
         #expect(result.output == .null)
         #expect(result.errorMessage == "boom")
         guard case let .failure(message) = result.outcome else {
@@ -492,7 +488,7 @@ struct ToolResultTests {
             output: .null,
             duration: .zero
         )
-        #expect(!result.isSuccess)
+        #expect(result.isSuccess == false)
         #expect(result.errorMessage == "Tool execution failed")
     }
 
