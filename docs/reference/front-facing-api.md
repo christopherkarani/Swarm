@@ -507,8 +507,8 @@ let vector: VectorMemory = .vector(
 ### Optional memory capabilities (`Memory` protocol)
 
 Custom `Memory` conformers opt into optional runtime behaviors by implementing
-defaulted `Memory` requirements — no marker protocol conformance is required or
-consulted. Implementing the member is the opt-in:
+defaulted `Memory` requirements. Marker protocols are neither required for
+runtime dispatch nor consulted. Implementing the member is the opt-in:
 
 ```swift
 public protocol Memory: Actor, Sendable {
@@ -542,11 +542,22 @@ public protocol Memory: Actor, Sendable {
 system prompts; `nil` renders under the generic "Relevant Context from Memory"
 heading with no guidance text.
 
-The former marker protocols are deprecated and still compile so existing
-conformances keep working: `MemorySessionLifecycle`,
-`MemorySessionReplayAware`, `MemoryRetrievalPolicyAware`,
-`MemorySessionImportPolicy`, and `MemoryPromptDescriptor`. Migrate by
-implementing the corresponding `Memory` requirement directly.
+Memory lifecycle, retrieval, seeding, and prompt metadata are direct
+requirements on `Memory`; implement them on the memory type itself.
+
+The former marker protocols remain public and deprecated so existing conformances
+continue to compile: `MemorySessionLifecycle`, `MemorySessionReplayAware`,
+`MemoryRetrievalPolicyAware`, `MemorySessionImportPolicy`, and
+`MemoryPromptDescriptor`. Their corresponding `Memory` requirements are
+`beginMemorySession()` / `endMemorySession()`, `importSessionHistory(_:)`,
+`context(for: MemoryQuery)`, `allowsAutomaticSessionSeeding`, and
+`memoryPromptMetadata`.
+
+`MemoryPromptDescriptor` is bridged to `Memory.memoryPromptMetadata`: its title,
+guidance, and priority are combined into `MemoryPromptMetadata`, preserving
+prompt labels for existing conformers without source changes. New conformers
+should implement the direct `Memory` requirements; the runtime does not probe
+the legacy marker protocols.
 
 ## 10) HandoffTool
 
