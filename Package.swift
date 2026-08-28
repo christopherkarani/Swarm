@@ -7,7 +7,8 @@ let coreOnly = ProcessInfo.processInfo.environment["SWARM_CORE_ONLY"] == "1"
 // Root-package lean CI/dev helper: omit in-tree integration *targets* so bare
 // `swift build` / `swift test` do not compile HiveCore/Membrane/ContextCore
 // orphans (SPM root builds every target). Consumers never set this — they get
-// the full Package.swift with trait-gated edges (lean resolve, no MetalANNS).
+// the full Package.swift with trait-gated edges (lean link; use the omit helper
+// when the root-package graph must exclude integration package declarations).
 let omitIntegrationTargets =
     ProcessInfo.processInfo.environment["SWARM_OMIT_INTEGRATION_TARGETS"] == "1"
 let enableIntegrationModules = !coreOnly && !omitIntegrationTargets
@@ -47,9 +48,9 @@ var packageDependencies: [Package.Dependency] = [
     // Product edges are Macros-trait-gated so consumers can drop the pin.
     .package(url: "https://github.com/swiftlang/swift-syntax.git", "601.0.0"..<"603.0.0"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.12.0"),
-    // MCP and OpenTelemetry are declared for the companion products, but only
-    // *used* through trait-gated product edges. With those traits off, SPM
-    // does not pin the SDK, OTel, or the MCP SDK's NIO/EventSource tree.
+    // SwiftPM cannot conditionally declare package dependencies from a package
+    // trait. These companion packages therefore remain in every resolution;
+    // their target product edges below are link-time trait-gated.
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
     .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.4.1"),
 ]
@@ -57,7 +58,7 @@ var packageDependencies: [Package.Dependency] = [
 // Integrations trait: opt-in graph/memory/web/Hive paths (off by default).
 // HiveCore, Membrane*, and ContextCore* are native in-tree Sources/ targets.
 // Product edges into those modules (and their remote deps) are trait-gated so
-// lean resolve/build does not pull MetalANNS/Wax/crypto/mutex/collections.
+// lean target links do not include MetalANNS/Wax/crypto/mutex/collections.
 //
 // ContextCore / Membrane (full stack) require Apple frameworks (Metal, CoreML,
 // Accelerate). They are trait-linked only on Apple platforms so Linux
@@ -325,7 +326,9 @@ if enableIntegrationModules {
     // Trait-gate remote product deps on in-tree modules. Unconditional product
     // edges made SPM pin MetalANNS/crypto/mutex/collections even when
     // Integrations was off (targets registered but unused). With trait gates,
-    // lean resolve only pins always-on remotes (swift-syntax via Macros, swift-log).
+    // lean target links exclude these integration remotes. The MCP/OpenTelemetry
+    // package pins remain because their declarations cannot be conditionalized
+    // by package traits.
     //
     // Note: SPM root packages still *compile* every registered target on bare
     // `swift build`/`swift test`. Use product-scoped builds, or

@@ -30,7 +30,7 @@ Two agents, one pipeline, compiled to a DAG. Crash recovery is opt-in — enable
 
 Default **link** is **lean**: core Swarm + on-device Foundation Models. Graph/memory/web/Hive paths are trait-gated (off by default) and are not linked into Swarm unless you enable Integrations.
 
-HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. Lean resolve never pulls Hive/Membrane/ContextCore/Conduit **package identities**, and (with trait-gated product edges) also does **not** pin Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, SwiftSoup, the MCP Swift SDK, or OpenTelemetry. Default remotes are **swift-syntax** (via the default-on **Macros** trait) and **swift-log**. Enable `traits: ["MCP"]` for `SwarmMCP` / the MCP Swift SDK (and its NIO tree), or `traits: ["OpenTelemetry"]` for `SwarmOpenTelemetry`. Disable Macros with `traits: []` to drop swift-syntax; use `FunctionTool` instead of `@Tool`. `SWARM_CORE_ONLY=1` drops the integration package block entirely. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML MiniLM model that is **not** bundled — call `SemanticEmbeddingAvailability.ensureModelAvailable()` to download it on demand. Without the model, ContextCore falls back to deterministic pseudo-embeddings, logs a once-per-process warning naming that API, and `DefaultAgentMemory.isSemanticMemoryAvailable` reports `false`.
+HiveCore, Membrane, and ContextCore are **native in-tree** `Sources/` targets (internal modules — not separate library products). Enabling Integrations **links** those modules plus Wax (still remote) and SwiftSoup; omitting the trait does not link them into Swarm. The default package graph is a **lean link**: trait-gated target/product edges keep integration remotes out of the reachable targets, while the MCP Swift SDK and OpenTelemetry package declarations remain resolved because SwiftPM cannot conditionally declare package dependencies from a package trait. Enable `traits: ["MCP"]` for `SwarmMCP` / the MCP Swift SDK (and its NIO tree), or `traits: ["OpenTelemetry"]` for `SwarmOpenTelemetry`. The root-only `SWARM_OMIT_INTEGRATION_TARGETS=1` helper removes the in-tree integration targets and their package-dependency block for a lean root-package verification lane. Default remotes include **swift-syntax** (via the default-on **Macros** trait), **swift-log**, and the unconditional MCP/OpenTelemetry package graph. Disable Macros with `traits: []` to drop swift-syntax; use `FunctionTool` instead of `@Tool`. `SWARM_CORE_ONLY=1` drops the integration package block entirely. ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); Linux Integrations still builds Hive + MembraneCore + web helpers. DefaultAgentMemory uses a CoreML MiniLM model that is **not** bundled — call `SemanticEmbeddingAvailability.ensureModelAvailable()` to download it on demand. Without the model, ContextCore falls back to deterministic pseudo-embeddings, logs a once-per-process warning naming that API, and `DefaultAgentMemory.isSemanticMemoryAvailable` reports `false`.
 
 **Root-package note:** bare `swift build` / `swift test` on this repo compile every registered target, so integration modules need either `--traits Integrations` or the lean CI helper (`scripts/ci/lean-build-test.sh`). App consumers only build reachable targets and stay lean without that helper.
 
@@ -86,7 +86,7 @@ let echo = FunctionTool(
 From a checkout of this package:
 
 ```bash
-# Lean (root package): product-scoped build, or scripts/ci/lean-build-test.sh
+# Lean link (root package): product-scoped build, or scripts/ci/lean-build-test.sh
 swift build --product Swarm --product SwarmMembrane --product SwarmCapabilityShowcase
 # Companion products need their traits (otherwise the modules are hollow):
 swift build --traits MCP --product SwarmMCP
@@ -188,9 +188,9 @@ cd Examples/WaxChat && swift run WaxChat --demo
 Package-root demo executables are opt-in so the default library graph stays focused on the framework products:
 
 ```bash
-SWARM_INCLUDE_DEMO=1 swift build
+SWARM_INCLUDE_DEMO=1 swift build --traits MCP
 SWARM_INCLUDE_DEMO=1 swift run SwarmDemo
-SWARM_INCLUDE_DEMO=1 swift run SwarmMCPServerDemo
+SWARM_INCLUDE_DEMO=1 swift run --traits MCP SwarmMCPServerDemo
 ```
 
 ## Foundation Models First

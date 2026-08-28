@@ -44,14 +44,17 @@ HiveCore, Membrane, and ContextCore are native in-tree modules under Swarm
 `Sources/` (internal targets, not separate products). Wax remains an external
 package and is linked only with Integrations. Omitting the trait does **not**
 link Integrations modules into your app. Lean resolve never pulls
-Hive/Membrane/ContextCore/Conduit **package identities**, and trait-gated
-product edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex,
-SwiftSoup, the MCP Swift SDK, and OpenTelemetry off the lean pin list. Default
-remotes are **swift-syntax** (via the default-on **Macros** trait) and
-**swift-log**. Enable `traits: ["MCP"]` for `SwarmMCP`, or
-`traits: ["OpenTelemetry"]` for `SwarmOpenTelemetry`. Disable Macros with
-`traits: []` to drop swift-syntax. `SWARM_CORE_ONLY=1` drops the integration
-package block entirely.
+Hive/Membrane/ContextCore/Conduit **package identities** from the reachable
+lean targets. The MCP Swift SDK and OpenTelemetry package declarations remain
+resolved because SwiftPM cannot conditionally declare package dependencies from
+a package trait; their target/product links are trait-gated. Enable
+`traits: ["MCP"]` for `SwarmMCP`, or `traits: ["OpenTelemetry"]` for
+`SwarmOpenTelemetry`. The root-only `SWARM_OMIT_INTEGRATION_TARGETS=1` helper
+also removes the in-tree integration targets and their package-dependency block
+for lean root-package verification. Default remotes include **swift-syntax**
+(via the default-on **Macros** trait), **swift-log**, and the unconditional
+MCP/OpenTelemetry package graph. Disable Macros with `traits: []` to drop
+swift-syntax. `SWARM_CORE_ONLY=1` drops the integration package block entirely.
 
 **Platform note:** ContextCore and the full Membrane session stack need Apple
 frameworks (Metal/CoreML/Accelerate). On Linux, Integrations still enables Hive
@@ -112,9 +115,10 @@ let agent = try Agent(
 ### MCP and OpenTelemetry traits
 
 The **`MCP`** and **`OpenTelemetry`** SwiftPM traits are **off by default**.
-Unchecking those products in Xcode does not drop their remotes — only the
-traits do. Swarm's built-in MCP *client* (`MCPClient`, `HTTPMCPServer`) stays
-in the `Swarm` product and does not need the MCP trait.
+They gate target/product linking, not package dependency resolution: SwiftPM
+still resolves the declared MCP/OpenTelemetry packages. Swarm's built-in MCP
+*client* (`MCPClient`, `HTTPMCPServer`) stays in the `Swarm` product and does
+not need the MCP trait.
 
 ```swift
 .package(
