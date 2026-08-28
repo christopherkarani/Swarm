@@ -52,6 +52,29 @@ struct ToolCallRecordTests {
         #expect(message == "Division by zero")
     }
 
+    @Test("Deprecated ToolCallRecord initializer cannot store mixed success and failure")
+    func deprecatedInitClosesOutcome() {
+        let success = ToolCallRecord(
+            toolName: "ok",
+            result: .string("value"),
+            isSuccess: true,
+            errorMessage: "ignored"
+        )
+        let failure = ToolCallRecord(
+            toolName: "bad",
+            result: .string("stale"),
+            isSuccess: false,
+            errorMessage: "boom"
+        )
+
+        #expect(success.isSuccess)
+        #expect(success.errorMessage == nil)
+        #expect(success.result == .string("value"))
+        #expect(!failure.isSuccess)
+        #expect(failure.result == .null)
+        #expect(failure.errorMessage == "boom")
+    }
+
     @Test("ToolCallRecord Codable round-trip preserves outcome")
     func codableRoundTrip() throws {
         let original = ToolCallRecord.failure(
