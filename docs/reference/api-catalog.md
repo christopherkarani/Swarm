@@ -1642,20 +1642,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 24 | var | public | MemoryPromptMetadata.guidance | `public var guidance: String?` |
 | 27 | var | public | MemoryPromptMetadata.priority | `public var priority: MemoryPriorityHint` |
 | 29 | init | public | MemoryPromptMetadata.init(title:guidance:priority:) | `public init(title: String, guidance: String?, priority: MemoryPriorityHint)` |
-| 47 | protocol | public | MemoryPromptDescriptor | `public protocol MemoryPromptDescriptor : Sendable` |
-| 49 | var | public | MemoryPromptDescriptor.memoryPromptTitle | `public var memoryPromptTitle: String { get }` |
-| 52 | var | public | MemoryPromptDescriptor.memoryPromptGuidance | `public var memoryPromptGuidance: String? { get }` |
-| 55 | var | public | MemoryPromptDescriptor.memoryPriority | `public var memoryPriority: MemoryPriorityHint { get }` |
-
-### Memory/MemorySessionLifecycle.swift
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 9 | protocol | public | MemorySessionLifecycle | `public protocol MemorySessionLifecycle : Memory` |
-| 11 | func | public | MemorySessionLifecycle.beginMemorySession() | `public func beginMemorySession() async` |
-| 14 | func | public | MemorySessionLifecycle.endMemorySession() | `public func endMemorySession() async` |
-| 24 | protocol | public | MemorySessionReplayAware | `public protocol MemorySessionReplayAware : Memory` |
-| 26 | func | public | MemorySessionReplayAware.importSessionHistory(_:) | `public func importSessionHistory(_ messages: [MemoryMessage]) async` |
 
 ### Memory/PersistentMemory.swift
 
@@ -2922,9 +2908,6 @@ Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationMo
 | 19 | func | public | WaxMemory.Configuration.init(orchestratorConfig:queryEmbeddingPolicy:tokenEstimator:promptTitle:promptGuidance:) | `public init(orchestratorConfig: OrchestratorConfig = .default, queryEmbeddingPolicy: MemoryOrchestrator.QueryEmbeddingPolicy = .ifAvailable, tokenEstimator: any TokenEstimator = CharacterBasedTokenEstimator.shared, promptTitle: String = "Wax Memory Context (primary)", promptGuidance: String? = "Use Wax memory context as the primary source of truth. Prefer it before calling tools.")` |
 | 34 | var | public | WaxMemory.count | `public var count: Int { get }` |
 | 35 | var | public | WaxMemory.isEmpty | `public var isEmpty: Bool { get }` |
-| 37 | var | public | WaxMemory.memoryPromptTitle | `public nonisolated let memoryPromptTitle: String` |
-| 38 | var | public | WaxMemory.memoryPromptGuidance | `public nonisolated let memoryPromptGuidance: String?` |
-| 39 | var | public | WaxMemory.memoryPriority | `public nonisolated let memoryPriority: MemoryPriorityHint` |
 | 46 | func | public | WaxMemory.init(url:embedder:configuration:) | `public init(url: URL, embedder: (any EmbeddingProvider)? = nil, configuration: WaxMemory.Configuration = .default) async throws` |
 | 72 | func | public | WaxMemory.add(_:) | `public func add(_ message: MemoryMessage) async` |
 | 86 | func | public | WaxMemory.context(for:tokenLimit:) | `public func context(for query: String, tokenLimit: Int) async -> String` |

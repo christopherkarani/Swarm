@@ -535,11 +535,8 @@ public protocol Memory: Actor, Sendable {
 system prompts; `nil` renders under the generic "Relevant Context from Memory"
 heading with no guidance text.
 
-The former marker protocols are deprecated and still compile so existing
-conformances keep working: `MemorySessionLifecycle`,
-`MemorySessionReplayAware`, `MemoryRetrievalPolicyAware`,
-`MemorySessionImportPolicy`, and `MemoryPromptDescriptor`. Migrate by
-implementing the corresponding `Memory` requirement directly.
+Memory lifecycle, retrieval, seeding, and prompt metadata are direct
+requirements on `Memory`; implement them on the memory type itself.
 
 ## 10) HandoffTool
 

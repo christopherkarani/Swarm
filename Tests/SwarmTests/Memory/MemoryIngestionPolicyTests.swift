@@ -120,7 +120,7 @@ struct MemoryIngestionPolicyTests {
     }
 }
 
-private actor OptOutMemory: Memory, MemorySessionImportPolicy {
+private actor OptOutMemory: Memory {
     nonisolated let allowsAutomaticSessionSeeding = false
     private(set) var addCalls: [MemoryMessage] = []
 

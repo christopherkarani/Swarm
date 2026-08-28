@@ -1,10 +1,14 @@
 import Foundation
 
 /// Workspace-backed memory for skill snippets and durable markdown notes.
-public actor WorkspaceMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, MemoryRetrievalPolicyAware, MemorySessionImportPolicy {
-    public nonisolated let memoryPromptTitle = "Retrieved Workspace Context"
-    public nonisolated let memoryPromptGuidance: String? = "Use workspace context as helpful secondary context. App instructions and agent specs win on conflicts."
-    public nonisolated let memoryPriority: MemoryPriorityHint = .secondary
+public actor WorkspaceMemory: Memory {
+    public nonisolated var memoryPromptMetadata: MemoryPromptMetadata? {
+        MemoryPromptMetadata(
+            title: "Retrieved Workspace Context",
+            guidance: "Use workspace context as helpful secondary context. App instructions and agent specs win on conflicts.",
+            priority: .secondary
+        )
+    }
     public nonisolated let allowsAutomaticSessionSeeding = false
 
     public var count: Int {
