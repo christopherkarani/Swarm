@@ -112,6 +112,9 @@ struct WorkflowDurableEngine: Sendable {
     let resume: Bool
 
     func run(startInput: String) async throws -> AgentResult {
+        if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
+            throw error
+        }
         if let controller = WorkflowDurableFaultInjection.controller {
             await controller.beginAttempt()
         }
@@ -289,74 +292,91 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
     guard case .running(let stepCursor, let iterationCursor, let lastResult) = phase else {
         return HiveNodeOutput(next: .end)
     }
-
-    // Cursors are untrusted persisted state: every engine-written cursor is
-    // non-negative by construction, so a negative value can only come from a
-    // tampered or truncated checkpoint. Fail the resume with a typed error
-    // instead of trapping on `steps[stepCursor]` below.
-    guard stepCursor >= 0, iterationCursor >= 0 else {
-        throw WorkflowError.invalidWorkflow(
-            reason: "durable checkpoint carries negative cursors "
-                + "(stepCursor: \(stepCursor), iterationCursor: \(iterationCursor))"
-        )
-    }
-
     let currentInput = try input.store.get(WorkflowDurableSchema.currentInputKey)
-    // The final result of a pass: the last committed step result, or the
-    // original input for workflows that complete before running any step.
-    let finalSnapshot = { lastResult ?? WorkflowResultSnapshot(AgentResult(output: currentInput)) }
+    let progress = WorkflowTransition.Progress(
+        stepCursor: stepCursor,
+        iterationCursor: iterationCursor,
+        currentInput: currentInput,
+        lastResult: lastResult?.agentResult
+    )
+    let policy = input.context.workflow.workflowTransitionPolicy
 
-    if stepCursor >= input.context.workflow.steps.count {
-        if let repeatCondition = input.context.workflow.repeatCondition {
-            let lastResultValue = lastResult?.agentResult ?? AgentResult(output: currentInput)
-            if repeatCondition(lastResultValue) {
-                return HiveNodeOutput(
-                    writes: [AnyHiveWrite(WorkflowDurableSchema.phaseKey, .completed(finalSnapshot()))],
-                    next: .end
-                )
-            }
-
-            let nextIteration = iterationCursor + 1
-            if nextIteration >= input.context.workflow.maxRepeatIterations {
-                return HiveNodeOutput(
-                    writes: [AnyHiveWrite(WorkflowDurableSchema.phaseKey, .completed(finalSnapshot()))],
-                    next: .end
-                )
-            }
-
-            return HiveNodeOutput(
-                writes: [
-                    AnyHiveWrite(
-                        WorkflowDurableSchema.phaseKey,
-                        .running(stepCursor: 0, iterationCursor: nextIteration, lastResult: lastResult)
-                    ),
-                    AnyHiveWrite(WorkflowDurableSchema.currentInputKey, lastResultValue.output),
-                ]
-            )
+    switch WorkflowTransition.decide(progress: progress, policy: policy) {
+    case .runStep(let progress):
+        let step = input.context.workflow.steps[progress.stepCursor]
+        if let controller = WorkflowDurableFaultInjection.controller {
+            await controller.markWorkflowStepStarted()
         }
-
-        return HiveNodeOutput(
-            writes: [AnyHiveWrite(WorkflowDurableSchema.phaseKey, .completed(finalSnapshot()))],
-            next: .end
+        let result = try await input.context.workflow.execute(step: step, withInput: progress.currentInput)
+        let nextDecision = WorkflowTransition.afterStep(
+            progress: progress,
+            result: result,
+            policy: policy
         )
-    }
+        let nextProgress = try progress(from: nextDecision)
+        return runningOutput(for: nextProgress)
 
-    let step = input.context.workflow.steps[stepCursor]
-    if let controller = WorkflowDurableFaultInjection.controller {
-        await controller.markWorkflowStepStarted()
-    }
-    let result = try await input.context.workflow.execute(step: step, withInput: currentInput)
-    let snapshot = WorkflowResultSnapshot(result)
+    case .evaluateRepeat(let progress, let result):
+        guard let repeatCondition = input.context.workflow.repeatCondition else {
+            throw WorkflowError.invalidWorkflow(reason: "workflow repeat predicate is missing")
+        }
+        let nextDecision = WorkflowTransition.afterRepeatBoundary(
+            progress: progress,
+            result: result,
+            outcome: repeatCondition(result) ? .satisfied : .notSatisfied,
+            policy: policy
+        )
+        return try output(for: nextDecision)
 
-    return HiveNodeOutput(
+    case .complete(_, let result):
+        return completedOutput(for: result)
+
+    case .fail(let error):
+        throw error
+    }
+}
+
+private func progress(from decision: WorkflowTransition.Decision) throws -> WorkflowTransition.Progress {
+    switch decision {
+    case .runStep(let progress), .evaluateRepeat(let progress, _), .complete(let progress, _):
+        return progress
+    case .fail(let error):
+        throw error
+    }
+}
+
+private func runningOutput(for progress: WorkflowTransition.Progress) -> HiveNodeOutput<WorkflowDurableSchema> {
+    HiveNodeOutput(
         writes: [
             AnyHiveWrite(
                 WorkflowDurableSchema.phaseKey,
-                .running(stepCursor: stepCursor + 1, iterationCursor: iterationCursor, lastResult: Optional(snapshot))
+                .running(
+                    stepCursor: progress.stepCursor,
+                    iterationCursor: progress.iterationCursor,
+                    lastResult: progress.lastResult.map { WorkflowResultSnapshot($0) }
+                )
             ),
-            AnyHiveWrite(WorkflowDurableSchema.currentInputKey, result.output),
+            AnyHiveWrite(WorkflowDurableSchema.currentInputKey, progress.currentInput),
         ]
     )
+}
+
+private func completedOutput(for result: AgentResult) -> HiveNodeOutput<WorkflowDurableSchema> {
+    HiveNodeOutput(
+        writes: [AnyHiveWrite(WorkflowDurableSchema.phaseKey, .completed(WorkflowResultSnapshot(result)))],
+        next: .end
+    )
+}
+
+private func output(for decision: WorkflowTransition.Decision) throws -> HiveNodeOutput<WorkflowDurableSchema> {
+    switch decision {
+    case .runStep(let progress), .evaluateRepeat(let progress, _):
+        return runningOutput(for: progress)
+    case .complete(_, let result):
+        return completedOutput(for: result)
+    case .fail(let error):
+        throw error
+    }
 }
 
 private struct WorkflowDurableClock: HiveClock {
