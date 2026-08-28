@@ -718,7 +718,17 @@ func workflowDurableSignatureMismatch(
     checkpointSignature: String,
     currentSignature: String
 ) -> WorkflowError? {
-    guard checkpointSignature != currentSignature else {
+    let legacyMergeSignature = ":first"
+    let normalizedCheckpointSignature = checkpointSignature
+        .split(separator: "|", omittingEmptySubsequences: false)
+        .map { component in
+            component.hasSuffix(legacyMergeSignature)
+                ? String(component.dropLast(legacyMergeSignature.count)) + ":firstCompleted"
+                : String(component)
+        }
+        .joined(separator: "|")
+
+    guard normalizedCheckpointSignature != currentSignature else {
         return nil
     }
     if checkpointSignature.contains(":source:") {
@@ -741,7 +751,7 @@ extension Workflow.MergeStrategy {
         switch self {
         case .structured, .indexed, .custom:
             return false
-        default:
+        case .first, .firstCompleted:
             return true
         }
     }
@@ -764,7 +774,7 @@ extension Workflow.MergeStrategy {
             }.joined(separator: "\n")
         case .custom(let transform):
             return transform(results)
-        default:
+        case .first, .firstCompleted:
             return results.first?.output ?? ""
         }
     }
@@ -775,12 +785,10 @@ extension Workflow.MergeStrategy {
             return "structured"
         case .indexed:
             return "indexed"
-        case .firstCompleted:
+        case .first, .firstCompleted:
             return "firstCompleted"
         case .custom:
             return customMerge?.value ?? "custom:opaque"
-        default:
-            return "first"
         }
     }
 }

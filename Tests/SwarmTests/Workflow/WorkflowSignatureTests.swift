@@ -93,6 +93,22 @@ struct WorkflowSignatureTests {
         ))
     }
 
+    @Test("legacy first merge signatures resume after firstCompleted rename")
+    func legacyFirstMergeSignatureResumesAfterRename() {
+        let current = Workflow()
+            .parallel([namedAgent("Branch")], merge: .firstCompleted)
+            .workflowSignature
+        let legacy = current.replacingOccurrences(of: ":firstCompleted", with: ":first")
+
+        #expect(legacy != current)
+        #expect(
+            workflowDurableSignatureMismatch(
+                checkpointSignature: legacy,
+                currentSignature: current
+            ) == nil
+        )
+    }
+
     @Test("matching signatures produce no mismatch")
     func matchingSignaturesProduceNoMismatch() {
         let signature = Workflow().step(namedAgent("Solo")).workflowSignature
