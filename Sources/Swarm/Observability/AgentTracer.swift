@@ -117,16 +117,6 @@ package actor CompositeTracer: Tracer {
         self.shouldExecuteInParallel = shouldExecuteInParallel
     }
 
-    /// Creates a composite tracer.
-    ///
-    /// - Parameters:
-    ///   - tracers: The child tracers to forward events to.
-    ///   - parallel: Whether to forward events in parallel.
-    @available(*, deprecated, message: "Use shouldExecuteInParallel instead of parallel")
-    package init(tracers: [any Tracer], parallel: Bool) {
-        self.init(tracers: tracers, minimumLevel: .trace, shouldExecuteInParallel: parallel)
-    }
-
     package func trace(_ event: TraceEvent) async {
         // Filter events below minimum level
         guard event.level >= minimumLevel else { return }

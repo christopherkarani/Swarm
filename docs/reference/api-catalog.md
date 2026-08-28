@@ -2056,7 +2056,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 72 | func | public | Tracer.flush() | `public func flush() async` |
 | 101 | class | public | CompositeTracer | `public actor CompositeTracer` |
 | 110 | func | public | CompositeTracer.init(tracers:minimumLevel:shouldExecuteInParallel:) | `public init(tracers: [any Tracer], minimumLevel: EventLevel = .trace, shouldExecuteInParallel: Bool = true)` |
-| 126 | func | public | CompositeTracer.init(tracers:parallel:) | `public convenience init(tracers: [any Tracer], parallel: Bool)` _(Availability: * (deprecated); Use shouldExecuteInParallel instead of parallel)_ |
 | 130 | func | public | CompositeTracer.trace(_:) | `public func trace(_ event: TraceEvent) async` |
 | 151 | func | public | CompositeTracer.flush() | `public func flush() async` |
 | 196 | class | public | NoOpTracer | `public actor NoOpTracer` |
