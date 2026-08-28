@@ -26,7 +26,7 @@ actor MockMCPServer: MCPServerConnection {
     private(set) var callToolHistory: [(name: String, arguments: [String: SendableValue])] = []
     private(set) var readResourceHistory: [String] = []
 
-    // MARK: - MCPServer Protocol
+    // MARK: - MCPServerConnection Protocol
 
     nonisolated var capabilities: MCPCapabilities {
         get async {
