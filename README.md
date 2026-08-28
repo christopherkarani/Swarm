@@ -74,9 +74,7 @@ From a checkout of this package:
 ```bash
 # Lean (root package): product-scoped build, or scripts/ci/lean-build-test.sh
 swift build --product Swarm --product SwarmMCP --product SwarmOpenTelemetry \
-  --product SwarmMembrane --product SwarmCapabilityShowcase
-# SwarmMembrane is a deprecated hollow re-export of Swarm; import Swarm
-# instead. The product will be removed in 0.7.0.
+  --product SwarmCapabilityShowcase
 # Full graph
 swift build --traits Integrations
 swift test --no-parallel --traits Integrations

@@ -488,7 +488,7 @@ private func makeTestTools(count: Int) -> [any AnyJSONTool] {
 
 private func temporaryWaxStoreURL() -> URL {
     let root = FileManager.default.temporaryDirectory
-        .appendingPathComponent("SwarmMembraneIntegrationTests", isDirectory: true)
+        .appendingPathComponent("MembraneIntegrationTests", isDirectory: true)
     try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root.appendingPathComponent("\(UUID().uuidString).mv2s")
 }

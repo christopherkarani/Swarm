@@ -62,7 +62,6 @@ Swarm/
 │   ├── ContextCore/               # In-tree ContextCore façade (Integrations)
 │   ├── SwarmMacros/               # Compiler plugin (@Tool, @Parameter,
 │   │                              #   @Traceable, #Prompt, builders)
-│   ├── SwarmMembrane/             # Deprecated hollow re-export (remove in 0.7.0)
 │   ├── SwarmMCP/                  # MCP server adapter product
 │   ├── SwarmCapabilityShowcase/        # Executable: deterministic showcase CLI
 │   ├── SwarmCapabilityShowcaseSupport/ # Library backing the showcase

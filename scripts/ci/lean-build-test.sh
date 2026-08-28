@@ -28,7 +28,6 @@ swift build \
   --product Swarm \
   --product SwarmMCP \
   --product SwarmOpenTelemetry \
-  --product SwarmMembrane \
   --product SwarmCapabilityShowcase
 
 echo "lean-build-test: phase 2 — root-package lean tests (omit integration targets)"

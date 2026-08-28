@@ -3032,23 +3032,6 @@ exports companion products with small public entry surfaces.
 |------|------|--------|------|-----------|
 | 6 | typealias | public | SwarmRuntimeTracer | `public typealias SwarmRuntimeTracer = Tracer` |
 
-### SwarmMembrane
-
-#### Sources/SwarmMembrane/SwarmMembrane.swift
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 1 | export | public | SwarmMembrane | `@_exported import Swarm` |
-
-`SwarmMembrane` is a **deprecated** hollow re-export (`@_exported import Swarm`).
-Import `Swarm` instead. Its user-facing symbols are the public Membrane
-integration APIs cataloged in section 12 under
-`Sources/Swarm/Integration/Membrane/`. The product will be removed in 0.7.0.
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 8 | enum | public | SwarmMembraneProduct | `@available(*, deprecated, message: "Import Swarm instead. SwarmMembrane is a hollow re-export and will be removed in 0.7.0.") public enum SwarmMembraneProduct: Sendable` |
-
 ### SwarmMCP
 
 #### Sources/SwarmMCP/SwarmMCPServerService.swift
