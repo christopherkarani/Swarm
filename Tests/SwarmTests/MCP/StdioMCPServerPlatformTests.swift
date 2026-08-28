@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 struct StdioMCPServerPlatformTests {
+    #if os(macOS) || os(Linux)
     @Test func initializeMissingExecutableDoesNotClaimMobileUnavailability() async {
         let server = StdioMCPServer(
             command: "/this/path/does/not/exist/swarm-mcp-fixture",
@@ -21,6 +22,7 @@ struct StdioMCPServerPlatformTests {
         }
         try? await server.close()
     }
+    #endif
 
     #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
         @Test func initializeThrowsOnAppleMobilePlatforms() async throws {
