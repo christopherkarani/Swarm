@@ -16,6 +16,21 @@ private struct UserProfile: Codable, Equatable, Sendable {
     let score: Double
 }
 
+/// A deprecated-protocol conformer used to prove the shim still functions.
+private struct LegacyUserContext: AgentContextProviding {
+    static let contextKey = "legacy_user_context"
+
+    let userId: String
+    let isAdmin: Bool
+}
+
+/// A second deprecated-protocol conformer used to prove shim coexistence.
+private struct LegacySessionContext: AgentContextProviding {
+    static let contextKey = "legacy_session_context"
+
+    let sessionId: String
+}
+
 /// An enum with associated values used to exercise codec round-trips that
 /// must not corrupt case payloads.
 private enum AssociatedValueEnum: Codable, Equatable, Sendable {
@@ -337,6 +352,52 @@ struct ContextStoreUnificationTests {
         #expect(await branch.snapshot["recency_name"] == .string("newest"))
         #expect(await branch.getTyped(ContextKey<String>("recency_name")) == "newest")
         #expect(await branch.getTyped(ContextKey<Int>("recency_name")) == 1)
+    }
+
+    // MARK: - Deprecated AgentContextProviding Shim
+
+    @Test("deprecated AgentContextProviding shim stores and retrieves instances")
+    func providedShimStillFunctions() async throws {
+        let context = AgentContext(input: "test")
+
+        await context.setTyped(LegacyUserContext(userId: "u-42", isAdmin: true))
+        let retrieved = await context.typed(LegacyUserContext.self)
+        #expect(retrieved?.userId == "u-42")
+        #expect(retrieved?.isAdmin == true)
+    }
+
+    @Test("deprecated shim supports has, overwrite, removal, and coexistence")
+    func providedShimHasRemoveCoexist() async throws {
+        let context = AgentContext(input: "test")
+
+        #expect(await context.hasTyped(LegacyUserContext.self) == false)
+        #expect(await context.removeTyped(LegacyUserContext.self) == nil)
+        #expect(await context.typed(LegacyUserContext.self) == nil)
+
+        await context.setTyped(LegacyUserContext(userId: "first", isAdmin: false))
+        await context.setTyped(LegacyUserContext(userId: "second", isAdmin: true))
+        let overwritten = await context.typed(LegacyUserContext.self)
+        #expect(overwritten?.userId == "second")
+
+        await context.setTyped(LegacySessionContext(sessionId: "s-1"))
+        let user = await context.typed(LegacyUserContext.self)
+        let session = await context.typed(LegacySessionContext.self)
+        #expect(user?.userId == "second")
+        #expect(session?.sessionId == "s-1")
+
+        let removed = await context.removeTyped(LegacyUserContext.self)
+        #expect(removed?.userId == "second")
+        #expect(await context.hasTyped(LegacyUserContext.self) == false)
+        #expect(await context.hasTyped(LegacySessionContext.self))
+    }
+
+    @Test("deprecated shim instances do not appear in snapshots")
+    func providedShimStaysOutOfSnapshots() async throws {
+        let context = AgentContext(input: "test")
+        await context.setTyped(LegacyUserContext(userId: "u-1", isAdmin: false))
+
+        let snap = await context.snapshot
+        #expect(snap["legacy_user_context"] == nil)
     }
 
     // MARK: - Codec Edge Cases

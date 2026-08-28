@@ -449,7 +449,14 @@ public protocol OutputGuardrail: Sendable {
 statics. Prefer `set(.originalInput, "…")` / `get(.originalInput)` over the
 deprecated `AgentContextKey` get/set. Typed `ContextKey` writes stay in the
 slot store introduced with the unified context; `snapshot` still projects
-those names.
+those names. The deprecated `AgentContextProviding` protocol remains
+functional for compatibility: conformers provide a `contextKey`, then use
+`setTyped(_:)`, `typed(_:)`, `removeTyped(_:)`, and `hasTyped(_:)`. These
+type-indexed methods use a separate legacy namespace and do not appear in
+string-keyed snapshots. Migrate new code to `ContextKey<Value>` and the
+`setTyped(_:value:)` / `getTyped(_:)` accessors. The deprecated
+`AgentContextKey` overloads of `get(_:)` and `set(_:value:)` remain available
+for existing string-keyed callers until the 0.7.0 breaking boundary.
 
 ## 9) Memory factories
 

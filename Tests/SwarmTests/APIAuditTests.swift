@@ -22,6 +22,25 @@ private struct DisabledTool: AnyJSONTool {
     }
 }
 
+// MARK: - TestUserContext
+
+/// A typed context for testing `AgentContextProviding`.
+private struct TestUserContext: AgentContextProviding {
+    static let contextKey = "test_user_context"
+
+    let userId: String
+    let isAdmin: Bool
+}
+
+// MARK: - TestSessionContext
+
+/// A second typed context to test multiple typed contexts.
+private struct TestSessionContext: AgentContextProviding {
+    static let contextKey = "test_session_context"
+
+    let sessionId: String
+}
+
 // MARK: - APIAuditTests
 
 final class APIAuditTests: XCTestCase {
@@ -418,6 +437,80 @@ final class APIAuditTests: XCTestCase {
         XCTAssertNil(handoff.transform)
         XCTAssertNil(handoff.when)
         XCTAssertFalse(handoff.nestHandoffHistory)
+    }
+
+    // MARK: - AgentContextProviding Tests
+
+    func testSetTypedAndRetrieveTyped() async {
+        let context = AgentContext(input: "test")
+        let userContext = TestUserContext(userId: "user_123", isAdmin: true)
+
+        await context.setTyped(userContext)
+        let retrieved: TestUserContext? = await context.typed(TestUserContext.self)
+
+        XCTAssertNotNil(retrieved)
+        XCTAssertEqual(retrieved?.userId, "user_123")
+        XCTAssertEqual(retrieved?.isAdmin, true)
+    }
+
+    func testTypedReturnsNilWhenNotSet() async {
+        let context = AgentContext(input: "test")
+        let retrieved: TestUserContext? = await context.typed(TestUserContext.self)
+        XCTAssertNil(retrieved)
+    }
+
+    func testHasTypedReturnsTrueWhenSet() async {
+        let context = AgentContext(input: "test")
+        await context.setTyped(TestUserContext(userId: "u1", isAdmin: false))
+
+        let hasIt = await context.hasTyped(TestUserContext.self)
+        XCTAssertTrue(hasIt)
+    }
+
+    func testHasTypedReturnsFalseWhenNotSet() async {
+        let context = AgentContext(input: "test")
+        let hasIt = await context.hasTyped(TestUserContext.self)
+        XCTAssertFalse(hasIt)
+    }
+
+    func testRemoveTypedRemovesContext() async {
+        let context = AgentContext(input: "test")
+        await context.setTyped(TestUserContext(userId: "u1", isAdmin: false))
+
+        let removed: TestUserContext? = await context.removeTyped(TestUserContext.self)
+        XCTAssertNotNil(removed)
+        XCTAssertEqual(removed?.userId, "u1")
+
+        let afterRemoval: TestUserContext? = await context.typed(TestUserContext.self)
+        XCTAssertNil(afterRemoval)
+    }
+
+    func testRemoveTypedReturnsNilWhenNotSet() async {
+        let context = AgentContext(input: "test")
+        let removed: TestUserContext? = await context.removeTyped(TestUserContext.self)
+        XCTAssertNil(removed)
+    }
+
+    func testMultipleTypedContextsCoexist() async {
+        let context = AgentContext(input: "test")
+        await context.setTyped(TestUserContext(userId: "u1", isAdmin: true))
+        await context.setTyped(TestSessionContext(sessionId: "s1"))
+
+        let user: TestUserContext? = await context.typed(TestUserContext.self)
+        let session: TestSessionContext? = await context.typed(TestSessionContext.self)
+
+        XCTAssertEqual(user?.userId, "u1")
+        XCTAssertEqual(session?.sessionId, "s1")
+    }
+
+    func testSetTypedOverwritesPrevious() async {
+        let context = AgentContext(input: "test")
+        await context.setTyped(TestUserContext(userId: "u1", isAdmin: false))
+        await context.setTyped(TestUserContext(userId: "u2", isAdmin: true))
+
+        let retrieved: TestUserContext? = await context.typed(TestUserContext.self)
+        XCTAssertEqual(retrieved?.userId, "u2")
+        XCTAssertEqual(retrieved?.isAdmin, true)
     }
 
     // MARK: - AgentContext Basic Tests

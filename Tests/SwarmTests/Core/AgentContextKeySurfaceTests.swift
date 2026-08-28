@@ -7,6 +7,18 @@ import Foundation
 @testable import Swarm
 import Testing
 
+// MARK: - Collision Contexts
+
+private struct ContextTypeA: AgentContextProviding {
+    static let contextKey = "same"
+    let n: Int
+}
+
+private struct ContextTypeB: AgentContextProviding {
+    static let contextKey = "same"
+    let n: Int
+}
+
 // MARK: - AgentContextKeySurfaceTests
 
 @Suite("AgentContext key surfaces")
@@ -130,6 +142,21 @@ struct AgentContextKeySurfaceTests {
         await context.set("original_input", value: .string("raw-original"))
         #expect(await context.get(.originalInput) == "raw-original")
         #expect(await context.snapshot["original_input"] == .string("raw-original"))
+    }
+
+    // MARK: - Type-Indexed Typed Contexts (REQ-006, AC-003)
+
+    @Test("two AgentContextProviding types that share contextKey both persist")
+    func sharedContextKeyTypesBothPersist() async {
+        let context = AgentContext(input: "seed")
+        await context.setTyped(ContextTypeA(n: 1))
+        await context.setTyped(ContextTypeB(n: 2))
+
+        #expect(ContextTypeA.contextKey == ContextTypeB.contextKey)
+        #expect(await context.typed(ContextTypeA.self)?.n == 1)
+        #expect(await context.typed(ContextTypeB.self)?.n == 2)
+        #expect(await context.hasTyped(ContextTypeA.self))
+        #expect(await context.hasTyped(ContextTypeB.self))
     }
 
 }

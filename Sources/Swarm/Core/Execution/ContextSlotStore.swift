@@ -61,13 +61,19 @@ struct ContextSlotEntry {
 /// The single unified store for `AgentContext` typed values.
 ///
 /// `ContextKey<Value>` writes land in value slots keyed by
-/// `(Value type identity, key name)`. Untyped string access remains a separate
-/// raw `[String: SendableValue]` namespace owned by `AgentContext`.
+/// `(Value type identity, key name)`; the deprecated
+/// `AgentContextProviding` shim stores instances in provided slots keyed by
+/// `(concrete type identity, contextKey)`. Untyped string access remains a
+/// separate raw `[String: SendableValue]` namespace owned by `AgentContext`.
 struct ContextSlotStore {
     // MARK: Private
 
     /// Typed value slots keyed by value-type identity plus key name.
     private var valueSlots: [ContextSlotID: ContextSlotEntry] = [:]
+
+    /// Deprecated `AgentContextProviding` instances keyed by concrete type
+    /// identity plus the conformer's `contextKey`.
+    private var providedSlots: [ContextSlotID: any AgentContextProviding] = [:]
 
     /// Source of monotonically increasing write stamps.
     private var nextWriteStamp = 0
@@ -217,9 +223,56 @@ struct ContextSlotStore {
         valueSlots.contains { $0.key.name == name }
     }
 
+    // MARK: - Provided Slots (deprecated shim)
+
+    /// Stores `instance` in the slot identified by its concrete type and
+    /// `AgentContextProviding.contextKey`.
+    ///
+    /// - Parameter instance: The typed context instance to store.
+    mutating func setProvided<T: AgentContextProviding>(_ instance: T) {
+        let id = ContextSlotID(valueType: T.self, name: T.contextKey)
+        providedSlots[id] = instance
+    }
+
+    /// Returns the stored instance for `type`, if any.
+    ///
+    /// The slot identifier pins the concrete type, so the single existential
+    /// crossing below can neither fail nor produce a wrong-typed value; a
+    /// mismatched request simply addresses an empty slot and returns nil.
+    ///
+    /// - Parameter type: The concrete context type to retrieve.
+    /// - Returns: The stored instance, or nil when absent.
+    func provided<T: AgentContextProviding>(of type: T.Type) -> T? {
+        extract(type, from: providedSlots[ContextSlotID(valueType: T.self, name: T.contextKey)])
+    }
+
+    /// Removes and returns the stored instance for `type`, if any.
+    ///
+    /// - Parameter type: The concrete context type to remove.
+    /// - Returns: The removed instance, or nil when absent.
+    @discardableResult
+    mutating func removeProvided<T: AgentContextProviding>(of type: T.Type) -> T? {
+        extract(type, from: providedSlots.removeValue(forKey: ContextSlotID(
+            valueType: T.self,
+            name: T.contextKey
+        )))
+    }
+
+    /// Returns whether a provided slot exists for `type`.
+    ///
+    /// - Parameter type: The concrete context type to look up.
+    /// - Returns: True when an instance is stored.
+    func containsProvided<T: AgentContextProviding>(of type: T.Type) -> Bool {
+        providedSlots[ContextSlotID(valueType: T.self, name: T.contextKey)] != nil
+    }
+
     // MARK: - Copying
 
-    /// Creates a copy holding the value slots.
+    /// Creates a copy holding only value slots, dropping provided slots.
+    ///
+    /// Provided slots are deliberately excluded: `copy(additionalValues:)`
+    /// historically duplicated only the string-keyed values that typed
+    /// `ContextKey` writes produced, never `AgentContextProviding` instances.
     ///
     /// - Returns: A store whose value slots match this store's.
     func copyingValueSlots() -> ContextSlotStore {
@@ -235,6 +288,19 @@ struct ContextSlotStore {
             )
         }
         return copy
+    }
+
+    // MARK: Private
+
+    /// Crosses the `any AgentContextProviding` existential boundary after
+    /// slot identity already established the stored instance has type
+    /// `Value`.
+    private func extract<Value: AgentContextProviding>(
+        _ type: Value.Type,
+        from slot: (any AgentContextProviding)?
+    ) -> Value? {
+        guard let slot else { return nil }
+        return slot as? Value
     }
 
 }
