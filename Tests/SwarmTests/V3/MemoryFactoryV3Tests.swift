@@ -87,6 +87,23 @@ struct MemoryFactoryV3Tests {
         #expect(await memory.maxMessages == 10)
     }
 
+    @Test("deprecated .persistent() remains available through 0.7.0")
+    func deprecatedPersistentFactoryDefault() async {
+        let memory: PersistentMemory = .persistent()
+        #expect(await memory.isEmpty)
+        #expect(await memory.maxMessages == 0)
+    }
+
+    @Test("deprecated .persistent(conversationId:maxMessages:) preserves arguments")
+    func deprecatedPersistentFactoryArguments() async {
+        let memory: PersistentMemory = .persistent(
+            conversationId: "legacy-session",
+            maxMessages: 10
+        )
+        #expect(await memory.conversationId == "legacy-session")
+        #expect(await memory.maxMessages == 10)
+    }
+
     // MARK: - HybridMemory Factory
 
     @Test(".hybrid() creates a HybridMemory with default config")
