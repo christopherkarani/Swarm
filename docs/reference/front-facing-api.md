@@ -827,8 +827,8 @@ requests inject W3C `traceparent` from the current span. See
 ### MCP server adapter
 
 The core `Swarm` product includes MCP client-side primitives. The client
-connection protocol is `MCPServerConnection` (`MCPServer` remains as a
-deprecated typealias). Built-in transports are streamable HTTP and stdio:
+connection protocol is `MCPServerConnection`. Built-in transports are
+streamable HTTP and stdio:
 
 ```swift
 let http = try HTTPMCPServer(

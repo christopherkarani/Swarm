@@ -2706,7 +2706,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 265 | func | public | MCPServerConnection.readResource(uri:) | `public func readResource(uri: String) async throws -> MCPResourceContent` |
 | 276 | func | public | MCPServerConnection.requireToolsCapability() | `public func requireToolsCapability() async throws` |
 | 288 | func | public | MCPServerConnection.requireResourcesCapability() | `public func requireResourcesCapability() async throws` |
-| — | typealias | public | MCPServer | `@available(*, deprecated, renamed: "MCPServerConnection") public typealias MCPServer = MCPServerConnection` |
 
 ### MCP/MCPToolBridge.swift
 

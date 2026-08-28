@@ -11,8 +11,7 @@ import Foundation
 ///
 /// `MCPServerConnection` is the interface Swarm uses to talk to a remote MCP
 /// process or HTTP endpoint. Implementations include ``HTTPMCPServer`` and
-/// ``StdioMCPServer``. The historical name `MCPServer` was easy to confuse
-/// with an actual server; it remains available as a deprecated typealias.
+/// ``StdioMCPServer``.
 ///
 /// The protocol follows a lifecycle pattern where connections must be
 /// initialized before use and properly closed when no longer needed.
@@ -300,11 +299,3 @@ public extension MCPServerConnection {
         }
     }
 }
-
-/// Deprecated name for ``MCPServerConnection``.
-///
-/// The historical `MCPServer` name described a *client* connection and was
-/// easy to confuse with an MCP server process. New code should conform to
-/// and refer to ``MCPServerConnection``.
-@available(*, deprecated, renamed: "MCPServerConnection")
-public typealias MCPServer = MCPServerConnection
