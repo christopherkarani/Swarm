@@ -542,44 +542,53 @@ public struct Workflow: Sendable {
     var observer: (any AgentObserver)?
     var advancedConfiguration = AdvancedConfiguration()
 
-    func executeDirect(input: String) async throws -> AgentResult {
-        guard !steps.isEmpty else {
-            throw WorkflowError.invalidWorkflow(reason: "Workflow has no steps")
+    var workflowTransitionPolicy: WorkflowTransition.Policy {
+        let repetition: WorkflowTransition.Repetition
+        if repeatCondition == nil {
+            repetition = .singlePass
+        } else {
+            repetition = .until(maxIterations: maxRepeatIterations)
         }
-
-        if let repeatCondition {
-            var lastResult: AgentResult?
-
-            for _ in 0 ..< maxRepeatIterations {
-                let currentInput = lastResult?.output ?? input
-                let result = try await runSinglePass(input: currentInput)
-                lastResult = result
-                if repeatCondition(result) {
-                    return result
-                }
-            }
-
-            guard let lastResult else {
-                throw WorkflowError.invalidWorkflow(
-                    reason: "Workflow repeatUntil completed without producing a result"
-                )
-            }
-            return lastResult
-        }
-
-        return try await runSinglePass(input: input)
+        return WorkflowTransition.Policy(
+            stepCount: steps.count,
+            repetition: repetition
+        )
     }
 
-    func runSinglePass(input: String) async throws -> AgentResult {
-        var currentInput = input
-        var lastResult = AgentResult(output: "")
+    func executeDirect(input: String) async throws -> AgentResult {
+        let policy = workflowTransitionPolicy
+        var decision = WorkflowTransition.start(input: input, policy: policy)
+        while true {
+            switch decision {
+            case .runStep(let progress):
+                let result = try await execute(
+                    step: steps[progress.stepCursor],
+                    withInput: progress.currentInput
+                )
+                decision = WorkflowTransition.afterStep(
+                    progress: progress,
+                    result: result,
+                    policy: policy
+                )
 
-        for step in steps {
-            lastResult = try await execute(step: step, withInput: currentInput)
-            currentInput = lastResult.output
+            case .evaluateRepeat(let progress, let result):
+                guard let repeatCondition else {
+                    throw WorkflowError.invalidWorkflow(reason: "workflow repeat predicate is missing")
+                }
+                decision = WorkflowTransition.afterRepeatBoundary(
+                    progress: progress,
+                    result: result,
+                    outcome: repeatCondition(result) ? .satisfied : .notSatisfied,
+                    policy: policy
+                )
+
+            case .complete(_, let result):
+                return result
+
+            case .fail(let error):
+                throw error
+            }
         }
-
-        return lastResult
     }
 
     func execute(step: Step, withInput input: String) async throws -> AgentResult {

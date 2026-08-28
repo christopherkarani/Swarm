@@ -16,10 +16,13 @@ extension Agent {
     /// - Throws: `AgentError` if execution fails, or `GuardrailError` if guardrails trigger.
     public func run(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResult {
         let runID = UUID()
+        await activeRuns.reserve(runID)
         let task = Task { [self] in
             try await runInternal(input, session: session, observer: observer, structuredOutputRequest: nil)
         }
-        await cancellationState.begin(runID: runID, task: task)
+        await activeRuns.attach(runID) { [task] in
+            task.cancel()
+        }
 
         do {
             let result = try await withTaskCancellationHandler(
@@ -30,11 +33,11 @@ extension Agent {
                     task.cancel()
                 }
             )
-            await cancellationState.finish(runID: runID)
+            await activeRuns.finish(runID)
             return result
         } catch {
             task.cancel()
-            await cancellationState.finish(runID: runID)
+            await activeRuns.finish(runID)
             throw normalizeCancellation(error)
         }
     }
@@ -47,10 +50,13 @@ extension Agent {
         observer: (any AgentObserver)? = nil
     ) async throws -> StructuredAgentResult {
         let runID = UUID()
+        await activeRuns.reserve(runID)
         let task = Task { [self] in
             try await runInternal(input, session: session, observer: observer, structuredOutputRequest: request)
         }
-        await cancellationState.begin(runID: runID, task: task)
+        await activeRuns.attach(runID) { [task] in
+            task.cancel()
+        }
 
         do {
             let result = try await withTaskCancellationHandler(
@@ -61,7 +67,7 @@ extension Agent {
                     task.cancel()
                 }
             )
-            await cancellationState.finish(runID: runID)
+            await activeRuns.finish(runID)
 
             guard let structuredOutput = result.structuredOutput else {
                 throw AgentError.generationFailed(reason: "Structured output request completed without a structured result")
@@ -70,7 +76,7 @@ extension Agent {
             return StructuredAgentResult(agentResult: result.agentResult, structuredOutput: structuredOutput)
         } catch {
             task.cancel()
-            await cancellationState.finish(runID: runID)
+            await activeRuns.finish(runID)
             throw normalizeCancellation(error)
         }
     }

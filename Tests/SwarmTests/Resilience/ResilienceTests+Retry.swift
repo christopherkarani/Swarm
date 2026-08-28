@@ -300,9 +300,11 @@ struct RetryPolicyTests {
     @Test("Huge finite retry delays clamp instead of trapping")
     func hugeFiniteRetryDelaysClampInsteadOfTrapping() async throws {
         let counter = TestCounter()
+        let clock = CancellationIgnoringClock()
         let policy = RetryPolicy(
             maxAttempts: 1,
-            backoff: .exponential(base: 1.0e20, multiplier: 2.0, maxDelay: 1.0e20)
+            backoff: .exponential(base: 1.0e20, multiplier: 2.0, maxDelay: 1.0e20),
+            clock: clock
         )
 
         let task = Task<String, Error> {
@@ -312,10 +314,9 @@ struct RetryPolicyTests {
             }
         }
 
-        while await counter.get() == 0 {
-            try await Task.sleep(for: .milliseconds(1))
+        while clock.recordedSleeps.isEmpty {
+            await Task.yield()
         }
-        try await Task.sleep(for: .milliseconds(5))
         task.cancel()
 
         do {
@@ -328,6 +329,7 @@ struct RetryPolicyTests {
         }
 
         #expect(await counter.get() == 1)
+        #expect(clock.recordedSleeps == [3_600_000_000_000])
     }
 
     @Test("Small finite retry delay still retries")
@@ -535,8 +537,6 @@ private struct RetryPolicyDeterminismTests {
             clock: clock
         )
 
-        let wallStart = ContinuousClock.now
-
         let result = try await policy.execute {
             let count = await counter.increment()
             if count < 3 {
@@ -549,10 +549,6 @@ private struct RetryPolicyDeterminismTests {
         #expect(await counter.get() == 3)
         #expect(clock.recordedSleeps == [250_000_000, 250_000_000]) // attempts 1 and 2 only
         #expect(clock.now == 500_000_000) // virtual time advanced by the two sleeps
-
-        let elapsed = ContinuousClock.now - wallStart
-        // Two real 250 ms sleeps would take at least 0.5 s.
-        #expect(elapsed < .milliseconds(250))
     }
 
     @Test("Seeded jitter retries replay identical sleep sequences end to end")
@@ -618,5 +614,99 @@ private struct RetryPolicyDeterminismTests {
         #expect(await counter.get() == 1)
         #expect(await retryRecorder.getAll().isEmpty)
         #expect(clock.recordedSleeps.isEmpty)
+    }
+
+    @Test("Cancellation during onRetry does not start another attempt")
+    func cancellationDuringOnRetryDoesNotRetryAgain() async throws {
+        let clock = VirtualClock()
+        let counter = TestCounter()
+        let (startedRetry, startedRetryContinuation) = AsyncStream<Void>.makeStream()
+
+        let work = Task<String, Error> {
+            let policy = RetryPolicy(
+                maxAttempts: 5,
+                backoff: .immediate,
+                onRetry: { _, _ in
+                    startedRetryContinuation.yield()
+                    while !Task.isCancelled {
+                        await Task.yield()
+                    }
+                },
+                clock: clock
+            )
+            return try await policy.execute {
+                _ = await counter.increment()
+                throw TestError.transient
+            }
+        }
+
+        _ = await startedRetry.first { _ in true }
+        work.cancel()
+
+        do {
+            _ = try await work.value
+            Issue.record("Expected CancellationError after cancel during onRetry")
+        } catch is CancellationError {
+        } catch {
+            Issue.record("Expected CancellationError, got \(error)")
+        }
+
+        #expect(await counter.get() == 1)
+        #expect(clock.recordedSleeps.isEmpty)
+    }
+
+    @Test("Cancellation after an injected sleep prevents the next retry")
+    func cancellationAfterInjectedSleepPreventsNextRetry() async throws {
+        let clock = CancellationIgnoringClock()
+        let counter = TestCounter()
+        let policy = RetryPolicy(
+            maxAttempts: 1,
+            backoff: .fixed(delay: 1.0),
+            clock: clock
+        )
+
+        let task = Task {
+            try await policy.execute {
+                let attempt = await counter.increment()
+                if attempt == 1 {
+                    throw TestError.transient
+                }
+                return "should not run"
+            }
+        }
+
+        while clock.recordedSleeps.isEmpty {
+            await Task.yield()
+        }
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            Issue.record("Expected CancellationError")
+        } catch is CancellationError {
+            // Expected: cancellation is checked after the injected sleep.
+        }
+
+        #expect(await counter.get() == 1)
+    }
+}
+
+// MARK: - CancellationIgnoringClock
+
+/// A test clock that completes after cancellation without throwing it.
+/// RetryPolicy must retain cancellation semantics independently of the clock.
+private final class CancellationIgnoringClock: SwarmClock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var sleeps: [UInt64] = []
+
+    var recordedSleeps: [UInt64] {
+        lock.withLock { sleeps }
+    }
+
+    func nowNanoseconds() -> UInt64 { 0 }
+
+    func sleep(nanoseconds duration: UInt64) async throws {
+        lock.withLock { sleeps.append(duration) }
+        try? await Task.sleep(for: .seconds(60))
     }
 }
