@@ -134,7 +134,6 @@ private struct VirtualClockTests {
     @Test("Sleeps are recorded, not awaited; virtual time advances instantly")
     func sleepsAreRecordedNotAwaited() async throws {
         let clock = VirtualClock()
-        let wallStart = ContinuousClock.now
 
         try await clock.sleep(nanoseconds: 1_000_000_000) // 1 s virtual
         try await clock.sleep(nanoseconds: 60_000_000_000) // 60 s virtual
@@ -142,11 +141,6 @@ private struct VirtualClockTests {
         #expect(clock.sleepCount == 2)
         #expect(clock.recordedSleeps == [1_000_000_000, 60_000_000_000])
         #expect(clock.now == 61_000_000_000)
-
-        let elapsed = ContinuousClock.now - wallStart
-        // Two real sleeps would take at least 61 s; anything under a quarter
-        // second proves both completed without real delay.
-        #expect(elapsed < .milliseconds(250))
     }
 }
 

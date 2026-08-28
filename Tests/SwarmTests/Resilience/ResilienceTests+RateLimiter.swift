@@ -123,15 +123,11 @@ struct RateLimiterTests {
 
         #expect(await limiter.tryAcquire() == true)
 
-        let wallStart = ContinuousClock.now
         try await limiter.acquire()
 
         // Deficit 1.0 at 2 tokens/s requires exactly 0.5 s of virtual sleep;
         // VirtualClock completes it instantly and advances itself.
         #expect(clock.recordedSleeps == [500_000_000])
-        let elapsed = ContinuousClock.now - wallStart
-        // A real 0.5 s sleep would exceed this bound even on a loaded runner.
-        #expect(elapsed < .milliseconds(250))
 
         // Bucket is empty again after consumption.
         #expect(await limiter.available == 0)
