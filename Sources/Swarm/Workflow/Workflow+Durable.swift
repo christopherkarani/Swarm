@@ -62,6 +62,12 @@ public extension Workflow {
             try await workflow.executeDurable(input, resumeFrom: checkpointID)
         }
 
+        /// Backward-compatible alias for `execute(_:resumeFrom:)`.
+        @available(*, deprecated, renamed: "execute(_:resumeFrom:)")
+        public func run(_ input: String, resumeFrom checkpointID: String? = nil) async throws -> AgentResult {
+            try await execute(input, resumeFrom: checkpointID)
+        }
+
     }
 }
 
