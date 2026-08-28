@@ -7,47 +7,7 @@
 import Foundation
 
 extension Agent {
-    private enum ConversationMessage: Sendable {
-        case system(String)
-        case user(String)
-        case assistant(String, toolCalls: [InferenceResponse.ParsedToolCall] = [])
-        case toolResult(toolName: String, result: String, toolCallID: String? = nil)
-
-        var formatted: String {
-            switch self {
-            case let .system(content):
-                return "[System]: \(content)"
-            case let .user(content):
-                return "[User]: \(content)"
-            case let .assistant(content, toolCalls):
-                if toolCalls.isEmpty {
-                    return "[Assistant]: \(content)"
-                }
-
-                let summary = toolCalls.map { "Calling tool: \($0.name)" }.joined(separator: ", ")
-                if content.isEmpty {
-                    return "[Assistant]: \(summary)"
-                }
-
-                return "[Assistant]: \(content)\n[Assistant Tool Calls]: \(summary)"
-            case let .toolResult(toolName, result, _):
-                return "[Tool Result - \(toolName)]: \(result)"
-            }
-        }
-
-        var inferenceMessage: InferenceMessage {
-            switch self {
-            case let .system(content):
-                return .system(content)
-            case let .user(content):
-                return .user(content)
-            case let .assistant(content, toolCalls):
-                return .assistant(content, toolCalls: toolCalls.map(InferenceMessage.ToolCall.init))
-            case let .toolResult(toolName, result, toolCallID):
-                return .tool(name: toolName, content: result, toolCallID: toolCallID)
-            }
-        }
-    }
+    private typealias ConversationMessage = AgentTurnTranscript.Message
 
     // MARK: - Tool Calling Loop Implementation
 
@@ -99,13 +59,14 @@ extension Agent {
             }
         }
 
-        var conversationHistory = try buildInitialConversationHistory(
-            sessionHistory: sessionHistory,
-            input: input,
-            memory: activeMemory,
-            memoryContext: memoryContext
+        var turnTranscript = AgentTurnTranscript(
+            conversationMessages: try buildInitialConversationHistory(
+                sessionHistory: sessionHistory,
+                input: input,
+                memory: activeMemory,
+                memoryContext: memoryContext
+            )
         )
-        var transcriptMessages: [MemoryMessage] = []
         let systemMessage = buildSystemMessage(memory: activeMemory, memoryContext: memoryContext)
         await executionContext.recordExecution(agentName: name)
 
@@ -144,7 +105,7 @@ extension Agent {
                     context: executionContext
                 )
                 var plannedSchemas = MembraneInternalTools.sortedSchemas(unplannedSchemas)
-                let historyPrompt = buildPrompt(from: conversationHistory)
+                let historyPrompt = buildPrompt(from: turnTranscript.conversationMessages)
 
                 if let membraneAdapter {
                     do {
@@ -171,7 +132,7 @@ extension Agent {
                     return schemas
                 }()
                 let structuredMessages: [InferenceMessage] = await PromptEnvelope.enforce(
-                    messages: conversationHistory.map(\.inferenceMessage),
+                    messages: turnTranscript.inferenceMessages,
                     profile: configuration.effectiveContextProfile
                 )
                 // REQ-003: the turn mode is derived in exactly one place.
@@ -217,19 +178,15 @@ extension Agent {
                             observer: observer
                         )
                     }
-                    transcriptMessages.append(
-                        SwarmTranscriptCodec.encodeMessage(
-                            role: .assistant,
-                            content: response.content,
-                            toolCalls: [],
-                            structuredOutput: response.structuredOutput
-                        )
+                    turnTranscript.appendAssistant(
+                        content: response.content,
+                        structuredOutput: response.structuredOutput
                     )
                     await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
                     return ToolLoopOutcome(
                         output: response.content,
                         structuredOutput: response.structuredOutput,
-                        transcriptMessages: transcriptMessages
+                        transcriptMessages: turnTranscript.memoryMessages
                     )
                 }
 
@@ -288,8 +245,7 @@ extension Agent {
                         toolRegistry: toolRegistry,
                         memory: activeMemory,
                         membraneAdapter: membraneAdapter,
-                        conversationHistory: conversationHistory,
-                        transcriptMessages: &transcriptMessages,
+                        turnTranscript: &turnTranscript,
                         resultBuilder: resultBuilder,
                         observer: observer,
                         tracing: tracing,
@@ -305,8 +261,7 @@ extension Agent {
                             toolRegistry: toolRegistry,
                             memory: activeMemory,
                             membraneAdapter: membraneAdapter,
-                            conversationHistory: conversationHistory,
-                            transcriptMessages: &transcriptMessages,
+                            turnTranscript: &turnTranscript,
                             resultBuilder: resultBuilder,
                             observer: observer,
                             tracing: tracing,
@@ -330,16 +285,18 @@ extension Agent {
                         request: structuredOutputRequest,
                         provider: provider
                     )
-                    appendOwnedLoopTranscript(
+                    turnTranscript.appendOwnedLoopTranscript(
                         response.transcriptMessages,
-                        finalized: finalResponse,
-                        to: &transcriptMessages
+                        finalizedResponse: AgentTurnTranscript.FinalizedResponse(
+                            content: finalResponse.content,
+                            structuredOutput: finalResponse.structuredOutput
+                        )
                     )
                     await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
                     return ToolLoopOutcome(
                         output: finalResponse.content,
                         structuredOutput: finalResponse.structuredOutput,
-                        transcriptMessages: transcriptMessages
+                        transcriptMessages: turnTranscript.memoryMessages
                     )
 
                 case .executeTools(let toolsState):
@@ -348,8 +305,7 @@ extension Agent {
                         response: response,
                         toolRegistry: toolRegistry,
                         memory: activeMemory,
-                        conversationHistory: &conversationHistory,
-                        transcriptMessages: &transcriptMessages,
+                        turnTranscript: &turnTranscript,
                         resultBuilder: resultBuilder,
                         observer: observer,
                         tracing: tracing,
@@ -362,7 +318,7 @@ extension Agent {
                         return ToolLoopOutcome(
                             output: handoffOutput.content,
                             structuredOutput: handoffOutput.structuredOutput,
-                            transcriptMessages: transcriptMessages
+                            transcriptMessages: turnTranscript.memoryMessages
                         )
                     }
                     await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
@@ -463,8 +419,7 @@ extension Agent {
         parsedCall: InferenceResponse.ParsedToolCall,
         toolRegistry: ToolRegistry,
         memory: (any Memory)?,
-        conversationHistory: inout [ConversationMessage],
-        transcriptMessages: inout [MemoryMessage],
+        turnTranscript: inout AgentTurnTranscript,
         resultBuilder: AgentResult.Builder,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
@@ -501,18 +456,10 @@ extension Agent {
                 let duration = ContinuousClock.now - toolStartTime
                 let result = ToolResult.success(callId: call.id, output: .string(output), duration: duration)
                 _ = resultBuilder.addToolResult(result)
-                conversationHistory.append(.toolResult(
+                turnTranscript.appendToolResult(
                     toolName: parsedCall.name,
                     result: output,
                     toolCallID: parsedCall.id
-                ))
-                transcriptMessages.append(
-                    SwarmTranscriptCodec.encodeMessage(
-                        role: .tool,
-                        content: output,
-                        toolName: parsedCall.name,
-                        toolCallID: parsedCall.id
-                    )
                 )
                 if let activeMemory {
                     await activeMemory.add(.tool(output, toolName: parsedCall.name))
@@ -539,18 +486,10 @@ extension Agent {
                 if configuration.stopOnToolError {
                     throw AgentError.toolExecutionFailed(toolName: parsedCall.name, underlyingError: message)
                 }
-                conversationHistory.append(.toolResult(
+                turnTranscript.appendToolResult(
                     toolName: parsedCall.name,
                     result: AgentTurnKernel.toolFailureConversationText(message: message),
                     toolCallID: parsedCall.id
-                ))
-                transcriptMessages.append(
-                    SwarmTranscriptCodec.encodeMessage(
-                        role: .tool,
-                        content: AgentTurnKernel.toolFailureConversationText(message: message),
-                        toolName: parsedCall.name,
-                        toolCallID: parsedCall.id
-                    )
                 )
                 if let activeMemory {
                     await activeMemory.add(.tool(
@@ -599,36 +538,20 @@ extension Agent {
                     }
                 }
 
-                conversationHistory.append(.toolResult(
+                turnTranscript.appendToolResult(
                     toolName: parsedCall.name,
                     result: toolOutputText,
                     toolCallID: parsedCall.id
-                ))
-                transcriptMessages.append(
-                    SwarmTranscriptCodec.encodeMessage(
-                        role: .tool,
-                        content: toolOutputText,
-                        toolName: parsedCall.name,
-                        toolCallID: parsedCall.id
-                    )
                 )
                 if let activeMemory {
                     await activeMemory.add(.tool(toolOutputText, toolName: parsedCall.name))
                 }
             } else {
                 let errorMessage = outcome.result.errorMessage ?? "Unknown error"
-                conversationHistory.append(.toolResult(
+                turnTranscript.appendToolResult(
                     toolName: parsedCall.name,
                     result: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
                     toolCallID: parsedCall.id
-                ))
-                transcriptMessages.append(
-                    SwarmTranscriptCodec.encodeMessage(
-                        role: .tool,
-                        content: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
-                        toolName: parsedCall.name,
-                        toolCallID: parsedCall.id
-                    )
                 )
                 if let activeMemory {
                     await activeMemory.add(.tool(
@@ -745,8 +668,7 @@ extension Agent {
         response: InferenceResponse,
         toolRegistry: ToolRegistry,
         memory: (any Memory)?,
-        conversationHistory: inout [ConversationMessage],
-        transcriptMessages: inout [MemoryMessage],
+        turnTranscript: inout AgentTurnTranscript,
         resultBuilder: AgentResult.Builder,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
@@ -759,13 +681,9 @@ extension Agent {
         )
 
         let assistantContent = AgentTurnKernel.assistantContent(for: response)
-        conversationHistory.append(.assistant(assistantContent, toolCalls: response.toolCalls))
-        transcriptMessages.append(
-            SwarmTranscriptCodec.encodeMessage(
-                role: .assistant,
-                content: assistantContent,
-                toolCalls: response.toolCalls
-            )
+        turnTranscript.appendAssistant(
+            content: assistantContent,
+            toolCalls: response.toolCalls
         )
 
         for parsedCall in response.toolCalls {
@@ -782,8 +700,7 @@ extension Agent {
                         parsedCall: parsedCall,
                         toolRegistry: toolRegistry,
                         memory: memory,
-                        conversationHistory: &conversationHistory,
-                        transcriptMessages: &transcriptMessages,
+                        turnTranscript: &turnTranscript,
                         resultBuilder: resultBuilder,
                         observer: observer,
                         tracing: tracing,
@@ -809,18 +726,10 @@ extension Agent {
                     }
 
                     let toolError = AgentTurnKernel.toolFailureConversationText(message: message)
-                    conversationHistory.append(.toolResult(
+                    turnTranscript.appendToolResult(
                         toolName: parsedCall.name,
                         result: toolError,
                         toolCallID: parsedCall.id
-                    ))
-                    transcriptMessages.append(
-                        SwarmTranscriptCodec.encodeMessage(
-                            role: .tool,
-                            content: toolError,
-                            toolName: parsedCall.name,
-                            toolCallID: parsedCall.id
-                        )
                     )
                     continue
                 }
@@ -839,7 +748,7 @@ extension Agent {
                 await observer?.onHandoff(context: context, fromAgent: self, toAgent: targetAgent)
 
                 // Find the last user message to use as handoff input
-                let lastUserMessage = conversationHistory.last(where: {
+                let lastUserMessage = turnTranscript.conversationMessages.last(where: {
                     if case .user = $0 { return true }
                     return false
                 })
@@ -883,7 +792,7 @@ extension Agent {
                 await preserveExecutionPath(from: context, in: handoffContext)
                 if handoffConfig.nestHandoffHistory {
                     await addNestedHandoffHistory(
-                        conversationHistory,
+                        turnTranscript.conversationMessages,
                         to: handoffContext,
                         skippingToolCallID: parsedCall.id
                     )
@@ -928,18 +837,10 @@ extension Agent {
                     }
                     throw error
                 }
-                conversationHistory.append(.toolResult(
+                turnTranscript.appendToolResult(
                     toolName: parsedCall.name,
                     result: result.output,
                     toolCallID: parsedCall.id
-                ))
-                transcriptMessages.append(
-                    SwarmTranscriptCodec.encodeMessage(
-                        role: .tool,
-                        content: result.output,
-                        toolName: parsedCall.name,
-                        toolCallID: parsedCall.id
-                    )
                 )
 
                 let handoffDuration = ContinuousClock.now - handoffStart
@@ -977,8 +878,7 @@ extension Agent {
                     parsedCall: parsedCall,
                     toolRegistry: toolRegistry,
                     memory: memory,
-                    conversationHistory: &conversationHistory,
-                    transcriptMessages: &transcriptMessages,
+                    turnTranscript: &turnTranscript,
                     resultBuilder: resultBuilder,
                     observer: observer,
                     tracing: tracing,
@@ -1262,15 +1162,14 @@ extension Agent {
         toolRegistry: ToolRegistry,
         memory: (any Memory)?,
         membraneAdapter: (any MembraneAgentAdapter)?,
-        conversationHistory: [ConversationMessage],
-        transcriptMessages: inout [MemoryMessage],
+        turnTranscript: inout AgentTurnTranscript,
         resultBuilder: AgentResult.Builder,
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
         context: AgentContext,
         startTime: ContinuousClock.Instant
     ) async throws -> ToolLoopOutcome {
-        var history = conversationHistory
+        var history = turnTranscript
         let response = InferenceResponse(
             content: nil,
             toolCalls: [
@@ -1286,8 +1185,7 @@ extension Agent {
             response: response,
             toolRegistry: toolRegistry,
             memory: memory,
-            conversationHistory: &history,
-            transcriptMessages: &transcriptMessages,
+            turnTranscript: &history,
             resultBuilder: resultBuilder,
             observer: observer,
             tracing: tracing,
@@ -1303,38 +1201,7 @@ extension Agent {
         return ToolLoopOutcome(
             output: handoffOutput.content,
             structuredOutput: handoffOutput.structuredOutput,
-            transcriptMessages: transcriptMessages
+            transcriptMessages: history.memoryMessages
         )
-    }
-
-    private func appendOwnedLoopTranscript(
-        _ transcript: [InferenceMessage],
-        finalized: FinalAssistantResponse,
-        to transcriptMessages: inout [MemoryMessage]
-    ) {
-        if transcript.isEmpty {
-            transcriptMessages.append(
-                SwarmTranscriptCodec.encodeMessage(
-                    role: .assistant,
-                    content: finalized.content,
-                    toolCalls: [],
-                    structuredOutput: finalized.structuredOutput
-                )
-            )
-            return
-        }
-
-        var owned = transcript.map(SwarmTranscriptCodec.encode)
-        if let structured = finalized.structuredOutput,
-           let last = owned.indices.last,
-           owned[last].role == .assistant
-        {
-            owned[last] = SwarmTranscriptCodec.encodeMessage(
-                role: .assistant,
-                content: finalized.content,
-                structuredOutput: structured
-            )
-        }
-        transcriptMessages.append(contentsOf: owned)
     }
 }
