@@ -449,8 +449,7 @@ public protocol OutputGuardrail: Sendable {
 statics. Prefer `set(.originalInput, "…")` / `get(.originalInput)` over the
 deprecated `AgentContextKey` get/set. Typed `ContextKey` writes stay in the
 slot store introduced with the unified context; `snapshot` still projects
-those names. `AgentContextProviding` remains a deprecated shim keyed by
-concrete type plus `contextKey`.
+those names.
 
 ## 9) Memory factories
 

@@ -41,53 +41,6 @@ public enum AgentContextKey: String, Sendable {
     case metadata
 }
 
-// MARK: - AgentContextProviding
-
-/// A protocol for providing typed context to agents and tools.
-///
-/// - Deprecated: Store typed values with ``ContextKey`` instead. Define a
-/// `ContextKey<Value>` for your value type and use
-/// ``AgentContext/setTyped(_:value:)`` /
-/// ``AgentContext/getTyped(_:)``, which pair keys and values at compile
-/// time. This protocol remains functional over the unified context store
-/// but will be removed in a future release.
-///
-/// - Migration hazard: `ContextKey<Value>` writes live in a namespace
-/// separate from untyped string storage. Values written through the typed
-/// API are no longer visible to raw reads such as
-/// ``AgentContext/get(_:)`` or string-keyed snapshot entries, so any code
-/// still reading a migrated value by its raw string must switch to
-/// ``AgentContext/getTyped(_:)`` with the same key name.
-///
-/// Example:
-/// ```swift
-/// extension ContextKey where Value == String {
-///     static let userContext = ContextKey("user_context")
-/// }
-///
-/// struct UserContext: Codable, Sendable {
-///     let userId: String
-///     let isAdmin: Bool
-/// }
-///
-/// // Store:
-/// await context.setTyped(.userContext, value: UserContext(userId: "123", isAdmin: true))
-///
-/// // Retrieve:
-/// if let user = await context.getTyped(.userContext) {
-///     print(user.userId)
-/// }
-/// ```
-@available(
-    *,
-    deprecated,
-    message: "Use ContextKey<Value> with setTyped(_:value:)/getTyped(_:) instead"
-)
-public protocol AgentContextProviding: Sendable {
-    /// The key used to store this context in the key-value storage.
-    static var contextKey: String { get }
-}
-
 // MARK: - AgentContext
 
 /// Thread-safe shared context for multi-agent orchestration.
@@ -384,8 +337,7 @@ public actor AgentContext {
         // Merge typed value slots so reads through `getTyped(_:)` observe
         // merged state. Snapshot already projects those slots by name; they
         // are not copied into the raw namespace, matching `setTyped` and
-        // `copy(additionalValues:)`. Provided slots are intentionally not
-        // merged; they were historically instance-specific.
+        // `copy(additionalValues:)`.
         slots.mergeValueSlots(from: otherSlots, overwrite: overwrite)
 
         // Merge messages
@@ -427,8 +379,7 @@ public actor AgentContext {
         }
 
         // Carry typed value slots so reads through `getTyped(_:)` observe
-        // copied state. Provided slots are intentionally not copied; they
-        // are instance-specific.
+        // copied state.
         let newContext = AgentContext(
             input: originalInput,
             initialValues: copiedValues,
@@ -440,43 +391,6 @@ public actor AgentContext {
         // If needed, use merge() after creating the copy.
 
         return newContext
-    }
-
-    // MARK: - Typed Context (deprecated shim)
-
-    /// Stores a typed context object.
-    ///
-    /// The context is stored in the unified slot store keyed by its concrete
-    /// type and `contextKey`, and can be retrieved using `typed(_:)`.
-    ///
-    /// - Parameter context: The typed context to store.
-    public func setTyped<T: AgentContextProviding>(_ context: T) {
-        slots.setProvided(context)
-    }
-
-    /// Retrieves a typed context object.
-    ///
-    /// - Parameter type: The type of context to retrieve.
-    /// - Returns: The stored context, or nil if not found.
-    public func typed<T: AgentContextProviding>(_: T.Type) -> T? {
-        slots.provided(of: T.self)
-    }
-
-    /// Removes a typed context.
-    ///
-    /// - Parameter type: The type of context to remove.
-    /// - Returns: The removed context, or nil if not found.
-    @discardableResult
-    public func removeTyped<T: AgentContextProviding>(_: T.Type) -> T? {
-        slots.removeProvided(of: T.self)
-    }
-
-    /// Returns true if a typed context of the given type is stored.
-    ///
-    /// - Parameter type: The type to check for.
-    /// - Returns: Whether a context of this type exists.
-    public func hasTyped<T: AgentContextProviding>(_: T.Type) -> Bool {
-        slots.containsProvided(of: T.self)
     }
 
     // MARK: - Slot Storage Bridge (package-internal)
@@ -562,9 +476,8 @@ public actor AgentContext {
     /// List of agent names that have executed.
     private var executionPath: [String]
 
-    /// Unified typed slot storage shared by `ContextKey<Value>` accessors
-    /// and the deprecated `AgentContextProviding` shim. See
-    /// `ContextSlotStore`.
+    /// Unified typed slot storage used by `ContextKey<Value>` accessors.
+    /// See `ContextSlotStore`.
     private var slots: ContextSlotStore
 }
 

@@ -555,8 +555,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 35 | case | public | AgentContextKey.executionPath | `public case executionPath` |
 | 38 | case | public | AgentContextKey.startTime | `public case startTime` |
 | 41 | case | public | AgentContextKey.metadata | `public case metadata` |
-| 86 | protocol | public | AgentContextProviding | `public protocol AgentContextProviding : Sendable` _(Availability: * (deprecated); Use ContextKey<Value> with setTyped(_:value:)/getTyped(_:) instead)_ |
-| 88 | var | public | AgentContextProviding.contextKey | `public static var contextKey: String { get }` |
 | 118 | class | public | AgentContext | `public actor AgentContext` |
 | 122 | var | public | AgentContext.originalInput | `public nonisolated let originalInput: String` |
 | 125 | var | public | AgentContext.executionId | `public nonisolated let executionId: UUID` |
@@ -578,10 +576,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 347 | func | public | AgentContext.getPreviousOutput() | `public func getPreviousOutput() -> String?` |
 | 367 | func | public | AgentContext.merge(from:overwrite:) | `public func merge(from other: AgentContext, overwrite: Bool = false) async` |
 | 421 | func | public | AgentContext.copy(additionalValues:) | `public func copy(additionalValues: [String : SendableValue] = [:]) -> AgentContext` |
-| 453 | func | public | AgentContext.setTyped(_:) | `public func setTyped<T>(_ context: T) where T : AgentContextProviding` |
-| 461 | func | public | AgentContext.typed(_:) | `public func typed<T>(_: T.Type) -> T? where T : AgentContextProviding` |
-| 470 | func | public | AgentContext.removeTyped(_:) | `public @discardableResult func removeTyped<T>(_: T.Type) -> T? where T : AgentContextProviding` |
-| 478 | func | public | AgentContext.hasTyped(_:) | `public func hasTyped<T>(_: T.Type) -> Bool where T : AgentContextProviding` |
 | 574 | var | public | AgentContext.description | `public nonisolated var description: String { get }` |
 | 588 | var | public | AgentContext.debugDescription | `public nonisolated var debugDescription: String { get }` |
 
