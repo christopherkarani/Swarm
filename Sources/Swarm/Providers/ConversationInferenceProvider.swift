@@ -50,6 +50,15 @@ public extension InferenceProviderCapabilities {
         return capabilities
     }
 
+    /// Use ``resolved(for:)``.
+    ///
+    /// This deprecated forwarding helper remains available for source
+    /// compatibility until a future breaking boundary is explicitly
+    /// documented.
+    @available(*, deprecated, message: "Use resolved(for:)")
+    static func inferred(from provider: any InferenceProvider) -> Self {
+        resolved(for: provider)
+    }
 }
 
 /// Optional protocol for providers that can report which advanced features they actually support.
