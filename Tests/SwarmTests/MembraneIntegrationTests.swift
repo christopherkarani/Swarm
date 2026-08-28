@@ -541,7 +541,7 @@ private actor FailingWaxPointerIndex: WaxPointerIndex {
     func close() async throws {}
 }
 
-private actor PointerResolvingInferenceProvider: InferenceProvider, ConversationInferenceProvider, MessagesFromPromptInference {
+private actor PointerResolvingInferenceProvider: InferenceProvider, MessagesFromPromptInference {
     private var turn = 0
 
     func generate(prompt _: String, options _: InferenceOptions) async throws -> String {
