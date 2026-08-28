@@ -36,6 +36,11 @@ import Foundation
 /// ## Thread Safety
 ///
 /// `StdioMCPServer` is an actor. All process and pipe state is isolated.
+///
+/// Stdio transport needs `Foundation.Process`, which exists on macOS and Linux
+/// only. On iOS, tvOS, watchOS, and visionOS, ``initialize()`` throws
+/// ``MCPError/internalError(_:)`` and tells the caller to use an HTTP MCP
+/// server instead.
 public actor StdioMCPServer: MCPServerConnection {
     // MARK: Public
 
@@ -186,7 +191,11 @@ public actor StdioMCPServer: MCPServerConnection {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    private var process: Process?
+    #if os(macOS) || os(Linux)
+        private var process: Process?
+    #else
+        private var process: StdioUnavailableProcess?
+    #endif
     private var stdinHandle: FileHandle?
     private var stdoutHandle: FileHandle?
     private var stderrHandle: FileHandle?
@@ -199,6 +208,7 @@ public actor StdioMCPServer: MCPServerConnection {
     private var cachedProtocolVersion: String?
 
     private func startProcessIfNeeded() throws {
+        #if os(macOS) || os(Linux)
         if let process, process.isRunning {
             return
         }
@@ -260,6 +270,11 @@ public actor StdioMCPServer: MCPServerConnection {
                 await self?.consumeStderr(chunk)
             }
         }
+        #else
+        throw MCPError.internalError(
+            "Stdio MCP servers are unavailable on this platform. Use an HTTP MCP server instead."
+        )
+        #endif
     }
 
     private func makeDataStream(from handle: FileHandle) -> AsyncStream<Data> {
@@ -439,9 +454,24 @@ public actor StdioMCPServer: MCPServerConnection {
         return result
     }
 
-    private func killProcess(_ process: Process) {
-        let pid = process.processIdentifier
-        guard pid > 0 else { return }
-        _ = kill(pid, SIGKILL)
-    }
+    #if os(macOS) || os(Linux)
+        private func killProcess(_ process: Process) {
+            let pid = process.processIdentifier
+            guard pid > 0 else { return }
+            _ = kill(pid, SIGKILL)
+        }
+    #else
+        private func killProcess(_ process: StdioUnavailableProcess) {
+            _ = process
+        }
+    #endif
 }
+
+#if !os(macOS) && !os(Linux)
+    /// `Foundation.Process` is unavailable on iOS, tvOS, watchOS, and visionOS.
+    private struct StdioUnavailableProcess: Sendable {
+        var isRunning: Bool { false }
+        var processIdentifier: Int32 { 0 }
+        func terminate() {}
+    }
+#endif
