@@ -33,8 +33,8 @@ struct AgentTurnTranscriptTests {
         ])
         #expect(entries[1].toolName == "weather")
         #expect(entries[1].toolCallID == call.id)
-        #expect(entries[0].metadata["swarm.transcript.entry_id"] == entries[0].messageID.uuidString)
-        #expect(entries[1].metadata["swarm.transcript.entry_id"] == entries[1].messageID.uuidString)
+        #expect(transcript.memoryMessages[0].metadata[SwarmTranscriptCodec.entryIDKey] == entries[0].messageID.uuidString)
+        #expect(transcript.memoryMessages[1].metadata[SwarmTranscriptCodec.entryIDKey] == entries[1].messageID.uuidString)
     }
 
     @Test("Owned provider transcripts retain order, IDs, tool calls, and structured output")
