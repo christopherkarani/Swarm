@@ -21,23 +21,6 @@ private actor TranscriptRecordingObserver: AgentObserver {
     }
 }
 
-/// Pre-upgrade observer that only implements the deprecated `[MemoryMessage]`
-/// `onLLMStart` requirement. It must still receive callbacks after the
-/// `[InferenceMessage]` overload became the source of truth.
-private actor LegacyMemoryTranscriptObserver: AgentObserver {
-    private(set) var llmStarts: [(systemPrompt: String?, inputMessages: [MemoryMessage])] = []
-
-    @available(*, deprecated, message: "Test witness for the MemoryMessage onLLMStart requirement.")
-    func onLLMStart(
-        context _: AgentContext?,
-        agent _: any AgentRuntime,
-        systemPrompt: String?,
-        inputMessages: [MemoryMessage]
-    ) async {
-        llmStarts.append((systemPrompt, inputMessages))
-    }
-}
-
 @Suite("Observer LLM transcript")
 struct ObserverTranscriptTests {
     @Test("onLLMStart receives the role-tagged messages the provider receives")
@@ -111,65 +94,4 @@ struct ObserverTranscriptTests {
         }
     }
 
-    @Test("Deprecated MemoryMessage onLLMStart witnesses still fire")
-    func legacyMemoryMessageWitnessStillFires() async throws {
-        let provider = MockInferenceProvider(responses: ["agent-ok"])
-        let observer = LegacyMemoryTranscriptObserver()
-        let agent = try Agent(
-            tools: [],
-            instructions: "You are a math tutor.",
-            configuration: AgentConfiguration.default
-                .enableStreaming(false)
-                .timeout(.seconds(15))
-                .defaultTracingEnabled(false),
-            inferenceProvider: provider
-        )
-
-        _ = try await agent.run("What is 2+2?", observer: observer)
-
-        let providerMessages = await provider.generateMessageCalls.last?.messages
-        let observed = await observer.llmStarts.last
-
-        guard let providerMessages, let observed else {
-            Issue.record("Expected the deprecated MemoryMessage witness to receive onLLMStart")
-            return
-        }
-
-        let encoded = providerMessages.map(SwarmTranscriptCodec.encode)
-        #expect(observed.inputMessages.map(\.role) == encoded.map(\.role))
-        #expect(observed.inputMessages.map(\.content) == encoded.map(\.content))
-        #expect(observed.inputMessages.contains(where: { $0.role == .system && $0.content.contains("math tutor") }))
-        #expect(observed.inputMessages.contains(where: { $0.role == .user && $0.content.contains("What is 2+2?") }))
-    }
-
-    @Test("CompositeObserver forwards deprecated MemoryMessage onLLMStart witnesses")
-    func compositeForwardsLegacyMemoryMessageWitness() async throws {
-        let provider = MockInferenceProvider(responses: ["agent-ok"])
-        let observer = LegacyMemoryTranscriptObserver()
-        let composite = CompositeObserver(observers: [observer])
-        let agent = try Agent(
-            tools: [],
-            instructions: "You are a math tutor.",
-            configuration: AgentConfiguration.default
-                .enableStreaming(false)
-                .timeout(.seconds(15))
-                .defaultTracingEnabled(false),
-            inferenceProvider: provider
-        )
-
-        _ = try await agent.run("What is 2+2?", observer: composite)
-
-        let providerMessages = await provider.generateMessageCalls.last?.messages
-        let observed = await observer.llmStarts.last
-
-        guard let providerMessages, let observed else {
-            Issue.record("Expected CompositeObserver to forward the deprecated MemoryMessage witness")
-            return
-        }
-
-        let encoded = providerMessages.map(SwarmTranscriptCodec.encode)
-        #expect(observed.inputMessages.map(\.role) == encoded.map(\.role))
-        #expect(observed.inputMessages.map(\.content) == encoded.map(\.content))
-        #expect(observed.inputMessages.contains(where: { $0.role == .user && $0.content.contains("What is 2+2?") }))
-    }
 }

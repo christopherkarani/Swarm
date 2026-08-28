@@ -14,10 +14,8 @@ import Foundation
 /// All methods have default no-op implementations, so implementers only need to
 /// override the callbacks they care about.
 ///
-/// `onLLMStart` has two overloads. `[InferenceMessage]` is the source of truth
-/// for the transcript the provider receives. The `[MemoryMessage]` overload is
-/// deprecated and will be removed in 0.7; Swarm still invokes it so existing
-/// observers keep receiving LLM-start callbacks.
+/// `onLLMStart` receives the role-tagged `[InferenceMessage]` transcript that
+/// the provider receives.
 ///
 /// Use cases:
 /// - Logging and observability
@@ -113,22 +111,6 @@ public protocol AgentObserver: Sendable {
     ///   - systemPrompt: The system prompt, if any.
     ///   - inputMessages: The role-tagged messages sent to the provider for this turn.
     func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async
-
-    /// Called when an LLM inference begins, with messages encoded as ``MemoryMessage``.
-    ///
-    /// Swarm dual-dispatches this requirement alongside the `[InferenceMessage]`
-    /// overload so existing observers keep receiving LLM-start callbacks.
-    ///
-    /// - Important: Implement ``onLLMStart(context:agent:systemPrompt:inputMessages:)``
-    ///   with `[InferenceMessage]` instead. This requirement will be removed in 0.7.
-    ///
-    /// - Parameters:
-    ///   - context: Optional agent context for orchestration scenarios.
-    ///   - agent: The agent making the LLM call.
-    ///   - systemPrompt: The system prompt, if any.
-    ///   - inputMessages: The provider transcript encoded as ``MemoryMessage`` values.
-    @available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.")
-    func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async
 
     /// Called when an LLM inference completes.
     ///
@@ -229,10 +211,6 @@ public extension AgentObserver {
     /// Default no-op implementation for LLM start.
     func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async {}
 
-    /// Default no-op implementation for the deprecated MemoryMessage LLM-start overload.
-    @available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.")
-    func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [MemoryMessage]) async {}
-
     /// Default no-op implementation for LLM end.
     func onLLMEnd(context _: AgentContext?, agent _: any AgentRuntime, response _: String, usage _: TokenUsage?) async {}
 
@@ -259,8 +237,7 @@ public extension AgentObserver {
 }
 
 extension AgentObserver {
-    /// Dual-dispatch LLM-start to the `[InferenceMessage]` requirement and the
-    /// deprecated `[MemoryMessage]` overload so pre-upgrade witnesses keep firing.
+    /// Dispatches the provider's role-tagged transcript to the observer.
     func notifyLLMStart(
         context: AgentContext?,
         agent: any AgentRuntime,
@@ -272,15 +249,6 @@ extension AgentObserver {
             agent: agent,
             systemPrompt: systemPrompt,
             inputMessages: inputMessages
-        )
-        // Dual-dispatch the deprecated MemoryMessage requirement until 0.7
-        // so existing witnesses keep firing.
-        let encoded = inputMessages.map(SwarmTranscriptCodec.encode)
-        await onLLMStart(
-            context: context,
-            agent: agent,
-            systemPrompt: systemPrompt,
-            inputMessages: encoded
         )
     }
 }
@@ -399,17 +367,6 @@ package struct CompositeObserver: AgentObserver {
     }
 
     package func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async {
-        await withTaskGroup(of: Void.self) { group in
-            for hook in observers {
-                group.addTask {
-                    await hook.onLLMStart(context: context, agent: agent, systemPrompt: systemPrompt, inputMessages: inputMessages)
-                }
-            }
-        }
-    }
-
-    @available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.")
-    package func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async {
         await withTaskGroup(of: Void.self) { group in
             for hook in observers {
                 group.addTask {
