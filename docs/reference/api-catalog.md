@@ -2835,6 +2835,8 @@ Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationMo
 | 17 | case | public | InferenceStreamUpdate.toolCallsCompleted(_:) | `public case toolCallsCompleted([InferenceResponse.ParsedToolCall])` |
 | 20 | case | public | InferenceStreamUpdate.usage(_:) | `public case usage(TokenUsage)` |
 | 23 | case | public | InferenceStreamUpdate.finishedTurn(_:) | `public case finishedTurn(InferenceResponse)` |
+| 34 | protocol | public | ToolCallStreamingInferenceProvider | `public protocol ToolCallStreamingInferenceProvider : InferenceProvider` _(Deprecated compatibility identity; Agent reads `InferenceProviderCapabilities.streamingToolCalls`.)_ |
+| 36 | func | public | ToolCallStreamingInferenceProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
 
 ## 12. Integration (Membrane + Wax)
 

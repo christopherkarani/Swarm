@@ -20,7 +20,11 @@ import Foundation
 /// let agent = try Agent(tools: [CalculatorTool()], inferenceProvider: mock)
 /// let result = try await agent.run("What is 2+2?")
 /// ```
-public actor MockInferenceProvider: InferenceProvider, PromptTokenCounter
+public actor MockInferenceProvider: InferenceProvider,
+    CapabilityReportingInferenceProvider,
+    ConversationInferenceProvider,
+    StreamingConversationInferenceProvider,
+    PromptTokenCountingInferenceProvider
 {
     // MARK: Public
 
@@ -52,8 +56,6 @@ public actor MockInferenceProvider: InferenceProvider, PromptTokenCounter
 
     /// Provider capabilities advertised to the agent.
     public nonisolated let capabilities: InferenceProviderCapabilities
-
-    nonisolated public var promptTokenCounter: (any PromptTokenCounter)? { self }
 
     // MARK: - Call Recording
 

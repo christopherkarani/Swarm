@@ -11,7 +11,7 @@ import Swarm
 /// and advertised capability bits. Callers read the bitset and do not probe
 /// extra protocol identities.
 public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecked Sendable,
-    InferenceProvider,
+    CapabilityReportingInferenceProvider,
     InferenceProviderMetadata
 {
     public init(
@@ -208,6 +208,20 @@ public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecke
         base as? any InferenceProviderMetadata
     }
 }
+
+extension OpenTelemetryInferenceProvider: ConversationInferenceProvider where Base: ConversationInferenceProvider {}
+
+extension OpenTelemetryInferenceProvider: StreamingConversationInferenceProvider where Base: StreamingConversationInferenceProvider {}
+
+extension OpenTelemetryInferenceProvider: ToolCallStreamingInferenceProvider where Base: ToolCallStreamingInferenceProvider {}
+
+extension OpenTelemetryInferenceProvider: ToolCallStreamingConversationInferenceProvider
+where Base: ToolCallStreamingConversationInferenceProvider {}
+
+extension OpenTelemetryInferenceProvider: StructuredOutputInferenceProvider where Base: StructuredOutputInferenceProvider {}
+
+extension OpenTelemetryInferenceProvider: StructuredOutputConversationInferenceProvider
+where Base: StructuredOutputConversationInferenceProvider {}
 
 private extension OpenTelemetryInferenceProvider {
     static func inputLength(_ messages: [InferenceMessage]) -> Int {

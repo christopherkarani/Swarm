@@ -269,7 +269,7 @@ private final class GenerateScriptBox: @unchecked Sendable {
     }
 }
 
-private struct UnadvertisedStreamingMethodProvider: InferenceProvider, MessagesFromPromptInference {
+private struct UnadvertisedStreamingMethodProvider: ToolCallStreamingInferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = []
     private let script: GenerateScriptBox
 

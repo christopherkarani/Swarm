@@ -22,3 +22,18 @@ public enum InferenceStreamUpdate: Sendable, Equatable {
     /// A finished provider-owned turn, including the inner transcript.
     case finishedTurn(InferenceResponse)
 }
+
+/// An inference provider that can stream tool-call assembly.
+///
+/// This deprecated protocol remains for source compatibility. Agent dispatches
+/// live streaming from ``InferenceProviderCapabilities/streamingToolCalls``
+/// and ``InferenceProvider/streamWithToolCalls(messages:tools:options:)``.
+@available(*, deprecated, message: "Declare InferenceProviderCapabilities.streamingToolCalls and override streamWithToolCalls on InferenceProvider")
+public protocol ToolCallStreamingInferenceProvider: InferenceProvider {
+    /// Streams a response with potential tool calls, yielding partial tool-call updates as they arrive.
+    func streamWithToolCalls(
+        prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> AsyncThrowingStream<InferenceStreamUpdate, Error>
+}

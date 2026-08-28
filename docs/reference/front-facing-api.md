@@ -611,8 +611,10 @@ public protocol InferenceProvider: Sendable {
 ```
 
 Agent reads ``InferenceProviderCapabilities`` and ``InferenceProvider/promptTokenCounter``
-directly from ``InferenceProvider``. Capability bits and the structured-message
-methods are the single provider integration seam.
+directly from ``InferenceProvider``. Deprecated marker protocols remain available
+for source compatibility, but capability bits and the structured-message methods
+are the single provider integration seam. Agent does not dispatch through marker
+protocol identities.
 
 ### Provider factories (dot-syntax)
 
@@ -646,7 +648,8 @@ Opt in to a provider-owned tool loop with
 (or the streaming counterpart). It never type-casts the adapter.
 ``AgentConfiguration/foundationModelsExecution`` is ignored. Capture remains
 the default. Structured outputs use guided generation when the JSON Schema maps;
-otherwise prompt+parse. Agent never type-casts leftover capability protocols.
+otherwise prompt+parse. Existing providers may continue to conform to the
+deprecated marker protocols while migrating to the canonical seam.
 See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`

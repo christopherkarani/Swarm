@@ -90,7 +90,9 @@ struct CapabilityReportingTextBackend: TextOnlyBackend {
     }
 }
 
-final class CertifiedPromptToolStreamingProvider: InferenceProvider, @unchecked Sendable
+final class CertifiedPromptToolStreamingProvider: InferenceProvider,
+    CapabilityReportingInferenceProvider,
+    @unchecked Sendable
 {
     private let lock = NSLock()
     private let scripts: [[InferenceStreamUpdate]]

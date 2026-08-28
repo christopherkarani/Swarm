@@ -10,6 +10,7 @@ import Swarm
 struct OpenTelemetryAnyBaseInferenceProvider: @unchecked Sendable,
     InferenceProvider,
     OpenTelemetryAnyForwarding,
+    CapabilityReportingInferenceProvider,
     InferenceProviderMetadata,
     OpenTelemetryInstrumentedInferenceProvider
 {
