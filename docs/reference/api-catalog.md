@@ -2456,6 +2456,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
+| 21 | typealias | public | Retry | `@available(*, deprecated, renamed: "RetryPolicy") public typealias Retry = RetryPolicy` |
+| 28 | typealias | public | Fallback | `@available(*, deprecated, renamed: "FallbackChain") public typealias Fallback = FallbackChain` |
 
 ### Resilience/ResilienceConfiguration.swift
 
