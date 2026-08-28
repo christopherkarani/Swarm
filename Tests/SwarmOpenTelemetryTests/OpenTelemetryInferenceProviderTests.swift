@@ -147,21 +147,17 @@ func erasedOpenTelemetryWrapperPreservesPromptOnlyToolStreamingShape() {
     )
 
     #expect(wrapped.capabilities.contains(.streamingToolCalls))
-    #expect(!(wrapped is any ConversationInferenceProvider))
-    #expect(!(wrapped is any ToolCallStreamingConversationInferenceProvider))
     #expect(InferenceProviderCapabilities.resolved(for: wrapped).contains(.conversationMessages))
     #expect(InferenceProviderCapabilities.resolved(for: wrapped).contains(.streamingToolCalls))
 }
 
-@Test("Erased OpenTelemetry wrapper forwards prompt tool streaming without leftover casts")
-func erasedOpenTelemetryWrapperForwardsPromptToolStreamingWithoutLeftoverCasts() async throws {
+@Test("Erased OpenTelemetry wrapper forwards prompt tool streaming")
+func erasedOpenTelemetryWrapperForwardsPromptToolStreaming() async throws {
     let wrapped = OpenTelemetryAnyInferenceProvider(
         PromptOnlyProvider(),
         tracer: OpenTelemetry.instance.tracerProvider.get(instrumentationName: "test.llm"),
         captureContent: false
     )
-
-    #expect(!(wrapped is any ToolCallStreamingInferenceProvider))
 
     var chunks: [String] = []
     for try await update in wrapped.streamWithToolCalls(prompt: "hello", tools: [], options: .default) {
@@ -216,18 +212,17 @@ func inferenceMetadataSnapshotExposesProviderFields() {
     #expect(metadata.endpointURL == endpoint)
 }
 
-@Test("OTel wrapper forwards messages without ConversationInferenceProvider marker")
-func openTelemetryWrapperForwardsMessagesWithoutConversationMarker() async throws {
+@Test("OTel wrapper forwards messages")
+func openTelemetryWrapperForwardsMessages() async throws {
     let recorded = RecordedMessageCalls()
     let provider = RolePreservingProvider(recorded: recorded).instrumentedWithOpenTelemetry()
 
-    #expect(!(provider is any ConversationInferenceProvider))
     try await assertRoleTaggedHistoryReachesBase(provider)
     #expect(recorded.all.allSatisfy { $0 == sampleConversationHistory })
 }
 
-@Test("Erased OTel wrapper forwards FM-shaped messages without conversation marker")
-func erasedOpenTelemetryWrapperForwardsStructuredMessagesWithoutConversationMarker() async throws {
+@Test("Erased OTel wrapper forwards structured messages")
+func erasedOpenTelemetryWrapperForwardsStructuredMessages() async throws {
     let recorded = RecordedMessageCalls()
     let provider = OpenTelemetryAnyInferenceProvider(
         RolePreservingStructuredProvider(recorded: recorded),
@@ -235,13 +230,12 @@ func erasedOpenTelemetryWrapperForwardsStructuredMessagesWithoutConversationMark
         captureContent: false
     )
 
-    #expect(!(provider is any ConversationInferenceProvider))
     try await assertRoleTaggedHistoryReachesBase(provider)
     #expect(recorded.all.allSatisfy { $0 == sampleConversationHistory })
 }
 
-@Test("Erased OTel wrapper forwards tool-streaming messages without conversation marker")
-func erasedOpenTelemetryWrapperForwardsToolStreamingMessagesWithoutConversationMarker() async throws {
+@Test("Erased OTel wrapper forwards tool-streaming messages")
+func erasedOpenTelemetryWrapperForwardsToolStreamingMessages() async throws {
     let recorded = RecordedMessageCalls()
     let provider = OpenTelemetryAnyInferenceProvider(
         RolePreservingToolStreamingProvider(recorded: recorded),
@@ -249,7 +243,6 @@ func erasedOpenTelemetryWrapperForwardsToolStreamingMessagesWithoutConversationM
         captureContent: false
     )
 
-    #expect(!(provider is any ConversationInferenceProvider))
     #expect(provider.capabilities.contains(.streamingToolCalls))
     try await assertRoleTaggedHistoryReachesBase(provider)
     #expect(recorded.all.allSatisfy { $0 == sampleConversationHistory })

@@ -184,7 +184,6 @@ struct StreamingEventTests {
 
 private final class CapabilityOptOutToolStreamingProvider:
     InferenceProvider,
-    CapabilityReportingInferenceProvider,
     @unchecked Sendable
 {
     var capabilities: InferenceProviderCapabilities {
@@ -242,7 +241,6 @@ private final class CapabilityOptOutToolStreamingProvider:
 
 private final class CapabilityOptInToolStreamingProvider:
     InferenceProvider,
-    CapabilityReportingInferenceProvider,
     @unchecked Sendable
 {
     var capabilities: InferenceProviderCapabilities {

@@ -5,7 +5,7 @@ import Testing
 @Suite("InferenceProvider capability dispatch", .ephemeralDefaultStores)
 struct InferenceProviderCapabilityDispatchTests {
 
-    @Test("Agent uses InferenceProvider.promptTokenCounter instead of leftover protocol identity")
+    @Test("Agent uses InferenceProvider.promptTokenCounter directly")
     func agentUsesProviderPromptTokenCounterProperty() async throws {
         let providerCounter = RecordingPromptTokenCounter()
         let environmentCounter = RecordingPromptTokenCounter()
@@ -38,8 +38,8 @@ struct InferenceProviderCapabilityDispatchTests {
         #expect(provider.promptTokenCounter == nil)
     }
 
-    @Test("Native generateStructured(messages:) works without StructuredOutputInferenceProvider")
-    func nativeStructuredPromptOverrideDoesNotNeedLeftoverProtocol() async throws {
+    @Test("Native generateStructured(messages:) works from the provider seam")
+    func nativeStructuredPromptOverrideUsesProviderSeam() async throws {
         let structuredResult = StructuredOutputResult(
             format: .jsonObject,
             rawJSON: #"{"answer":"native-property"}"#,
@@ -58,7 +58,6 @@ struct InferenceProviderCapabilityDispatchTests {
         #expect(result.structuredOutput.source == .providerNative)
         #expect(result.structuredOutput.rawJSON == structuredResult.rawJSON)
         #expect(await provider.structuredCallCount() == 1)
-        #expect(!(provider is any StructuredOutputInferenceProvider))
     }
 
     @Test("Advertising structuredOutputs without an override still uses prompt fallback")
@@ -76,9 +75,9 @@ struct InferenceProviderCapabilityDispatchTests {
         #expect(provider.capabilities.contains(.structuredOutputs))
     }
 
-    @Test("Agent does not take live streaming when the bit is unset even if leftover protocol remains")
-    func unsetStreamingBitIgnoresLeftoverProtocol() async throws {
-        let provider = LeftoverStreamingWithoutBitProvider(generateResponses: Self.echoThenDoneResponses)
+    @Test("Agent does not take live streaming when the bit is unset")
+    func unsetStreamingBitIgnoresUnadvertisedStreamingMethod() async throws {
+        let provider = UnadvertisedStreamingMethodProvider(generateResponses: Self.echoThenDoneResponses)
         let agent = try Agent(
             tools: [CapabilityDispatchEchoTool()],
             configuration: .default.maxIterations(3),
@@ -270,7 +269,7 @@ private final class GenerateScriptBox: @unchecked Sendable {
     }
 }
 
-private struct LeftoverStreamingWithoutBitProvider: ToolCallStreamingInferenceProvider, MessagesFromPromptInference {
+private struct UnadvertisedStreamingMethodProvider: InferenceProvider, MessagesFromPromptInference {
     nonisolated let capabilities: InferenceProviderCapabilities = []
     private let script: GenerateScriptBox
 

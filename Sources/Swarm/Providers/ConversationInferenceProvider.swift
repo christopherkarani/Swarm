@@ -57,10 +57,6 @@ public extension InferenceProviderCapabilities {
     }
 }
 
-/// Optional protocol for providers that can report which advanced features they actually support.
-@available(*, deprecated, message: "Declare capabilities on InferenceProvider")
-public protocol CapabilityReportingInferenceProvider: InferenceProvider {}
-
 /// A provider-facing conversation message used by structured inference integrations.
 public struct InferenceMessage: Sendable, Equatable {
     public enum Role: String, Sendable, Codable {
@@ -123,18 +119,6 @@ public struct InferenceMessage: Sendable, Equatable {
         InferenceMessage(role: .tool, content: content, name: name, toolCallID: toolCallID)
     }
 }
-
-/// Optional protocol for providers that can consume structured conversation history directly.
-@available(*, deprecated, renamed: "InferenceProvider")
-public protocol ConversationInferenceProvider: InferenceProvider {}
-
-/// Structured conversation streaming for plain text responses.
-@available(*, deprecated, renamed: "InferenceProvider")
-public protocol StreamingConversationInferenceProvider: ConversationInferenceProvider {}
-
-/// Structured conversation streaming for tool-call capable providers.
-@available(*, deprecated, renamed: "InferenceProvider")
-public protocol ToolCallStreamingConversationInferenceProvider: ConversationInferenceProvider {}
 
 extension InferenceMessage.ToolCall {
     init(_ parsed: InferenceResponse.ParsedToolCall) {

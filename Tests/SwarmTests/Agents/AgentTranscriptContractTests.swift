@@ -15,10 +15,7 @@ private struct TranscriptEchoTool: AnyJSONTool {
 }
 
 private actor NativeStructuredConversationProvider:
-    InferenceProvider,
-    ConversationInferenceProvider,
-    StructuredOutputConversationInferenceProvider,
-    CapabilityReportingInferenceProvider
+    InferenceProvider
 {
     nonisolated let capabilities: InferenceProviderCapabilities = [.conversationMessages, .structuredOutputs]
 

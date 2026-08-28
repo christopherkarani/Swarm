@@ -243,7 +243,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         )
     }
 
-    // MARK: - ConversationInferenceProvider
+    // MARK: - Structured message inference
 
     public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
         let resolved = resolveTurn(messages: messages, tools: [], options: options)

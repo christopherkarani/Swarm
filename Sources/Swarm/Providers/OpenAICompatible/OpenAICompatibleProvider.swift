@@ -111,7 +111,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         streamWithToolCalls(messages: [.user(prompt)], tools: tools, options: options)
     }
 
-    // MARK: - ConversationInferenceProvider
+    // MARK: - Structured message inference
 
     public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
         let response = try await generateWithToolCalls(

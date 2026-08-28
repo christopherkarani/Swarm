@@ -611,9 +611,8 @@ public protocol InferenceProvider: Sendable {
 ```
 
 Agent reads ``InferenceProviderCapabilities`` and ``InferenceProvider/promptTokenCounter``
-on ``InferenceProvider``. Deprecated leftover protocols
-(`ToolCallStreamingInferenceProvider`, `StructuredOutputInferenceProvider`,
-`PromptTokenCountingInferenceProvider`) are not the Agent seam.
+directly from ``InferenceProvider``. Capability bits and the structured-message
+methods are the single provider integration seam.
 
 ### Provider factories (dot-syntax)
 

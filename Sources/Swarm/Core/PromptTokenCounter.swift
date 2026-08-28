@@ -19,18 +19,6 @@ public protocol PromptTokenCounter: Sendable {
     func countTokens(in text: String) async throws -> Int
 }
 
-/// An inference provider that can expose a prompt token counter.
-///
-/// Providers conform to this when they can count tokens for the exact model
-/// they are serving. Agent reads ``InferenceProvider/promptTokenCounter`` instead
-/// of this leftover identity.
-@available(*, deprecated, message: "Expose promptTokenCounter on InferenceProvider")
-public protocol PromptTokenCountingInferenceProvider: InferenceProvider, PromptTokenCounter {}
-
-public extension PromptTokenCountingInferenceProvider {
-    var promptTokenCounter: (any PromptTokenCounter)? { self }
-}
-
 public extension PromptTokenCounter {
     /// Counts tokens across multiple text fragments.
     func countTokens(in texts: [String]) async throws -> Int {

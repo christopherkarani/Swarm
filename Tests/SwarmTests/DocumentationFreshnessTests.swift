@@ -226,7 +226,7 @@ struct DocumentationFreshnessTests {
         #expect(providerSource.contains("func generate(prompt: String, options: InferenceOptions) async throws -> String"))
         #expect(docs.contains("Prompt-string methods remain for one minor so existing backends compile."))
         #expect(docs.contains("Agent and tests call the messages methods only."))
-        #expect(docs.contains("not the Agent seam"))
+        #expect(docs.contains("Capability bits and the structured-message"))
         #expect(docs.contains("Prompt-string methods default to wrapping `prompt` as a user message."))
         #expect(!docs.contains("func generate(prompt: String, options: InferenceOptions) async throws -> String"))
         #expect(!docs.contains("public protocol ConversationInferenceProvider: InferenceProvider"))
@@ -234,6 +234,7 @@ struct DocumentationFreshnessTests {
         #expect(!docs.contains("public protocol ToolCallStreamingInferenceProvider: InferenceProvider"))
         #expect(!docs.contains("public protocol StructuredOutputInferenceProvider: InferenceProvider"))
         #expect(!docs.contains("public protocol PromptTokenCountingInferenceProvider: InferenceProvider"))
+        #expect(!docs.contains("ToolCallStreamingInferenceProvider |"))
     }
 
     @Test("public release docs point at the latest remote tag represented by this checkout")
