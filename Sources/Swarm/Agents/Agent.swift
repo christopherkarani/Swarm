@@ -510,7 +510,9 @@ public struct Agent: AgentRuntime, Sendable {
     // MARK: - Internal State
 
     private var toolRegistry: ToolRegistry
-    let cancellationState = ActiveRunCancellationState()
+    /// Registry of in-flight runs; copies of this value share the actor, so
+    /// every run started through any copy is reachable from ``cancel()``.
+    let activeRuns = ActiveRunRegistry()
     /// Created from ``AgentConfiguration/resilience`` at init. Copies of this value share the actor.
     let inferenceCircuitBreaker: CircuitBreaker?
     /// Created from ``AgentConfiguration/resilience`` at init. Copies of this value share the actor.

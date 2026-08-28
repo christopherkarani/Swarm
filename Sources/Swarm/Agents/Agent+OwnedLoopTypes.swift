@@ -17,9 +17,13 @@ final class OwnedLoopPendingHandoff: @unchecked Sendable {
     private let lock = NSLock()
     private var pending: (name: String, arguments: [String: SendableValue])?
 
+    /// First-winner: a later concurrent provider callback cannot overwrite
+    /// an already-captured handoff.
     func store(name: String, arguments: [String: SendableValue]) {
         lock.lock()
-        pending = (name, arguments)
+        if pending == nil {
+            pending = (name, arguments)
+        }
         lock.unlock()
     }
 

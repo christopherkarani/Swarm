@@ -258,6 +258,13 @@ public struct RetryPolicy: Sendable {
     // MARK: - Execution
 
     /// Executes an operation with retry logic.
+    ///
+    /// Canonical agent-inference retry seam: `maxAttempts` counts retries after
+    /// the initial attempt, `CancellationError` rethrows immediately, exhaustion
+    /// wraps `ResilienceError.retriesExhausted`, and backoff sleeps on the
+    /// injected `SwarmClock`. `ChatGraph.withRetry` keeps a local loop with
+    /// documented semantic divergence (total-attempt counting, verbatim rethrow,
+    /// unconditional gating, different backoff math).
     /// - Parameter operation: The async operation to execute.
     /// - Returns: The result of the operation.
     /// - Throws: `ResilienceError.retriesExhausted` if all attempts fail, or the original error if retries are
@@ -269,6 +276,7 @@ public struct RetryPolicy: Sendable {
         var lastError: Error?
 
         while true {
+            try Task.checkCancellation()
             do {
                 return try await operation()
             } catch {
@@ -317,7 +325,11 @@ public struct RetryPolicy: Sendable {
         }
 
         let nanoseconds = delaySeconds * 1_000_000_000
-        guard nanoseconds.isFinite, nanoseconds > 0 else {
+        // Overflow of a positive finite delay saturates to the ceiling, not 0.
+        guard nanoseconds.isFinite else {
+            return Self.maxBackoffNanoseconds
+        }
+        guard nanoseconds > 0 else {
             return 0
         }
 

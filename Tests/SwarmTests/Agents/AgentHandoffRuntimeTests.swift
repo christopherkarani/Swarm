@@ -63,7 +63,7 @@ struct AgentHandoffRuntimeTests {
             onTransfer: { context, data in
                 await callbackRecorder.recordTransfer(data)
                 await context.set("transfer_seen", value: .string(data.input))
-                await context.set(.originalInput, value: .string("callback-updated-original-input"))
+                await context.set(.originalInput, "callback-updated-original-input")
             },
             transform: { data in
                 HandoffInputData(

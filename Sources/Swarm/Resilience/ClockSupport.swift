@@ -1,19 +1,19 @@
 // ClockSupport.swift
 // Swarm Framework
 //
-// Clock seam support for Resilience: the live wall-clock adapter and
+// Clock seam support for Resilience: the live continuous-clock adapter and
 // Duration <-> nanosecond conversions used by SwarmClock consumers.
 
 import Foundation
 
 // MARK: - LiveSwarmClock
 
-/// Default `SwarmClock` backed by system uptime and task suspension.
+/// Default `SwarmClock` backed by Swift's sleep-inclusive continuous clock and
+/// task suspension.
 ///
-/// `nowNanoseconds()` reads monotonic boot-relative uptime (`DispatchTime`),
-/// so values are not comparable to `Date` or wall-clock epochs; the counter
-/// pauses while the system sleeps, resets on reboot, and would only wrap
-/// after ~584 years of continuous uptime.
+/// `nowNanoseconds()` reads `ContinuousClock.Instant.durationSinceReference`,
+/// so elapsed time includes system sleep and remains monotonic without being
+/// tied to wall-clock calendar time.
 /// `sleep(nanoseconds:)` suspends via `Task.sleep`, propagating cancellation
 /// as `CancellationError`. Durations beyond `Int64.max` nanoseconds
 /// (~292 years) saturate instead of trapping.
@@ -22,7 +22,7 @@ struct LiveSwarmClock: SwarmClock {
     static let live = LiveSwarmClock()
 
     func nowNanoseconds() -> UInt64 {
-        DispatchTime.now().uptimeNanoseconds
+        ContinuousClock.now.durationSinceReference.swarmNanoseconds
     }
 
     func sleep(nanoseconds: UInt64) async throws {

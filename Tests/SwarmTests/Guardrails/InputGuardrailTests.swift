@@ -391,8 +391,8 @@ struct InputGuardrailTests {
                 return .tripwire(message: "No context provided")
             }
 
-            let originalInput = await ctx.get(.originalInput)
-            if originalInput?.stringValue == "test input" {
+            let originalInput: String? = await ctx.get(.originalInput)
+            if originalInput == "test input" {
                 return .passed(message: "Context verified")
             }
 

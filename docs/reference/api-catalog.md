@@ -3,7 +3,7 @@
 Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14. OpenAI-compatible provider rows added 2026-08-14.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 193
+- Source files scanned: 194
 - Public/open symbols cataloged: 2325
 
 ## 1. Swarm (entry point)
@@ -548,75 +548,92 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 22 | enum | public | AgentContextKey | `public enum AgentContextKey` |
-| 24 | case | public | AgentContextKey.originalInput | `public case originalInput` |
-| 27 | case | public | AgentContextKey.previousOutput | `public case previousOutput` |
-| 30 | case | public | AgentContextKey.currentAgentName | `public case currentAgentName` |
-| 33 | case | public | AgentContextKey.executionPath | `public case executionPath` |
-| 36 | case | public | AgentContextKey.startTime | `public case startTime` |
-| 39 | case | public | AgentContextKey.metadata | `public case metadata` |
-| 66 | protocol | public | AgentContextProviding | `public protocol AgentContextProviding : Sendable` |
-| 68 | var | public | AgentContextProviding.contextKey | `public static var contextKey: String { get }` |
-| 98 | class | public | AgentContext | `public actor AgentContext` |
-| 102 | var | public | AgentContext.originalInput | `public nonisolated let originalInput: String` |
-| 105 | var | public | AgentContext.executionId | `public nonisolated let executionId: UUID` |
-| 108 | var | public | AgentContext.createdAt | `public nonisolated let createdAt: Date` |
-| 111 | var | public | AgentContext.allKeys | `public var allKeys: [String] { get }` |
-| 119 | var | public | AgentContext.snapshot | `public var snapshot: [String : SendableValue] { get }` |
-| 130 | func | public | AgentContext.init(input:initialValues:) | `public init(input: String, initialValues: [String : SendableValue] = [:])` |
-| 149 | func | public | AgentContext.get(_:) | `public func get(_ key: String) -> SendableValue?` |
-| 157 | func | public | AgentContext.get(_:) | `public func get(_ key: AgentContextKey) -> SendableValue?` |
-| 166 | func | public | AgentContext.set(_:value:) | `public func set(_ key: String, value: SendableValue)` |
-| 175 | func | public | AgentContext.set(_:value:) | `public func set(_ key: AgentContextKey, value: SendableValue)` |
-| 184 | func | public | AgentContext.remove(_:) | `public @discardableResult func remove(_ key: String) -> SendableValue?` |
-| 193 | func | public | AgentContext.addMessage(_:) | `public func addMessage(_ message: MemoryMessage)` |
-| 203 | func | public | AgentContext.getMessages() | `public func getMessages() -> [MemoryMessage]` |
-| 208 | func | public | AgentContext.clearMessages() | `public func clearMessages()` |
-| 220 | func | public | AgentContext.recordExecution(agentName:) | `public func recordExecution(agentName: String)` |
-| 231 | func | public | AgentContext.getExecutionPath() | `public func getExecutionPath() -> [String]` |
-| 243 | func | public | AgentContext.setPreviousOutput(_:) | `public func setPreviousOutput(_ result: AgentResult)` |
-| 250 | func | public | AgentContext.getPreviousOutput() | `public func getPreviousOutput() -> String?` |
-| 270 | func | public | AgentContext.merge(from:overwrite:) | `public func merge(from other: AgentContext, overwrite: Bool = false) async` |
-| 309 | func | public | AgentContext.copy(additionalValues:) | `public func copy(additionalValues: [String : SendableValue] = [:]) -> AgentContext` |
-| 334 | func | public | AgentContext.setTyped(_:) | `public func setTyped<T>(_ context: T) where T : AgentContextProviding` |
-| 342 | func | public | AgentContext.typed(_:) | `public func typed<T>(_: T.Type) -> T? where T : AgentContextProviding` |
-| 351 | func | public | AgentContext.removeTyped(_:) | `public @discardableResult func removeTyped<T>(_: T.Type) -> T? where T : AgentContextProviding` |
-| 359 | func | public | AgentContext.hasTyped(_:) | `public func hasTyped<T>(_: T.Type) -> Bool where T : AgentContextProviding` |
-| 383 | var | public | AgentContext.description | `public nonisolated var description: String { get }` |
-| 397 | var | public | AgentContext.debugDescription | `public nonisolated var debugDescription: String { get }` |
+| 24 | enum | public | AgentContextKey | `public enum AgentContextKey` _(Availability: * (deprecated); Use typed ContextKey orchestration statics such as ContextKey.originalInput.)_ |
+| 26 | case | public | AgentContextKey.originalInput | `public case originalInput` |
+| 29 | case | public | AgentContextKey.previousOutput | `public case previousOutput` |
+| 32 | case | public | AgentContextKey.currentAgentName | `public case currentAgentName` |
+| 35 | case | public | AgentContextKey.executionPath | `public case executionPath` |
+| 38 | case | public | AgentContextKey.startTime | `public case startTime` |
+| 41 | case | public | AgentContextKey.metadata | `public case metadata` |
+| 86 | protocol | public | AgentContextProviding | `public protocol AgentContextProviding : Sendable` _(Availability: * (deprecated); Use ContextKey<Value> with setTyped(_:value:)/getTyped(_:) instead)_ |
+| 88 | var | public | AgentContextProviding.contextKey | `public static var contextKey: String { get }` |
+| 118 | class | public | AgentContext | `public actor AgentContext` |
+| 122 | var | public | AgentContext.originalInput | `public nonisolated let originalInput: String` |
+| 125 | var | public | AgentContext.executionId | `public nonisolated let executionId: UUID` |
+| 128 | var | public | AgentContext.createdAt | `public nonisolated let createdAt: Date` |
+| 134 | var | public | AgentContext.allKeys | `public var allKeys: [String] { get }` |
+| 149 | var | public | AgentContext.snapshot | `public var snapshot: [String : SendableValue] { get }` |
+| 164 | func | public | AgentContext.init(input:initialValues:) | `public init(input: String, initialValues: [String : SendableValue] = [:])` |
+| 206 | func | public | AgentContext.get(_:) | `public func get(_ key: String) -> SendableValue?` |
+| 216 | func | public | AgentContext.get(_:) | `public func get(_ key: AgentContextKey) -> SendableValue?` _(Availability: * (deprecated); Use typed ContextKey accessors such as get(.originalInput).)_ |
+| 225 | func | public | AgentContext.set(_:value:) | `public func set(_ key: String, value: SendableValue)` |
+| 240 | func | public | AgentContext.set(_:value:) | `public func set(_ key: AgentContextKey, value: SendableValue)` _(Availability: * (deprecated); Use typed ContextKey accessors such as set(.originalInput, _).)_ |
+| 283 | func | public | AgentContext.remove(_:) | `public @discardableResult func remove(_ key: String) -> SendableValue?` |
+| 292 | func | public | AgentContext.addMessage(_:) | `public func addMessage(_ message: MemoryMessage)` |
+| 302 | func | public | AgentContext.getMessages() | `public func getMessages() -> [MemoryMessage]` |
+| 307 | func | public | AgentContext.clearMessages() | `public func clearMessages()` |
+| 319 | func | public | AgentContext.recordExecution(agentName:) | `public func recordExecution(agentName: String)` |
+| 328 | func | public | AgentContext.getExecutionPath() | `public func getExecutionPath() -> [String]` |
+| 340 | func | public | AgentContext.setPreviousOutput(_:) | `public func setPreviousOutput(_ result: AgentResult)` |
+| 347 | func | public | AgentContext.getPreviousOutput() | `public func getPreviousOutput() -> String?` |
+| 367 | func | public | AgentContext.merge(from:overwrite:) | `public func merge(from other: AgentContext, overwrite: Bool = false) async` |
+| 421 | func | public | AgentContext.copy(additionalValues:) | `public func copy(additionalValues: [String : SendableValue] = [:]) -> AgentContext` |
+| 453 | func | public | AgentContext.setTyped(_:) | `public func setTyped<T>(_ context: T) where T : AgentContextProviding` |
+| 461 | func | public | AgentContext.typed(_:) | `public func typed<T>(_: T.Type) -> T? where T : AgentContextProviding` |
+| 470 | func | public | AgentContext.removeTyped(_:) | `public @discardableResult func removeTyped<T>(_: T.Type) -> T? where T : AgentContextProviding` |
+| 478 | func | public | AgentContext.hasTyped(_:) | `public func hasTyped<T>(_: T.Type) -> Bool where T : AgentContextProviding` |
+| 574 | var | public | AgentContext.description | `public nonisolated var description: String { get }` |
+| 588 | var | public | AgentContext.debugDescription | `public nonisolated var debugDescription: String { get }` |
 
 ### Core/Execution/ContextKey.swift
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 30 | struct | public | ContextKey | `public struct ContextKey<Value> where Value : Sendable` |
-| 32 | var | public | ContextKey.name | `public let name: String` |
-| 37 | func | public | ContextKey.init(_:) | `public init(_ name: String)` |
-| 43 | func | public | ContextKey.==(_:_:) | `public static func == (lhs: ContextKey<Value>, rhs: ContextKey<Value>) -> Bool` |
-| 49 | func | public | ContextKey.hash(into:) | `public func hash(into hasher: inout Hasher)` |
-| 58 | var | public | ContextKey.userID | `public static let userID: ContextKey<String>` |
-| 61 | var | public | ContextKey.sessionID | `public static let sessionID: ContextKey<String>` |
-| 64 | var | public | ContextKey.correlationID | `public static let correlationID: ContextKey<String>` |
-| 67 | var | public | ContextKey.language | `public static let language: ContextKey<String>` |
-| 70 | var | public | ContextKey.apiVersion | `public static let apiVersion: ContextKey<String>` |
-| 77 | var | public | ContextKey.requestCount | `public static let requestCount: ContextKey<Int>` |
-| 80 | var | public | ContextKey.retryCount | `public static let retryCount: ContextKey<Int>` |
-| 83 | var | public | ContextKey.iterationCount | `public static let iterationCount: ContextKey<Int>` |
-| 86 | var | public | ContextKey.depth | `public static let depth: ContextKey<Int>` |
-| 93 | var | public | ContextKey.isAuthenticated | `public static let isAuthenticated: ContextKey<Bool>` |
-| 96 | var | public | ContextKey.isDebugMode | `public static let isDebugMode: ContextKey<Bool>` |
-| 99 | var | public | ContextKey.verboseLogging | `public static let verboseLogging: ContextKey<Bool>` |
-| 102 | var | public | ContextKey.isDryRun | `public static let isDryRun: ContextKey<Bool>` |
-| 109 | var | public | ContextKey.permissions | `public static let permissions: ContextKey<[String]>` |
-| 112 | var | public | ContextKey.tags | `public static let tags: ContextKey<[String]>` |
-| 115 | var | public | ContextKey.featureFlags | `public static let featureFlags: ContextKey<[String]>` |
-| 122 | var | public | ContextKey.timestamp | `public static let timestamp: ContextKey<Date>` |
-| 125 | var | public | ContextKey.expiresAt | `public static let expiresAt: ContextKey<Date>` |
-| 142 | func | public | AgentContext.setTyped(_:value:) | `public func setTyped<T>(_ key: ContextKey<T>, value: T) where T : Encodable, T : Sendable` |
-| 162 | func | public | AgentContext.getTyped(_:) | `public func getTyped<T>(_ key: ContextKey<T>) -> T? where T : Decodable, T : Sendable` |
-| 215 | func | public | AgentContext.getTyped(_:default:) | `public func getTyped<T>(_ key: ContextKey<T>, default defaultValue: T) -> T where T : Decodable, T : Sendable` |
-| 227 | func | public | AgentContext.removeTyped(_:) | `public func removeTyped(_ key: ContextKey<some Sendable>)` |
-| 242 | func | public | AgentContext.hasTyped(_:) | `public func hasTyped(_ key: ContextKey<some Sendable>) -> Bool` |
+| 38 | struct | public | ContextKey | `public struct ContextKey<Value> where Value : Sendable` |
+| 40 | var | public | ContextKey.name | `public let name: String` |
+| 45 | func | public | ContextKey.init(_:) | `public init(_ name: String)` |
+| 51 | func | public | ContextKey.==(_:_:) | `public static func == (lhs: ContextKey<Value>, rhs: ContextKey<Value>) -> Bool` |
+| 57 | func | public | ContextKey.hash(into:) | `public func hash(into hasher: inout Hasher)` |
+| 66 | var | public | ContextKey.userID | `public static let userID: ContextKey<String>` |
+| 69 | var | public | ContextKey.sessionID | `public static let sessionID: ContextKey<String>` |
+| 72 | var | public | ContextKey.correlationID | `public static let correlationID: ContextKey<String>` |
+| 75 | var | public | ContextKey.language | `public static let language: ContextKey<String>` |
+| 78 | var | public | ContextKey.apiVersion | `public static let apiVersion: ContextKey<String>` |
+| 81 | var | public | ContextKey.originalInput | `public static let originalInput: ContextKey<String>` |
+| 84 | var | public | ContextKey.previousOutput | `public static let previousOutput: ContextKey<String>` |
+| 87 | var | public | ContextKey.currentAgentName | `public static let currentAgentName: ContextKey<String>` |
+| 94 | var | public | ContextKey.requestCount | `public static let requestCount: ContextKey<Int>` |
+| 97 | var | public | ContextKey.retryCount | `public static let retryCount: ContextKey<Int>` |
+| 100 | var | public | ContextKey.iterationCount | `public static let iterationCount: ContextKey<Int>` |
+| 103 | var | public | ContextKey.depth | `public static let depth: ContextKey<Int>` |
+| 110 | var | public | ContextKey.isAuthenticated | `public static let isAuthenticated: ContextKey<Bool>` |
+| 113 | var | public | ContextKey.isDebugMode | `public static let isDebugMode: ContextKey<Bool>` |
+| 116 | var | public | ContextKey.verboseLogging | `public static let verboseLogging: ContextKey<Bool>` |
+| 119 | var | public | ContextKey.isDryRun | `public static let isDryRun: ContextKey<Bool>` |
+| 126 | var | public | ContextKey.permissions | `public static let permissions: ContextKey<[String]>` |
+| 129 | var | public | ContextKey.tags | `public static let tags: ContextKey<[String]>` |
+| 132 | var | public | ContextKey.featureFlags | `public static let featureFlags: ContextKey<[String]>` |
+| 135 | var | public | ContextKey.executionPath | `public static let executionPath: ContextKey<[String]>` |
+| 142 | var | public | ContextKey.timestamp | `public static let timestamp: ContextKey<Date>` |
+| 145 | var | public | ContextKey.expiresAt | `public static let expiresAt: ContextKey<Date>` |
+| 148 | var | public | ContextKey.startTime | `public static let startTime: ContextKey<Date>` |
+| 166 | func | public | AgentContext.set(_:_:) | `public func set(_ key: ContextKey<String>, _ value: String)` |
+| 173 | func | public | AgentContext.get(_:) | `public func get(_ key: ContextKey<String>) -> String?` |
+| 178 | func | public | AgentContext.set(_:_:) | `public func set(_ key: ContextKey<Int>, _ value: Int)` |
+| 184 | func | public | AgentContext.get(_:) | `public func get(_ key: ContextKey<Int>) -> Int?` |
+| 189 | func | public | AgentContext.set(_:_:) | `public func set(_ key: ContextKey<Bool>, _ value: Bool)` |
+| 195 | func | public | AgentContext.get(_:) | `public func get(_ key: ContextKey<Bool>) -> Bool?` |
+| 200 | func | public | AgentContext.set(_:_:) | `public func set(_ key: ContextKey<Double>, _ value: Double)` |
+| 206 | func | public | AgentContext.get(_:) | `public func get(_ key: ContextKey<Double>) -> Double?` |
+| 211 | func | public | AgentContext.set(_:_:) | `public func set(_ key: ContextKey<[String]>, _ value: [String])` |
+| 217 | func | public | AgentContext.get(_:) | `public func get(_ key: ContextKey<[String]>) -> [String]?` |
+| 225 | func | public | AgentContext.set(_:_:) | `public func set(_ key: ContextKey<Date>, _ value: Date)` |
+| 231 | func | public | AgentContext.get(_:) | `public func get(_ key: ContextKey<Date>) -> Date?` |
+| 256 | func | public | AgentContext.setTyped(_:value:) | `public func setTyped<T>(_ key: ContextKey<T>, value: T) where T : Encodable, T : Sendable` |
+| 273 | func | public | AgentContext.getTyped(_:) | `public func getTyped<T>(_ key: ContextKey<T>) -> T? where T : Decodable, T : Sendable` |
+| 289 | func | public | AgentContext.getTyped(_:default:) | `public func getTyped<T>(_ key: ContextKey<T>, default defaultValue: T) -> T where T : Decodable, T : Sendable` |
+| 304 | func | public | AgentContext.removeTyped(_:) | `public func removeTyped(_ key: ContextKey<some Sendable>)` |
+| 319 | func | public | AgentContext.hasTyped(_:) | `public func hasTyped(_ key: ContextKey<some Sendable>) -> Bool` |
 
 ### Core/Handoff/Handoff.swift
 

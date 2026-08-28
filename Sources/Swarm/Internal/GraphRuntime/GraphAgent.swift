@@ -120,7 +120,14 @@ struct GraphAgent: AgentRuntime, Sendable {
             )
             await cancellation.track(handle)
 
-            let outcome = try await handle.outcome.value
+            let outcome: HiveRunOutcome<ChatGraph.Schema>
+            do {
+                outcome = try await handle.outcome.value
+            } catch {
+                await cancellation.untrack(handle.attemptID)
+                throw error
+            }
+            await cancellation.untrack(handle.attemptID)
             let result = try buildResult(from: outcome, builder: resultBuilder)
 
             await observer?.onAgentEnd(context: nil, agent: self, result: result)
@@ -228,8 +235,10 @@ struct GraphAgent: AgentRuntime, Sendable {
                     outcome = try await handle.outcome.value
                 } catch {
                     eventsTask.cancel()
+                    await cancellation.untrack(handle.attemptID)
                     throw error
                 }
+                await cancellation.untrack(handle.attemptID)
 
                 // Wait for all events to be consumed before building the result.
                 await eventsTask.value
@@ -263,7 +272,7 @@ struct GraphAgent: AgentRuntime, Sendable {
         }
     }
 
-    /// Cancels any ongoing Hive run.
+    /// Cancels every Hive run currently tracked on this agent.
     func cancel() async {
         await cancellation.cancelCurrent()
     }
@@ -666,26 +675,38 @@ extension GraphAgent: ConversationBranchingRuntime {
 
 // MARK: - CancellationController
 
-/// Actor that safely tracks and cancels the current Hive run handle.
+/// Actor that safely tracks and cancels in-flight Hive run handles.
 ///
-/// Stores the actual `HiveRunHandle` so cancellation propagates to the Hive runtime,
-/// not just to an awaiting wrapper task.
+/// Runs are keyed by `HiveRunAttemptID` (not reusable `HiveRunID`) so two
+/// concurrent attempts on the same thread cannot overwrite each other, and
+/// a finishing attempt cannot untrack a newer one. Stores the actual
+/// `HiveRunHandle` outcome tasks so cancellation propagates to the Hive
+/// runtime, not just to an awaiting wrapper task.
 private actor CancellationController {
-    private var currentHandle: HiveRunHandle<ChatGraph.Schema>?
+    private let registry = TrackedRunRegistry<HiveRunAttemptID>()
 
-    /// Records a new run handle for potential cancellation.
-    func track(_ handle: HiveRunHandle<ChatGraph.Schema>) {
-        // Cancel any previously tracked run.
-        currentHandle?.outcome.cancel()
-        currentHandle = handle
+    /// Records a new run handle without cancelling any previously tracked run.
+    func track(_ handle: HiveRunHandle<ChatGraph.Schema>) async {
+        await registry.begin(handle.attemptID) { [outcome = handle.outcome] in
+            outcome.cancel()
+        }
     }
 
-    /// Cancels the currently tracked run.
-    func cancelCurrent() {
-        currentHandle?.outcome.cancel()
-        currentHandle = nil
+    /// Removes a finished run from tracking without cancelling it.
+    func untrack(_ attemptID: HiveRunAttemptID) async {
+        await registry.finish(attemptID)
+    }
+
+    /// Cancels every currently tracked run and clears the registry.
+    func cancelCurrent() async {
+        await registry.cancelAll()
     }
 }
+
+/// Graph-side alias of the shared keyed registry. Lean builds exclude
+/// `Internal/GraphRuntime`, so the implementation lives in always-compiled
+/// `Sources/Swarm/Internal/KeyedRunRegistry.swift`.
+typealias TrackedRunRegistry = KeyedRunRegistry
 
 // HiveChatRole typed constants are defined in ChatGraph.swift (internal)
 // and shared across the HiveSwarm module.
