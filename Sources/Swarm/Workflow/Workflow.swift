@@ -543,13 +543,15 @@ public struct Workflow: Sendable {
     var advancedConfiguration = AdvancedConfiguration()
 
     var workflowTransitionPolicy: WorkflowTransition.Policy {
-        WorkflowTransition.Policy(
+        let repetition: WorkflowTransition.Repetition
+        if repeatCondition == nil {
+            repetition = .singlePass
+        } else {
+            repetition = .until(maxIterations: maxRepeatIterations)
+        }
+        return WorkflowTransition.Policy(
             stepCount: steps.count,
-            repetition: if repeatCondition == nil {
-                .singlePass
-            } else {
-                .until(maxIterations: maxRepeatIterations)
-            }
+            repetition: repetition
         )
     }
 

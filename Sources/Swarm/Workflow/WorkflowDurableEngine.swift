@@ -313,7 +313,7 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
             result: result,
             policy: policy
         )
-        let nextProgress = try progress(from: nextDecision)
+        let nextProgress = try progressValue(from: nextDecision)
         return runningOutput(for: nextProgress)
 
     case .evaluateRepeat(let progress, let result):
@@ -336,7 +336,7 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
     }
 }
 
-private func progress(from decision: WorkflowTransition.Decision) throws -> WorkflowTransition.Progress {
+private func progressValue(from decision: WorkflowTransition.Decision) throws -> WorkflowTransition.Progress {
     switch decision {
     case .runStep(let progress), .evaluateRepeat(let progress, _), .complete(let progress, _):
         return progress
