@@ -39,7 +39,7 @@ import FoundationNetworking
 /// | ``AgentError/guardrailViolation(reason:)``, ``GuardrailError`` | Safety rejection |
 /// | ``AgentError/contentFiltered(reason:)`` | Provider safety filter |
 /// | ``AgentError/invalidToolArguments(toolName:reason:)`` | Schema / parse failure |
-/// | ``AgentError/toolFailure(toolName:message:cause:)``, ``AgentError/toolNotFound(name:)`` | Tool path (never wrapped) |
+/// | ``AgentError/toolExecutionFailed(toolName:underlyingError:)``, ``AgentError/toolFailure(toolName:message:cause:)``, ``AgentError/toolNotFound(name:)`` | Tool path (never wrapped) |
 /// | ``AgentError/contextWindowExceeded(tokenCount:limit:)`` | Input too large |
 /// | ``AgentError/unsupportedLanguage(language:)``, ``AgentError/modelNotAvailable(model:)`` | Configuration / capability |
 /// | ``AgentError/agentNotFound(name:)``, ``AgentError/internalError(reason:)``, ``AgentError/toolCallingUnsupported`` | Non-transient |

@@ -24,8 +24,8 @@ import Foundation
 ///     switch error {
 ///     case .maxIterationsExceeded:
 ///         print("Agent needed more iterations")
-///     case .toolFailure(let name, let message, _):
-///         print("Tool '\(name)' failed: \(message ?? \"unknown error\")")
+///     case .toolExecutionFailed(let name, let underlying):
+///         print("Tool '\(name)' failed: \(underlying)")
 ///     case .rateLimitExceeded(let retryAfter):
 ///         if let delay = retryAfter {
 ///             try await Task.sleep(for: .seconds(delay))
@@ -67,6 +67,7 @@ import Foundation
 ///
 /// ### Tool Errors
 /// - ``toolNotFound(name:)``
+/// - ``toolExecutionFailed(toolName:underlyingError:)``
 /// - ``toolFailure(toolName:message:cause:)``
 /// - ``invalidToolArguments(toolName:reason:)``
 ///
@@ -260,18 +261,25 @@ public enum AgentError: Error, Sendable, Equatable {
     ///
     /// ```swift
     /// } catch let error as AgentError {
-    ///     if case .toolFailure(let name, let message, let cause) = error {
-    ///         if let cause, isTransientError(cause) {
+    ///     if case .toolExecutionFailed(let name, let underlying) = error {
+    ///         if isTransientError(underlying) {
     ///             // Retry with backoff
     ///         }
     ///     }
     /// }
     /// ```
     ///
+    /// - Parameters:
+    ///   - toolName: The name of the tool that failed
+    ///   - underlyingError: A string description of the underlying error
+    @available(*, deprecated, message: "Use toolFailure(toolName:message:cause:) to preserve the original error instance.")
+    case toolExecutionFailed(toolName: String, underlyingError: String)
+
     /// A tool invocation failed.
     ///
     /// This error is thrown when a tool's execution raises an error. Unlike the
-    /// it keeps the original error instance reachable through `cause`, so callers can
+    /// deprecated `toolExecutionFailed(toolName:underlyingError:)` case, it keeps
+    /// the original error instance reachable through `cause`, so callers can
     /// inspect types, retryability, and nested domains instead of a flattened
     /// string.
     ///
@@ -631,6 +639,8 @@ public enum AgentError: Error, Sendable, Equatable {
             a == b
         case let (.toolNotFound(a), .toolNotFound(b)):
             a == b
+        case let (.toolExecutionFailed(a1, a2), .toolExecutionFailed(b1, b2)):
+            a1 == b1 && a2 == b2
         case let (.toolFailure(n1, m1, c1), .toolFailure(n2, m2, c2)):
             n1 == n2 && m1 == m2 && Self.causeEquals(c1, c2)
         case let (.invalidToolArguments(a1, a2), .invalidToolArguments(b1, b2)):
@@ -701,6 +711,8 @@ extension AgentError: LocalizedError {
             "Invalid agent loop: \(reason)"
         case let .toolNotFound(name):
             "Tool not found: \(name)"
+        case let .toolExecutionFailed(toolName, underlyingError):
+            "Tool '\(toolName)' failed: \(underlyingError)"
         case let .toolFailure(toolName, message, cause):
             "Tool '\(toolName)' failed: \(message ?? cause.map(String.init(describing:)) ?? "unknown error")"
         case let .invalidToolArguments(toolName, reason):
@@ -799,6 +811,8 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.invalidLoop(reason: \(reason))"
         case let .toolNotFound(name):
             "AgentError.toolNotFound(name: \(name))"
+        case let .toolExecutionFailed(toolName, underlyingError):
+            "AgentError.toolExecutionFailed(toolName: \(toolName), underlyingError: \(underlyingError))"
         case let .toolFailure(toolName, message, cause):
             "AgentError.toolFailure(toolName: \(toolName), message: \(message ?? "nil"), cause: \(cause.map { String(describing: type(of: $0)) } ?? "nil"))"
         case let .invalidToolArguments(toolName, reason):
@@ -855,6 +869,7 @@ extension AgentError {
              .guardrailViolation,
              .contentFiltered,
              .invalidToolArguments,
+             .toolExecutionFailed,
              .toolFailure,
              .toolNotFound,
              .contextWindowExceeded,
