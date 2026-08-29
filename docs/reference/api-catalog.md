@@ -1,9 +1,11 @@
 # Swarm Public API Catalog
 
-Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14. OpenAI-compatible provider rows added 2026-08-14.
+Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14. OpenAI-compatible provider rows added 2026-08-14. Header counts refreshed 2026-08-29.
+
+Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 194
+- Source files scanned: 194 (201 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2325
 
 ## 1. Swarm (entry point)
@@ -52,7 +54,6 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 108 | func | public | AgentConfiguration.autoAttachMetricsCollector(_:) | `public @discardableResult func autoAttachMetricsCollector(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.defaultTracingEnabled(_:) | `public @discardableResult func defaultTracingEnabled(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.enableStreaming(_:) | `public @discardableResult func enableStreaming(_ value: Bool) -> AgentConfiguration` |
-| 108 | func | public | AgentConfiguration.foundationModelsExecution(_:) | `public @discardableResult func foundationModelsExecution(_ value: FoundationModelsExecutionMode) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.includeReasoning(_:) | `public @discardableResult func includeReasoning(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.includeToolCallDetails(_:) | `public @discardableResult func includeToolCallDetails(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.inferencePolicy(_:) | `public @discardableResult func inferencePolicy(_ value: InferencePolicy?) -> AgentConfiguration` |
@@ -89,12 +90,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 | 253 | var | public | AgentConfiguration.autoPreviousResponseId | `public var autoPreviousResponseId: Bool` |
 | 264 | var | public | AgentConfiguration.defaultTracingEnabled | `public var defaultTracingEnabled: Bool` |
 | 265 | var | public | AgentConfiguration.autoAttachMetricsCollector | `public var autoAttachMetricsCollector: Bool` |
-| 126 | enum | public | FoundationModelsExecutionMode | `public enum FoundationModelsExecutionMode` |
-| 130 | case | public | FoundationModelsExecutionMode.capture | `public case capture` |
-| 139 | case | public | FoundationModelsExecutionMode.nativeSession | `public case nativeSession` |
-| 604 | var | public | AgentConfiguration.foundationModelsExecution | `public var foundationModelsExecution: FoundationModelsExecutionMode` |
-| 608 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
-| 630 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
+| 562 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
+| 590 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, resilience: ResilienceConfiguration = .disabled)` |
 | 108 | func | public | AgentConfiguration.resilience(_:) | `public @discardableResult func resilience(_ value: ResilienceConfiguration) -> AgentConfiguration` |
 | 345 | var | public | AgentConfiguration.description | `public var description: String { get }` |
 
@@ -2978,6 +2975,17 @@ exports companion products with small public entry surfaces.
 
 ### SwarmOpenTelemetry
 
+Requires the **OpenTelemetry** SwiftPM trait (`traits: ["OpenTelemetry"]`).
+Without it this product is a hollow module exposing ``OpenTelemetryTrait``.
+
+#### Sources/SwarmOpenTelemetry/OpenTelemetryTrait.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 5 | enum | public | OpenTelemetryTrait | `public enum OpenTelemetryTrait` |
+| 7 | var | public | OpenTelemetryTrait.isEnabled | `public static var isEnabled: Bool { get }` |
+| 21 | func | public | OpenTelemetryTrait.requirementMessage(for:) | `public static func requirementMessage(for feature: String = "SwarmOpenTelemetry") -> String` |
+
 #### Sources/SwarmOpenTelemetry/OpenTelemetryInferenceProvider.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -3050,6 +3058,17 @@ integration APIs cataloged in section 12 under
 | 8 | enum | public | SwarmMembraneProduct | `@available(*, deprecated, message: "Import Swarm instead. SwarmMembrane is a hollow re-export and will be removed in 0.7.0.") public enum SwarmMembraneProduct: Sendable` |
 
 ### SwarmMCP
+
+Requires the **MCP** SwiftPM trait (`traits: ["MCP"]`). Without it this product
+is a hollow module exposing ``MCPTrait``.
+
+#### Sources/SwarmMCP/MCPTrait.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 7 | enum | public | MCPTrait | `public enum MCPTrait` |
+| 9 | var | public | MCPTrait.isEnabled | `public static var isEnabled: Bool { get }` |
+| 21 | func | public | MCPTrait.requirementMessage(for:) | `public static func requirementMessage(for feature: String = "SwarmMCP") -> String` |
 
 #### Sources/SwarmMCP/SwarmMCPServerService.swift
 

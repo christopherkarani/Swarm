@@ -1,3 +1,4 @@
+#if SWARM_MCP
 import Foundation
 import MCP
 import Swarm
@@ -283,3 +284,4 @@ enum SwarmMCPErrorMapper {
         .text(text: text, annotations: nil, _meta: nil)
     }
 }
+#endif

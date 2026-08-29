@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 // OpenTelemetryAttributes.swift
 // SwarmOpenTelemetry
 
@@ -42,3 +43,4 @@ enum OpenTelemetryAttributes {
         }
     }
 }
+#endif

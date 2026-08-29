@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 // OpenTelemetryAnyInferenceProvider+Wrappers.swift
 // SwarmOpenTelemetry
 //
@@ -69,3 +70,4 @@ struct OpenTelemetryAnyBaseInferenceProvider: @unchecked Sendable,
         try await core.generateStructured(messages: messages, request: request, options: options)
     }
 }
+#endif

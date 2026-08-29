@@ -47,6 +47,9 @@ var packageDependencies: [Package.Dependency] = [
     // Product edges are Macros-trait-gated so consumers can drop the pin.
     .package(url: "https://github.com/swiftlang/swift-syntax.git", "601.0.0"..<"603.0.0"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.12.0"),
+    // MCP and OpenTelemetry are declared for the companion products, but only
+    // *used* through trait-gated product edges. With those traits off, SPM
+    // does not pin the SDK, OTel, or the MCP SDK's NIO/EventSource tree.
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
     .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.4.1"),
 ]
@@ -61,6 +64,8 @@ var packageDependencies: [Package.Dependency] = [
 // Integrations can still build Hive + MembraneCore + web helpers without
 // compiling the GPU memory stack.
 let macrosTrait = "Macros"
+let mcpTrait = "MCP"
+let otelTrait = "OpenTelemetry"
 let integrationTrait = "Integrations"
 let appleIntegrationPlatforms: [Platform] = [.macOS, .iOS, .tvOS, .visionOS]
 if enableIntegrationModules {
@@ -126,6 +131,8 @@ if enableIntegrationModules {
 }
 
 swarmSwiftSettings.append(.define("SWARM_MACROS", .when(traits: [macrosTrait])))
+swarmSwiftSettings.append(.define("SWARM_MCP", .when(traits: [mcpTrait])))
+swarmSwiftSettings.append(.define("SWARM_OTEL", .when(traits: [otelTrait])))
 
 let swarmCoreOnlyExcludes = [
     "Integration/Wax",
@@ -184,8 +191,16 @@ var packageTargets: [Target] = [
         name: "SwarmOpenTelemetry",
         dependencies: [
             "Swarm",
-            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+            .product(
+                name: "OpenTelemetryApi",
+                package: "opentelemetry-swift-core",
+                condition: .when(traits: [otelTrait])
+            ),
+            .product(
+                name: "OpenTelemetrySdk",
+                package: "opentelemetry-swift-core",
+                condition: .when(traits: [otelTrait])
+            ),
         ],
         swiftSettings: swarmSwiftSettings
     ),
@@ -201,7 +216,7 @@ var packageTargets: [Target] = [
         name: "SwarmMCP",
         dependencies: [
             "Swarm",
-            .product(name: "MCP", package: "swift-sdk"),
+            .product(name: "MCP", package: "swift-sdk", condition: .when(traits: [mcpTrait])),
         ],
         swiftSettings: swarmSwiftSettings
     ),
@@ -209,7 +224,6 @@ var packageTargets: [Target] = [
         name: "SwarmCapabilityShowcaseSupport",
         dependencies: [
             "Swarm",
-            "SwarmMCP",
         ],
         swiftSettings: swarmSwiftSettings
     ),
@@ -230,6 +244,7 @@ var packageTargets: [Target] = [
             var dependencies: [Target.Dependency] = [
                 "Swarm",
                 "SwarmMCP",
+                .product(name: "MCP", package: "swift-sdk", condition: .when(traits: [mcpTrait])),
             ]
             if enableIntegrationModules {
                 dependencies += [
@@ -282,7 +297,16 @@ var packageTargets: [Target] = [
         dependencies: [
             "Swarm",
             "SwarmOpenTelemetry",
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+            .product(
+                name: "OpenTelemetryApi",
+                package: "opentelemetry-swift-core",
+                condition: .when(traits: [otelTrait])
+            ),
+            .product(
+                name: "OpenTelemetrySdk",
+                package: "opentelemetry-swift-core",
+                condition: .when(traits: [otelTrait])
+            ),
         ],
         swiftSettings: swarmSwiftSettings
     )
@@ -301,7 +325,7 @@ if enableIntegrationModules {
     // Trait-gate remote product deps on in-tree modules. Unconditional product
     // edges made SPM pin MetalANNS/crypto/mutex/collections even when
     // Integrations was off (targets registered but unused). With trait gates,
-    // lean resolve only pins always-on remotes (syntax/log/MCP/OTel + NIO).
+    // lean resolve only pins always-on remotes (swift-syntax via Macros, swift-log).
     //
     // Note: SPM root packages still *compile* every registered target on bare
     // `swift build`/`swift test`. Use product-scoped builds, or
@@ -442,7 +466,8 @@ if includeDemo {
                 "SwarmMCP",
             ],
             swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency")
+                .enableExperimentalFeature("StrictConcurrency"),
+                .define("SWARM_MCP", .when(traits: [mcpTrait])),
             ]
         )
     )
@@ -459,8 +484,8 @@ let package = Package(
     traits: [
         // Macros on by default (SE-0450). Consumers disable with `traits: []` to
         // drop swift-syntax; FunctionTool is the macro-free tool path.
-        // Integrations enables Macros so existing `traits: ["Integrations"]`
-        // consumers keep @Tool (specifying traits replaces defaults).
+        // Opt-in traits enable Macros so `traits: ["MCP"]` / `["OpenTelemetry"]`
+        // / `["Integrations"]` keep @Tool (specifying traits replaces defaults).
         .default(enabledTraits: [macrosTrait]),
         .trait(
             name: macrosTrait,
@@ -469,6 +494,24 @@ let package = Package(
             and related plugins). On by default. Disable to drop the swift-syntax \
             dependency; use FunctionTool for the macro-free tool path.
             """
+        ),
+        .trait(
+            name: mcpTrait,
+            description: """
+            Enable the SwarmMCP product: MCP Swift SDK server adapter \
+            (`SwarmMCPServerService`). Off by default. Does not affect Swarm's \
+            built-in MCP client. Enabling MCP also enables Macros.
+            """,
+            enabledTraits: [macrosTrait]
+        ),
+        .trait(
+            name: otelTrait,
+            description: """
+            Enable the SwarmOpenTelemetry product: OpenTelemetry tracing wrappers \
+            and OTLP/HTTP export. Off by default. Enabling OpenTelemetry also \
+            enables Macros.
+            """,
+            enabledTraits: [macrosTrait]
         ),
         .trait(
             name: integrationTrait,

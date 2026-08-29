@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 import Testing
 import Swarm
 import SwarmOpenTelemetry
@@ -26,3 +27,4 @@ func rawProviderOpenTelemetryInstrumentationIsAvailableThroughPublicImport() asy
 
     #expect(output == "hello")
 }
+#endif

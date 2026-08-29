@@ -55,20 +55,38 @@ dependencies: [
 ]
 ```
 
-The default package is lean: core Swarm, Foundation Models, macros, MCP, and
-OpenTelemetry. Add the `Integrations` trait for durable checkpointing,
-ContextCore and Wax memory, Membrane adapters, and web helpers:
+The default package is lean: core Swarm, Foundation Models, and macros.
+Lean resolve pins **swift-syntax** (via the default-on Macros trait) and
+**swift-log** only — not the MCP Swift SDK or OpenTelemetry. Add traits for
+optional surfaces:
 
 ```swift
+// Durable graph, ContextCore/Wax memory, Membrane, web helpers
 .package(
     url: "https://github.com/christopherkarani/Swarm.git",
     from: "0.6.2",
     traits: ["Integrations"]
 )
+
+// MCP server adapter (SwarmMCP + MCP Swift SDK). Also enables Macros.
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["MCP"]
+)
+
+// OpenTelemetry wrappers (SwarmOpenTelemetry). Also enables Macros.
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["OpenTelemetry"]
+)
 ```
 
 Macros are enabled by default. If you want a macro-free build, use
-`traits: []` and define tools with `FunctionTool`.
+`traits: []` and define tools with `FunctionTool`. Specifying traits replaces
+defaults, so combine as needed — for example
+`traits: ["Integrations", "MCP", "OpenTelemetry"]`.
 
 ## Why Swarm
 
@@ -124,7 +142,9 @@ let routed = try await Workflow()
 ## Providers
 
 Every agent uses a pluggable `InferenceProvider`. The agent loop stays the
-same when you change models or deployment environments.
+same when you change models or deployment environments. Set a process-wide
+default with `await Swarm.configure(provider:)` when you do not want to pass
+a provider on every agent.
 
 | Provider | Use it when |
 |---|---|
@@ -180,8 +200,7 @@ swift run OnDeviceChat --demo
 | Linux | Ubuntu 22.04+ with Swift 6.2 |
 
 Foundation Models and some memory and platform integrations are Apple-only.
-On Linux and in CI, use an OpenAI-compatible provider, inject a mock, or run
-the deterministic examples.
+The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; use an OpenAI-compatible provider, inject a mock, or run the deterministic examples.
 
 ## Documentation
 

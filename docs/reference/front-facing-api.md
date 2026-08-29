@@ -27,10 +27,11 @@ HiveCore, Membrane, and ContextCore are native in-tree `Sources/` targets
 (internal modules, not separate products), linked only with Integrations.
 Wax remains a remote package + trait-gated product. Lean resolve never pulls
 Hive/Membrane/ContextCore/Conduit package identities, and trait-gated product
-edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, and SwiftSoup
-off the lean pin list. Default remotes remain (swift-syntax via the default-on
-**Macros** trait, swift-log, MCP sdk, OTel, plus NIO transitives including
-`swift-collections`). Disable Macros with `traits: []` to drop swift-syntax
+edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, SwiftSoup,
+the MCP Swift SDK, and OpenTelemetry off the lean pin list. Default remotes
+are **swift-syntax** (via the default-on **Macros** trait) and **swift-log**.
+Enable `traits: ["MCP"]` for `SwarmMCP`, or `traits: ["OpenTelemetry"]` for
+`SwarmOpenTelemetry`. Disable Macros with `traits: []` to drop swift-syntax
 and use ``FunctionTool`` instead of `@Tool`.
 `SWARM_CORE_ONLY=1` drops the integration package block. ContextCore / full
 Membrane session stack are Apple-only (Metal/CoreML); Linux Integrations keeps
@@ -205,6 +206,21 @@ let agent = try Agent(
 | `handoffs` | `[AnyHandoffConfiguration]` | `[]` | Handoff targets for multi-agent orchestration |
 | `tools` | `@ToolBuilder () -> ToolCollection` | `{ .empty }` | Trailing closure producing the agent's tools |
 
+### AgentConfiguration
+
+`AgentConfiguration` controls the agent loop and provider options. The default
+is conservative: streaming is enabled, tool failures are collected instead of
+immediately thrown, and capture-path tool calls are sequential. Set
+`parallelToolCalls(true)` only when same-turn tools are independent; Swarm then
+executes regular capture-path calls concurrently while preserving their input
+order in `AgentResult.toolCalls` and `AgentResult.toolResults`. Handoffs and
+membrane-internal calls remain ordered.
+
+`includeToolCallDetails` and `includeReasoning` are retained compatibility
+settings and currently have no effect. Tool details are always represented by
+`AgentResult.toolCalls` / `AgentResult.toolResults`; provider-emitted reasoning
+uses `AgentEvent.output(.thinking(...))` or `.thinkingPartial(...)`.
+
 ### Resilience (inference only)
 
 `AgentConfiguration.resilience` is additive and defaults to ``ResilienceConfiguration/disabled`` (``RetryPolicy/noRetry``, no breaker, no limiter). That default is a no-op.
@@ -274,6 +290,33 @@ Agent("instructions") {
 ```
 
 The builder produces an opaque `ToolCollection`; callers supply concrete `Tool` values or `[any Tool]`, and Swarm handles the internal type erasure.
+
+### `AnyJSONTool` (advanced interoperability seam)
+
+`AnyJSONTool` is public because dynamic tools and integrations need a stable
+wire-shaped capability. It is the type-erased tool value exchanged by `Agent`,
+`ToolRegistry`, and MCP discovery/bridge APIs. Prefer `Tool` and `@Tool` for
+application-authored tools; conform directly when a tool is created at runtime,
+comes from MCP, or cannot be represented by the typed protocol.
+
+```swift
+public protocol AnyJSONTool: Sendable {
+    var name: String { get }
+    var description: String { get }
+    var parameters: [ToolParameter] { get }
+    func execute(arguments: [String: SendableValue]) async throws -> SendableValue
+}
+
+let dynamicTool: any AnyJSONTool = FunctionTool(
+    name: "greet",
+    description: "Greets a person",
+    parameters: []
+) { _ in .string("Hello") }
+```
+
+`Tool.asAnyJSONTool()` and `AnyJSONToolAdapter` bridge typed tools to this seam.
+`MCPClient.getAllTools()` and `MCPToolBridge.bridgeTools()` return
+`[any AnyJSONTool]` for the same reason.
 
 `WebSearchTool` compiles on lean builds. Query `WebSearchTool.isAvailable` (or
 `IntegrationsTrait.isEnabled`) before constructing it; lean inits warn immediately
@@ -645,9 +688,10 @@ Opt in to a provider-owned tool loop with
 ``InferenceProviderCapabilities/providerOwnedToolLoop`` and always calls
 ``InferenceProvider/generateWithToolCalls(messages:tools:options:toolExecutor:)``
 (or the streaming counterpart). It never type-casts the adapter.
-``AgentConfiguration/foundationModelsExecution`` is ignored. Capture remains
-the default. Structured outputs use guided generation when the JSON Schema maps;
-otherwise prompt+parse. Agent never type-casts leftover capability protocols.
+Choose the loop by constructing ``InferenceProvider/foundationModelsOwningToolLoop()``;
+there is no `AgentConfiguration` flag. Capture remains the default. Structured
+outputs use guided generation when the JSON Schema maps; otherwise prompt+parse.
+Agent never type-casts leftover capability protocols.
 See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
@@ -717,6 +761,23 @@ public struct AgentResult: Sendable {
     /// Provider-reported token usage, or `nil` when the backend does not expose counts
     /// (including Apple Foundation Models on the current SDK).
     public let tokenUsage: TokenUsage?
+    public let metadata: [String: SendableValue]
+}
+
+public struct AgentResponse: Sendable {
+    public let responseId: String
+    public let output: String
+    public let agentName: String
+    public let timestamp: Date
+    public let metadata: [String: SendableValue]
+    public let toolCalls: [ToolCallRecord]
+    public let usage: TokenUsage?
+    public let iterationCount: Int
+    /// Lossy compatibility projection onto `AgentResult`.
+    /// Drops `responseId`, `agentName`, and response `timestamp`.
+    /// Mints new tool-call IDs on every access. `duration` is the sum of
+    /// recorded tool-call durations (`.zero` when no tools ran).
+    public var asResult: AgentResult { get }
 }
 
 public struct ToolResult: Sendable {
@@ -792,11 +853,15 @@ The package exports four public library products:
 | Product | Source surface | Public entry points |
 |---------|----------------|---------------------|
 | `Swarm` | `Sources/Swarm` | Agents, tools, workflows, memory, guardrails, providers, MCP client/bridge, workspace, resilience, observability, macros |
-| `SwarmOpenTelemetry` | `Sources/SwarmOpenTelemetry` | `OpenTelemetryInferenceProvider`, `InferenceProvider.instrumentedWithOpenTelemetry(...)`, `AgentRuntime.instrumentedWithOpenTelemetry(...)`, `OTLPHTTPTraceExporter`, `OpenTelemetryTracing`, `OpenTelemetryTracePropagation`, and `SwarmRuntimeTracer` |
+| `SwarmOpenTelemetry` | `Sources/SwarmOpenTelemetry` | Requires `traits: ["OpenTelemetry"]`. `OpenTelemetryInferenceProvider`, `InferenceProvider.instrumentedWithOpenTelemetry(...)`, `AgentRuntime.instrumentedWithOpenTelemetry(...)`, `OTLPHTTPTraceExporter`, `OpenTelemetryTracing`, `OpenTelemetryTracePropagation`, and `SwarmRuntimeTracer` |
 | `SwarmMembrane` | `Sources/SwarmMembrane` | **Deprecated.** Hollow re-export (`@_exported import Swarm`). Import `Swarm` and use `MembraneEnvironment`, `MembraneFeatureConfiguration`, `MembraneAgentAdapter`, and `DefaultMembraneAgentAdapter` under `Sources/Swarm/Integration/Membrane/`. The product will be removed in 0.7.0. |
-| `SwarmMCP` | `Sources/SwarmMCP` | `SwarmMCPServerService`, `SwarmMCPToolCatalog`, `SwarmMCPToolExecutor`, `SwarmMCPToolExecutionError`, and `SwarmMCPToolRegistryAdapter` |
+| `SwarmMCP` | `Sources/SwarmMCP` | Requires `traits: ["MCP"]`. `SwarmMCPServerService`, `SwarmMCPToolCatalog`, `SwarmMCPToolExecutor`, `SwarmMCPToolExecutionError`, and `SwarmMCPToolRegistryAdapter`. Swarm's MCP *client* stays in the `Swarm` product and does not need this trait. |
 
 ### OpenTelemetry wrappers
+
+Requires the **OpenTelemetry** SwiftPM trait (`traits: ["OpenTelemetry"]`).
+Selecting the `SwarmOpenTelemetry` product in Xcode without the trait leaves
+the module hollow.
 
 ```swift
 import Swarm
@@ -859,7 +924,8 @@ Swarm does not implement prompts or sampling — those capability flags stay
 `false` on connections. `MCPClient` aggregates multiple connections and
 `MCPToolBridge` exposes remote MCP tools as Swarm JSON tools.
 
-`SwarmMCPServerService` exposes a `SwarmMCPToolCatalog` and
+`SwarmMCPServerService` requires the **MCP** SwiftPM trait
+(`traits: ["MCP"]`) and exposes a `SwarmMCPToolCatalog` and
 `SwarmMCPToolExecutor` over the MCP Swift SDK transport. For a Swarm
 `ToolRegistry`, use `SwarmMCPToolRegistryAdapter` as both catalog and executor:
 

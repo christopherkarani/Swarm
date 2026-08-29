@@ -1,3 +1,4 @@
+#if SWARM_OTEL
 // OTLPHTTPExporterConfiguration.swift
 // SwarmOpenTelemetry
 
@@ -143,3 +144,4 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
         return copy
     }
 }
+#endif

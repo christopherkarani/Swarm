@@ -5,6 +5,10 @@ import SwarmMCP
 @main
 struct SwarmMCPServerDemo {
     static func main() async throws {
+        #if !SWARM_MCP
+        fputs(MCPTrait.requirementMessage() + "\n", stderr)
+        Foundation.exit(1)
+        #else
         Log.bootstrap()
 
         let registry = try ToolRegistry(
@@ -25,5 +29,6 @@ struct SwarmMCPServerDemo {
 
         try await service.startStdio()
         await service.waitUntilCompleted()
+        #endif
     }
 }

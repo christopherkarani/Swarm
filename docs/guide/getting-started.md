@@ -45,11 +45,13 @@ HiveCore, Membrane, and ContextCore are native in-tree modules under Swarm
 package and is linked only with Integrations. Omitting the trait does **not**
 link Integrations modules into your app. Lean resolve never pulls
 Hive/Membrane/ContextCore/Conduit **package identities**, and trait-gated
-product edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex, and
-SwiftSoup off the lean pin list. Default remotes remain (swift-syntax via the
-default-on **Macros** trait, swift-log, MCP sdk, OTel, plus NIO transitives —
-including `swift-collections` via NIO). Disable Macros with `traits: []` to
-drop swift-syntax. `SWARM_CORE_ONLY=1` drops the integration package block entirely.
+product edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex,
+SwiftSoup, the MCP Swift SDK, and OpenTelemetry off the lean pin list. Default
+remotes are **swift-syntax** (via the default-on **Macros** trait) and
+**swift-log**. Enable `traits: ["MCP"]` for `SwarmMCP`, or
+`traits: ["OpenTelemetry"]` for `SwarmOpenTelemetry`. Disable Macros with
+`traits: []` to drop swift-syntax. `SWARM_CORE_ONLY=1` drops the integration
+package block entirely.
 
 **Platform note:** ContextCore and the full Membrane session stack need Apple
 frameworks (Metal/CoreML/Accelerate). On Linux, Integrations still enables Hive
@@ -107,9 +109,37 @@ let agent = try Agent(
 }
 ```
 
+### MCP and OpenTelemetry traits
+
+The **`MCP`** and **`OpenTelemetry`** SwiftPM traits are **off by default**.
+Unchecking those products in Xcode does not drop their remotes — only the
+traits do. Swarm's built-in MCP *client* (`MCPClient`, `HTTPMCPServer`) stays
+in the `Swarm` product and does not need the MCP trait.
+
+```swift
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["MCP"]
+)
+
+.package(
+    url: "https://github.com/christopherkarani/Swarm.git",
+    from: "0.6.2",
+    traits: ["OpenTelemetry"]
+)
+```
+
+Specifying traits replaces defaults, so both of those keep macros (each trait
+enables Macros). Combine with Integrations as
+`traits: ["Integrations", "MCP", "OpenTelemetry"]`.
+
 ### Xcode
 
 **File → Add Package Dependencies →** `https://github.com/christopherkarani/Swarm.git`
+
+Select only the `Swarm` product for a lean app. Enable package traits under
+the dependency's traits inspector if you need `MCP` or `OpenTelemetry`.
 
 ## Your First Agent
 
@@ -277,6 +307,12 @@ reports it on ``InferenceResponse/usage``. Apple Foundation Models does not expo
 token-count API, so that path leaves `tokenUsage` as `nil` — Swarm does not fabricate
 counts. After a handoff, the parent `AgentResult` still reports the combined cost;
 `MetricsCollector` attributes tokens per agent span so nested runs are not counted twice.
+
+`AgentResponse.asResult` is a lossy compatibility projection: it keeps output,
+metadata, usage, and iteration count, but drops `responseId`, `agentName`, and
+the response timestamp, mints new tool-call IDs, and sets `duration` to the sum
+of recorded tool-call durations (`.zero` when no tools ran). Prefer `Agent.run`
+when you need the canonical execution result.
 
 ```swift
 let result = try await agent.run("What is 2 + 2?")
@@ -507,7 +543,7 @@ The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only featur
 ## Next Steps
 
 - **[Agents](../reference/front-facing-api.md#3-agent-struct-primary-init)** -- Agent types, configuration, tool calling
-- **[Foundation Models](foundation-models.md)** -- Capture vs experimental native session mode
+- **[Foundation Models](foundation-models.md)** -- Capture vs provider-owned tool loop
 - **[Remote Providers](remote-providers.md)** -- OpenAI-compatible HTTP (OpenAI, Azure, OpenRouter, Ollama, LM Studio)
 - **[Tools](../reference/front-facing-api.md#5-tool-and-functiontool)** -- `@Tool` macro, `FunctionTool`, `ToolCollection`, and `@ToolBuilder`
 - **[Workflow](../reference/front-facing-api.md#7-workflow)** -- Sequential, parallel, and routed execution

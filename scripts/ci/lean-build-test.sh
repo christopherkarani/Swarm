@@ -31,6 +31,10 @@ swift build \
   --product SwarmMembrane \
   --product SwarmCapabilityShowcase
 
+echo "lean-build-test: phase 1b — MCP and OpenTelemetry opt-in (omit integration orphans)"
+SWARM_OMIT_INTEGRATION_TARGETS=1 swift test --no-parallel --traits MCP --filter SwarmMCPServerService
+SWARM_OMIT_INTEGRATION_TARGETS=1 swift test --no-parallel --traits OpenTelemetry --filter SwarmOpenTelemetry
+
 echo "lean-build-test: phase 2 — root-package lean tests (omit integration targets)"
 rm -rf .build Package.resolved
 SWARM_OMIT_INTEGRATION_TARGETS=1 swift package resolve

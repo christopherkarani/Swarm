@@ -23,7 +23,13 @@ struct DocumentationFreshnessTests {
         let scannedSourceCount = try countPublicCatalogSourceFiles()
 
         #expect(catalog.contains("Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28"))
-        #expect(catalog.contains("- Source files scanned: \(scannedSourceCount)"))
+        let allSourceCount = try countAllSwarmSourceFiles()
+        #expect(
+            catalog.contains("- Source files scanned: \(scannedSourceCount) (\(allSourceCount) including"),
+            "catalog header source count should match Sources/Swarm excluding Internal/GraphRuntime; run scripts/ci/refresh-api-catalog-header.sh"
+        )
+        #expect(catalog.contains("Internal/GraphRuntime"))
+        #expect(catalog.contains("scripts/ci/refresh-api-catalog-header.sh"))
         #expect(catalog.contains("| \(workflowStreamLine) | func | public | Workflow.stream(_:)"))
         #expect(catalog.contains("| 42 | enum | public | Swarm | `public enum Swarm` |"))
         #expect(!catalog.contains("| 12 | struct | public | LLM | `public struct LLM` |"))
@@ -31,6 +37,7 @@ struct DocumentationFreshnessTests {
         #expect(!catalog.contains("ConduitProviderSelection"))
         #expect(!catalog.contains("Swarm.cloudProvider"))
         #expect(!catalog.contains("configure(cloudProvider:"))
+        #expect(FileManager.default.isExecutableFile(atPath: repoRoot.appendingPathComponent("scripts/ci/refresh-api-catalog-header.sh").path))
     }
 
     @Test("public docs do not link stale complete reference")
@@ -91,6 +98,8 @@ struct DocumentationFreshnessTests {
         #expect(!catalog.contains("CallableAgent"))
         #expect(!catalog.contains("Tools/ToolChainBuilder.swift"))
         #expect(!catalog.contains("| ToolChain |"))
+        #expect(!catalog.contains("FoundationModelsExecutionMode"))
+        #expect(!catalog.contains("foundationModelsExecution"))
     }
 
     @Test("API catalog excludes symbols removed or demoted by the T1 surface shrink")
@@ -325,6 +334,46 @@ struct DocumentationFreshnessTests {
         }
     }
 
+    @Test("source DocC and public docs use current tool and event symbols")
+    func sourceDocCAndPublicDocsUseCurrentToolAndEventSymbols() throws {
+        let configuration = try readRepoFile("Sources/Swarm/Core/AgentConfiguration.swift")
+        let toolSource = try readRepoFile("Sources/Swarm/Tools/Tool.swift")
+        let mcpClient = try readRepoFile("Sources/Swarm/MCP/MCPClient.swift")
+        let mcpBridge = try readRepoFile("Sources/Swarm/MCP/MCPToolBridge.swift")
+        let frontFacing = try readRepoFile("docs/reference/front-facing-api.md")
+
+        for staleSymbol in [
+            "AgentEvent/responseChunk",
+            "AgentEvent/completion",
+            "AgentEvent/reasoning",
+            "`ToolCallDetail`",
+            "AgentError/toolCallFailed"
+        ] {
+            #expect(!configuration.contains(staleSymbol), "AgentConfiguration DocC should not link \(staleSymbol)")
+        }
+
+        #expect(configuration.contains("AgentEvent/output(_:)"))
+        #expect(configuration.contains("AgentEvent/Output/token(_:)"))
+        #expect(configuration.contains("AgentEvent/Lifecycle/completed(result:)"))
+        #expect(configuration.contains("AgentResult/toolResults"))
+        #expect(configuration.contains("AgentError/toolFailure(toolName:message:cause:)"))
+
+        #expect(toolSource.contains("public type-erased capability"))
+        #expect(mcpClient.contains("public type-erased interoperability seam"))
+        #expect(mcpBridge.contains("public type-erased interoperability seam"))
+        #expect(frontFacing.contains("AnyJSONTool` (advanced interoperability seam)"))
+        #expect(frontFacing.contains("MCPClient.getAllTools()"))
+        #expect(frontFacing.contains("MCPToolBridge.bridgeTools()"))
+        #expect(!configuration.contains("foundationModelsExecution"))
+        #expect(!configuration.contains("FoundationModelsExecutionMode"))
+        #expect(frontFacing.contains("Lossy compatibility projection onto `AgentResult`"))
+        #expect(frontFacing.contains("Mints new tool-call IDs on every access"))
+
+        let readiness = try readRepoFile("docs/guide/production-readiness-findings.md")
+        #expect(readiness.contains("Historical snapshot of the 0.6.0 Foundation Models DX pass"))
+        #expect(readiness.contains("It is not current production guidance"))
+    }
+
     @Test("source DocC examples use throwing Agent initializers correctly")
     func sourceDocCExamplesUseThrowingAgentInitializersCorrectly() throws {
         let builtInTools = try readRepoFile("Sources/Swarm/Tools/BuiltInTools.swift")
@@ -518,6 +567,26 @@ struct DocumentationFreshnessTests {
         #expect(workflow.contains("swift test --no-parallel"))
     }
 
+    @Test("lean default docs do not advertise MCP SDK or OTel as default remotes")
+    func leanDefaultDocsDoNotAdvertiseMCPOrOTelAsDefaultRemotes() throws {
+        let package = try readRepoFile("Package.swift")
+        let readme = try readRepoFile("README.md")
+        let gettingStarted = try readRepoFile("docs/guide/getting-started.md")
+        let frontFacing = try readRepoFile("docs/reference/front-facing-api.md")
+
+        #expect(package.contains("let mcpTrait = \"MCP\""))
+        #expect(package.contains("let otelTrait = \"OpenTelemetry\""))
+        #expect(package.contains("condition: .when(traits: [mcpTrait])"))
+        #expect(package.contains("condition: .when(traits: [otelTrait])"))
+
+        for file in ["README.md", "docs/guide/getting-started.md", "docs/reference/front-facing-api.md"] {
+            let text = file == "README.md" ? readme : file.contains("getting-started") ? gettingStarted : frontFacing
+            #expect(!text.contains("MCP sdk, OTel, plus NIO"), "\(file) should not list MCP/OTel as default remotes")
+            #expect(text.contains("traits: [\"MCP\"]"), "\(file) should document the MCP trait")
+            #expect(text.contains("traits: [\"OpenTelemetry\"]"), "\(file) should document the OpenTelemetry trait")
+        }
+    }
+
     @Test("public Linux docs qualify default graph support")
     func publicLinuxDocsQualifyDefaultGraphSupport() throws {
         let checkedFiles = [
@@ -545,6 +614,14 @@ struct DocumentationFreshnessTests {
     }
 
     private func countPublicCatalogSourceFiles() throws -> Int {
+        try countSwarmSourceFiles(excludingGraphRuntime: true)
+    }
+
+    private func countAllSwarmSourceFiles() throws -> Int {
+        try countSwarmSourceFiles(excludingGraphRuntime: false)
+    }
+
+    private func countSwarmSourceFiles(excludingGraphRuntime: Bool) throws -> Int {
         let sources = repoRoot.appendingPathComponent("Sources/Swarm")
         guard let enumerator = FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil) else {
             throw DocumentationFreshnessError.missingEnumerator
@@ -554,7 +631,9 @@ struct DocumentationFreshnessTests {
         for case let url as URL in enumerator {
             guard url.pathExtension == "swift" else { continue }
             let relative = url.path.replacingOccurrences(of: sources.path + "/", with: "")
-            guard !relative.hasPrefix("Internal/GraphRuntime/") else { continue }
+            if excludingGraphRuntime, relative.hasPrefix("Internal/GraphRuntime/") {
+                continue
+            }
             count += 1
         }
         return count

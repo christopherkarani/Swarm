@@ -308,17 +308,21 @@ public struct AgentResponse: Sendable {
     /// deriving it from tool call count.
     public let iterationCount: Int
 
-    /// Converts this response to an `AgentResult` for backward compatibility.
+    /// Lossy compatibility projection onto ``AgentResult``.
     ///
-    /// This computed property allows `AgentResponse` to be used in contexts
-    /// that expect `AgentResult`. The conversion maps:
+    /// Prefer ``AgentResult`` from ``Agent/run(_:session:observer:)`` when you
+    /// need the canonical execution model. This conversion maps:
     /// - `output` -> `output`
-    /// - `toolCalls` -> converted to `[ToolCall]` and `[ToolResult]`
+    /// - `toolCalls` -> newly minted `[ToolCall]` and `[ToolResult]` pairs
     /// - `usage` -> `tokenUsage`
     /// - `metadata` -> `metadata`
+    /// - `iterationCount` -> `iterationCount`
     ///
-    /// Note: Some information is lost in conversion (responseId, agentName,
-    /// timestamp at the response level).
+    /// It intentionally discards ``responseId``, ``agentName``, and the response
+    /// ``timestamp``. ``AgentResult/duration`` is the sum of recorded tool-call
+    /// durations, not wall-clock run time, and is `.zero` when no tools ran.
+    /// Each access mints new tool-call IDs, so two conversions of the same
+    /// response are not identity-equal.
     ///
     /// Example:
     /// ```swift

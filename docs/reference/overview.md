@@ -19,4 +19,4 @@ The current API reference covers the supported public surface for Swarm 0.6.2. P
 | [MCP](/reference/api-catalog) | Model Context Protocol client and server |
 | [Providers](/reference/front-facing-api) | Foundation Models, OpenAI-compatible remote, `InferenceProvider`, text-only backend wrap, `MultiProvider` routing |
 | [Remote providers](/guide/remote-providers) | OpenAI / Azure / OpenRouter / Ollama / LM Studio |
-| [Foundation Models modes](/guide/foundation-models) | Capture vs experimental native session |
+| [Foundation Models modes](/guide/foundation-models) | Capture vs provider-owned tool loop |
