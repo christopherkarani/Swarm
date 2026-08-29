@@ -59,11 +59,11 @@ public struct ToolExecutionSemantics: Codable, Sendable, Equatable {
     /// The Engine host path does not add approval or retry gates from these values.
     public struct RuntimePolicy: Equatable, Sendable {
         /// Whether an orchestrator may retry this tool without caller intervention.
-        public var mayRetryAutomatically: Bool
+        public let mayRetryAutomatically: Bool
         /// Whether a higher layer should require approval before running the tool.
-        public var requiresApproval: Bool
+        public let requiresApproval: Bool
         /// Whether the tool may share a concurrent batch with other calls.
-        public var mayRunInParallel: Bool
+        public let mayRunInParallel: Bool
     }
 
     /// Pure runtime decision for retry, approval, and parallel eligibility.

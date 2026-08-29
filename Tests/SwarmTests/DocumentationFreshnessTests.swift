@@ -152,6 +152,11 @@ struct DocumentationFreshnessTests {
         #expect(toolSemantics.contains("public var resultDurability: ToolResultDurability"))
         #expect(toolSemantics.contains("public init("))
         #expect(toolSemantics.contains("public static let automatic"))
+        #expect(toolSemantics.contains("public struct RuntimePolicy"))
+        #expect(toolSemantics.contains("public func runtimePolicy()"))
+        #expect(toolSemantics.contains("public let mayRetryAutomatically: Bool"))
+        #expect(toolSemantics.contains("public let requiresApproval: Bool"))
+        #expect(toolSemantics.contains("public let mayRunInParallel: Bool"))
     }
 
     @Test("public memory docs do not advertise removed builder APIs")

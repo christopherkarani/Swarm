@@ -95,8 +95,10 @@ public actor ParallelToolExecutor {
     /// Executes multiple tool calls in parallel.
     ///
     /// This method validates all tools exist in the registry before starting
-    /// any execution, then runs all tools concurrently. Results are returned
-    /// in the same order as the input calls, regardless of completion order.
+    /// any execution, then runs consecutive parallel-eligible tools concurrently.
+    /// Each explicit ``ToolSideEffectLevel/externalMutation`` is a serial step
+    /// so it does not overlap any other call. Results are returned in the same
+    /// order as the input calls, regardless of completion order.
     ///
     /// Individual tool failures are captured as `ToolExecutionResult.failure`
     /// entries rather than throwing. This allows the caller to handle partial
@@ -171,8 +173,9 @@ public actor ParallelToolExecutor {
     ///
     /// ## Error Strategies
     ///
-    /// - **`.failFast`**: Throws the first error found in the results.
-    ///   All tools still execute, but the first failure causes a throw.
+    /// - **`.failFast`**: Throws the first tool error and cancels remaining
+    ///   work in the current concurrent group; later serial or concurrent
+    ///   groups never start.
     ///
     /// - **`.collectErrors`**: Throws a composite error if any tool failed.
     ///   The error message includes all failure descriptions.
