@@ -83,7 +83,7 @@ struct SlidingWindowMemoryTests {
 
         let remaining = await memory.allMessages()
         #expect(remaining.contains(where: { $0.content.contains("unique-marker-40") }))
-        #expect(!remaining.contains(where: { $0.content.contains("unique-marker-1") }))
+        #expect(remaining.contains(where: { $0.content.contains("unique-marker-1") }) == false)
         #expect(await memory.tokenCount <= 100)
         #expect(remaining.last?.content.contains("unique-marker-40") == true)
     }

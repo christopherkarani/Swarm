@@ -70,6 +70,68 @@ struct PromptEnvelopeContextWindowTests {
         #expect(fitted == [last])
     }
 
+    @Test("fit with alwaysKeepLast false drops oldest history first")
+    func fitWithoutKeepingLastDropsOldest() async throws {
+        let oldest = InferenceMessage.user("old-user")
+        let newest = InferenceMessage.user("new-user")
+        let budget = flattenCharacterCount([newest])
+        try #require(flattenCharacterCount([oldest, newest]) > budget)
+
+        let fitted = await ContextWindow.fit(
+            messages: [oldest, newest],
+            policy: ContextWindow.Policy(
+                maxTokens: budget,
+                protectLeadingSystem: false,
+                alwaysKeepLast: false
+            ),
+            countTokens: characterCount
+        )
+
+        #expect(fitted == [newest])
+        #expect(flattenCharacterCount(fitted) <= budget)
+    }
+
+    @Test("fit with alwaysKeepLast false retains an oversized sole message")
+    func fitWithoutKeepingLastRetainsAtLeastOneMessage() async throws {
+        let last = InferenceMessage.user(String(repeating: "u", count: 40))
+        let budget = 4
+        try #require(flattenCharacterCount([last]) > budget)
+
+        let fitted = await ContextWindow.fit(
+            messages: [last],
+            policy: ContextWindow.Policy(
+                maxTokens: budget,
+                protectLeadingSystem: false,
+                alwaysKeepLast: false
+            ),
+            countTokens: characterCount
+        )
+
+        #expect(fitted == [last])
+        #expect(flattenCharacterCount(fitted) > budget)
+    }
+
+    @Test("fit with alwaysKeepLast false keeps a protected system and may drop the last turn")
+    func fitWithoutKeepingLastProtectsLeadingSystem() async throws {
+        let system = InferenceMessage.system("Stay")
+        let last = InferenceMessage.user("needle-latest")
+        let budget = flattenCharacterCount([system])
+        try #require(flattenCharacterCount([system, last]) > budget)
+
+        let fitted = await ContextWindow.fit(
+            messages: [system, last],
+            policy: ContextWindow.Policy(
+                maxTokens: budget,
+                protectLeadingSystem: true,
+                alwaysKeepLast: false
+            ),
+            countTokens: characterCount
+        )
+
+        #expect(fitted == [system])
+        #expect(flattenCharacterCount(fitted) <= budget)
+    }
+
     @Test("fit truncates an oversized last turn instead of dropping it")
     func fitTruncatesLastTurnToBudget() async {
         let last = InferenceMessage.user(String(repeating: "u", count: 40))
@@ -139,6 +201,17 @@ struct PromptEnvelopeContextWindowTests {
         #expect(kept == [30, 40])
     }
 
+    @Test("evictOldest keeps a single oversized message")
+    func evictOldestKeepsSingleOversized() async {
+        let kept = await ContextWindow.evictOldest(
+            from: [50],
+            maxTokens: 10,
+            tokensOf: { $0 }
+        )
+
+        #expect(kept == [50])
+    }
+
     @Test("strict4k enforce matches ContextWindow.fit with the same counter")
     func enforceMatchesSharedFit() async {
         let padding = String(repeating: "x", count: 80)
@@ -161,7 +234,12 @@ struct PromptEnvelopeContextWindowTests {
 }
 
 private func characterCount(_ text: String) async -> Int {
-    (try? await CharacterCountTokenCounter().countTokens(in: text)) ?? text.count
+    do {
+        return try await CharacterCountTokenCounter().countTokens(in: text)
+    } catch {
+        Issue.record("CharacterCountTokenCounter is not expected to throw")
+        return text.count
+    }
 }
 
 private func flattenCharacterCount(_ messages: [InferenceMessage]) -> Int {

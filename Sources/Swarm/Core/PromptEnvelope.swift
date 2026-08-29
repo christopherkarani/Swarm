@@ -8,9 +8,9 @@ import Foundation
 /// Roles stay; this is windowing, not flattening to a single user string.
 enum ContextWindow {
     struct Policy: Equatable, Sendable {
-        var maxTokens: Int
-        var protectLeadingSystem: Bool
-        var alwaysKeepLast: Bool
+        let maxTokens: Int
+        let protectLeadingSystem: Bool
+        let alwaysKeepLast: Bool
 
         static func strict4k(_ profile: ContextProfile) -> Policy {
             Policy(
@@ -22,10 +22,17 @@ enum ContextWindow {
     }
 
     /// Drops oldest unprotected messages until the conversation fits `policy.maxTokens`.
-    /// The latest message is kept when `alwaysKeepLast` is true. A leading `.system`
+    ///
+    /// Token counts are measured on ``InferenceMessage/flattenPrompt(_:)``. The injected
+    /// counter receives that labeled string, not raw message bodies.
+    ///
+    /// When `alwaysKeepLast` is true, the latest message is kept. A leading `.system`
     /// message is kept when `protectLeadingSystem` is true; if system + last still
     /// overflow, last (and if needed system text) is truncated so a non-empty system
     /// remains.
+    ///
+    /// When `alwaysKeepLast` is false, eviction is drop-oldest only (no truncation).
+    /// At least one message is always retained.
     static func fit(
         messages: [InferenceMessage],
         policy: Policy,
@@ -142,14 +149,18 @@ enum ContextWindow {
         }
 
         var remaining = messages
+        var tokenCounts: [Int] = []
+        tokenCounts.reserveCapacity(remaining.count)
         var total = 0
         for message in remaining {
-            total += await tokensOf(message)
+            let tokens = await tokensOf(message)
+            tokenCounts.append(tokens)
+            total += tokens
         }
 
         while total > maxTokens, remaining.count > 1 {
-            let removed = remaining.removeFirst()
-            total -= await tokensOf(removed)
+            remaining.removeFirst()
+            total -= tokenCounts.removeFirst()
         }
 
         return remaining
@@ -163,7 +174,8 @@ enum ContextWindow {
     ) async -> [InferenceMessage] {
         var remaining = messages
         let protectedCount = (protectLeadingSystem && remaining.first?.role == .system) ? 1 : 0
-        while remaining.count > protectedCount,
+        let floorCount = max(protectedCount, 1)
+        while remaining.count > floorCount,
             await tokenCount(of: remaining, countTokens: countTokens) > maxTokens
         {
             remaining.remove(at: protectedCount)
