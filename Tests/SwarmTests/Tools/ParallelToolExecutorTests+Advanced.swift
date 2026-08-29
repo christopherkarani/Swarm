@@ -132,6 +132,74 @@ struct ParallelToolExecutorAdvancedTests {
 
     // MARK: - Same Tool Multiple Calls Tests
 
+    @Test("executeInParallel measures duration through the Engine clock")
+    func executeInParallelMeasuresDurationThroughEngineClock() async throws {
+        let clock = ScriptedToolClock(readings: [UInt64(0), UInt64(25_000_000)])
+        let tool = MockDelayTool(name: "instant", delay: .zero, resultValue: .string("ok"))
+        let registry = try await createRegistry(tools: [tool])
+        let executor = ParallelToolExecutor(engine: ToolExecutionEngine(clock: clock))
+        let agent = ParallelTestMockAgent()
+
+        let results = try await executor.executeInParallel(
+            [ToolCall(toolName: "instant", arguments: [:])],
+            using: registry,
+            agent: agent,
+            context: nil
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].isSuccess == true)
+        #expect(results[0].duration == Duration(swarmNanoseconds: UInt64(25_000_000)))
+    }
+
+    @Test("explicit externalMutation tools serialize in input order")
+    func explicitExternalMutationToolsSerializeInInputOrder() async throws {
+        let log = ToolPhaseLog()
+        let semantics = ToolExecutionSemantics(sideEffectLevel: .externalMutation)
+        let first = FunctionTool(
+            name: "mutate_a",
+            description: "First mutation",
+            executionSemantics: semantics
+        ) { _ in
+            await log.record("start-a")
+            await Task.yield()
+            await log.record("end-a")
+            return .string("a")
+        }
+        let second = FunctionTool(
+            name: "mutate_b",
+            description: "Second mutation",
+            executionSemantics: semantics
+        ) { _ in
+            await log.record("start-b")
+            await Task.yield()
+            await log.record("end-b")
+            return .string("b")
+        }
+
+        let registry = try await createRegistry(tools: [first, second])
+        let executor = ParallelToolExecutor()
+        let agent = ParallelTestMockAgent()
+
+        let results = try await executor.executeInParallel(
+            [
+                ToolCall(toolName: "mutate_a", arguments: [:]),
+                ToolCall(toolName: "mutate_b", arguments: [:])
+            ],
+            using: registry,
+            agent: agent,
+            context: nil
+        )
+
+        #expect(results.count == 2)
+        #expect(results[0].toolName == "mutate_a")
+        #expect(results[1].toolName == "mutate_b")
+        #expect(results[0].isSuccess == true)
+        #expect(results[1].isSuccess == true)
+        let events = await log.snapshot()
+        #expect(events == ["start-a", "end-a", "start-b", "end-b"])
+    }
+
     @Test("Same tool can be called multiple times")
     func sameToolMultipleCalls() async throws {
         let tool = MockDelayTool(name: "reusable", delay: .zero, resultValue: .string("result"))

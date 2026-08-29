@@ -68,15 +68,24 @@ import Foundation
 /// ## Performance Considerations
 ///
 /// - All tools are validated for existence before any execution begins
-/// - Execution uses `ContinuousClock` for precise timing measurements
+/// - Duration is measured by the shared tool execution engine's injectable clock
 /// - Failed tools do not block successful ones from completing
+/// - Tools with explicit ``ToolSideEffectLevel/externalMutation`` serialize;
+///   ``ToolExecutionSemantics/automatic`` remains parallel-eligible
 public actor ParallelToolExecutor {
     // MARK: Public
 
     // MARK: - Initialization
 
-    /// Creates a new parallel tool executor.
-    public init() {}
+    /// Creates a new parallel tool executor using the live Engine clock.
+    public init() {
+        engine = ToolExecutionEngine()
+    }
+
+    /// Creates an executor that runs every call through the given Engine.
+    init(engine: ToolExecutionEngine) {
+        self.engine = engine
+    }
 
     // MARK: - Public Methods
 
@@ -130,64 +139,15 @@ public actor ParallelToolExecutor {
             return []
         }
 
-        // 1. Validate all tools exist BEFORE starting any execution.
-        // This is a fast-fail optimization: if any tool is missing or disabled at the
-        // start of the batch, throw before launching N tasks. ToolRegistry.execute()
-        // re-validates per call inside the task group below, so a tool that gets
-        // disabled *after* this pre-pass surfaces as a `ToolExecutionResult.failure`
-        // for that single call rather than a fast-throw — consistent with how the
-        // parallel error strategies (`.failFast`, `.collectErrors`, `.continueOnError`)
-        // expect to handle per-tool failures.
-        for call in calls {
-            guard let tool = await registry.tool(named: call.toolName), tool.isEnabled else {
-                throw AgentError.toolNotFound(name: call.toolName)
-            }
-        }
-
-        // 2. Execute with structured concurrency - PRESERVE ORDER via index
-        return try await withThrowingTaskGroup(of: (Int, ToolExecutionResult).self) { group in
-            for (index, call) in calls.enumerated() {
-                group.addTask { [registry, agent, context] in
-                    let startTime = ContinuousClock.now
-                    do {
-                        let result = try await registry.execute(
-                            toolNamed: call.toolName,
-                            arguments: call.arguments,
-                            agent: agent,
-                            context: context
-                        )
-                        let duration = ContinuousClock.now - startTime
-                        return (index, ToolExecutionResult.success(
-                            toolName: call.toolName,
-                            arguments: call.arguments,
-                            value: result,
-                            duration: duration
-                        ))
-                    } catch {
-                        let duration = ContinuousClock.now - startTime
-                        return (index, ToolExecutionResult.failure(
-                            toolName: call.toolName,
-                            arguments: call.arguments,
-                            error: error,
-                            duration: duration
-                        ))
-                    }
-                }
-            }
-
-            // 3. Collect all results with cancellation support
-            var indexedResults: [(Int, ToolExecutionResult)] = []
-            indexedResults.reserveCapacity(calls.count)
-
-            for try await result in group {
-                try Task.checkCancellation()
-                indexedResults.append(result)
-            }
-
-            // 4. Sort by index to restore original order
-            indexedResults.sort { $0.0 < $1.0 }
-            return indexedResults.map(\.1)
-        }
+        let eligibility = try await validatedEligibility(for: calls, registry: registry)
+        return try await executeCalls(
+            calls,
+            eligibility: eligibility,
+            using: registry,
+            agent: agent,
+            context: context,
+            stopOnToolError: false
+        )
     }
 
     /// Executes multiple tool calls in parallel with an error handling strategy.
@@ -295,12 +255,14 @@ public actor ParallelToolExecutor {
 
     // MARK: Private
 
+    private let engine: ToolExecutionEngine
+
     // MARK: - Private Methods
 
     /// Executes tools with true fail-fast cancellation.
     ///
-    /// Unlike the standard parallel execution, this method cancels all remaining
-    /// tasks immediately when the first failure is detected, saving resources.
+    /// Unlike the standard parallel execution, this method cancels remaining
+    /// work when the first Engine invocation throws.
     private func executeWithFailFast(
         _ calls: [ToolCall],
         using registry: ToolRegistry,
@@ -309,36 +271,92 @@ public actor ParallelToolExecutor {
     ) async throws -> [ToolExecutionResult] {
         guard !calls.isEmpty else { return [] }
 
-        // Validate all tools exist and are enabled before any execution starts.
+        let eligibility = try await validatedEligibility(for: calls, registry: registry)
+        return try await executeCalls(
+            calls,
+            eligibility: eligibility,
+            using: registry,
+            agent: agent,
+            context: context,
+            stopOnToolError: true
+        )
+    }
+
+    /// Fail-fast validation plus per-tool parallel eligibility from `runtimePolicy()`.
+    ///
+    /// Missing or disabled tools throw before any Engine invocation. A tool that
+    /// is disabled *after* this pre-pass still goes through Engine and surfaces
+    /// as a per-call failure when `stopOnToolError` is false.
+    private func validatedEligibility(
+        for calls: [ToolCall],
+        registry: ToolRegistry
+    ) async throws -> [Bool] {
+        var eligibility: [Bool] = []
+        eligibility.reserveCapacity(calls.count)
         for call in calls {
             guard let tool = await registry.tool(named: call.toolName), tool.isEnabled else {
                 throw AgentError.toolNotFound(name: call.toolName)
             }
+            eligibility.append(tool.executionSemantics.runtimePolicy().mayRunInParallel)
+        }
+        return eligibility
+    }
+
+    private func executeCalls(
+        _ calls: [ToolCall],
+        eligibility: [Bool],
+        using registry: ToolRegistry,
+        agent: any AgentRuntime,
+        context: AgentContext?,
+        stopOnToolError: Bool
+    ) async throws -> [ToolExecutionResult] {
+        if eligibility.allSatisfy({ $0 }) {
+            return try await executeConcurrent(
+                calls,
+                using: registry,
+                agent: agent,
+                context: context,
+                stopOnToolError: stopOnToolError
+            )
         }
 
-        // Execute with early cancellation on first failure
-        return try await withThrowingTaskGroup(of: (Int, ToolExecutionResult).self) { group in
+        var results: [ToolExecutionResult] = []
+        results.reserveCapacity(calls.count)
+        for call in calls {
+            try Task.checkCancellation()
+            let mapped = try await engine.executeMapped(
+                call: call,
+                registry: registry,
+                agent: agent,
+                context: context,
+                stopOnToolError: stopOnToolError
+            )
+            results.append(mapped)
+        }
+        return results
+    }
+
+    private func executeConcurrent(
+        _ calls: [ToolCall],
+        using registry: ToolRegistry,
+        agent: any AgentRuntime,
+        context: AgentContext?,
+        stopOnToolError: Bool
+    ) async throws -> [ToolExecutionResult] {
+        try await withThrowingTaskGroup(of: (Int, ToolExecutionResult).self) { group in
             for (index, call) in calls.enumerated() {
-                group.addTask { [registry, agent, context] in
-                    let startTime = ContinuousClock.now
-                    // Let errors propagate for fail-fast behavior
-                    let result = try await registry.execute(
-                        toolNamed: call.toolName,
-                        arguments: call.arguments,
+                group.addTask { [engine, registry, agent, context] in
+                    let mapped = try await engine.executeMapped(
+                        call: call,
+                        registry: registry,
                         agent: agent,
-                        context: context
+                        context: context,
+                        stopOnToolError: stopOnToolError
                     )
-                    let duration = ContinuousClock.now - startTime
-                    return (index, ToolExecutionResult.success(
-                        toolName: call.toolName,
-                        arguments: call.arguments,
-                        value: result,
-                        duration: duration
-                    ))
+                    return (index, mapped)
                 }
             }
 
-            // Collect results, throwing on first error (which cancels remaining tasks)
             var indexedResults: [(Int, ToolExecutionResult)] = []
             indexedResults.reserveCapacity(calls.count)
 
@@ -347,7 +365,6 @@ public actor ParallelToolExecutor {
                 indexedResults.append(result)
             }
 
-            // Sort by index to restore original order
             indexedResults.sort { $0.0 < $1.0 }
             return indexedResults.map(\.1)
         }

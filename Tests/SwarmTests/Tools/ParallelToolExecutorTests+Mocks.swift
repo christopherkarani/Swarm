@@ -157,3 +157,38 @@ struct DisabledTestTool: AnyJSONTool, Sendable {
         .string("unused")
     }
 }
+
+// MARK: - ScriptedToolClock
+
+/// Deterministic `ToolClock` that returns scripted nanosecond readings in order.
+///
+/// Used to prove Engine/façade duration measurement without `Task.sleep`.
+final class ScriptedToolClock: ToolClock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var readings: [UInt64]
+
+    init(readings: [UInt64]) {
+        self.readings = readings
+    }
+
+    func nowNanoseconds() -> UInt64 {
+        lock.withLock {
+            guard !readings.isEmpty else { return 0 }
+            return readings.removeFirst()
+        }
+    }
+}
+
+// MARK: - ToolPhaseLog
+
+actor ToolPhaseLog {
+    private var events: [String] = []
+
+    func record(_ event: String) {
+        events.append(event)
+    }
+
+    func snapshot() -> [String] {
+        events
+    }
+}

@@ -208,6 +208,26 @@ public struct ToolExecutionResult: Sendable {
             timestamp: timestamp
         )
     }
+
+    /// Maps an Engine ``ToolResult`` onto the public parallel-executor result.
+    static func from(call: ToolCall, result: ToolResult) -> ToolExecutionResult {
+        switch result.outcome {
+        case let .success(value):
+            return .success(
+                toolName: call.toolName,
+                arguments: call.arguments,
+                value: value,
+                duration: result.duration
+            )
+        case let .failure(message):
+            return .failure(
+                toolName: call.toolName,
+                arguments: call.arguments,
+                error: AgentError.toolFailure(toolName: call.toolName, message: message, cause: nil),
+                duration: result.duration
+            )
+        }
+    }
 }
 
 // MARK: CustomStringConvertible
