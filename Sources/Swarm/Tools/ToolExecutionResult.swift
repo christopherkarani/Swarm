@@ -210,7 +210,16 @@ public struct ToolExecutionResult: Sendable {
     }
 
     /// Maps an Engine ``ToolResult`` onto the public parallel-executor result.
-    static func from(call: ToolCall, result: ToolResult) -> ToolExecutionResult {
+    ///
+    /// When ``underlyingError`` is present (the Engine still has the thrown
+    /// instance), that error is stored so callers can inspect type and cause.
+    /// String-only ``ToolResult`` failures synthesize ``AgentError/toolFailure``
+    /// with no cause.
+    static func from(
+        call: ToolCall,
+        result: ToolResult,
+        underlyingError: (any Error)? = nil
+    ) -> ToolExecutionResult {
         switch result.outcome {
         case let .success(value):
             return .success(
@@ -220,10 +229,15 @@ public struct ToolExecutionResult: Sendable {
                 duration: result.duration
             )
         case let .failure(message):
+            let error = underlyingError ?? AgentError.toolFailure(
+                toolName: call.toolName,
+                message: message,
+                cause: nil
+            )
             return .failure(
                 toolName: call.toolName,
                 arguments: call.arguments,
-                error: AgentError.toolFailure(toolName: call.toolName, message: message, cause: nil),
+                error: error,
                 duration: result.duration
             )
         }

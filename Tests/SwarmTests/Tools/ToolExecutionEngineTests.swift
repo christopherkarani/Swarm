@@ -151,4 +151,87 @@ struct ToolExecutionSemanticsEngineTests {
             Issue.record("expected toolFailure, got \(String(describing: mapped.error))")
         }
     }
+
+    @Test("executeMapped continue-on-error preserves original error identity")
+    func executeMappedContinueOnErrorPreservesOriginalErrorIdentity() async throws {
+        let unique = UniqueToolError(code: 19)
+        let engine = ToolExecutionEngine()
+        let registry = ToolRegistry()
+        try await registry.register(MockErrorTool(name: "boom", error: unique))
+
+        let mapped = try await engine.executeMapped(
+            call: ToolCall(toolName: "boom", arguments: [:]),
+            registry: registry,
+            agent: ParallelTestMockAgent(),
+            context: nil,
+            stopOnToolError: false
+        )
+
+        #expect(mapped.isSuccess == false)
+        let agentError = try #require(mapped.error as? AgentError)
+        guard case let .toolFailure(toolName, _, cause) = agentError else {
+            Issue.record("expected toolFailure, got \(String(describing: mapped.error))")
+            return
+        }
+        #expect(toolName == "boom")
+        let captured = try #require(cause as? UniqueToolError)
+        #expect(captured == unique)
+
+        let outcome = try await engine.execute(
+            toolName: "boom",
+            arguments: [:],
+            registry: registry,
+            agent: ParallelTestMockAgent(),
+            context: nil,
+            resultBuilder: AgentResult.Builder(),
+            observer: nil,
+            tracing: nil,
+            stopOnToolError: false
+        )
+        let outcomeError = try #require(outcome.caughtError as? AgentError)
+        guard case let .toolFailure(_, _, outcomeCause) = outcomeError else {
+            Issue.record("expected caught toolFailure, got \(outcomeError)")
+            return
+        }
+        let outcomeUnique = try #require(outcomeCause as? UniqueToolError)
+        #expect(outcomeUnique == unique)
+    }
+
+    @Test("execute still wraps stopOnToolError throws with original cause")
+    func stopOnToolErrorThrowsWrappedToolFailureWithCause() async throws {
+        let unique = UniqueToolError(code: 23)
+        let engine = ToolExecutionEngine()
+        let registry = ToolRegistry()
+        try await registry.register(MockErrorTool(name: "boom", error: unique))
+
+        do {
+            _ = try await engine.execute(
+                toolName: "boom",
+                arguments: [:],
+                registry: registry,
+                agent: ParallelTestMockAgent(),
+                context: nil,
+                resultBuilder: AgentResult.Builder(),
+                observer: nil,
+                tracing: nil,
+                stopOnToolError: true
+            )
+            Issue.record("expected toolFailure to be thrown")
+        } catch let error as AgentError {
+            guard case let .toolFailure(toolName, _, cause) = error else {
+                Issue.record("expected toolFailure, got \(error)")
+                return
+            }
+            #expect(toolName == "boom")
+            let registryError = try #require(cause as? AgentError)
+            guard case let .toolFailure(_, _, innerCause) = registryError else {
+                Issue.record("expected registry toolFailure cause, got \(registryError)")
+                return
+            }
+            let captured = try #require(innerCause as? UniqueToolError)
+            #expect(captured == unique)
+        } catch {
+            Issue.record("expected AgentError.toolFailure, got \(error)")
+        }
+    }
 }

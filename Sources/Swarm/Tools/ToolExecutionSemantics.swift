@@ -54,8 +54,9 @@ public struct ToolExecutionSemantics: Codable, Sendable, Equatable {
 
     /// Governance bits derived from declared semantics.
     ///
-    /// Consumed by ``ToolExecutionEngine`` and ``ParallelToolExecutor``. The
-    /// Agent host loop does not add approval gates from these values.
+    /// ``ParallelToolExecutor`` uses ``mayRunInParallel`` so explicit
+    /// ``ToolSideEffectLevel/externalMutation`` does not overlap other calls.
+    /// The Engine host path does not add approval or retry gates from these values.
     public struct RuntimePolicy: Equatable, Sendable {
         /// Whether an orchestrator may retry this tool without caller intervention.
         public var mayRetryAutomatically: Bool

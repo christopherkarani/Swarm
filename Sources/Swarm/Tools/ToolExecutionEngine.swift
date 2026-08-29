@@ -46,6 +46,11 @@ struct ToolExecutionEngine: Sendable {
     struct Outcome: Sendable {
         let call: ToolCall
         let result: ToolResult
+        /// Original tool error when ``result`` is a failure; `nil` on success.
+        ///
+        /// ``ToolResult`` only stores a message string. The façade keeps this
+        /// instance so continue-on-error and fail-fast can preserve error identity.
+        let caughtError: (any Error)?
     }
 
     func execute(
@@ -87,7 +92,7 @@ struct ToolExecutionEngine: Sendable {
 
             await observer?.onToolEnd(context: context, agent: agent, result: result)
 
-            return Outcome(call: call, result: result)
+            return Outcome(call: call, result: result, caughtError: nil)
         } catch {
             let measured = elapsedDuration(since: startTime)
             let errorMessage = (error as? AgentError)?.localizedDescription ?? error.localizedDescription
@@ -105,11 +110,15 @@ struct ToolExecutionEngine: Sendable {
                 throw AgentError.toolFailure(toolName: toolName, message: errorMessage, cause: error)
             }
 
-            return Outcome(call: call, result: result)
+            return Outcome(call: call, result: result, caughtError: error)
         }
     }
 
     /// Registry execution + duration + ``ToolExecutionResult`` mapping for the public façade.
+    ///
+    /// Always records through ``execute`` with `stopOnToolError: false` so duration
+    /// stays on ``Outcome``. Fail-fast rethrows the original tool error; continue-on-error
+    /// stores that same instance on ``ToolExecutionResult``.
     func executeMapped(
         call: ToolCall,
         registry: ToolRegistry,
@@ -127,9 +136,16 @@ struct ToolExecutionEngine: Sendable {
             resultBuilder: AgentResult.Builder(),
             observer: nil,
             tracing: nil,
-            stopOnToolError: stopOnToolError
+            stopOnToolError: false
         )
-        return ToolExecutionResult.from(call: call, result: outcome.result)
+        if stopOnToolError, let error = outcome.caughtError {
+            throw error
+        }
+        return ToolExecutionResult.from(
+            call: call,
+            result: outcome.result,
+            underlyingError: outcome.caughtError
+        )
     }
 
     private func elapsedDuration(since startNanoseconds: UInt64) -> Duration {

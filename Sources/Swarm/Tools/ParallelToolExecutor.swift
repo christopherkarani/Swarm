@@ -70,8 +70,11 @@ import Foundation
 /// - All tools are validated for existence before any execution begins
 /// - Duration is measured by the shared tool execution engine's injectable clock
 /// - Failed tools do not block successful ones from completing
-/// - Tools with explicit ``ToolSideEffectLevel/externalMutation`` serialize;
-///   ``ToolExecutionSemantics/automatic`` remains parallel-eligible
+/// - Consecutive tools that ``ToolExecutionSemantics/runtimePolicy()`` marks
+///   parallel-eligible still run concurrently; each explicit
+///   ``ToolSideEffectLevel/externalMutation`` is its own serial step so it
+///   does not overlap any other call. ``ToolExecutionSemantics/automatic``
+///   remains parallel-eligible.
 public actor ParallelToolExecutor {
     // MARK: Public
 
@@ -310,28 +313,36 @@ public actor ParallelToolExecutor {
         context: AgentContext?,
         stopOnToolError: Bool
     ) async throws -> [ToolExecutionResult] {
-        if eligibility.allSatisfy({ $0 }) {
-            return try await executeConcurrent(
-                calls,
-                using: registry,
-                agent: agent,
-                context: context,
-                stopOnToolError: stopOnToolError
-            )
-        }
-
         var results: [ToolExecutionResult] = []
         results.reserveCapacity(calls.count)
-        for call in calls {
-            try Task.checkCancellation()
-            let mapped = try await engine.executeMapped(
-                call: call,
-                registry: registry,
-                agent: agent,
-                context: context,
-                stopOnToolError: stopOnToolError
-            )
-            results.append(mapped)
+        var index = 0
+        while index < calls.count {
+            if eligibility[index] {
+                var end = index + 1
+                while end < calls.count, eligibility[end] {
+                    end += 1
+                }
+                let concurrentResults = try await executeConcurrent(
+                    Array(calls[index..<end]),
+                    using: registry,
+                    agent: agent,
+                    context: context,
+                    stopOnToolError: stopOnToolError
+                )
+                results.append(contentsOf: concurrentResults)
+                index = end
+            } else {
+                try Task.checkCancellation()
+                let mapped = try await engine.executeMapped(
+                    call: calls[index],
+                    registry: registry,
+                    agent: agent,
+                    context: context,
+                    stopOnToolError: stopOnToolError
+                )
+                results.append(mapped)
+                index += 1
+            }
         }
         return results
     }
