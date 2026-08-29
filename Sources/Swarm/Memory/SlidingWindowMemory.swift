@@ -74,17 +74,16 @@ public actor SlidingWindowMemory: Memory {
     // MARK: - AgentMemory Conformance
 
     public func add(_ message: MemoryMessage) async {
-        let messageTokens = tokenEstimator.estimateTokens(for: message.formattedContent)
-
+        // Evict and truncate without awaiting so concurrent `add` calls cannot
+        // interleave and overwrite `messages`. TokenEstimator is synchronous and
+        // matches ``EstimatedPromptTokenCounter`` for the same estimator.
         messages.append(message)
-        currentTokenCount += messageTokens
-
-        // Remove oldest messages until within budget
-        while currentTokenCount > maxTokens, messages.count > 1 {
-            let removed = messages.removeFirst()
-            let removedTokens = tokenEstimator.estimateTokens(for: removed.formattedContent)
-            currentTokenCount -= removedTokens
-        }
+        messages = ContextWindow.evictOldest(
+            from: messages,
+            maxTokens: maxTokens,
+            tokensOf: { tokenEstimator.estimateTokens(for: $0.formattedContent) }
+        )
+        recalibrateTokenCount()
 
         if currentTokenCount > maxTokens, let latest = messages.last {
             let truncated = truncate(latest, toFit: maxTokens)
@@ -116,33 +115,26 @@ public actor SlidingWindowMemory: Memory {
     }
 
     private func truncate(_ message: MemoryMessage, toFit tokenLimit: Int) -> MemoryMessage {
-        var lowerBound = 0
-        var upperBound = message.content.count
-        var bestContent = ""
-
-        while lowerBound <= upperBound {
-            let midpoint = (lowerBound + upperBound) / 2
-            let candidateContent = String(message.content.prefix(midpoint))
-            let candidate = MemoryMessage(
-                id: message.id,
-                role: message.role,
-                content: candidateContent,
-                timestamp: message.timestamp,
-                metadata: message.metadata
+        let clipped = ContextWindow.longestPrefix(
+            of: message.content,
+            maxTokens: tokenLimit,
+            minimum: ""
+        ) { candidate in
+            tokenEstimator.estimateTokens(
+                for: MemoryMessage(
+                    id: message.id,
+                    role: message.role,
+                    content: candidate,
+                    timestamp: message.timestamp,
+                    metadata: message.metadata
+                ).formattedContent
             )
-
-            if tokenEstimator.estimateTokens(for: candidate.formattedContent) <= tokenLimit {
-                bestContent = candidateContent
-                lowerBound = midpoint + 1
-            } else {
-                upperBound = midpoint - 1
-            }
         }
 
         return MemoryMessage(
             id: message.id,
             role: message.role,
-            content: bestContent,
+            content: clipped,
             timestamp: message.timestamp,
             metadata: message.metadata
         )
