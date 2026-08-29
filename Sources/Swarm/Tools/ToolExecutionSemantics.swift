@@ -51,4 +51,43 @@ public struct ToolExecutionSemantics: Codable, Sendable, Equatable {
     }
 
     public static let automatic = ToolExecutionSemantics()
+
+    /// Governance bits derived from declared semantics.
+    ///
+    /// ``ParallelToolExecutor`` uses ``mayRunInParallel`` so explicit
+    /// ``ToolSideEffectLevel/externalMutation`` does not overlap other calls.
+    /// The Engine host path does not add approval or retry gates from these values.
+    public struct RuntimePolicy: Equatable, Sendable {
+        /// Whether an orchestrator may retry this tool without caller intervention.
+        public let mayRetryAutomatically: Bool
+        /// Whether a higher layer should require approval before running the tool.
+        public let requiresApproval: Bool
+        /// Whether the tool may share a concurrent batch with other calls.
+        public let mayRunInParallel: Bool
+    }
+
+    /// Pure runtime decision for retry, approval, and parallel eligibility.
+    ///
+    /// ``automatic`` preserves today's Engine behavior: automatic retry is
+    /// allowed, approval is not required, and the tool may run in parallel.
+    /// Explicit ``ToolSideEffectLevel/externalMutation`` is not parallel-eligible.
+    public func runtimePolicy() -> RuntimePolicy {
+        let mayRetryAutomatically: Bool = switch retryPolicy {
+        case .automatic, .safe: true
+        case .unsafe, .callerManaged: false
+        }
+        let requiresApproval: Bool = switch approvalRequirement {
+        case .automatic, .never: false
+        case .always: true
+        }
+        let mayRunInParallel: Bool = switch sideEffectLevel {
+        case .unspecified, .readOnly, .localMutation: true
+        case .externalMutation: false
+        }
+        return RuntimePolicy(
+            mayRetryAutomatically: mayRetryAutomatically,
+            requiresApproval: requiresApproval,
+            mayRunInParallel: mayRunInParallel
+        )
+    }
 }

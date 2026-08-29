@@ -132,6 +132,226 @@ struct ParallelToolExecutorAdvancedTests {
 
     // MARK: - Same Tool Multiple Calls Tests
 
+    @Test("executeInParallel measures duration through the Engine clock")
+    func executeInParallelMeasuresDurationThroughEngineClock() async throws {
+        let clock = ScriptedToolClock(readings: [UInt64(0), UInt64(25_000_000)])
+        let tool = MockDelayTool(name: "instant", delay: .zero, resultValue: .string("ok"))
+        let registry = try await createRegistry(tools: [tool])
+        let executor = ParallelToolExecutor(engine: ToolExecutionEngine(clock: clock))
+        let agent = ParallelTestMockAgent()
+
+        let results = try await executor.executeInParallel(
+            [ToolCall(toolName: "instant", arguments: [:])],
+            using: registry,
+            agent: agent,
+            context: nil
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].isSuccess == true)
+        #expect(results[0].duration == Duration(swarmNanoseconds: UInt64(25_000_000)))
+    }
+
+    @Test("explicit externalMutation tools serialize in input order")
+    func explicitExternalMutationToolsSerializeInInputOrder() async throws {
+        let log = ToolPhaseLog()
+        let semantics = ToolExecutionSemantics(sideEffectLevel: .externalMutation)
+        let first = FunctionTool(
+            name: "mutate_a",
+            description: "First mutation",
+            executionSemantics: semantics
+        ) { _ in
+            await log.record("start-a")
+            await Task.yield()
+            await log.record("end-a")
+            return .string("a")
+        }
+        let second = FunctionTool(
+            name: "mutate_b",
+            description: "Second mutation",
+            executionSemantics: semantics
+        ) { _ in
+            await log.record("start-b")
+            await Task.yield()
+            await log.record("end-b")
+            return .string("b")
+        }
+
+        let registry = try await createRegistry(tools: [first, second])
+        let executor = ParallelToolExecutor()
+        let agent = ParallelTestMockAgent()
+
+        let results = try await executor.executeInParallel(
+            [
+                ToolCall(toolName: "mutate_a", arguments: [:]),
+                ToolCall(toolName: "mutate_b", arguments: [:])
+            ],
+            using: registry,
+            agent: agent,
+            context: nil
+        )
+
+        #expect(results.count == 2)
+        #expect(results[0].toolName == "mutate_a")
+        #expect(results[1].toolName == "mutate_b")
+        #expect(results[0].isSuccess == true)
+        #expect(results[1].isSuccess == true)
+        let events = await log.snapshot()
+        #expect(events == ["start-a", "end-a", "start-b", "end-b"])
+    }
+
+    @Test("mixed batch keeps consecutive parallel-eligible tools concurrent")
+    func mixedBatchKeepsParallelEligibleToolsConcurrent() async throws {
+        let log = ToolPhaseLog()
+        let gate = ToolOverlapGate(expected: 2)
+        let readSemantics = ToolExecutionSemantics(sideEffectLevel: .readOnly)
+        let mutateSemantics = ToolExecutionSemantics(sideEffectLevel: .externalMutation)
+
+        let readA = FunctionTool(
+            name: "read_a",
+            description: "Read A",
+            executionSemantics: readSemantics
+        ) { _ in
+            await log.record("start-a")
+            await gate.arrive()
+            await log.record("end-a")
+            return .string("a")
+        }
+        let readB = FunctionTool(
+            name: "read_b",
+            description: "Read B",
+            executionSemantics: readSemantics
+        ) { _ in
+            await log.record("start-b")
+            await gate.arrive()
+            await log.record("end-b")
+            return .string("b")
+        }
+        let mutate = FunctionTool(
+            name: "mutate",
+            description: "Mutate",
+            executionSemantics: mutateSemantics
+        ) { _ in
+            await log.record("start-m")
+            await log.record("end-m")
+            return .string("m")
+        }
+
+        let registry = try await createRegistry(tools: [readA, readB, mutate])
+        let executor = ParallelToolExecutor()
+        let agent = ParallelTestMockAgent()
+
+        let results = try await executor.executeInParallel(
+            [
+                ToolCall(toolName: "read_a", arguments: [:]),
+                ToolCall(toolName: "read_b", arguments: [:]),
+                ToolCall(toolName: "mutate", arguments: [:])
+            ],
+            using: registry,
+            agent: agent,
+            context: nil
+        )
+
+        #expect(results.map(\.toolName) == ["read_a", "read_b", "mutate"])
+        #expect(results.allSatisfy { $0.isSuccess })
+
+        let events = await log.snapshot()
+        let startA = try #require(events.firstIndex(of: "start-a"))
+        let startB = try #require(events.firstIndex(of: "start-b"))
+        let endA = try #require(events.firstIndex(of: "end-a"))
+        let endB = try #require(events.firstIndex(of: "end-b"))
+        let startM = try #require(events.firstIndex(of: "start-m"))
+        #expect(max(startA, startB) < min(endA, endB))
+        #expect(max(endA, endB) < startM)
+    }
+
+    @Test("continueOnError preserves original error identity")
+    func continueOnErrorPreservesOriginalErrorIdentity() async throws {
+        let unique = UniqueToolError(code: 7)
+        let successTool = MockDelayTool(name: "ok", delay: .zero, resultValue: .string("ok"))
+        let errorTool = MockErrorTool(name: "boom", error: unique)
+        let registry = try await createRegistry(tools: [successTool, errorTool])
+        let executor = ParallelToolExecutor()
+        let agent = ParallelTestMockAgent()
+
+        let results = try await executor.executeInParallel(
+            [
+                ToolCall(toolName: "ok", arguments: [:]),
+                ToolCall(toolName: "boom", arguments: [:])
+            ],
+            using: registry,
+            agent: agent,
+            context: nil,
+            errorStrategy: .continueOnError
+        )
+
+        #expect(results.count == 2)
+        #expect(results[0].isSuccess == true)
+        #expect(results[1].isSuccess == false)
+        let agentError = try #require(results[1].error as? AgentError)
+        guard case let .toolFailure(toolName, _, cause) = agentError else {
+            Issue.record("expected toolFailure, got \(agentError)")
+            return
+        }
+        #expect(toolName == "boom")
+        let captured = try #require(cause as? UniqueToolError)
+        #expect(captured == unique)
+    }
+
+    @Test("continueOnError keeps AgentError thrown by the tool")
+    func continueOnErrorKeepsAgentErrorThrownByTheTool() async throws {
+        let original = AgentError.toolFailure(
+            toolName: "boom",
+            message: "specific-message",
+            cause: nil
+        )
+        let errorTool = MockErrorTool(name: "boom", error: original)
+        let registry = try await createRegistry(tools: [errorTool])
+        let executor = ParallelToolExecutor()
+        let agent = ParallelTestMockAgent()
+
+        let results = try await executor.executeInParallel(
+            [ToolCall(toolName: "boom", arguments: [:])],
+            using: registry,
+            agent: agent,
+            context: nil,
+            errorStrategy: .continueOnError
+        )
+
+        let agentError = try #require(results[0].error as? AgentError)
+        #expect(agentError == original)
+    }
+
+    @Test("failFast throws the original tool error")
+    func failFastThrowsTheOriginalToolError() async throws {
+        let unique = UniqueToolError(code: 11)
+        let errorTool = MockErrorTool(name: "boom", error: unique)
+        let registry = try await createRegistry(tools: [errorTool])
+        let executor = ParallelToolExecutor()
+        let agent = ParallelTestMockAgent()
+
+        do {
+            _ = try await executor.executeInParallel(
+                [ToolCall(toolName: "boom", arguments: [:])],
+                using: registry,
+                agent: agent,
+                context: nil,
+                errorStrategy: .failFast
+            )
+            Issue.record("expected toolFailure to be thrown")
+        } catch let error as AgentError {
+            guard case let .toolFailure(toolName, _, cause) = error else {
+                Issue.record("expected toolFailure, got \(error)")
+                return
+            }
+            #expect(toolName == "boom")
+            let captured = try #require(cause as? UniqueToolError)
+            #expect(captured == unique)
+        } catch {
+            Issue.record("expected AgentError.toolFailure, got \(error)")
+        }
+    }
+
     @Test("Same tool can be called multiple times")
     func sameToolMultipleCalls() async throws {
         let tool = MockDelayTool(name: "reusable", delay: .zero, resultValue: .string("result"))

@@ -157,3 +157,68 @@ struct DisabledTestTool: AnyJSONTool, Sendable {
         .string("unused")
     }
 }
+
+// MARK: - UniqueToolError
+
+/// Distinct error type used to prove façade mapping does not erase identity.
+struct UniqueToolError: Error, Equatable {
+    let code: Int
+}
+
+// MARK: - ScriptedToolClock
+
+/// Deterministic `ToolClock` that returns scripted nanosecond readings in order.
+///
+/// Used to prove Engine/façade duration measurement without `Task.sleep`.
+/// All mutable state is guarded by a single `NSLock`, so the class is safely
+/// usable across concurrency domains (`@unchecked Sendable`).
+final class ScriptedToolClock: ToolClock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var readings: [UInt64]
+
+    init(readings: [UInt64]) {
+        self.readings = readings
+    }
+
+    func nowNanoseconds() -> UInt64 {
+        lock.withLock {
+            guard !readings.isEmpty else { return 0 }
+            return readings.removeFirst()
+        }
+    }
+}
+
+// MARK: - ToolOverlapGate
+
+/// Waits until `expected` tools have arrived, or gives up after a bounded yield
+/// spin so a serial batch fails the overlap assertion instead of hanging.
+actor ToolOverlapGate {
+    private var remaining: Int
+
+    init(expected: Int) {
+        remaining = expected
+    }
+
+    func arrive() async {
+        remaining -= 1
+        var spins = 0
+        while remaining > 0, spins < 10_000 {
+            await Task.yield()
+            spins += 1
+        }
+    }
+}
+
+// MARK: - ToolPhaseLog
+
+actor ToolPhaseLog {
+    private var events: [String] = []
+
+    func record(_ event: String) {
+        events.append(event)
+    }
+
+    func snapshot() -> [String] {
+        events
+    }
+}

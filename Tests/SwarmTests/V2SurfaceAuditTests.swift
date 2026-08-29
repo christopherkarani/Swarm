@@ -162,6 +162,11 @@ struct V2SurfaceAuditTests {
         let automatic: ToolExecutionSemantics = .automatic
         #expect(automatic == ToolExecutionSemantics())
 
+        let automaticPolicy = automatic.runtimePolicy()
+        #expect(automaticPolicy.requiresApproval == false)
+        #expect(automaticPolicy.mayRunInParallel == true)
+        #expect(automaticPolicy.mayRetryAutomatically == true)
+
         let tool = FunctionTool(
             name: "echo",
             description: "Echo",

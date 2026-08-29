@@ -1216,12 +1216,25 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 73 | class | public | ParallelToolExecutor | `public actor ParallelToolExecutor` |
-| 79 | func | public | ParallelToolExecutor.init() | `public init()` |
-| 122 | func | public | ParallelToolExecutor.executeInParallel(_:using:agent:context:) | `public func executeInParallel(_ calls: [ToolCall], using registry: ToolRegistry, agent: any AgentRuntime, context: AgentContext?) async throws -> [ToolExecutionResult]` |
-| 237 | func | public | ParallelToolExecutor.executeInParallel(_:using:agent:context:errorStrategy:) | `public func executeInParallel(_ calls: [ToolCall], using registry: ToolRegistry, agent: any AgentRuntime, context: AgentContext?, errorStrategy: ParallelExecutionErrorStrategy) async throws -> [ToolExecutionResult]` |
-| 365 | func | public | ParallelToolExecutor.executeAllCapturingErrors(_:using:agent:context:) | `public func executeAllCapturingErrors(_ calls: [ToolCall], using registry: ToolRegistry, agent: any AgentRuntime, context: AgentContext? = nil) async throws -> [ToolExecutionResult]` |
-| 393 | func | public | ParallelToolExecutor.executeAllOrFail(_:using:agent:context:) | `public func executeAllOrFail(_ calls: [ToolCall], using registry: ToolRegistry, agent: any AgentRuntime, context: AgentContext? = nil) async throws -> [ToolExecutionResult]` |
+| 78 | class | public | ParallelToolExecutor | `public actor ParallelToolExecutor` |
+| 84 | func | public | ParallelToolExecutor.init() | `public init()` |
+| 136 | func | public | ParallelToolExecutor.executeInParallel(_:using:agent:context:) | `public func executeInParallel(_ calls: [ToolCall], using registry: ToolRegistry, agent: any AgentRuntime, context: AgentContext?) async throws -> [ToolExecutionResult]` |
+| 210 | func | public | ParallelToolExecutor.executeInParallel(_:using:agent:context:errorStrategy:) | `public func executeInParallel(_ calls: [ToolCall], using registry: ToolRegistry, agent: any AgentRuntime, context: AgentContext?, errorStrategy: ParallelExecutionErrorStrategy) async throws -> [ToolExecutionResult]` |
+| 404 | func | public | ParallelToolExecutor.executeAllCapturingErrors(_:using:agent:context:) | `public func executeAllCapturingErrors(_ calls: [ToolCall], using registry: ToolRegistry, agent: any AgentRuntime, context: AgentContext? = nil) async throws -> [ToolExecutionResult]` |
+| 432 | func | public | ParallelToolExecutor.executeAllOrFail(_:using:agent:context:) | `public func executeAllOrFail(_ calls: [ToolCall], using registry: ToolRegistry, agent: any AgentRuntime, context: AgentContext? = nil) async throws -> [ToolExecutionResult]` |
+
+### Tools/ToolExecutionSemantics.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 4 | enum | public | ToolSideEffectLevel | `public enum ToolSideEffectLevel` |
+| 12 | enum | public | ToolRetryPolicy | `public enum ToolRetryPolicy` |
+| 20 | enum | public | ToolApprovalRequirement | `public enum ToolApprovalRequirement` |
+| 27 | enum | public | ToolResultDurability | `public enum ToolResultDurability` |
+| 35 | struct | public | ToolExecutionSemantics | `public struct ToolExecutionSemantics` |
+| 53 | var | public | ToolExecutionSemantics.automatic | `public static let automatic: ToolExecutionSemantics` |
+| 60 | struct | public | ToolExecutionSemantics.RuntimePolicy | `public struct RuntimePolicy` |
+| 74 | func | public | ToolExecutionSemantics.runtimePolicy() | `public func runtimePolicy() -> RuntimePolicy` |
 
 ### Tools/SemanticCompactorTool.swift
 

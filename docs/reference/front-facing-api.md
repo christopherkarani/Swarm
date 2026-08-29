@@ -278,6 +278,12 @@ let greet = FunctionTool(
 }
 ```
 
+`ToolExecutionSemantics.runtimePolicy()` is the public derivation of retry,
+approval, and parallel eligibility. ``ToolExecutionSemantics/automatic`` stays
+approval-free and parallel-eligible. `ParallelToolExecutor` serializes each
+explicit `externalMutation` so it does not overlap another call; consecutive
+parallel-eligible tools still run concurrently.
+
 ### `@ToolBuilder` result builder
 
 Used as the trailing closure in the canonical `Agent` init. No brackets, no commas:
