@@ -102,6 +102,233 @@ struct ReActAgentTests {
         #expect(recordedToolCalls.first?.tools.contains { $0.name == "test_tool" } == true)
     }
 
+    @Test("Multiple tool calls in one turn preserve result order")
+    func multipleToolCallsPreserveResultOrder() async throws {
+        let firstTool = MockTool(name: "first") { _ in
+            .string("first result")
+        }
+        let secondTool = MockTool(name: "second") { _ in
+            .string("second result")
+        }
+
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(id: "call_first", name: "first", arguments: [:]),
+                    InferenceResponse.ParsedToolCall(id: "call_second", name: "second", arguments: [:]),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+            InferenceResponse(content: "Done", toolCalls: [], finishReason: .completed, usage: nil),
+        ])
+
+        let agent = try Agent(
+            tools: [firstTool, secondTool],
+            instructions: "Use both tools.",
+            configuration: .default.parallelToolCalls(true),
+            inferenceProvider: provider
+        )
+
+        let result = try await agent.run("Use both tools")
+
+        #expect(result.toolCalls.map(\.toolName) == ["first", "second"])
+        #expect(result.toolResults.map(\.output) == [.string("first result"), .string("second result")])
+        #expect(result.output == "Done")
+    }
+
+    @Test("Multiple tool-call failures keep input order and continue the run")
+    func multipleToolCallFailuresKeepOrder() async throws {
+        let failing = MockTool(name: "first") { _ in
+            throw AgentError.toolFailure(toolName: "first", message: "boom", cause: nil)
+        }
+        let succeeding = MockTool(name: "second") { _ in
+            .string("ok")
+        }
+
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(id: "call_first", name: "first", arguments: [:]),
+                    InferenceResponse.ParsedToolCall(id: "call_second", name: "second", arguments: [:]),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+            InferenceResponse(content: "Recovered", toolCalls: [], finishReason: .completed, usage: nil),
+        ])
+
+        let agent = try Agent(
+            tools: [failing, succeeding],
+            instructions: "Use both tools.",
+            configuration: .default.parallelToolCalls(true),
+            inferenceProvider: provider
+        )
+
+        let result = try await agent.run("Use both tools")
+
+        #expect(result.toolCalls.map(\.toolName) == ["first", "second"])
+        #expect(result.toolResults.map(\.isSuccess) == [false, true])
+        #expect(result.toolResults[0].errorMessage != nil)
+        #expect(result.toolResults[1].output == .string("ok"))
+        #expect(result.output == "Recovered")
+    }
+
+    @Test("stopOnToolError throws after committing the first failed call")
+    func stopOnToolErrorThrowsFirstFailure() async throws {
+        let failing = MockTool(name: "first") { _ in
+            throw AgentError.toolFailure(toolName: "first", message: "boom", cause: nil)
+        }
+        let succeeding = MockTool(name: "second") { _ in
+            .string("ok")
+        }
+
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(id: "call_first", name: "first", arguments: [:]),
+                    InferenceResponse.ParsedToolCall(id: "call_second", name: "second", arguments: [:]),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+            InferenceResponse(content: "should not run", toolCalls: [], finishReason: .completed, usage: nil),
+        ])
+
+        let agent = try Agent(
+            tools: [failing, succeeding],
+            instructions: "Use both tools.",
+            configuration: .default.parallelToolCalls(true).stopOnToolError(true),
+            inferenceProvider: provider
+        )
+
+        do {
+            _ = try await agent.run("Use both tools")
+            Issue.record("Expected stopOnToolError to throw")
+        } catch let error as AgentError {
+            switch error {
+            case let .toolFailure(toolName, message, _):
+                #expect(toolName == "first")
+                #expect(message?.contains("boom") == true)
+            default:
+                Issue.record("Expected toolFailure, got \(error)")
+            }
+        } catch {
+            Issue.record("Expected AgentError, got \(error)")
+        }
+    }
+
+    @Test("Parallel tool timeout cancels in-flight tool work")
+    func parallelToolTimeoutCancelsInflightWork() async throws {
+        let hanging = MockTool(name: "slow") { _ in
+            try await Task.sleep(for: .seconds(2))
+            return .string("late")
+        }
+        let alsoHanging = MockTool(name: "slower") { _ in
+            try await Task.sleep(for: .seconds(2))
+            return .string("later")
+        }
+
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(id: "call_slow", name: "slow", arguments: [:]),
+                    InferenceResponse.ParsedToolCall(id: "call_slower", name: "slower", arguments: [:]),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let agent = try Agent(
+            tools: [hanging, alsoHanging],
+            instructions: "Use both tools.",
+            configuration: .default.parallelToolCalls(true).timeout(.milliseconds(80)),
+            inferenceProvider: provider
+        )
+
+        let runTask = Task {
+            try await agent.run("Use both tools")
+        }
+        let completion = await awaitParallelTaskResult(runTask, timeout: .milliseconds(800))
+        guard let completion else {
+            runTask.cancel()
+            Issue.record("Parallel tool run did not stop promptly after timeout")
+            return
+        }
+
+        switch completion {
+        case .success:
+            Issue.record("Expected timeout error but run succeeded")
+        case let .failure(error as AgentError):
+            #expect(error == .timeout(duration: .milliseconds(80)))
+        case let .failure(error):
+            Issue.record("Expected AgentError.timeout, got \(error)")
+        }
+    }
+
+    @Test("Parallel tool cancellation stops in-flight tool work")
+    func parallelToolCancellationStopsInflightWork() async throws {
+        let hanging = MockTool(name: "slow") { _ in
+            try await Task.sleep(for: .seconds(2))
+            return .string("late")
+        }
+        let alsoHanging = MockTool(name: "slower") { _ in
+            try await Task.sleep(for: .seconds(2))
+            return .string("later")
+        }
+
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(id: "call_slow", name: "slow", arguments: [:]),
+                    InferenceResponse.ParsedToolCall(id: "call_slower", name: "slower", arguments: [:]),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let agent = try Agent(
+            tools: [hanging, alsoHanging],
+            instructions: "Use both tools.",
+            configuration: .default.parallelToolCalls(true).timeout(.seconds(15)),
+            inferenceProvider: provider
+        )
+
+        let runTask = Task {
+            try await agent.run("Use both tools")
+        }
+        try await Task.sleep(for: .milliseconds(40))
+        await agent.cancel()
+
+        let completion = await awaitParallelTaskResult(runTask, timeout: .milliseconds(800))
+        guard let completion else {
+            runTask.cancel()
+            Issue.record("Parallel tool run did not stop promptly after agent.cancel()")
+            return
+        }
+
+        switch completion {
+        case .success:
+            Issue.record("Expected cancellation error but run succeeded")
+        case let .failure(error as AgentError):
+            #expect(error == .cancelled)
+        case let .failure(error):
+            Issue.record("Expected AgentError.cancelled, got \(error)")
+        }
+    }
+
     @Test("Max iterations exceeded")
     func maxIterationsExceeded() async throws {
         // Create mock provider that always returns tool calls (never a final text response)
@@ -230,5 +457,29 @@ struct ToolRegistryTests {
 
         let notFound = await registry.tool(named: "test_tool")
         #expect(notFound == nil)
+    }
+}
+
+private func awaitParallelTaskResult<T: Sendable>(
+    _ task: Task<T, Error>,
+    timeout: Duration
+) async -> Result<T, Error>? {
+    await withTaskGroup(of: Result<T, Error>?.self) { group in
+        group.addTask {
+            do {
+                return .success(try await task.value)
+            } catch {
+                return .failure(error)
+            }
+        }
+
+        group.addTask {
+            try? await Task.sleep(for: timeout)
+            return nil
+        }
+
+        let first = await group.next() ?? nil
+        group.cancelAll()
+        return first
     }
 }

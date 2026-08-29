@@ -53,7 +53,10 @@ public actor MCPToolBridge {
     /// wraps each one in an `MCPBridgedTool` that delegates execution back
     /// to the server.
     ///
-    /// - Returns: An array of Tool implementations that delegate to the MCP server.
+    /// - Returns: An array of ``AnyJSONTool`` values that delegate to the MCP server.
+    ///   `AnyJSONTool` is the public type-erased interoperability seam used by
+    ///   ``Agent`` and ``ToolRegistry``. Prefer ``Tool`` or `@Tool` for
+    ///   type-safe application-authored tools.
     /// - Throws: `MCPError.methodNotFound` if the server does not support tools.
     ///           `MCPError.internalError` if listing tools fails.
     ///

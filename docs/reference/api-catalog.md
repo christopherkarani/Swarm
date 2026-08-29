@@ -1,9 +1,11 @@
 # Swarm Public API Catalog
 
-Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14. OpenAI-compatible provider rows added 2026-08-14.
+Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for high-risk public rows on 2026-07-28 (Conduit hard-removed in 0.6). MCP client rows refreshed 2026-08-14. OpenAI-compatible provider rows added 2026-08-14. Header counts refreshed 2026-08-29.
+
+Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 196
+- Source files scanned: 196 (203 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2325
 
 ## 1. Swarm (entry point)
@@ -2990,6 +2992,14 @@ exports companion products with small public entry surfaces.
 Requires the **OpenTelemetry** SwiftPM trait (`traits: ["OpenTelemetry"]`).
 Without it this product is a hollow module exposing ``OpenTelemetryTrait``.
 
+#### Sources/SwarmOpenTelemetry/OpenTelemetryTrait.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 5 | enum | public | OpenTelemetryTrait | `public enum OpenTelemetryTrait` |
+| 7 | var | public | OpenTelemetryTrait.isEnabled | `public static var isEnabled: Bool { get }` |
+| 21 | func | public | OpenTelemetryTrait.requirementMessage(for:) | `public static func requirementMessage(for feature: String = "SwarmOpenTelemetry") -> String` |
+
 
 #### Sources/SwarmOpenTelemetry/OpenTelemetryInferenceProvider.swift
 
@@ -3066,6 +3076,15 @@ integration APIs cataloged in section 12 under
 
 Requires the **MCP** SwiftPM trait (`traits: ["MCP"]`). Without it this product
 is a hollow module exposing ``MCPTrait``.
+
+#### Sources/SwarmMCP/MCPTrait.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 7 | enum | public | MCPTrait | `public enum MCPTrait` |
+| 9 | var | public | MCPTrait.isEnabled | `public static var isEnabled: Bool { get }` |
+| 21 | func | public | MCPTrait.requirementMessage(for:) | `public static func requirementMessage(for feature: String = "SwarmMCP") -> String` |
+
 
 #### Sources/SwarmMCP/SwarmMCPServerService.swift
 

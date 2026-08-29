@@ -6,9 +6,8 @@
 # Forbidden = hive | membrane | contextcore | conduit (and matching
 # christopherkarani/* remote URLs). In-tree Sources/ modules are fine.
 #
-# Lean default (Integrations off, Macros on): swift-syntax, swift-log, and the
-# unconditional MCP/OpenTelemetry package graph. Package traits gate reachable
-# target/product links; they cannot make package declarations resolution-opt-in.
+# Lean default (Integrations/MCP/OpenTelemetry off, Macros on):
+#   only swift-syntax + swift-log.
 # Disable Macros (`traits: []`) to drop swift-syntax — see
 # scripts/ci/verify-macros-disabled-consumer.sh.
 #
@@ -16,7 +15,8 @@
 #   swift package resolve
 #   scripts/ci/verify-lean-resolve.sh
 #
-# Optional: SWARM_LEAN_ALLOWED_IDS=id,id overrides the default allowlist.
+# Optional: SWARM_LEAN_ALLOWED_IDS=id,id  overrides the default allowlist
+# (used by the macros-disabled consumer, which must pin only swift-log).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -45,7 +45,7 @@ FORBIDDEN_URL_FRAGMENTS = (
     "christopherkarani/contextcore",
     "christopherkarani/conduit",
 )
-# Opt-in remotes that must not appear on the lean resolve.
+# Opt-in remotes that must not appear on lean resolve (trait-gated edges).
 LEAN_BLOCKED_IDS = frozenset({
     "wax",
     "metalanns",
@@ -111,7 +111,7 @@ if blocked:
     failed = True
 if unexpected:
     print(
-        f"FAIL: lean package-graph allowlist is {sorted(allowed)}; unexpected pins: {unexpected}",
+        f"FAIL: lean resolve allowlist is {sorted(allowed)}; unexpected pins: {unexpected}",
         file=sys.stderr,
     )
     failed = True
@@ -121,6 +121,6 @@ if failed:
 
 print(
     "PASS: no hive/membrane/contextcore/conduit; "
-    f"lean package graph contains only allowed pins {sorted(allowed)}"
+    f"lean pins exactly {sorted(allowed)}"
 )
 PY

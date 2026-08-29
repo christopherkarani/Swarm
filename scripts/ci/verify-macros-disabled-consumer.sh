@@ -32,7 +32,7 @@ if [[ -f Package.resolved ]]; then
     exit 1
   fi
   SWARM_PACKAGE_RESOLVED="$FIXTURE_DIR/Package.resolved" \
-    SWARM_LEAN_ALLOWED_IDS="swift-log,swift-sdk,opentelemetry-swift-core,eventsource,swift-nio,swift-atomics,swift-system,swift-collections" \
+    SWARM_LEAN_ALLOWED_IDS="swift-log" \
     bash "$ROOT_DIR/scripts/ci/verify-lean-resolve.sh"
 fi
 

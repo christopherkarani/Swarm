@@ -206,6 +206,21 @@ let agent = try Agent(
 | `handoffs` | `[AnyHandoffConfiguration]` | `[]` | Handoff targets for multi-agent orchestration |
 | `tools` | `@ToolBuilder () -> ToolCollection` | `{ .empty }` | Trailing closure producing the agent's tools |
 
+### AgentConfiguration
+
+`AgentConfiguration` controls the agent loop and provider options. The default
+is conservative: streaming is enabled, tool failures are collected instead of
+immediately thrown, and capture-path tool calls are sequential. Set
+`parallelToolCalls(true)` only when same-turn tools are independent; Swarm then
+executes regular capture-path calls concurrently while preserving their input
+order in `AgentResult.toolCalls` and `AgentResult.toolResults`. Handoffs and
+membrane-internal calls remain ordered.
+
+`includeToolCallDetails` and `includeReasoning` are retained compatibility
+settings and currently have no effect. Tool details are always represented by
+`AgentResult.toolCalls` / `AgentResult.toolResults`; provider-emitted reasoning
+uses `AgentEvent.output(.thinking(...))` or `.thinkingPartial(...)`.
+
 ### Resilience (inference only)
 
 `AgentConfiguration.resilience` is additive and defaults to ``ResilienceConfiguration/disabled`` (``RetryPolicy/noRetry``, no breaker, no limiter). That default is a no-op.
@@ -275,6 +290,33 @@ Agent("instructions") {
 ```
 
 The builder produces an opaque `ToolCollection`; callers supply concrete `Tool` values or `[any Tool]`, and Swarm handles the internal type erasure.
+
+### `AnyJSONTool` (advanced interoperability seam)
+
+`AnyJSONTool` is public because dynamic tools and integrations need a stable
+wire-shaped capability. It is the type-erased tool value exchanged by `Agent`,
+`ToolRegistry`, and MCP discovery/bridge APIs. Prefer `Tool` and `@Tool` for
+application-authored tools; conform directly when a tool is created at runtime,
+comes from MCP, or cannot be represented by the typed protocol.
+
+```swift
+public protocol AnyJSONTool: Sendable {
+    var name: String { get }
+    var description: String { get }
+    var parameters: [ToolParameter] { get }
+    func execute(arguments: [String: SendableValue]) async throws -> SendableValue
+}
+
+let dynamicTool: any AnyJSONTool = FunctionTool(
+    name: "greet",
+    description: "Greets a person",
+    parameters: []
+) { _ in .string("Hello") }
+```
+
+`Tool.asAnyJSONTool()` and `AnyJSONToolAdapter` bridge typed tools to this seam.
+`MCPClient.getAllTools()` and `MCPToolBridge.bridgeTools()` return
+`[any AnyJSONTool]` for the same reason.
 
 `WebSearchTool` compiles on lean builds. Query `WebSearchTool.isAvailable` (or
 `IntegrationsTrait.isEnabled`) before constructing it; lean inits warn immediately
@@ -677,10 +719,10 @@ Opt in to a provider-owned tool loop with
 ``InferenceProviderCapabilities/providerOwnedToolLoop`` and always calls
 ``InferenceProvider/generateWithToolCalls(messages:tools:options:toolExecutor:)``
 (or the streaming counterpart). It never type-casts the adapter.
-``AgentConfiguration/foundationModelsExecution`` is ignored. Capture remains
-the default. Structured outputs use guided generation when the JSON Schema maps;
-otherwise prompt+parse. Existing providers may continue to conform to the
-deprecated marker protocols while migrating to the canonical seam.
+``AgentConfiguration/foundationModelsExecution`` is ignored. Choose the loop
+by constructing ``InferenceProvider/foundationModelsOwningToolLoop()``.
+Capture remains the default. Structured outputs use guided generation when
+the JSON Schema maps; otherwise prompt+parse.
 See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
@@ -750,6 +792,23 @@ public struct AgentResult: Sendable {
     /// Provider-reported token usage, or `nil` when the backend does not expose counts
     /// (including Apple Foundation Models on the current SDK).
     public let tokenUsage: TokenUsage?
+    public let metadata: [String: SendableValue]
+}
+
+public struct AgentResponse: Sendable {
+    public let responseId: String
+    public let output: String
+    public let agentName: String
+    public let timestamp: Date
+    public let metadata: [String: SendableValue]
+    public let toolCalls: [ToolCallRecord]
+    public let usage: TokenUsage?
+    public let iterationCount: Int
+    /// Lossy compatibility projection onto `AgentResult`.
+    /// Drops `responseId`, `agentName`, and response `timestamp`.
+    /// Mints new tool-call IDs on every access. `duration` is the sum of
+    /// recorded tool-call durations (`.zero` when no tools ran).
+    public var asResult: AgentResult { get }
 }
 
 public struct ToolResult: Sendable {

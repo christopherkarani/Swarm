@@ -155,7 +155,9 @@ public actor MCPClient {
     /// are cached for performance; subsequent calls return the cached tools
     /// until the cache is invalidated (by adding or removing servers).
     ///
-    /// - Returns: An array of all available tools from all connected servers.
+    /// - Returns: An array of ``AnyJSONTool`` values from all connected servers.
+    ///   `AnyJSONTool` is Swarm's public type-erased interoperability seam; use
+    ///   ``Tool`` or `@Tool` for type-safe application-authored tools.
     /// - Throws: `MCPError` if tool discovery fails for any server.
     ///
     /// ## Example
@@ -279,7 +281,9 @@ public actor MCPClient {
     /// discovery of tools from all connected servers. Use this when you
     /// need to ensure the tool list is up-to-date.
     ///
-    /// - Returns: An array of all available tools from all connected servers.
+    /// - Returns: An array of ``AnyJSONTool`` values from all connected servers.
+    ///   `AnyJSONTool` is Swarm's public type-erased interoperability seam; use
+    ///   ``Tool`` or `@Tool` for type-safe application-authored tools.
     /// - Throws: `MCPError` if tool discovery fails for any server.
     ///
     /// ## Example

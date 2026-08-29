@@ -9,9 +9,10 @@ import Foundation
 
 /// The type-erased wire protocol for tool execution.
 ///
-/// `AnyJSONTool` is the internal protocol used by `Agent` and `ToolRegistry` to execute
-/// tools without knowing their concrete types. Most users should not conform to this
-/// protocol directly — use the ``Tool`` protocol with the `@Tool` macro instead.
+/// `AnyJSONTool` is the public type-erased capability used by `Agent`, `ToolRegistry`,
+/// and MCP bridges to execute tools without knowing their concrete types. Most users
+/// should author tools with the ``Tool`` protocol and `@Tool` macro; use this protocol
+/// directly for custom dynamic tools or interoperability adapters.
 ///
 /// The `@Tool` macro automatically generates conformance to `AnyJSONTool` through an
 /// adapter, including:
@@ -21,8 +22,12 @@ import Foundation
 ///
 /// ## When to Use `AnyJSONTool` Directly
 ///
-/// Only conform to this protocol directly if you need custom tool behavior
-/// that cannot be expressed with the macro:
+/// Conform directly when a tool is dynamic at runtime, comes from an interoperability
+/// layer such as MCP, or needs behavior that cannot be expressed with the macro.
+/// This is an advanced seam; the type-erased value is also what ``Agent/tools`` and
+/// public MCP discovery APIs exchange.
+///
+/// Example:
 ///
 /// ```swift
 /// struct CustomTool: AnyJSONTool {
@@ -41,11 +46,10 @@ import Foundation
 ///
 /// ## Protocol Requirements
 ///
-/// All requirements must be implemented to conform to `AnyJSONTool`:
-/// - ``name`` - Unique identifier for the tool
-/// - ``description`` - Human-readable description for the LLM
-/// - ``parameters`` - Schema for tool arguments
-/// - ``execute(arguments:)`` - The actual tool implementation
+/// A direct conformance supplies the tool name, description, parameter schema, and
+/// ``execute(arguments:)`` implementation. ``inputGuardrails``, ``outputGuardrails``,
+/// ``executionSemantics``, and ``isEnabled`` have safe defaults in the protocol
+/// extension and can be overridden when an advanced integration needs them.
 ///
 /// - SeeAlso: ``Tool``, ``ToolSchema``, ``ToolParameter``
 public protocol AnyJSONTool: Sendable {

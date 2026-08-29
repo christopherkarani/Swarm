@@ -1,8 +1,13 @@
 # Production Readiness Findings (Foundation Models DX)
 
+> Historical snapshot of the 0.6.0 Foundation Models DX pass (2026-07-17).
+> It is not current production guidance. For the live public surface, use
+> [front-facing-api.md](../reference/front-facing-api.md), [overview.md](../reference/overview.md),
+> and [api-catalog.md](../reference/api-catalog.md).
+
 Audit and hardening pass focused on making Swarm easy to use in real apps — especially with **Apple Foundation Models** — without breaking the public API.
 
-**Date:** 2026-07-17 · **Branch work:** `chore-polishapi` · **Framework version:** 0.6.0
+**Date:** 2026-07-17 · **Branch work:** `chore-polishapi` · **Framework version:** 0.6.0 (historical)
 
 ## Baseline
 

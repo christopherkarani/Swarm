@@ -113,6 +113,18 @@ swift run SwarmCapabilityShowcase smoke  # requires Foundation Models on host
   target. It is a hollow `@_exported import Swarm` re-export; import `Swarm`
   and use the Membrane types on that product.
 
+## API catalog refresh
+
+`docs/reference/api-catalog.md` is exhaustive and hand-maintained. Refresh the
+header source-file counts with:
+
+```bash
+scripts/ci/refresh-api-catalog-header.sh
+```
+
+That script does not regenerate rows. After public API changes, update the
+affected high-risk rows by hand and keep `DocumentationFreshnessTests` green.
+
 ## Tagging Sequence
 
 1. Finalize the dependency graph in `Package.swift`.

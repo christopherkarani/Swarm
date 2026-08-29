@@ -329,7 +329,8 @@ surface as semi-stable. The supported public reference documents are
 ## When You're Stuck
 
 - For "what does X do?" questions, search `Sources/Swarm/<Area>/` first, then
-  `docs/reference/api-catalog.md`.
+  `docs/reference/api-catalog.md`. Refresh catalog header counts with
+  `scripts/ci/refresh-api-catalog-header.sh`; exhaustive rows stay hand-maintained.
 - For workflow examples, read `Sources/SwarmCapabilityShowcaseSupport/CapabilityShowcase.swift`
   — it touches every stable subsystem.
 - For provider behaviour, look at `Sources/Swarm/Providers/FoundationModels/`
