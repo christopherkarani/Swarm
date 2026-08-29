@@ -80,17 +80,18 @@ extension Agent {
             iteration: 0,
             maxIterations: configuration.maxIterations
         )
+        var pendingTurnAction = AgentTurnKernel.TurnAction.startNextIteration
 
         while true {
-            // Kernel: admit the next iteration before any per-iteration effects
-            // run (mirrors the previous `while iteration < maxIterations` head).
-            switch AgentTurnKernel.transition(turnState, .startNextIteration) {
+            // Kernel: admit before per-iteration effects. After host tools the
+            // shell feeds `.toolsCompleted` instead of `.startNextIteration`.
+            switch AgentTurnKernel.transition(turnState, pendingTurnAction) {
             case .fail(let error):
                 throw error
             case .performInference(let admitted):
                 turnState = admitted
                 iteration = admitted.iteration
-            default:
+            case .executeTools, .retryOwnedLoopInference, .finish:
                 throw AgentError.internalError(reason: "Unexpected admission transition")
             }
 
@@ -271,6 +272,29 @@ extension Agent {
                         await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
                         return handoffOutcome
                     }
+                    if case .ownedLoopTools = turnState.mode {
+                        let agentError = (error as? AgentError)
+                            ?? .generationFailed(reason: error.localizedDescription)
+                        switch AgentTurnKernel.transition(
+                            turnState,
+                            .ownedLoopInferenceFailed(agentError)
+                        ) {
+                        case .fail(let kernelError):
+                            if error is AgentError {
+                                throw kernelError
+                            }
+                            throw error
+                        case .retryOwnedLoopInference:
+                            // Empty schemas: executeProviderInference already
+                            // applied ownedLoopInferenceRetryPolicy. Honor the
+                            // kernel without admitting or replaying tools.
+                            throw error
+                        case .performInference, .executeTools, .finish:
+                            throw AgentError.internalError(
+                                reason: "Unexpected owned-loop failure transition"
+                            )
+                        }
+                    }
                     throw error
                 }
                 recordUsage(response.usage, on: resultBuilder)
@@ -322,7 +346,10 @@ extension Agent {
                         )
                     }
                     await observer?.onIterationEnd(context: nil, agent: self, number: iteration)
-                default:
+                    pendingTurnAction = .toolsCompleted
+                    continue
+
+                case .performInference, .retryOwnedLoopInference:
                     throw AgentError.internalError(reason: "Unexpected inference transition")
                 }
             } catch {

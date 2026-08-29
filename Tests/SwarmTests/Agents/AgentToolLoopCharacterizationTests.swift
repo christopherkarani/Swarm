@@ -1,15 +1,15 @@
 // AgentToolLoopCharacterizationTests.swift
 // SwarmTests
 //
-// Characterization tests for the Agent tool-calling loop (spec ticket T2, AC-004).
-// They pin the CURRENT public behavior of `Agent.executeToolCallingLoop` and must
-// pass unchanged before and after the turn-kernel transition extraction.
+// Characterization tests for the Agent tool-calling loop (spec T1 AC-001).
+// They pin public `executeToolCallingLoop` behavior: one admission per inference
+// attempt, including after host tools without a handoff.
 
 import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Tool-calling loop characterization (T2 AC-004)")
+@Suite("Tool-calling loop characterization (T1 AC-001)")
 struct AgentToolLoopCharacterizationTests {
     private static let loopConfiguration = AgentConfiguration.default
         .enableStreaming(false)
@@ -36,7 +36,30 @@ struct AgentToolLoopCharacterizationTests {
         #expect(await tool.callCount == 1)
         // One tool-calling turn plus one final turn.
         #expect(await provider.recordedInferenceCallCount == 2)
+        #expect(result.iterationCount == 2)
         #expect(result.toolCalls.map(\.toolName) == ["weather"])
+    }
+
+    @Test("Two host-tool rounds under a tight cap admit once per inference")
+    func twoHostToolRoundsUnderTightCapDoNotDoubleAdmit() async throws {
+        let tool = SpyTool(name: "step", result: .string("ok"))
+        let provider = await MockInferenceProvider()
+        await provider.configureToolCallingSequence(
+            toolCalls: [("step", [:]), ("step", [:])],
+            finalAnswer: "done"
+        )
+        let agent = try Agent(
+            tools: [tool],
+            configuration: Self.loopConfiguration.maxIterations(3),
+            inferenceProvider: provider
+        )
+
+        let result = try await agent.run("two steps")
+
+        #expect(result.output == "done")
+        #expect(await tool.callCount == 2)
+        #expect(await provider.recordedInferenceCallCount == 3)
+        #expect(result.iterationCount == 3)
     }
 
     @Test("Iteration cap throws maxIterationsExceeded with the configured count")

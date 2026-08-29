@@ -136,13 +136,18 @@ enum AgentTurnKernel: Sendable {
 
     /// Facts the shell reports to the kernel after executing an effect.
     ///
-    /// `Agent.executeToolCallingLoop` currently feeds only
-    /// `.startNextIteration` (loop head) and `.inferenceCompleted`. The
-    /// remaining actions are modeled but not yet wired into the shell:
-    /// `.toolsCompleted` is equivalent to the shell re-entering
-    /// `.startNextIteration` at the loop head, and `.ownedLoopInferenceFailed`
-    /// corresponds to failures the shell currently handles through
-    /// `ownedLoopInferenceRetryPolicy` inside `executeProviderInference`.
+    /// `Agent.executeToolCallingLoop` feeds every action:
+    /// - ``TurnAction/startNextIteration`` admits the first iteration
+    /// - ``TurnAction/inferenceCompleted(_:)`` interprets the provider response
+    /// - ``TurnAction/toolsCompleted`` continues after host tools without a
+    ///   handoff (the sole admission for that tool round; the shell must not
+    ///   also feed ``TurnAction/startNextIteration``)
+    /// - ``TurnAction/ownedLoopInferenceFailed(_:)`` classifies owned-loop
+    ///   inference failures. Empty schemas are retry-safe
+    ///   (``TurnTransition/retryOwnedLoopInference``); tools that already ran
+    ///   inside inference fail closed. `executeProviderInference` still applies
+    ///   ``ownedLoopInferenceRetryPolicy(mode:hasToolSchemas:)`` so retry
+    ///   timing is unchanged.
     enum TurnAction: Equatable, Sendable {
         /// Loop head: request admission of the next iteration.
         case startNextIteration
@@ -197,8 +202,9 @@ enum AgentTurnKernel: Sendable {
             }
 
         case .toolsCompleted:
-            // Continuing the loop re-enters at the loop head, where the
-            // iteration cap is enforced before any per-iteration effects run.
+            // The shell feeds this after host tools without a handoff. It is
+            // the sole continue-admission for that tool round; feeding
+            // `.startNextIteration` as well would double-count.
             return transition(state, .startNextIteration)
 
         case .ownedLoopInferenceFailed(let error):

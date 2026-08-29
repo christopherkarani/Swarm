@@ -236,6 +236,20 @@ struct AgentTurnKernelTests {
         #expect(capped == .fail(.maxIterationsExceeded(iterations: 3)))
     }
 
+    @Test("toolsCompleted already admits, so a second startNextIteration would skip a slot")
+    func toolsCompletedMustNotBeFollowedByStartNextIteration() {
+        let afterHostTools = state(iteration: 1, mode: .hostTools(streaming: false))
+        let continued = AgentTurnKernel.transition(afterHostTools, .toolsCompleted)
+        guard case let .performInference(admitted) = continued else {
+            Issue.record("Expected toolsCompleted to admit the next iteration")
+            return
+        }
+        #expect(admitted.iteration == 2)
+
+        let doubled = AgentTurnKernel.transition(admitted, .startNextIteration)
+        #expect(doubled == .performInference(state(iteration: 3, maxIterations: 3, mode: nil)))
+    }
+
     @Test("Owned-loop inference failure retries only with an empty tool list")
     func ownedLoopInferenceFailureRetryDecision() {
         let transient = AgentError.generationFailed(reason: "transient 503")
@@ -246,6 +260,10 @@ struct AgentTurnKernelTests {
             .ownedLoopInferenceFailed(transient)
         )
         #expect(emptySchemas == .retryOwnedLoopInference(emptySchemasState))
+        guard case let .retryOwnedLoopInference(retryState) = emptySchemas else {
+            return
+        }
+        #expect(retryState.iteration == emptySchemasState.iteration)
 
         let withSchemas = AgentTurnKernel.transition(
             state(iteration: 1, mode: .ownedLoopTools(streaming: false), hasToolSchemas: true),
