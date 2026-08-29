@@ -492,8 +492,14 @@ public protocol OutputGuardrail: Sendable {
 statics. Prefer `set(.originalInput, "…")` / `get(.originalInput)` over the
 deprecated `AgentContextKey` get/set. Typed `ContextKey` writes stay in the
 slot store introduced with the unified context; `snapshot` still projects
-those names. `AgentContextProviding` remains a deprecated shim keyed by
-concrete type plus `contextKey`.
+those names. The deprecated `AgentContextProviding` protocol remains
+functional for compatibility: conformers provide a `contextKey`, then use
+`setTyped(_:)`, `typed(_:)`, `removeTyped(_:)`, and `hasTyped(_:)`. These
+type-indexed methods use a separate legacy namespace and do not appear in
+string-keyed snapshots. Migrate new code to `ContextKey<Value>` and the
+`setTyped(_:value:)` / `getTyped(_:)` accessors. The deprecated
+`AgentContextKey` overloads of `get(_:)` and `set(_:value:)` remain available
+for existing string-keyed callers until the 0.7.0 breaking boundary.
 
 ## 9) Memory factories
 
@@ -543,8 +549,8 @@ let vector: VectorMemory = .vector(
 ### Optional memory capabilities (`Memory` protocol)
 
 Custom `Memory` conformers opt into optional runtime behaviors by implementing
-defaulted `Memory` requirements — no marker protocol conformance is required or
-consulted. Implementing the member is the opt-in:
+defaulted `Memory` requirements. Marker protocols are neither required for
+runtime dispatch nor consulted. Implementing the member is the opt-in:
 
 ```swift
 public protocol Memory: Actor, Sendable {
@@ -578,11 +584,22 @@ public protocol Memory: Actor, Sendable {
 system prompts; `nil` renders under the generic "Relevant Context from Memory"
 heading with no guidance text.
 
-The former marker protocols are deprecated and still compile so existing
-conformances keep working: `MemorySessionLifecycle`,
-`MemorySessionReplayAware`, `MemoryRetrievalPolicyAware`,
-`MemorySessionImportPolicy`, and `MemoryPromptDescriptor`. Migrate by
-implementing the corresponding `Memory` requirement directly.
+Memory lifecycle, retrieval, seeding, and prompt metadata are direct
+requirements on `Memory`; implement them on the memory type itself.
+
+The former marker protocols remain public and deprecated so existing conformances
+continue to compile: `MemorySessionLifecycle`, `MemorySessionReplayAware`,
+`MemoryRetrievalPolicyAware`, `MemorySessionImportPolicy`, and
+`MemoryPromptDescriptor`. Their corresponding `Memory` requirements are
+`beginMemorySession()` / `endMemorySession()`, `importSessionHistory(_:)`,
+`context(for: MemoryQuery)`, `allowsAutomaticSessionSeeding`, and
+`memoryPromptMetadata`.
+
+`MemoryPromptDescriptor` is bridged to `Memory.memoryPromptMetadata`: its title,
+guidance, and priority are combined into `MemoryPromptMetadata`, preserving
+prompt labels for existing conformers without source changes. New conformers
+should implement the direct `Memory` requirements; the runtime does not probe
+the legacy marker protocols.
 
 ## 10) HandoffTool
 
@@ -654,9 +671,16 @@ public protocol InferenceProvider: Sendable {
 ```
 
 Agent reads ``InferenceProviderCapabilities`` and ``InferenceProvider/promptTokenCounter``
-on ``InferenceProvider``. Deprecated leftover protocols
-(`ToolCallStreamingInferenceProvider`, `StructuredOutputInferenceProvider`,
-`PromptTokenCountingInferenceProvider`) are not the Agent seam.
+directly from ``InferenceProvider``. Deprecated marker protocols remain available
+for source compatibility, but capability bits and the structured-message methods
+are the single provider integration seam. Agent does not dispatch through marker
+protocol identities.
+
+Use ``InferenceProviderCapabilities/resolved(for:)`` for canonical capability
+resolution. The deprecated ``InferenceProviderCapabilities/inferred(from:)``
+helper remains available as a forwarding compatibility shim until a future
+breaking boundary is explicitly documented; it has the same capability
+semantics as ``resolved(for:)``.
 
 ### Provider factories (dot-syntax)
 
@@ -664,6 +688,13 @@ Built-in inference is Apple Foundation Models (on-device) and
 ``OpenAICompatibleProvider`` (remote / local HTTP). Other backends implement
 ``InferenceProvider`` and are passed explicitly (or via
 `await Swarm.configure(provider:)`).
+
+Prompt-string methods remain for one minor so existing backends compile. Agent
+and tests call the messages methods only. Prompt-string methods default to
+wrapping `prompt` as a user message. Capability bits and the structured-message
+methods are the live dispatch surface. Deprecated marker protocols remain
+available for source compatibility: `PromptTokenCountingInferenceProvider`,
+`StructuredOutputInferenceProvider`, and `ToolCallStreamingInferenceProvider`.
 
 ```swift
 .foundationModels()                 // On-device first-class provider
@@ -688,10 +719,10 @@ Opt in to a provider-owned tool loop with
 ``InferenceProviderCapabilities/providerOwnedToolLoop`` and always calls
 ``InferenceProvider/generateWithToolCalls(messages:tools:options:toolExecutor:)``
 (or the streaming counterpart). It never type-casts the adapter.
-Choose the loop by constructing ``InferenceProvider/foundationModelsOwningToolLoop()``;
-there is no `AgentConfiguration` flag. Capture remains the default. Structured
-outputs use guided generation when the JSON Schema maps; otherwise prompt+parse.
-Agent never type-casts leftover capability protocols.
+``AgentConfiguration/foundationModelsExecution`` is ignored. Choose the loop
+by constructing ``InferenceProvider/foundationModelsOwningToolLoop()``.
+Capture remains the default. Structured outputs use guided generation when
+the JSON Schema maps; otherwise prompt+parse.
 See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
@@ -792,6 +823,15 @@ public struct ToolResult: Sendable {
     public var isSuccess: Bool { get }
     public var output: SendableValue { get }       // `.null` on failure
     public var errorMessage: String? { get }      // `nil` on success
+
+    @available(*, deprecated, message: "Use ToolResult.success(...) or .failure(callId:error:duration:)")
+    public init(
+        callId: UUID,
+        isSuccess: Bool,
+        output: SendableValue,
+        duration: Duration,
+        errorMessage: String? = nil
+    )
 }
 
 public struct ToolCallRecord: Sendable {
@@ -811,7 +851,7 @@ public struct ToolCallRecord: Sendable {
 }
 ```
 
-Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The independent `isSuccess` + `errorMessage` memberwise initializers remain as deprecated compatibility shims. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
+Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The deprecated `ToolResult.init(callId:isSuccess:output:duration:errorMessage:)` and `ToolCallRecord` compatibility initializer remain available until the documented breaking boundary. They map independently supplied fields to the closed outcome using the historical rules: success ignores `errorMessage`, failure ignores `output`, and a nil failure message becomes `"Tool execution failed"`. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
 
 ### Tool failure errors
 

@@ -23,7 +23,7 @@ public protocol PromptTokenCounter: Sendable {
 ///
 /// Providers conform to this when they can count tokens for the exact model
 /// they are serving. Agent reads ``InferenceProvider/promptTokenCounter`` instead
-/// of this leftover identity.
+/// of this deprecated compatibility identity.
 @available(*, deprecated, message: "Expose promptTokenCounter on InferenceProvider")
 public protocol PromptTokenCountingInferenceProvider: InferenceProvider, PromptTokenCounter {}
 

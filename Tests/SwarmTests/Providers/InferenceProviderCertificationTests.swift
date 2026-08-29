@@ -153,11 +153,11 @@ struct InferenceProviderCertificationTests {
 
         let error = try await ProviderCertificationHarness.certifyMalformedToolArguments(using: provider)
 
-        if case let .toolExecutionFailed(toolName, underlyingError) = error {
+        if case let .toolFailure(toolName, message, _) = error {
             #expect(toolName == "string")
-            #expect(underlyingError.contains("operation"))
+            #expect(message?.contains("operation") == true)
         } else {
-            Issue.record("Expected toolExecutionFailed for malformed tool arguments, got: \(error)")
+            Issue.record("Expected toolFailure for malformed tool arguments, got: \(error)")
         }
     }
 

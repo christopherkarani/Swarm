@@ -300,7 +300,7 @@ struct LoggingAgentObserverTests {
         await observer.onError(
             context: nil,
             agent: agent,
-            error: AgentError.toolExecutionFailed(toolName: "calculator", underlyingError: "Division by zero")
+            error: AgentError.toolFailure(toolName: "calculator", message: "Division by zero", cause: nil)
         )
     }
 

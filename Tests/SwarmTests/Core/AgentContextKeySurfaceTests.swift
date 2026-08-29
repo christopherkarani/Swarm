@@ -158,4 +158,5 @@ struct AgentContextKeySurfaceTests {
         #expect(await context.hasTyped(ContextTypeA.self))
         #expect(await context.hasTyped(ContextTypeB.self))
     }
+
 }

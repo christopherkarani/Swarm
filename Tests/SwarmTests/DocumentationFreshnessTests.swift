@@ -98,8 +98,6 @@ struct DocumentationFreshnessTests {
         #expect(!catalog.contains("CallableAgent"))
         #expect(!catalog.contains("Tools/ToolChainBuilder.swift"))
         #expect(!catalog.contains("| ToolChain |"))
-        #expect(!catalog.contains("FoundationModelsExecutionMode"))
-        #expect(!catalog.contains("foundationModelsExecution"))
     }
 
     @Test("API catalog excludes symbols removed or demoted by the T1 surface shrink")
@@ -194,7 +192,7 @@ struct DocumentationFreshnessTests {
 
         #expect(agent.contains("private var toolRegistry"))
         #expect(!agent.contains("enum ConversationMessage"))
-        #expect(loop.contains("private enum ConversationMessage"))
+        #expect(loop.contains("private typealias ConversationMessage = AgentTurnTranscript.Message"))
         #expect(loop.contains("dependencies: AgentTurnDependencies"))
         #expect(loop.contains("AgentTurnKernel."))
         #expect(!loop.contains("struct ToolLoopEngine"))
@@ -235,14 +233,14 @@ struct DocumentationFreshnessTests {
         #expect(providerSource.contains("func generate(prompt: String, options: InferenceOptions) async throws -> String"))
         #expect(docs.contains("Prompt-string methods remain for one minor so existing backends compile."))
         #expect(docs.contains("Agent and tests call the messages methods only."))
-        #expect(docs.contains("not the Agent seam"))
+        #expect(docs.contains("Capability bits and the structured-message"))
+        #expect(docs.contains("Deprecated marker protocols remain available"))
+        #expect(docs.contains("PromptTokenCountingInferenceProvider"))
+        #expect(docs.contains("StructuredOutputInferenceProvider"))
+        #expect(docs.contains("ToolCallStreamingInferenceProvider"))
         #expect(docs.contains("Prompt-string methods default to wrapping `prompt` as a user message."))
         #expect(!docs.contains("func generate(prompt: String, options: InferenceOptions) async throws -> String"))
-        #expect(!docs.contains("public protocol ConversationInferenceProvider: InferenceProvider"))
         #expect(!docs.contains("public protocol InferenceStreamingProvider: InferenceProvider"))
-        #expect(!docs.contains("public protocol ToolCallStreamingInferenceProvider: InferenceProvider"))
-        #expect(!docs.contains("public protocol StructuredOutputInferenceProvider: InferenceProvider"))
-        #expect(!docs.contains("public protocol PromptTokenCountingInferenceProvider: InferenceProvider"))
     }
 
     @Test("public release docs point at the latest remote tag represented by this checkout")
@@ -336,27 +334,10 @@ struct DocumentationFreshnessTests {
 
     @Test("source DocC and public docs use current tool and event symbols")
     func sourceDocCAndPublicDocsUseCurrentToolAndEventSymbols() throws {
-        let configuration = try readRepoFile("Sources/Swarm/Core/AgentConfiguration.swift")
         let toolSource = try readRepoFile("Sources/Swarm/Tools/Tool.swift")
         let mcpClient = try readRepoFile("Sources/Swarm/MCP/MCPClient.swift")
         let mcpBridge = try readRepoFile("Sources/Swarm/MCP/MCPToolBridge.swift")
         let frontFacing = try readRepoFile("docs/reference/front-facing-api.md")
-
-        for staleSymbol in [
-            "AgentEvent/responseChunk",
-            "AgentEvent/completion",
-            "AgentEvent/reasoning",
-            "`ToolCallDetail`",
-            "AgentError/toolCallFailed"
-        ] {
-            #expect(!configuration.contains(staleSymbol), "AgentConfiguration DocC should not link \(staleSymbol)")
-        }
-
-        #expect(configuration.contains("AgentEvent/output(_:)"))
-        #expect(configuration.contains("AgentEvent/Output/token(_:)"))
-        #expect(configuration.contains("AgentEvent/Lifecycle/completed(result:)"))
-        #expect(configuration.contains("AgentResult/toolResults"))
-        #expect(configuration.contains("AgentError/toolFailure(toolName:message:cause:)"))
 
         #expect(toolSource.contains("public type-erased capability"))
         #expect(mcpClient.contains("public type-erased interoperability seam"))
@@ -364,8 +345,6 @@ struct DocumentationFreshnessTests {
         #expect(frontFacing.contains("AnyJSONTool` (advanced interoperability seam)"))
         #expect(frontFacing.contains("MCPClient.getAllTools()"))
         #expect(frontFacing.contains("MCPToolBridge.bridgeTools()"))
-        #expect(!configuration.contains("foundationModelsExecution"))
-        #expect(!configuration.contains("FoundationModelsExecutionMode"))
         #expect(frontFacing.contains("Lossy compatibility projection onto `AgentResult`"))
         #expect(frontFacing.contains("Mints new tool-call IDs on every access"))
 

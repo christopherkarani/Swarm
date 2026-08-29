@@ -205,15 +205,6 @@ enum SwarmMCPErrorMapper {
                     message: "Tool execution was cancelled."
                 )
             )
-        case let .toolExecutionFailed(_, underlyingError):
-            return .failure(
-                callToolErrorResult(
-                    code: "execution_failed",
-                    action: "inspect_error_and_retry",
-                    toolName: toolName,
-                    message: underlyingError
-                )
-            )
         case let .toolFailure(_, message, cause):
             return .failure(
                 callToolErrorResult(

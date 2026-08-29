@@ -49,9 +49,11 @@ product edges also keep Wax, MetalANNS→GRDB, swift-crypto, swift-mutex,
 SwiftSoup, the MCP Swift SDK, and OpenTelemetry off the lean pin list. Default
 remotes are **swift-syntax** (via the default-on **Macros** trait) and
 **swift-log**. Enable `traits: ["MCP"]` for `SwarmMCP`, or
-`traits: ["OpenTelemetry"]` for `SwarmOpenTelemetry`. Disable Macros with
-`traits: []` to drop swift-syntax. `SWARM_CORE_ONLY=1` drops the integration
-package block entirely.
+`traits: ["OpenTelemetry"]` for `SwarmOpenTelemetry`. The root-only
+`SWARM_OMIT_INTEGRATION_TARGETS=1` helper also removes the in-tree integration
+targets and their package-dependency block for lean root-package verification.
+Disable Macros with `traits: []` to drop swift-syntax. `SWARM_CORE_ONLY=1`
+drops the integration package block entirely.
 
 **Platform note:** ContextCore and the full Membrane session stack need Apple
 frameworks (Metal/CoreML/Accelerate). On Linux, Integrations still enables Hive

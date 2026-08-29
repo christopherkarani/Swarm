@@ -202,6 +202,12 @@ swift run OnDeviceChat --demo
 Foundation Models and some memory and platform integrations are Apple-only.
 The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; use an OpenAI-compatible provider, inject a mock, or run the deterministic examples.
 
+To configure one provider globally for the default graph:
+
+```swift
+await Swarm.configure(provider: myProvider)
+```
+
 ## Documentation
 
 | Guide | Covers |

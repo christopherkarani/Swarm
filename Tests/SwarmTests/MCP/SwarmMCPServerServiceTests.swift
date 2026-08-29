@@ -165,7 +165,7 @@ struct SwarmMCPServerServiceTests {
             schemas: [ToolSchema(name: "explode", description: "explode", parameters: [])]
         )
         let executor = SwarmMCPToolExecutorStub { _, _ in
-            throw AgentError.toolExecutionFailed(toolName: "explode", underlyingError: "boom")
+            throw AgentError.toolFailure(toolName: "explode", message: "boom", cause: nil)
         }
         let harness = try await SwarmMCPTestHarness.make(catalog: catalog, executor: executor)
         defer {

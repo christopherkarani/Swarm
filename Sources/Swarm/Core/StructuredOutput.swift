@@ -155,8 +155,9 @@ enum StructuredOutputParser {
 /// Native structured-output prompt hook.
 ///
 /// Agent dispatches from ``InferenceProviderCapabilities/structuredOutputs`` and
-/// ``InferenceProvider/generateStructured(messages:request:options:)``. Do not use this
-/// protocol as the Agent seam.
+/// ``InferenceProvider/generateStructured(messages:request:options:)``. This
+/// deprecated protocol remains as a source-compatible marker for existing
+/// providers; it is not the Agent dispatch seam.
 @available(*, deprecated, message: "Declare InferenceProviderCapabilities.structuredOutputs and override generateStructured on InferenceProvider")
 public protocol StructuredOutputInferenceProvider: InferenceProvider {
     func generateStructured(
@@ -168,5 +169,3 @@ public protocol StructuredOutputInferenceProvider: InferenceProvider {
 
 @available(*, deprecated, renamed: "InferenceProvider")
 public protocol StructuredOutputConversationInferenceProvider: ConversationInferenceProvider {}
-
-

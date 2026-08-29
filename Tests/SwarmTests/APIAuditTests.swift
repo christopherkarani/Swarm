@@ -239,7 +239,7 @@ final class APIAuditTests: XCTestCase {
         XCTAssertEqual(handoffs.first?.targetAgent.name, "Billing")
     }
 
-    // MARK: - Agent.Builder Canonical Handoff API Tests
+    // MARK: - Agent.Builder Compatibility Tests
 
     func testAgentBuilderHandoffToAddsSingleTarget() async throws {
         let billing = try Agent(name: "Billing", instructions: "Handle billing")
@@ -249,9 +249,8 @@ final class APIAuditTests: XCTestCase {
             .handoff(to: billing)
             .build()
 
-        let handoffs = triage.handoffs
-        XCTAssertEqual(handoffs.count, 1)
-        XCTAssertEqual(handoffs.first?.targetAgent.name, "Billing")
+        XCTAssertEqual(triage.handoffs.count, 1)
+        XCTAssertEqual(triage.handoffs.first?.targetAgent.name, "Billing")
     }
 
     func testAgentBuilderVariadicHandoffsAddsAllTargets() async throws {
@@ -264,11 +263,10 @@ final class APIAuditTests: XCTestCase {
             .handoffs(billing, support, sales)
             .build()
 
-        let handoffs = triage.handoffs
-        XCTAssertEqual(handoffs.count, 3)
-        XCTAssertEqual(handoffs[0].targetAgent.name, "Billing")
-        XCTAssertEqual(handoffs[1].targetAgent.name, "Support")
-        XCTAssertEqual(handoffs[2].targetAgent.name, "Sales")
+        XCTAssertEqual(triage.handoffs.count, 3)
+        XCTAssertEqual(triage.handoffs[0].targetAgent.name, "Billing")
+        XCTAssertEqual(triage.handoffs[1].targetAgent.name, "Support")
+        XCTAssertEqual(triage.handoffs[2].targetAgent.name, "Sales")
     }
 
     func testAgentBuilderHandoffOptionsMapToConfiguration() async throws {
@@ -285,11 +283,10 @@ final class APIAuditTests: XCTestCase {
             }
             .build()
 
-        let handoffs = triage.handoffs
-        XCTAssertEqual(handoffs.count, 1)
-        XCTAssertEqual(handoffs[0].toolNameOverride, "transfer_to_billing")
-        XCTAssertEqual(handoffs[0].toolDescription, "Transfer billing/refund issues")
-        XCTAssertTrue(handoffs[0].nestHandoffHistory)
+        XCTAssertEqual(triage.handoffs.count, 1)
+        XCTAssertEqual(triage.handoffs[0].toolNameOverride, "transfer_to_billing")
+        XCTAssertEqual(triage.handoffs[0].toolDescription, "Transfer billing/refund issues")
+        XCTAssertTrue(triage.handoffs[0].nestHandoffHistory)
     }
 
     // MARK: - AgentTool Tests

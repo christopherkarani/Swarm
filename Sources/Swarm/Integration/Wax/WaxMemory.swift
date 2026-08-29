@@ -32,9 +32,22 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, 
     public var count: Int { persistedMessages.count }
     public var isEmpty: Bool { persistedMessages.isEmpty }
 
-    public nonisolated let memoryPromptTitle: String
-    public nonisolated let memoryPromptGuidance: String?
-    public nonisolated let memoryPriority: MemoryPriorityHint = .primary
+    @available(*, deprecated, message: "Return memoryPromptMetadata instead.")
+    public nonisolated var memoryPromptTitle: String { configuration.promptTitle }
+
+    @available(*, deprecated, message: "Return memoryPromptMetadata instead.")
+    public nonisolated var memoryPromptGuidance: String? { configuration.promptGuidance }
+
+    @available(*, deprecated, message: "Return memoryPromptMetadata instead.")
+    public nonisolated var memoryPriority: MemoryPriorityHint { .primary }
+
+    public nonisolated var memoryPromptMetadata: MemoryPromptMetadata? {
+        MemoryPromptMetadata(
+            title: configuration.promptTitle,
+            guidance: configuration.promptGuidance,
+            priority: .primary
+        )
+    }
 
     /// Creates a Wax-backed memory store.
     /// - Parameters:
@@ -67,8 +80,6 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, 
 
         self.persistedMessages = loadedMessages
         self.persistedMessageIDs = Set(loadedMessages.map(\.id))
-        self.memoryPromptTitle = configuration.promptTitle
-        self.memoryPromptGuidance = configuration.promptGuidance
     }
 
     public func add(_ message: MemoryMessage) async {
@@ -139,7 +150,7 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, 
         }
     }
 
-    // MARK: - MemorySessionLifecycle
+    // MARK: - Session lifecycle
 
     public func beginMemorySession() async {
         // Session management is not available in the public Wax API; no-op.

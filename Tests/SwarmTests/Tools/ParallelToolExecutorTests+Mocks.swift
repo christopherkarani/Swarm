@@ -39,7 +39,7 @@ struct MockErrorTool: AnyJSONTool, Sendable {
     var inputGuardrails: [any ToolInputGuardrail] { [] }
     var outputGuardrails: [any ToolOutputGuardrail] { [] }
 
-    init(name: String, error: Error = AgentError.toolExecutionFailed(toolName: "mock_error", underlyingError: "Intentional failure")) {
+    init(name: String, error: Error = AgentError.toolFailure(toolName: "mock_error", message: "Intentional failure", cause: nil)) {
         self.name = name
         self.error = error
     }

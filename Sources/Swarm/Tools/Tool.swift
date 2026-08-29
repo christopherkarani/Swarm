@@ -135,7 +135,7 @@ public protocol AnyJSONTool: Sendable {
     /// - Parameter arguments: The arguments passed to the tool, keyed by parameter name.
     ///                        These are validated against ``parameters`` before this method is called.
     /// - Returns: The result of the tool execution as a `SendableValue`.
-    /// - Throws: ``AgentError/toolExecutionFailed`` for execution failures,
+    /// - Throws: ``AgentError/toolFailure(toolName:message:cause:)`` for execution failures,
     ///          ``AgentError/invalidToolArguments`` for validation failures,
     ///          or any custom error from the tool implementation.
     ///
@@ -1499,7 +1499,7 @@ public actor ToolRegistry {
     ///   - observer: Optional observer for error reporting.
     /// - Returns: The result of the tool execution.
     /// - Throws: ``AgentError/toolNotFound`` if the tool doesn't exist or is disabled,
-    ///           ``AgentError/toolExecutionFailed`` if execution fails,
+    ///           ``AgentError/toolFailure(toolName:message:cause:)`` if execution fails,
     ///           ``GuardrailError`` if guardrails are triggered,
     ///           or `CancellationError` if the task is cancelled.
     public func execute(

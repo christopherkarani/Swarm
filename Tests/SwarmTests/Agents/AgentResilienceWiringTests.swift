@@ -262,6 +262,6 @@ private actor CountingFailingTool: AnyJSONTool {
 
     func execute(arguments _: [String: SendableValue]) async throws -> SendableValue {
         callCount += 1
-        throw AgentError.toolExecutionFailed(toolName: name, underlyingError: "intentional")
+        throw AgentError.toolFailure(toolName: name, message: "intentional", cause: nil)
     }
 }

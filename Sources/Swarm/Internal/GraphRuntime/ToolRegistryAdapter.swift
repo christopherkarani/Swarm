@@ -64,8 +64,6 @@ struct ToolRegistryAdapter: HiveToolRegistry, Sendable {
             switch error {
             case let .toolNotFound(name):
                 throw ToolRegistryAdapterError.toolNotFound(name: name)
-            case let .toolExecutionFailed(toolName, underlyingError):
-                throw ToolRegistryAdapterError.toolInvocationFailed(name: toolName, reason: underlyingError)
             case let .toolFailure(toolName, message, cause):
                 throw ToolRegistryAdapterError.toolInvocationFailed(
                     name: toolName,

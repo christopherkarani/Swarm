@@ -36,6 +36,11 @@ import Foundation
 /// ## Thread Safety
 ///
 /// `StdioMCPServer` is an actor. All process and pipe state is isolated.
+///
+/// Stdio transport needs `Foundation.Process`, which exists on macOS and Linux
+/// only. On iOS, tvOS, watchOS, and visionOS, ``initialize()`` throws
+/// ``MCPError/internalError(_:)`` and tells the caller to use an HTTP MCP
+/// server instead.
 public actor StdioMCPServer: MCPServerConnection {
     // MARK: Public
 
@@ -462,8 +467,7 @@ public actor StdioMCPServer: MCPServerConnection {
     #endif
 }
 
-#if os(macOS) || os(Linux)
-#else
+#if !os(macOS) && !os(Linux)
     /// `Foundation.Process` is unavailable on iOS, tvOS, watchOS, and visionOS.
     private struct StdioUnavailableProcess: Sendable {
         var isRunning: Bool { false }

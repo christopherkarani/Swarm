@@ -81,7 +81,8 @@ Demo executables are not part of the default package graph. Opt into them with
 ```bash
 SWARM_INCLUDE_DEMO=1 swift build
 SWARM_INCLUDE_DEMO=1 swift run SwarmDemo
-SWARM_INCLUDE_DEMO=1 swift run SwarmMCPServerDemo
+SWARM_INCLUDE_DEMO=1 swift build --traits MCP --product SwarmMCPServerDemo
+SWARM_INCLUDE_DEMO=1 swift run --traits MCP SwarmMCPServerDemo
 ```
 
 ## Live Smoke Requirements
@@ -111,9 +112,6 @@ swift run SwarmCapabilityShowcase smoke  # requires Foundation Models on host
 - Remove the `SwarmMembrane` library product and `Sources/SwarmMembrane`
   target. It is a hollow `@_exported import Swarm` re-export; import `Swarm`
   and use the Membrane types on that product.
-- `FoundationModelsExecutionMode` and `AgentConfiguration.foundationModelsExecution`
-  are removed. Choose a provider-owned tool loop with
-  `.foundationModelsOwningToolLoop()`.
 
 ## API catalog refresh
 

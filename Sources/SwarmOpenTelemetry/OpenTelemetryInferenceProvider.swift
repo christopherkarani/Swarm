@@ -9,10 +9,8 @@ import Swarm
 /// An inference-provider wrapper that emits OpenTelemetry GenAI spans.
 ///
 /// The wrapper forwards ``InferenceProvider`` methods, ``promptTokenCounter``,
-/// and advertised capability bits. Leftover capability protocols remain as
-/// deprecated identities for native backends; this wrapper does not dispatch
-/// through those identities. Callers read the bitset; they do not probe extra
-/// protocols.
+/// and advertised capability bits. Callers read the bitset and do not probe
+/// extra protocol identities.
 public struct OpenTelemetryInferenceProvider<Base: InferenceProvider>: @unchecked Sendable,
     CapabilityReportingInferenceProvider,
     InferenceProviderMetadata

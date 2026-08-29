@@ -23,12 +23,6 @@ import Testing
 // Handoffs, ParallelToolCalls, PreviousResponseId, AutoPreviousResponseId,
 // ModelSettingsComponent, MCPClientConfig — all removed.
 
-// FoundationModelsExecutionMode / AgentConfiguration.foundationModelsExecution —
-// removed at the 0.7.0 boundary. Choose the loop with
-// InferenceProvider.foundationModelsOwningToolLoop() instead.
-// let _: FoundationModelsExecutionMode = .nativeSession
-// _ = AgentConfiguration.default.foundationModelsExecution(.nativeSession)
-
 @Suite("V3 Zombie API Removal")
 struct ZombieAPIRemovalTests {
     @Test("Agent can be created without legacy builder")

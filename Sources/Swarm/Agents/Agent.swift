@@ -53,7 +53,7 @@ public struct Agent: AgentRuntime, Sendable {
     /// The agent uses these tool schemas to inform the LLM about available capabilities.
     ///
     /// To add tools, use the ``init(_:configuration:memory:inferenceProvider:tracer:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:tools:)`` initializer
-    /// with a `@ToolBuilder` closure, or the ``Builder`` API.
+    /// with a `@ToolBuilder` closure, or ``withTools(_:)``.
     ///
     /// ## Tool Execution
     /// When the LLM requests a tool call, the agent executes the corresponding tool
@@ -74,7 +74,7 @@ public struct Agent: AgentRuntime, Sendable {
     /// "You are a weather assistant. Be concise and friendly."
     /// ```
     ///
-    /// To set instructions, use any of the ``Agent`` initializers or the ``Builder/instructions(_:)`` method.
+    /// To set instructions, use one of the ``Agent`` initializers.
     public private(set) var instructions: String
 
     /// The runtime configuration settings for this agent.
@@ -117,7 +117,7 @@ public struct Agent: AgentRuntime, Sendable {
     ///
     /// ## Setting Memory
     /// Use ``init(_:configuration:memory:inferenceProvider:tracer:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:tools:)``
-    /// or the ``Builder/memory(_:)`` method.
+    /// or pass memory to an ``Agent`` initializer.
     ///
     /// See ``Memory`` for available memory implementations.
     public private(set) var memory: (any Memory)?
@@ -151,7 +151,7 @@ public struct Agent: AgentRuntime, Sendable {
     /// ``stream(_:session:observer:)`` before any LLM calls are made.
     ///
     /// ## Adding Guardrails
-    /// Use the ``Builder/inputGuardrails(_:)`` or ``Builder/addInputGuardrail(_:)`` methods.
+    /// Use an ``Agent`` initializer to configure input guardrails.
     ///
     /// See ``InputGuardrail`` for creating custom guardrails.
     public private(set) var inputGuardrails: [any InputGuardrail]
@@ -166,7 +166,7 @@ public struct Agent: AgentRuntime, Sendable {
     /// returned in ``run(_:session:observer:)``.
     ///
     /// ## Adding Guardrails
-    /// Use the ``Builder/outputGuardrails(_:)`` or ``Builder/addOutputGuardrail(_:)`` methods.
+    /// Use an ``Agent`` initializer to configure output guardrails.
     ///
     /// See ``OutputGuardrail`` for creating custom guardrails.
     public private(set) var outputGuardrails: [any OutputGuardrail]
@@ -182,7 +182,7 @@ public struct Agent: AgentRuntime, Sendable {
     ///
     /// ## Setting a Tracer
     /// Use ``init(_:configuration:memory:inferenceProvider:tracer:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:tools:)``
-    /// or the ``Builder/tracer(_:)`` method.
+    /// or pass a tracer to an ``Agent`` initializer.
     ///
     /// See ``Tracer`` for the protocol definition and available implementations.
     public private(set) var tracer: (any Tracer)?

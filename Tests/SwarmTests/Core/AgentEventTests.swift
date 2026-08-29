@@ -147,9 +147,10 @@ struct AgentEventTests {
             arguments: ["expression": .string("invalid")]
         )
 
-        let error = AgentError.toolExecutionFailed(
+        let error = AgentError.toolFailure(
             toolName: "calculator",
-            underlyingError: "Invalid expression"
+            message: "Invalid expression",
+            cause: nil
         )
 
         let event = AgentEvent.tool(.failed(call: toolCall, error: error))

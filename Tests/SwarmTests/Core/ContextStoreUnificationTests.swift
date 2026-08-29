@@ -2,8 +2,7 @@
 // SwarmTests
 //
 // Tests for the unified phantom-typed AgentContext store: slot identity,
-// round-trip exactness, namespace separation, snapshot/merge/copy behavior,
-// and the deprecated AgentContextProviding shim.
+// round-trip exactness, namespace separation, and snapshot/merge/copy behavior.
 
 import Foundation
 import Testing

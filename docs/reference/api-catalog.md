@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 194 (201 including `Internal/GraphRuntime/`)
+- Source files scanned: 196 (203 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2325
 
 ## 1. Swarm (entry point)
@@ -54,6 +54,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 108 | func | public | AgentConfiguration.autoAttachMetricsCollector(_:) | `public @discardableResult func autoAttachMetricsCollector(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.defaultTracingEnabled(_:) | `public @discardableResult func defaultTracingEnabled(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.enableStreaming(_:) | `public @discardableResult func enableStreaming(_ value: Bool) -> AgentConfiguration` |
+| 108 | func | public | AgentConfiguration.foundationModelsExecution(_:) | `public @discardableResult func foundationModelsExecution(_ value: FoundationModelsExecutionMode) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.includeReasoning(_:) | `public @discardableResult func includeReasoning(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.includeToolCallDetails(_:) | `public @discardableResult func includeToolCallDetails(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.inferencePolicy(_:) | `public @discardableResult func inferencePolicy(_ value: InferencePolicy?) -> AgentConfiguration` |
@@ -90,8 +91,12 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 253 | var | public | AgentConfiguration.autoPreviousResponseId | `public var autoPreviousResponseId: Bool` |
 | 264 | var | public | AgentConfiguration.defaultTracingEnabled | `public var defaultTracingEnabled: Bool` |
 | 265 | var | public | AgentConfiguration.autoAttachMetricsCollector | `public var autoAttachMetricsCollector: Bool` |
-| 562 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
-| 590 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, resilience: ResilienceConfiguration = .disabled)` |
+| 126 | enum | public | FoundationModelsExecutionMode | `public enum FoundationModelsExecutionMode` |
+| 130 | case | public | FoundationModelsExecutionMode.capture | `public case capture` |
+| 139 | case | public | FoundationModelsExecutionMode.nativeSession | `public case nativeSession` |
+| 604 | var | public | AgentConfiguration.foundationModelsExecution | `public var foundationModelsExecution: FoundationModelsExecutionMode` |
+| 608 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
+| 630 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
 | 108 | func | public | AgentConfiguration.resilience(_:) | `public @discardableResult func resilience(_ value: ResilienceConfiguration) -> AgentConfiguration` |
 | 345 | var | public | AgentConfiguration.description | `public var description: String { get }` |
 
@@ -552,8 +557,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 35 | case | public | AgentContextKey.executionPath | `public case executionPath` |
 | 38 | case | public | AgentContextKey.startTime | `public case startTime` |
 | 41 | case | public | AgentContextKey.metadata | `public case metadata` |
-| 86 | protocol | public | AgentContextProviding | `public protocol AgentContextProviding : Sendable` _(Availability: * (deprecated); Use ContextKey<Value> with setTyped(_:value:)/getTyped(_:) instead)_ |
-| 88 | var | public | AgentContextProviding.contextKey | `public static var contextKey: String { get }` |
+| 81 | protocol | public | AgentContextProviding | `public protocol AgentContextProviding : Sendable` _(Availability: * (deprecated); Use ContextKey<Value> with setTyped(_:value:)/getTyped(_:) instead; this protocol will be removed in 0.7.0.)_ |
+| 83 | var | public | AgentContextProviding.contextKey | `public static var contextKey: String { get }` |
 | 118 | class | public | AgentContext | `public actor AgentContext` |
 | 122 | var | public | AgentContext.originalInput | `public nonisolated let originalInput: String` |
 | 125 | var | public | AgentContext.executionId | `public nonisolated let executionId: UUID` |
@@ -575,10 +580,10 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 347 | func | public | AgentContext.getPreviousOutput() | `public func getPreviousOutput() -> String?` |
 | 367 | func | public | AgentContext.merge(from:overwrite:) | `public func merge(from other: AgentContext, overwrite: Bool = false) async` |
 | 421 | func | public | AgentContext.copy(additionalValues:) | `public func copy(additionalValues: [String : SendableValue] = [:]) -> AgentContext` |
-| 453 | func | public | AgentContext.setTyped(_:) | `public func setTyped<T>(_ context: T) where T : AgentContextProviding` |
-| 461 | func | public | AgentContext.typed(_:) | `public func typed<T>(_: T.Type) -> T? where T : AgentContextProviding` |
-| 470 | func | public | AgentContext.removeTyped(_:) | `public @discardableResult func removeTyped<T>(_: T.Type) -> T? where T : AgentContextProviding` |
-| 478 | func | public | AgentContext.hasTyped(_:) | `public func hasTyped<T>(_: T.Type) -> Bool where T : AgentContextProviding` |
+| 449 | func | public | AgentContext.setTyped(_:) | `public func setTyped<T>(_ context: T) where T : AgentContextProviding` _(Availability: * (deprecated); Use ContextKey<Value> with setTyped(_:value:) instead; this overload will be removed in 0.7.0.)_ |
+| 458 | func | public | AgentContext.typed(_:) | `public func typed<T>(_: T.Type) -> T? where T : AgentContextProviding` _(Availability: * (deprecated); Use ContextKey<Value> with getTyped(_:) instead; this overload will be removed in 0.7.0.)_ |
+| 468 | func | public | AgentContext.removeTyped(_:) | `public @discardableResult func removeTyped<T>(_: T.Type) -> T? where T : AgentContextProviding` _(Availability: * (deprecated); Use ContextKey<Value> with removeTyped(_:) instead; this overload will be removed in 0.7.0.)_ |
+| 477 | func | public | AgentContext.hasTyped(_:) | `public func hasTyped<T>(_: T.Type) -> Bool where T : AgentContextProviding` _(Availability: * (deprecated); Use ContextKey<Value> with hasTyped(_:) instead; this overload will be removed in 0.7.0.)_ |
 | 574 | var | public | AgentContext.description | `public nonisolated var description: String { get }` |
 | 588 | var | public | AgentContext.debugDescription | `public nonisolated var debugDescription: String { get }` |
 
@@ -1118,12 +1123,12 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 303 | func | public | Agent.cancel() | `public func cancel() async` |
 | 313 | func | public | Agent.stream(_:session:observer:) | `public func stream(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 336 | func | public | Agent.runWithResponse(_:session:observer:) | `public func runWithResponse(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
-| 1259 | struct | public | Agent.Builder | `public struct Builder` |
+| 1259 | struct | public | Agent.Builder | `@available(*, deprecated, message: "Use an Agent initializer or withTools(_:). Agent.Builder compatibility will be removed in 0.7.0.") public struct Builder` |
 | 1265 | func | public | Agent.Builder.init() | `public init()` |
-| 1273 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [any AnyJSONTool]) -> Agent.Builder` |
+| 1273 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [any AnyJSONTool]) -> Agent.Builder` (deprecated) |
 | 1283 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [some Tool]) -> Agent.Builder` |
-| 1293 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: some AnyJSONTool) -> Agent.Builder` |
-| 1303 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: any AnyJSONTool) -> Agent.Builder` |
+| 1293 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: some AnyJSONTool) -> Agent.Builder` (deprecated) |
+| 1303 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: any AnyJSONTool) -> Agent.Builder` (deprecated) |
 | 1313 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: some Tool) -> Agent.Builder` |
 | 1322 | func | public | Agent.Builder.withBuiltInTools() | `public @discardableResult func withBuiltInTools() -> Agent.Builder` |
 | 1332 | func | public | Agent.Builder.instructions(_:) | `public @discardableResult func instructions(_ instructions: String) -> Agent.Builder` |
@@ -1639,19 +1644,32 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 24 | var | public | MemoryPromptMetadata.guidance | `public var guidance: String?` |
 | 27 | var | public | MemoryPromptMetadata.priority | `public var priority: MemoryPriorityHint` |
 | 29 | init | public | MemoryPromptMetadata.init(title:guidance:priority:) | `public init(title: String, guidance: String?, priority: MemoryPriorityHint)` |
-| 47 | protocol | public | MemoryPromptDescriptor | `public protocol MemoryPromptDescriptor : Sendable` |
+| 47 | protocol | public | MemoryPromptDescriptor | `public protocol MemoryPromptDescriptor : Sendable` _(Availability: * (deprecated); Return MemoryPromptMetadata from your Memory conformance's memoryPromptMetadata instead.)_ |
 | 49 | var | public | MemoryPromptDescriptor.memoryPromptTitle | `public var memoryPromptTitle: String { get }` |
 | 52 | var | public | MemoryPromptDescriptor.memoryPromptGuidance | `public var memoryPromptGuidance: String? { get }` |
 | 55 | var | public | MemoryPromptDescriptor.memoryPriority | `public var memoryPriority: MemoryPriorityHint { get }` |
+
+`MemoryPromptDescriptor` remains a source-compatibility marker. The constrained
+`Memory where Self: MemoryPromptDescriptor` extension bridges its members into
+`Memory.memoryPromptMetadata`, preserving prompt labels for existing conformers.
+
+### Memory/MemoryRetrievalPolicy.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 42 | protocol | public | MemoryRetrievalPolicyAware | `public protocol MemoryRetrievalPolicyAware : Memory` _(Availability: * (deprecated); Implement context(for: MemoryQuery) on your Memory conformance instead.)_ |
+| 44 | func | public | MemoryRetrievalPolicyAware.context(for:) | `public func context(for query: MemoryQuery) async -> String` |
+| 61 | protocol | public | MemorySessionImportPolicy | `public protocol MemorySessionImportPolicy : Sendable` _(Availability: * (deprecated); Implement allowsAutomaticSessionSeeding on your Memory conformance instead.)_ |
+| 63 | var | public | MemorySessionImportPolicy.allowsAutomaticSessionSeeding | `public var allowsAutomaticSessionSeeding: Bool { get }` |
 
 ### Memory/MemorySessionLifecycle.swift
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 9 | protocol | public | MemorySessionLifecycle | `public protocol MemorySessionLifecycle : Memory` |
+| 9 | protocol | public | MemorySessionLifecycle | `public protocol MemorySessionLifecycle : Memory` _(Availability: * (deprecated); Implement beginMemorySession() and endMemorySession() on your Memory conformance instead.)_ |
 | 11 | func | public | MemorySessionLifecycle.beginMemorySession() | `public func beginMemorySession() async` |
 | 14 | func | public | MemorySessionLifecycle.endMemorySession() | `public func endMemorySession() async` |
-| 24 | protocol | public | MemorySessionReplayAware | `public protocol MemorySessionReplayAware : Memory` |
+| 24 | protocol | public | MemorySessionReplayAware | `public protocol MemorySessionReplayAware : Memory` _(Availability: * (deprecated); Implement importSessionHistory(_:) on your Memory conformance instead.)_ |
 | 26 | func | public | MemorySessionReplayAware.importSessionHistory(_:) | `public func importSessionHistory(_ messages: [MemoryMessage]) async` |
 
 ### Memory/PersistentMemory.swift
@@ -2053,7 +2071,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 72 | func | public | Tracer.flush() | `public func flush() async` |
 | 101 | class | public | CompositeTracer | `public actor CompositeTracer` |
 | 110 | func | public | CompositeTracer.init(tracers:minimumLevel:shouldExecuteInParallel:) | `public init(tracers: [any Tracer], minimumLevel: EventLevel = .trace, shouldExecuteInParallel: Bool = true)` |
-| 126 | func | public | CompositeTracer.init(tracers:parallel:) | `public convenience init(tracers: [any Tracer], parallel: Bool)` _(Availability: * (deprecated); Use shouldExecuteInParallel instead of parallel)_ |
 | 130 | func | public | CompositeTracer.trace(_:) | `public func trace(_ event: TraceEvent) async` |
 | 151 | func | public | CompositeTracer.flush() | `public func flush() async` |
 | 196 | class | public | NoOpTracer | `public actor NoOpTracer` |
@@ -2453,8 +2470,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 17 | typealias | public | Retry | `public typealias Retry = RetryPolicy` |
-| 18 | typealias | public | Fallback | `public typealias Fallback = FallbackChain` |
+| 21 | typealias | public | Retry | `@available(*, deprecated, renamed: "RetryPolicy") public typealias Retry = RetryPolicy` |
+| 28 | typealias | public | Fallback | `@available(*, deprecated, renamed: "FallbackChain") public typealias Fallback = FallbackChain` |
 
 ### Resilience/ResilienceConfiguration.swift
 
@@ -2832,7 +2849,7 @@ Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationMo
 | 17 | case | public | InferenceStreamUpdate.toolCallsCompleted(_:) | `public case toolCallsCompleted([InferenceResponse.ParsedToolCall])` |
 | 20 | case | public | InferenceStreamUpdate.usage(_:) | `public case usage(TokenUsage)` |
 | 23 | case | public | InferenceStreamUpdate.finishedTurn(_:) | `public case finishedTurn(InferenceResponse)` |
-| 34 | protocol | public | ToolCallStreamingInferenceProvider | `public protocol ToolCallStreamingInferenceProvider : InferenceProvider` _(Deprecated leftover identity; Agent reads `InferenceProviderCapabilities.streamingToolCalls`.)_ |
+| 34 | protocol | public | ToolCallStreamingInferenceProvider | `public protocol ToolCallStreamingInferenceProvider : InferenceProvider` _(Deprecated compatibility identity; Agent reads `InferenceProviderCapabilities.streamingToolCalls`.)_ |
 | 36 | func | public | ToolCallStreamingInferenceProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
 
 ## 12. Integration (Membrane + Wax)
@@ -2899,10 +2916,10 @@ Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationMo
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 4 | struct | public | WaxIntegration | `public struct WaxIntegration` |
-| 5 | func | public | WaxIntegration.init() | `public init()` |
-| 8 | var | public | WaxIntegration.isEnabled | `public var isEnabled: Bool { get }` |
-| 13 | var | public | WaxIntegration.debugDescription | `public static var debugDescription: String { get }` |
+| 8 | struct | public | WaxIntegration | `@available(*, deprecated, message: "Use IntegrationsTrait.isEnabled, WaxMemory, or WaxEmbeddingProviderAdapter instead.") public struct WaxIntegration` |
+| 10 | func | public | WaxIntegration.init() | `@available(*, deprecated, message: "WaxIntegration is retained only for source compatibility.") public init()` |
+| 14 | var | public | WaxIntegration.isEnabled | `@available(*, deprecated, message: "Use IntegrationsTrait.isEnabled instead.") public var isEnabled: Bool { get }` |
+| 20 | var | public | WaxIntegration.debugDescription | `@available(*, deprecated, message: "WaxIntegration.debugDescription is retained only for source compatibility.") public static var debugDescription: String { get }` |
 
 ### Integration/Wax/WaxMemory.swift
 
@@ -2919,9 +2936,6 @@ Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationMo
 | 19 | func | public | WaxMemory.Configuration.init(orchestratorConfig:queryEmbeddingPolicy:tokenEstimator:promptTitle:promptGuidance:) | `public init(orchestratorConfig: OrchestratorConfig = .default, queryEmbeddingPolicy: MemoryOrchestrator.QueryEmbeddingPolicy = .ifAvailable, tokenEstimator: any TokenEstimator = CharacterBasedTokenEstimator.shared, promptTitle: String = "Wax Memory Context (primary)", promptGuidance: String? = "Use Wax memory context as the primary source of truth. Prefer it before calling tools.")` |
 | 34 | var | public | WaxMemory.count | `public var count: Int { get }` |
 | 35 | var | public | WaxMemory.isEmpty | `public var isEmpty: Bool { get }` |
-| 37 | var | public | WaxMemory.memoryPromptTitle | `public nonisolated let memoryPromptTitle: String` |
-| 38 | var | public | WaxMemory.memoryPromptGuidance | `public nonisolated let memoryPromptGuidance: String?` |
-| 39 | var | public | WaxMemory.memoryPriority | `public nonisolated let memoryPriority: MemoryPriorityHint` |
 | 46 | func | public | WaxMemory.init(url:embedder:configuration:) | `public init(url: URL, embedder: (any EmbeddingProvider)? = nil, configuration: WaxMemory.Configuration = .default) async throws` |
 | 72 | func | public | WaxMemory.add(_:) | `public func add(_ message: MemoryMessage) async` |
 | 86 | func | public | WaxMemory.context(for:tokenLimit:) | `public func context(for query: String, tokenLimit: Int) async -> String` |
@@ -2985,6 +2999,7 @@ Without it this product is a hollow module exposing ``OpenTelemetryTrait``.
 | 5 | enum | public | OpenTelemetryTrait | `public enum OpenTelemetryTrait` |
 | 7 | var | public | OpenTelemetryTrait.isEnabled | `public static var isEnabled: Bool { get }` |
 | 21 | func | public | OpenTelemetryTrait.requirementMessage(for:) | `public static func requirementMessage(for feature: String = "SwarmOpenTelemetry") -> String` |
+
 
 #### Sources/SwarmOpenTelemetry/OpenTelemetryInferenceProvider.swift
 
@@ -3069,6 +3084,7 @@ is a hollow module exposing ``MCPTrait``.
 | 7 | enum | public | MCPTrait | `public enum MCPTrait` |
 | 9 | var | public | MCPTrait.isEnabled | `public static var isEnabled: Bool { get }` |
 | 21 | func | public | MCPTrait.requirementMessage(for:) | `public static func requirementMessage(for feature: String = "SwarmMCP") -> String` |
+
 
 #### Sources/SwarmMCP/SwarmMCPServerService.swift
 

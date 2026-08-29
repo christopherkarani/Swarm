@@ -49,7 +49,7 @@ actor FoundationModelsNativeToolRuntime {
             throw request
         } catch let error as AgentError {
             switch error {
-            case .toolFailure, .toolExecutionFailed:
+            case .toolFailure:
                 throw FoundationModelsNativeToolError(
                     toolName: name,
                     message: error.localizedDescription,

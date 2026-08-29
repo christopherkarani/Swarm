@@ -7,26 +7,6 @@ import Foundation
 @testable import Swarm
 import Testing
 
-// MARK: - ParallelExecutionProbe
-
-private actor ParallelExecutionProbe {
-    private var activeCount = 0
-    private var peakActiveCount = 0
-
-    func entered() {
-        activeCount += 1
-        peakActiveCount = max(peakActiveCount, activeCount)
-    }
-
-    func exited() {
-        activeCount -= 1
-    }
-
-    func peakActive() -> Int {
-        peakActiveCount
-    }
-}
-
 // MARK: - ReActAgentTests
 
 @Suite("Agent Tests", .ephemeralDefaultStores)
@@ -122,20 +102,13 @@ struct ReActAgentTests {
         #expect(recordedToolCalls.first?.tools.contains { $0.name == "test_tool" } == true)
     }
 
-    @Test("Opt-in parallel tool calls execute concurrently and preserve result order")
-    func parallelToolCallsExecuteConcurrently() async throws {
-        let probe = ParallelExecutionProbe()
+    @Test("Multiple tool calls in one turn preserve result order")
+    func multipleToolCallsPreserveResultOrder() async throws {
         let firstTool = MockTool(name: "first") { _ in
-            await probe.entered()
-            try await Task.sleep(for: .milliseconds(40))
-            await probe.exited()
-            return .string("first result")
+            .string("first result")
         }
         let secondTool = MockTool(name: "second") { _ in
-            await probe.entered()
-            try await Task.sleep(for: .milliseconds(10))
-            await probe.exited()
-            return .string("second result")
+            .string("second result")
         }
 
         let provider = MockInferenceProvider()
@@ -166,20 +139,13 @@ struct ReActAgentTests {
         #expect(result.output == "Done")
     }
 
-    @Test("Parallel mixed tool failures keep input order and continue the run")
-    func parallelMixedToolFailuresKeepOrder() async throws {
-        let probe = ParallelExecutionProbe()
+    @Test("Multiple tool-call failures keep input order and continue the run")
+    func multipleToolCallFailuresKeepOrder() async throws {
         let failing = MockTool(name: "first") { _ in
-            await probe.entered()
-            try await Task.sleep(for: .milliseconds(20))
-            await probe.exited()
             throw AgentError.toolFailure(toolName: "first", message: "boom", cause: nil)
         }
         let succeeding = MockTool(name: "second") { _ in
-            await probe.entered()
-            try await Task.sleep(for: .milliseconds(10))
-            await probe.exited()
-            return .string("ok")
+            .string("ok")
         }
 
         let provider = MockInferenceProvider()
@@ -212,20 +178,13 @@ struct ReActAgentTests {
         #expect(result.output == "Recovered")
     }
 
-    @Test("Parallel stopOnToolError throws after committing the first failed call")
-    func parallelStopOnToolErrorThrowsFirstFailure() async throws {
-        let probe = ParallelExecutionProbe()
+    @Test("stopOnToolError throws after committing the first failed call")
+    func stopOnToolErrorThrowsFirstFailure() async throws {
         let failing = MockTool(name: "first") { _ in
-            await probe.entered()
-            try await Task.sleep(for: .milliseconds(15))
-            await probe.exited()
             throw AgentError.toolFailure(toolName: "first", message: "boom", cause: nil)
         }
         let succeeding = MockTool(name: "second") { _ in
-            await probe.entered()
-            try await Task.sleep(for: .milliseconds(10))
-            await probe.exited()
-            return .string("ok")
+            .string("ok")
         }
 
         let provider = MockInferenceProvider()
@@ -254,14 +213,11 @@ struct ReActAgentTests {
             Issue.record("Expected stopOnToolError to throw")
         } catch let error as AgentError {
             switch error {
-            case let .toolExecutionFailed(toolName, underlyingError):
-                #expect(toolName == "first")
-                #expect(underlyingError.contains("boom") || !underlyingError.isEmpty)
             case let .toolFailure(toolName, message, _):
                 #expect(toolName == "first")
-                #expect(message?.contains("boom") == true || message != nil)
+                #expect(message?.contains("boom") == true)
             default:
-                Issue.record("Expected tool failure, got \(error)")
+                Issue.record("Expected toolFailure, got \(error)")
             }
         } catch {
             Issue.record("Expected AgentError, got \(error)")

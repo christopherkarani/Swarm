@@ -35,7 +35,7 @@ struct InferenceRetryabilityTests {
             .guardrailViolation(reason: "blocked"),
             .contentFiltered(reason: "safety"),
             .invalidToolArguments(toolName: "x", reason: "parse"),
-            .toolExecutionFailed(toolName: "x", underlyingError: "boom"),
+            .toolFailure(toolName: "x", message: "boom", cause: nil),
             .toolNotFound(name: "x"),
             .contextWindowExceeded(tokenCount: 10, limit: 8),
             .unsupportedLanguage(language: "zz"),

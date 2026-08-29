@@ -488,7 +488,7 @@ private func makeTestTools(count: Int) -> [any AnyJSONTool] {
 
 private func temporaryWaxStoreURL() -> URL {
     let root = FileManager.default.temporaryDirectory
-        .appendingPathComponent("SwarmMembraneIntegrationTests", isDirectory: true)
+        .appendingPathComponent("MembraneIntegrationTests", isDirectory: true)
     try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root.appendingPathComponent("\(UUID().uuidString).mv2s")
 }
@@ -541,7 +541,7 @@ private actor FailingWaxPointerIndex: WaxPointerIndex {
     func close() async throws {}
 }
 
-private actor PointerResolvingInferenceProvider: InferenceProvider, ConversationInferenceProvider, MessagesFromPromptInference {
+private actor PointerResolvingInferenceProvider: InferenceProvider, MessagesFromPromptInference {
     private var turn = 0
 
     func generate(prompt _: String, options _: InferenceOptions) async throws -> String {

@@ -137,9 +137,20 @@ struct AgentConfigurationTests {
         #expect(config.maxIterations == 10)
         #expect(config.timeout == .seconds(60))
         #expect(config.temperature == 1.0)
+        #expect(config.foundationModelsExecution == .capture)
         #expect(config.resilience == .disabled)
         #expect(config.resilience.retryPolicy == .noRetry)
         #expect(config.autoAttachMetricsCollector == false)
+    }
+
+    @Test("Native session execution is opt-in and does not mutate capture default")
+    func nativeSessionExecutionIsOptIn() {
+        let original = AgentConfiguration.default
+        let native = original.foundationModelsExecution(.nativeSession)
+
+        #expect(original.foundationModelsExecution == .capture)
+        #expect(native.foundationModelsExecution == .nativeSession)
+        #expect(native.maxIterations == original.maxIterations)
     }
 
     @Test("Custom initialization")
@@ -349,25 +360,28 @@ struct AgentErrorTests {
         #expect(error != error3)
     }
 
-    @Test("toolExecutionFailed error")
-    func toolExecutionFailedError() {
-        let error = AgentError.toolExecutionFailed(
+    @Test("toolFailure error")
+    func toolFailureError() {
+        let error = AgentError.toolFailure(
             toolName: "calculator",
-            underlyingError: "division by zero"
+            message: "division by zero",
+            cause: nil
         )
 
         #expect(error.localizedDescription.contains("calculator"))
         #expect(error.localizedDescription.contains("failed"))
         #expect(error.localizedDescription.contains("division by zero"))
 
-        // Test equatability with both associated values
-        let error2 = AgentError.toolExecutionFailed(
+        // Test equatability with the message
+        let error2 = AgentError.toolFailure(
             toolName: "calculator",
-            underlyingError: "division by zero"
+            message: "division by zero",
+            cause: nil
         )
-        let error3 = AgentError.toolExecutionFailed(
+        let error3 = AgentError.toolFailure(
             toolName: "calculator",
-            underlyingError: "overflow"
+            message: "overflow",
+            cause: nil
         )
         #expect(error == error2)
         #expect(error != error3)
@@ -490,7 +504,7 @@ struct AgentErrorTests {
             .maxIterationsExceeded(iterations: 10),
             .timeout(duration: .seconds(60)),
             .toolNotFound(name: "test"),
-            .toolExecutionFailed(toolName: "test", underlyingError: "error"),
+            .toolFailure(toolName: "test", message: "error", cause: nil),
             .invalidToolArguments(toolName: "test", reason: "reason"),
             .inferenceProviderUnavailable(reason: "test"),
             .contextWindowExceeded(tokenCount: 1000, limit: 500),

@@ -112,8 +112,71 @@ private extension InferencePolicy {
     }
 }
 
+// MARK: - FoundationModelsExecutionMode
+
+/// How Apple Foundation Models should run tool-calling turns.
+///
+/// Ignored. Construct ``InferenceProvider/foundationModelsOwningToolLoop()``
+/// for a provider-owned tool loop. This flag does not choose the loop.
+///
+/// - Warning: Deprecated. Remove in the next minor.
+///
+/// ## Capture vs native session
+///
+/// | | ``capture`` (default) | ``nativeSession`` (experimental) |
+/// |---|---|---|
+/// | Tool loop owner | Swarm agent loop | InferenceProvider (`LanguageModelSession`) |
+/// | Parallel tool calls | No (one captured call per turn) | Yes (Apple's session loop) |
+/// | Transcript / KV reuse | No (session rebuilt every turn) | Yes (session kept for the agent run) |
+/// | Token streaming with tools | No | Yes (`Agent.stream` yields incremental tokens) |
+/// | Per-iteration memory injection | Yes | **No** — memory is injected when the native session starts |
+/// | Swarm `maxIterations` cap | Yes | **No** — Apple owns the inner loop |
+/// | Mid-loop checkpoints | Yes | **No** |
+/// | Per-turn guardrail interception | Yes (wraps Swarm's loop) | **No** — input/tool guardrails run **inside** each tool body |
+///
+/// - Experiment: Native session mode may change in a minor release. Capture remains
+///   the supported default because Swarm-side control (guardrails, checkpoints,
+///   memory injection) is the framework's differentiator.
+///
+/// ```swift
+/// let agent = try Agent(
+///     "Be helpful.",
+///     inferenceProvider: .foundationModelsOwningToolLoop()
+/// ) {
+///     WeatherTool()
+/// }
+/// ```
+@available(*, deprecated, message: "Choose a provider-owned tool loop by constructing the InferenceProvider adapter (.foundationModelsOwningToolLoop()). This flag is ignored.")
+public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
+    /// Swarm owns the tool loop. Foundation Models tools throw a capture error so
+    /// Swarm can execute tools with guardrails, observers, retries, and
+    /// per-iteration memory injection. This is the default.
+    case capture
+
+    /// Let the Foundation Models adapter run a provider-owned tool loop on a
+    /// persistent `LanguageModelSession`.
+    ///
+    /// - Experiment: Opt-in. Unlocks parallel tool calls, transcript/KV reuse, and
+    ///   real token streaming with tools. Loses per-iteration memory injection,
+    ///   Swarm-side max-iteration caps, mid-loop checkpoints, and per-turn
+    ///   guardrail interception (guardrails move inside tool bodies).
+    case nativeSession
+}
+
 // MARK: - AgentConfiguration
 
+/// Configuration settings for agent execution.
+///
+/// Use this struct to customize agent behavior including iteration limits,
+/// timeouts, model parameters, and execution options.
+///
+/// Example:
+/// ```swift
+/// let config = AgentConfiguration.default
+///     .maxIterations(15)
+///     .temperature(0.8)
+///     .timeout(.seconds(120))
+/// ```
 /// Configuration settings for agent execution.
 ///
 /// Use this struct to customize agent behavior including iteration limits,
@@ -148,15 +211,16 @@ private extension InferencePolicy {
 /// - ``contextMode(_:)`` - Set context mode
 /// - ``inferencePolicy(_:)`` - Set inference routing policy
 /// - ``enableStreaming(_:)`` - Set streaming behavior
-/// - ``includeToolCallDetails(_:)`` - Legacy result-detail compatibility setting
+/// - ``includeToolCallDetails(_:)`` - Set tool detail inclusion
 /// - ``stopOnToolError(_:)`` - Set error handling behavior
-/// - ``includeReasoning(_:)`` - Legacy reasoning-event compatibility setting
+/// - ``includeReasoning(_:)`` - Set reasoning inclusion
 /// - ``sessionHistoryLimit(_:)`` - Set history limit
 /// - ``parallelToolCalls(_:)`` - Set parallel execution
 /// - ``previousResponseId(_:)`` - Set response continuation
 /// - ``autoPreviousResponseId(_:)`` - Set auto response tracking
 /// - ``defaultTracingEnabled(_:)`` - Set default tracing
 /// - ``autoAttachMetricsCollector(_:)`` - Auto-attach a ``MetricsCollector``
+/// - ``foundationModelsExecution(_:)`` - Set Foundation Models execution mode (experimental)
 /// - ``resilience(_:)`` - Set retry, circuit-breaker, and rate-limit policies for inference
 ///
 /// ## Thread Safety
@@ -314,28 +378,55 @@ public struct AgentConfiguration: Sendable, Equatable {
     /// Whether to stream responses as they're generated.
     ///
     /// When enabled, the agent delivers response content incrementally through
-    /// ``AgentEvent/output(_:)`` events such as
-    /// ``AgentEvent/Output/token(_:)`` and ``AgentEvent/Output/chunk(_:)``.
-    /// When disabled, the agent emits the completed response through
-    /// ``AgentEvent/Lifecycle/completed(result:)``.
+    /// ``AgentEvent/responseChunk(_:)`` events. This provides better perceived
+    /// performance and allows real-time UI updates.
+    ///
+    /// When disabled, the complete response is returned as a single
+    /// ``AgentEvent/completion(_:)`` event.
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Streaming (default) - good for interactive UIs
+    /// let streamingConfig = AgentConfiguration.default
+    ///     .enableStreaming(true)
+    ///
+    /// // Non-streaming - good for batch processing
+    /// let batchConfig = AgentConfiguration.default
+    ///     .enableStreaming(false)
+    /// ```
     ///
     /// Default: `true`
     ///
-    /// - SeeAlso: ``AgentEvent/output(_:)``, ``AgentEvent/Lifecycle/completed(result:)``
+    /// - SeeAlso: ``AgentEvent/responseChunk(_:)``
     public var enableStreaming: Bool
 
-    /// Legacy compatibility setting for result detail inclusion.
+    /// Whether to include detailed tool call information in the result.
     ///
-    /// This property currently has no effect. Tool execution details are always
-    /// recorded in ``AgentResult/toolCalls`` and ``AgentResult/toolResults``;
-    /// ``AgentResponse/toolCalls`` exposes the corresponding ``ToolCallRecord``
-    /// values. It remains available so existing configurations continue to
-    /// compile, but new code should not depend on this flag.
+    /// When enabled, the agent includes ``ToolCallDetail`` objects in the
+    /// ``AgentResponse/toolCalls`` array, showing which tools were called,
+    /// with what arguments, and their results.
+    ///
+    /// This is useful for:
+    /// - Debugging agent behavior
+    /// - Audit logging
+    /// - Building execution traces
+    /// - UI displays showing tool usage
+    ///
+    /// ## Example
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .includeToolCallDetails(true)
+    ///
+    /// // Later, inspect the response
+    /// let response = try await agent.run("...", config: config)
+    /// for detail in response.toolCalls {
+    ///     print("Tool: \(detail.name), Result: \(detail.result)")
+    /// }
+    /// ```
     ///
     /// Default: `true`
     ///
-    /// - SeeAlso: ``AgentResult/toolCalls``, ``AgentResult/toolResults``,
-    ///   ``AgentResponse/toolCalls``
+    /// - SeeAlso: ``ToolCallDetail``, ``AgentResponse/toolCalls``
     public var includeToolCallDetails: Bool
 
     /// Whether to stop execution after the first tool error.
@@ -344,27 +435,53 @@ public struct AgentConfiguration: Sendable, Equatable {
     /// stops and the error is propagated to the caller. This is useful when
     /// you want strict error handling and don't want partial results.
     ///
-    /// When `false` (default), tool errors are recorded as
-    /// ``ToolResult/Outcome/failure(message:)`` and execution continues. The
-    /// agent may attempt to recover or provide partial results. When `true`, a
-    /// failure is propagated as ``AgentError/toolFailure(toolName:message:cause:)``.
+    /// When `false` (default), tool errors are included in the response's
+    /// ``ToolCallDetail/error`` field and execution continues. The agent
+    /// may attempt to recover or provide partial results.
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Strict mode - fail fast on any error
+    /// let strictConfig = AgentConfiguration.default
+    ///     .stopOnToolError(true)
+    ///
+    /// // Lenient mode - collect all results including errors
+    /// let lenientConfig = AgentConfiguration.default
+    ///     .stopOnToolError(false)
+    /// ```
     ///
     /// Default: `false`
     ///
-    /// - SeeAlso: ``ToolResult``, ``AgentError/toolFailure(toolName:message:cause:)``
+    /// - SeeAlso: ``ToolCallDetail/error``, ``AgentError/toolCallFailed(_:)``
     public var stopOnToolError: Bool
 
-    /// Legacy compatibility setting for reasoning-event inclusion.
+    /// Whether to include the agent's reasoning/thinking in events.
     ///
-    /// This property currently has no effect. If a provider emits reasoning,
-    /// the runtime exposes it as ``AgentEvent/Output/thinking(thought:)`` or
-    /// ``AgentEvent/Output/thinkingPartial(_:)`` inside
-    /// ``AgentEvent/output(_:)``. Consumers should filter those current event
-    /// cases rather than rely on this flag.
+    /// When enabled, the agent emits ``AgentEvent/reasoning(_:)`` events
+    /// containing its chain-of-thought or reasoning process. This helps
+    /// understand how the agent arrived at its conclusions.
+    ///
+    /// Reasoning may include:
+    /// - Step-by-step problem solving
+    /// - Tool selection rationale
+    /// - Confidence assessments
+    /// - Intermediate conclusions
+    ///
+    /// ## Example
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .includeReasoning(true)
+    ///
+    /// for try await event in agent.stream("...", config: config) {
+    ///     if case .reasoning(let text) = event {
+    ///         print("Thinking: \(text)")
+    ///     }
+    /// }
+    /// ```
     ///
     /// Default: `true`
     ///
-    /// - SeeAlso: ``AgentEvent/output(_:)``, ``AgentEvent/Output/thinking(thought:)``
+    /// - SeeAlso: ``AgentEvent/reasoning(_:)``
     public var includeReasoning: Bool
 
     // MARK: - Session Settings
@@ -545,6 +662,16 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   ``Agent/metricsCollector``
     public var autoAttachMetricsCollector: Bool
 
+    // MARK: - Foundation Models Execution
+
+    /// Ignored. Construct a provider-owned tool loop adapter instead of setting this flag.
+    ///
+    /// Default: ``FoundationModelsExecutionMode/capture``.
+    ///
+    /// - SeeAlso: ``InferenceProvider/foundationModelsOwningToolLoop()``
+    @available(*, deprecated, message: "Choose a provider-owned tool loop by constructing the InferenceProvider adapter. This flag is ignored.")
+    public var foundationModelsExecution: FoundationModelsExecutionMode
+
     // MARK: - Resilience Settings
 
     /// Retry, circuit-breaker, and rate-limit policies for **provider inference**.
@@ -585,6 +712,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - autoPreviousResponseId: Enable auto response ID tracking. Default: false
     ///   - defaultTracingEnabled: Enable default tracing when no tracer configured. Default: true
     ///   - autoAttachMetricsCollector: Auto-attach a ``MetricsCollector``. Default: false
+    ///   - foundationModelsExecution: Foundation Models tool-loop mode. Default: ``FoundationModelsExecutionMode/capture``
     ///   - resilience: Retry / circuit-breaker / rate-limit policies for inference. Default: ``ResilienceConfiguration/disabled``
     public init(
         name: String = "Agent",
@@ -607,6 +735,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         autoPreviousResponseId: Bool = false,
         defaultTracingEnabled: Bool = true,
         autoAttachMetricsCollector: Bool = false,
+        foundationModelsExecution: FoundationModelsExecutionMode = .capture,
         resilience: ResilienceConfiguration = .disabled
     ) {
         self.name = name
@@ -630,6 +759,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.autoPreviousResponseId = autoPreviousResponseId
         self.defaultTracingEnabled = defaultTracingEnabled
         self.autoAttachMetricsCollector = autoAttachMetricsCollector
+        self.foundationModelsExecution = foundationModelsExecution
         self.resilience = resilience
     }
 }
@@ -954,28 +1084,45 @@ extension AgentConfiguration {
 
     /// Sets whether to stream responses as they're generated.
     ///
-    /// Enabled runs emit incremental ``AgentEvent/output(_:)`` events when the
-    /// provider streams. Disabled runs emit the completed response through
-    /// ``AgentEvent/Lifecycle/completed(result:)``.
+    /// When enabled, the agent delivers response content incrementally through
+    /// ``AgentEvent/responseChunk(_:)`` events. This provides better perceived
+    /// performance and allows real-time UI updates.
     ///
-    /// - Parameter value: `true` to enable streaming, `false` for complete responses
+    /// Default: true
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Non-streaming for batch processing
+    /// let batchConfig = AgentConfiguration.default
+    ///     .enableStreaming(false)
+    /// ```
+    ///
+    /// - Parameter value: true to enable streaming, false for complete responses
     /// - Returns: A new configuration with the updated streaming setting
-    /// - SeeAlso: ``AgentEvent/output(_:)``, ``AgentEvent/Lifecycle/completed(result:)``
+    /// - SeeAlso: ``enableStreaming``, ``AgentEvent/responseChunk(_:)``
     @discardableResult public func enableStreaming(_ value: Bool) -> AgentConfiguration {
         var copy = self
         copy.enableStreaming = value
         return copy
     }
 
-    /// Sets the legacy result-detail compatibility setting.
+    /// Sets whether to include detailed tool call information in the result.
     ///
-    /// The value is retained for source compatibility but has no effect. Tool
-    /// details are always exposed through ``AgentResult/toolCalls`` and
-    /// ``AgentResult/toolResults``.
+    /// When enabled, ``ToolCallDetail`` objects are included in the
+    /// ``AgentResponse/toolCalls`` array, showing which tools were called,
+    /// with what arguments, and their results.
     ///
-    /// - Parameter value: Ignored compatibility value
-    /// - Returns: A new configuration with the updated stored value
-    /// - SeeAlso: ``includeToolCallDetails``, ``AgentResponse/toolCalls``
+    /// Default: true
+    ///
+    /// ## Example
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .includeToolCallDetails(true)
+    /// ```
+    ///
+    /// - Parameter value: true to include tool call details
+    /// - Returns: A new configuration with the updated setting
+    /// - SeeAlso: ``includeToolCallDetails``, ``ToolCallDetail``
     @discardableResult public func includeToolCallDetails(_ value: Bool) -> AgentConfiguration {
         var copy = self
         copy.includeToolCallDetails = value
@@ -997,24 +1144,31 @@ extension AgentConfiguration {
     ///     .stopOnToolError(true)
     /// ```
     ///
-    /// - Parameter value: `true` to stop on the first tool error
+    /// - Parameter value: true to stop on first tool error
     /// - Returns: A new configuration with the updated error handling setting
-    /// - SeeAlso: ``stopOnToolError``, ``ToolResult/Outcome/failure(message:)``
+    /// - SeeAlso: ``stopOnToolError``, ``ToolCallDetail/error``
     @discardableResult public func stopOnToolError(_ value: Bool) -> AgentConfiguration {
         var copy = self
         copy.stopOnToolError = value
         return copy
     }
 
-    /// Sets the legacy reasoning-event compatibility setting.
+    /// Sets whether to include the agent's reasoning in events.
     ///
-    /// The value is retained for source compatibility but has no effect. Current
-    /// reasoning events, when emitted by a provider, are nested under
-    /// ``AgentEvent/output(_:)``.
+    /// When enabled, the agent emits ``AgentEvent/reasoning(_:)`` events
+    /// containing its chain-of-thought or reasoning process.
     ///
-    /// - Parameter value: Ignored compatibility value
-    /// - Returns: A new configuration with the updated stored value
-    /// - SeeAlso: ``includeReasoning``, ``AgentEvent/Output/thinking(thought:)``
+    /// Default: true
+    ///
+    /// ## Example
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .includeReasoning(true)
+    /// ```
+    ///
+    /// - Parameter value: true to include reasoning events
+    /// - Returns: A new configuration with the updated reasoning setting
+    /// - SeeAlso: ``includeReasoning``, ``AgentEvent/reasoning(_:)``
     @discardableResult public func includeReasoning(_ value: Bool) -> AgentConfiguration {
         var copy = self
         copy.includeReasoning = value
@@ -1160,6 +1314,21 @@ extension AgentConfiguration {
         return copy
     }
 
+    // MARK: Foundation Models Execution
+
+    /// Ignored. Construct a provider-owned tool loop adapter instead of setting this flag.
+    ///
+    /// - Parameter value: Previously selected the Foundation Models tool loop. Ignored.
+    /// - Returns: A new configuration with the stored (ignored) flag.
+    @available(*, deprecated, message: "Choose a provider-owned tool loop by constructing the InferenceProvider adapter. This flag is ignored.")
+    @discardableResult public func foundationModelsExecution(
+        _ value: FoundationModelsExecutionMode
+    ) -> AgentConfiguration {
+        var copy = self
+        copy.foundationModelsExecution = value
+        return copy
+    }
+
     // MARK: Resilience Settings
 
     /// Sets retry, circuit-breaker, and rate-limit policies for provider inference.
@@ -1212,8 +1381,41 @@ extension AgentConfiguration: CustomStringConvertible {
             autoPreviousResponseId: \(autoPreviousResponseId),
             defaultTracingEnabled: \(defaultTracingEnabled),
             autoAttachMetricsCollector: \(autoAttachMetricsCollector),
+            foundationModelsExecution: \(foundationModelsExecution),
             resilience: \(String(describing: resilience))
         )
         """
+    }
+
+    func warnIfDeprecatedNativeSessionFlag() {
+        FoundationModelsExecutionModeNag.warnIfNeeded(foundationModelsExecution)
+    }
+}
+
+enum FoundationModelsExecutionModeNag {
+    private static let once = OnceFlag()
+
+    static func warnIfNeeded(_ mode: FoundationModelsExecutionMode) {
+        guard mode == .nativeSession else { return }
+        guard once.take() else { return }
+        Log.agents.warning(
+            """
+            AgentConfiguration.foundationModelsExecution is ignored. \
+            Construct .foundationModelsOwningToolLoop() for a provider-owned tool loop.
+            """
+        )
+    }
+}
+
+private final class OnceFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+
+    func take() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if done { return false }
+        done = true
+        return true
     }
 }

@@ -313,6 +313,45 @@ struct ProviderOwnedToolLoopTests {
         let result = try await source.run("route")
         #expect(result.output == "from target")
     }
+
+    @Test("Deprecated nativeSession flag does not stop Agent iterating a capture adapter")
+    func deprecatedFlagDoesNotChooseTheLoop() async throws {
+        let spy = MockTool(
+            name: "test_tool",
+            description: "Test tool",
+            parameters: [ToolParameter(name: "location", description: "Location", type: .string)],
+            result: .string("Tool result")
+        )
+        let mockProvider = MockInferenceProvider()
+        await mockProvider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(
+                        id: "call_123",
+                        name: "test_tool",
+                        arguments: ["location": .string("NYC")]
+                    ),
+                ],
+                finishReason: .toolCall
+            ),
+            InferenceResponse(content: "Done", finishReason: .completed),
+        ])
+
+        let config = AgentConfiguration.default
+            .foundationModelsExecution(.nativeSession)
+            .defaultTracingEnabled(false)
+        let agent = try Agent(
+            tools: [spy],
+            instructions: "You are a helpful assistant.",
+            configuration: config,
+            inferenceProvider: mockProvider
+        )
+
+        let result = try await agent.run("Use the tool")
+        #expect(result.output == "Done")
+        #expect(await mockProvider.toolCallMessageCalls.count == 2)
+    }
 }
 
 #if canImport(FoundationModels)
