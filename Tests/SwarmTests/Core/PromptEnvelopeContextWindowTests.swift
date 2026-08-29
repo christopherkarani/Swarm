@@ -212,6 +212,24 @@ struct PromptEnvelopeContextWindowTests {
         #expect(kept == [50])
     }
 
+    @Test("synchronous evictOldest matches the async keep-newest result")
+    func synchronousEvictOldestMatchesAsync() async {
+        let messages = [10, 20, 30, 40]
+        let asyncKept = await ContextWindow.evictOldest(
+            from: messages,
+            maxTokens: 70,
+            tokensOf: { $0 }
+        )
+        let syncKept = ContextWindow.evictOldest(
+            from: messages,
+            maxTokens: 70,
+            tokensOf: { $0 }
+        )
+
+        #expect(syncKept == asyncKept)
+        #expect(syncKept == [30, 40])
+    }
+
     @Test("strict4k enforce matches ContextWindow.fit with the same counter")
     func enforceMatchesSharedFit() async {
         let padding = String(repeating: "x", count: 80)

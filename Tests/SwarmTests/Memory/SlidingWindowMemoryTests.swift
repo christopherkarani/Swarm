@@ -88,6 +88,40 @@ struct SlidingWindowMemoryTests {
         #expect(remaining.last?.content.contains("unique-marker-40") == true)
     }
 
+    @Test("Concurrent adds under budget keep every message")
+    func concurrentAddsUnderBudgetKeepEveryMessage() async {
+        let memory = SlidingWindowMemory(maxTokens: 50_000)
+        let total = 40
+
+        await withTaskGroup(of: Void.self) { group in
+            for index in 1 ... total {
+                group.addTask {
+                    await memory.add(.user("concurrent-marker-\(index)"))
+                }
+            }
+        }
+
+        let remaining = await memory.allMessages()
+        #expect(remaining.count == total)
+        #expect(Set(remaining.map(\.content)).count == total)
+    }
+
+    @Test("Concurrent overflowing adds stay within the token budget")
+    func concurrentOverflowStaysWithinBudget() async {
+        let memory = SlidingWindowMemory(maxTokens: 200)
+
+        await withTaskGroup(of: Void.self) { group in
+            for index in 1 ... 40 {
+                group.addTask {
+                    await memory.add(.user("overflow-marker-\(index) with extra padding"))
+                }
+            }
+        }
+
+        #expect(await memory.count >= 1)
+        #expect(await memory.tokenCount <= 200)
+    }
+
     @Test("Keeps at least one message")
     func keepsAtLeastOneMessage() async {
         let memory = SlidingWindowMemory(maxTokens: 100)

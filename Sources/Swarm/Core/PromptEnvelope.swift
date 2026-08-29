@@ -137,6 +137,40 @@ enum ContextWindow {
         return best
     }
 
+    /// Synchronous counterpart of ``longestPrefix(of:maxTokens:minimum:countTokens:)``
+    /// for callers that cannot suspend (actor-isolated mutation).
+    static func longestPrefix(
+        of text: String,
+        maxTokens: Int,
+        minimum: String = "",
+        countTokens: (String) -> Int
+    ) -> String {
+        guard maxTokens > 0 else {
+            return minimum
+        }
+
+        if countTokens(text) <= maxTokens {
+            return text
+        }
+
+        var lower = minimum.count
+        var upper = text.count
+        var best = minimum
+
+        while lower <= upper {
+            let mid = (lower + upper) / 2
+            let candidate = String(text.prefix(mid))
+            if countTokens(candidate) <= maxTokens {
+                best = candidate
+                lower = mid + 1
+            } else {
+                upper = mid - 1
+            }
+        }
+
+        return best
+    }
+
     /// Keep-newest eviction: drop oldest messages until the additive token sum
     /// fits, always leaving at least one message.
     static func evictOldest<Message: Sendable>(
@@ -148,21 +182,44 @@ enum ContextWindow {
             return messages
         }
 
-        var remaining = messages
         var tokenCounts: [Int] = []
-        tokenCounts.reserveCapacity(remaining.count)
-        var total = 0
-        for message in remaining {
-            let tokens = await tokensOf(message)
-            tokenCounts.append(tokens)
-            total += tokens
+        tokenCounts.reserveCapacity(messages.count)
+        for message in messages {
+            tokenCounts.append(await tokensOf(message))
+        }
+        return evictOldest(from: messages, maxTokens: maxTokens, tokenCounts: tokenCounts)
+    }
+
+    /// Synchronous counterpart of ``evictOldest(from:maxTokens:tokensOf:)`` for
+    /// callers that cannot suspend (actor-isolated mutation).
+    static func evictOldest<Message>(
+        from messages: [Message],
+        maxTokens: Int,
+        tokensOf: (Message) -> Int
+    ) -> [Message] {
+        evictOldest(
+            from: messages,
+            maxTokens: maxTokens,
+            tokenCounts: messages.map(tokensOf)
+        )
+    }
+
+    private static func evictOldest<Message>(
+        from messages: [Message],
+        maxTokens: Int,
+        tokenCounts: [Int]
+    ) -> [Message] {
+        guard !messages.isEmpty else {
+            return messages
         }
 
+        var remaining = messages
+        var counts = tokenCounts
+        var total = counts.reduce(0, +)
         while total > maxTokens, remaining.count > 1 {
             remaining.removeFirst()
-            total -= tokenCounts.removeFirst()
+            total -= counts.removeFirst()
         }
-
         return remaining
     }
 
