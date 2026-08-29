@@ -69,25 +69,28 @@ public actor SlidingWindowMemory: Memory {
     ) {
         self.maxTokens = max(100, maxTokens)
         self.tokenEstimator = tokenEstimator
+        self.tokenCounter = EstimatedPromptTokenCounter(estimator: tokenEstimator)
     }
 
     // MARK: - AgentMemory Conformance
 
     public func add(_ message: MemoryMessage) async {
-        let messageTokens = tokenEstimator.estimateTokens(for: message.formattedContent)
-
+        let counter = tokenCounter
         messages.append(message)
-        currentTokenCount += messageTokens
-
-        // Remove oldest messages until within budget
-        while currentTokenCount > maxTokens, messages.count > 1 {
-            let removed = messages.removeFirst()
-            let removedTokens = tokenEstimator.estimateTokens(for: removed.formattedContent)
-            currentTokenCount -= removedTokens
-        }
+        messages = await ContextWindow.evictOldest(
+            from: messages,
+            maxTokens: maxTokens,
+            tokensOf: { candidate in
+                await PromptTokenBudgeting.countTokens(
+                    in: candidate.formattedContent,
+                    using: counter
+                )
+            }
+        )
+        recalibrateTokenCount()
 
         if currentTokenCount > maxTokens, let latest = messages.last {
-            let truncated = truncate(latest, toFit: maxTokens)
+            let truncated = await truncate(latest, toFit: maxTokens)
             messages[messages.count - 1] = truncated
             currentTokenCount = tokenEstimator.estimateTokens(for: truncated.formattedContent)
         }
@@ -115,34 +118,28 @@ public actor SlidingWindowMemory: Memory {
         operationsSinceRecalibration = 0
     }
 
-    private func truncate(_ message: MemoryMessage, toFit tokenLimit: Int) -> MemoryMessage {
-        var lowerBound = 0
-        var upperBound = message.content.count
-        var bestContent = ""
-
-        while lowerBound <= upperBound {
-            let midpoint = (lowerBound + upperBound) / 2
-            let candidateContent = String(message.content.prefix(midpoint))
-            let candidate = MemoryMessage(
-                id: message.id,
-                role: message.role,
-                content: candidateContent,
-                timestamp: message.timestamp,
-                metadata: message.metadata
-            )
-
-            if tokenEstimator.estimateTokens(for: candidate.formattedContent) <= tokenLimit {
-                bestContent = candidateContent
-                lowerBound = midpoint + 1
-            } else {
-                upperBound = midpoint - 1
-            }
+    private func truncate(_ message: MemoryMessage, toFit tokenLimit: Int) async -> MemoryMessage {
+        let counter = tokenCounter
+        let identity = message
+        let clipped = await ContextWindow.longestPrefix(
+            of: message.content,
+            maxTokens: tokenLimit,
+            minimum: ""
+        ) { candidate in
+            let formatted = MemoryMessage(
+                id: identity.id,
+                role: identity.role,
+                content: candidate,
+                timestamp: identity.timestamp,
+                metadata: identity.metadata
+            ).formattedContent
+            return await PromptTokenBudgeting.countTokens(in: formatted, using: counter)
         }
 
         return MemoryMessage(
             id: message.id,
             role: message.role,
-            content: bestContent,
+            content: clipped,
             timestamp: message.timestamp,
             metadata: message.metadata
         )
@@ -152,6 +149,9 @@ public actor SlidingWindowMemory: Memory {
 
     /// Token estimator for counting.
     private let tokenEstimator: any TokenEstimator
+
+    /// ``TokenEstimator`` adapted to the shared ``PromptTokenCounter`` seam.
+    private let tokenCounter: EstimatedPromptTokenCounter
 
     /// Internal message storage.
     private var messages: [MemoryMessage] = []

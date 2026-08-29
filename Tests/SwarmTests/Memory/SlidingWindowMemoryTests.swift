@@ -73,6 +73,21 @@ struct SlidingWindowMemoryTests {
         #expect(tokenCount <= 200)
     }
 
+    @Test("Keep-newest eviction drops the oldest marker and retains the latest")
+    func keepNewestEvictionDropsOldestMarker() async {
+        let memory = SlidingWindowMemory(maxTokens: 100)
+
+        for index in 1 ... 40 {
+            await memory.add(.user("unique-marker-\(index)"))
+        }
+
+        let remaining = await memory.allMessages()
+        #expect(remaining.contains(where: { $0.content.contains("unique-marker-40") }))
+        #expect(!remaining.contains(where: { $0.content.contains("unique-marker-1") }))
+        #expect(await memory.tokenCount <= 100)
+        #expect(remaining.last?.content.contains("unique-marker-40") == true)
+    }
+
     @Test("Keeps at least one message")
     func keepsAtLeastOneMessage() async {
         let memory = SlidingWindowMemory(maxTokens: 100)
@@ -82,6 +97,7 @@ struct SlidingWindowMemoryTests {
         await memory.add(.user(longContent))
 
         #expect(await memory.count >= 1)
+        #expect(await memory.tokenCount <= 100)
     }
 
     @Test("Near capacity flag works correctly")
