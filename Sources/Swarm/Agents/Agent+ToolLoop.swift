@@ -273,14 +273,12 @@ extension Agent {
                         return handoffOutcome
                     }
                     if case .ownedLoopTools = turnState.mode {
-                        let agentError = (error as? AgentError)
-                            ?? .generationFailed(reason: error.localizedDescription)
                         switch AgentTurnKernel.transition(
                             turnState,
-                            .ownedLoopInferenceFailed(agentError)
+                            .ownedLoopInferenceFailed(Self.ownedLoopInferenceFailure(from: error))
                         ) {
                         case .fail(let kernelError):
-                            if error is AgentError {
+                            if error is CancellationError || error is AgentError {
                                 throw kernelError
                             }
                             throw error
@@ -357,6 +355,22 @@ extension Agent {
                 throw normalizeCancellation(error)
             }
         }
+    }
+
+    /// Maps an owned-loop inference error to ``AgentError`` for the kernel.
+    ///
+    /// `CancellationError` must stay ``AgentError/cancelled`` (not retryable
+    /// ``AgentError/generationFailed(reason:)``). Other non-`AgentError` values
+    /// keep a generationFailed stand-in so the kernel can classify retry vs
+    /// fail; the shell still rethrows the original error in that case.
+    private static func ownedLoopInferenceFailure(from error: Error) -> AgentError {
+        if error is CancellationError {
+            return .cancelled
+        }
+        if let agentError = error as? AgentError {
+            return agentError
+        }
+        return .generationFailed(reason: error.localizedDescription)
     }
 
     /// Builds the initial conversation history from session history and user input.

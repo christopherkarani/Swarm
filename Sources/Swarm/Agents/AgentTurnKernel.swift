@@ -143,9 +143,10 @@ enum AgentTurnKernel: Sendable {
     ///   handoff (the sole admission for that tool round; the shell must not
     ///   also feed ``TurnAction/startNextIteration``)
     /// - ``TurnAction/ownedLoopInferenceFailed(_:)`` classifies owned-loop
-    ///   inference failures. Empty schemas are retry-safe
-    ///   (``TurnTransition/retryOwnedLoopInference``); tools that already ran
-    ///   inside inference fail closed. `executeProviderInference` still applies
+    ///   inference failures. Empty schemas retry only for retryable
+    ///   ``AgentError`` values (``TurnTransition/retryOwnedLoopInference``);
+    ///   cancellation, timeout, and tools that already ran inside inference
+    ///   fail closed. `executeProviderInference` still applies
     ///   ``ownedLoopInferenceRetryPolicy(mode:hasToolSchemas:)`` so retry
     ///   timing is unchanged.
     enum TurnAction: Equatable, Sendable {
@@ -166,8 +167,8 @@ enum AgentTurnKernel: Sendable {
         /// Host tool calls are pending; execute them, then report
         /// `.toolsCompleted`.
         case executeTools(TurnState)
-        /// Owned-loop inference may be retried (empty tool list only; tools
-        /// already ran inside inference).
+        /// Owned-loop inference may be retried (empty retryable failures only;
+        /// cancellation, timeout, and tools already ran inside inference fail).
         case retryOwnedLoopInference(TurnState)
         /// The turn finished with assistant content.
         case finish(content: String)
@@ -208,7 +209,10 @@ enum AgentTurnKernel: Sendable {
             return transition(state, .startNextIteration)
 
         case .ownedLoopInferenceFailed(let error):
-            if case .ownedLoopTools = state.mode, !state.hasToolSchemas {
+            // Empty schemas are retry-safe (no host tools to replay), but only
+            // transient inference failures may retry. Cancellation and timeout
+            // fail closed so they cannot be classified as generationFailed.
+            if case .ownedLoopTools = state.mode, !state.hasToolSchemas, error.isRetryable {
                 return .retryOwnedLoopInference(state)
             }
             return .fail(error)

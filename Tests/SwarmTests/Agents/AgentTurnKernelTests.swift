@@ -260,10 +260,6 @@ struct AgentTurnKernelTests {
             .ownedLoopInferenceFailed(transient)
         )
         #expect(emptySchemas == .retryOwnedLoopInference(emptySchemasState))
-        guard case let .retryOwnedLoopInference(retryState) = emptySchemas else {
-            return
-        }
-        #expect(retryState.iteration == emptySchemasState.iteration)
 
         let withSchemas = AgentTurnKernel.transition(
             state(iteration: 1, mode: .ownedLoopTools(streaming: false), hasToolSchemas: true),
@@ -276,6 +272,26 @@ struct AgentTurnKernelTests {
             .ownedLoopInferenceFailed(transient)
         )
         #expect(hostLoop == .fail(transient))
+    }
+
+    @Test("Owned-loop cancellation and timeout fail closed even with empty schemas")
+    func ownedLoopInferenceFailureDoesNotRetryCancellationOrTimeout() {
+        let emptySchemasState = state(
+            iteration: 1,
+            mode: .ownedLoopTools(streaming: false),
+            hasToolSchemas: false
+        )
+
+        #expect(
+            AgentTurnKernel.transition(emptySchemasState, .ownedLoopInferenceFailed(.cancelled))
+                == .fail(.cancelled)
+        )
+        #expect(
+            AgentTurnKernel.transition(
+                emptySchemasState,
+                .ownedLoopInferenceFailed(.timeout(duration: .seconds(15)))
+            ) == .fail(.timeout(duration: .seconds(15)))
+        )
     }
 
     @Test("Max iterations reached while tool calls are pending fails identically to the loop")
