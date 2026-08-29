@@ -87,6 +87,73 @@ struct ProviderOwnedToolLoopTests {
         let result = try await agent.run("hello")
         #expect(result.output == "recovered")
         #expect(await provider.recordedInferenceCallCount == 2)
+        #expect(result.iterationCount == 1)
+    }
+
+    @Test("Empty-tools owned-loop exhausted retries stay on one iteration")
+    func emptyToolsOwnedLoopExhaustedRetriesDoNotAdmitOrReplay() async throws {
+        let provider = MockOwnedLoopProvider(responses: ["should-not-run"])
+        await provider.setErrorSequence([
+            Self.transient,
+            Self.transient,
+            Self.transient,
+            Self.transient,
+        ])
+        let agent = try Agent(
+            tools: [],
+            instructions: "Be brief.",
+            configuration: AgentConfiguration.default
+                .enableStreaming(false)
+                .timeout(.seconds(15))
+                .resilience(ResilienceConfiguration(
+                    retryPolicy: RetryPolicy(maxAttempts: 3, backoff: .immediate)
+                ))
+                .defaultTracingEnabled(false),
+            inferenceProvider: provider
+        )
+
+        do {
+            _ = try await agent.run("hello")
+            Issue.record("Expected retries to exhaust")
+        } catch let error as ResilienceError {
+            guard case .retriesExhausted(let attempts, _) = error else {
+                Issue.record("Expected ResilienceError.retriesExhausted, got \(error)")
+                return
+            }
+            #expect(attempts == 4)
+        } catch {
+            Issue.record("Expected ResilienceError.retriesExhausted, got \(error)")
+        }
+
+        // maxAttempts counts retries after the first try: 1 + 3 = 4 calls.
+        #expect(await provider.recordedInferenceCallCount == 4)
+    }
+
+    @Test("Empty-tools owned-loop CancellationError is cancelled, not generationFailed")
+    func emptyToolsOwnedLoopCancellationIsNotGenerationFailed() async throws {
+        let provider = MockOwnedLoopProvider(responses: ["should-not-run"])
+        await provider.setErrorSequence([CancellationError()])
+        let agent = try Agent(
+            tools: [],
+            instructions: "Be brief.",
+            configuration: AgentConfiguration.default
+                .enableStreaming(false)
+                .timeout(.seconds(15))
+                .resilience(ResilienceConfiguration(retryPolicy: .noRetry))
+                .defaultTracingEnabled(false),
+            inferenceProvider: provider
+        )
+
+        do {
+            _ = try await agent.run("hello")
+            Issue.record("Expected cancellation")
+        } catch let error as AgentError {
+            #expect(error == .cancelled)
+        } catch {
+            Issue.record("Expected AgentError.cancelled, got \(error)")
+        }
+
+        #expect(await provider.recordedInferenceCallCount == 1)
     }
 
     @Test("Owned loop persists the InferenceMessage transcript on Session")
