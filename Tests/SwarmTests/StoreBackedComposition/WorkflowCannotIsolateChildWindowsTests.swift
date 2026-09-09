@@ -38,7 +38,7 @@ struct StoreBackedCompositionWorkflowCannotIsolateChildWindowsTests {
     }
 }
 
-/// Test double that records each `run` input. Local to this spike; not a product type.
+/// Test double that records each `run` input.
 actor CapturingAgentRuntime: AgentRuntime {
     nonisolated let tools: [any AnyJSONTool] = []
     nonisolated let instructions: String

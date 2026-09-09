@@ -2620,23 +2620,23 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 21 | var | public | JobChildResult.name | `public let name: String` |
 | 22 | var | public | JobChildResult.result | `public let result: AgentResult` |
 | 24 | func | public | JobChildResult.init(name:result:) | `public init(name: String, result: AgentResult)` |
-| 53 | struct | public | Job | `public struct Job` |
-| 56 | func | public | Job.init(store:) | `public init(store: any JobStore = InMemoryJobStore())` |
-| 61 | func | public | Job.run(_:body:) | `public func run<Output: Sendable>(_ input: String, body: @Sendable (JobSession) async throws -> Output) async throws -> Output` |
-| 70 | struct | public | JobSession | `public struct JobSession` |
-| 72 | var | public | JobSession.input | `public let input: String` |
-| 83 | func | public | JobSession.ingest(_:) | `public func ingest(_ record: JobRecord) async` |
-| 93 | func | public | JobSession.window(query:tokenLimit:) | `public func window(query: String, tokenLimit: Int) async -> String` |
-| 101 | func | public | JobSession.records(kind:) | `public func records(kind: String) async -> [JobRecord]` |
-| 110 | func | public | JobSession.fanOut(_:) | `public func fanOut(_ children: [JobChild]) async throws -> [JobChildResult]` |
+| 54 | struct | public | Job | `public struct Job` |
+| 57 | func | public | Job.init(store:) | `public init(store: any JobStore = InMemoryJobStore())` |
+| 62 | func | public | Job.run(_:body:) | `public func run<Output: Sendable>(_ input: String, body: @Sendable (JobSession) async throws -> Output) async throws -> Output` |
+| 71 | struct | public | JobSession | `public struct JobSession` |
+| 73 | var | public | JobSession.input | `public let input: String` |
+| 85 | func | public | JobSession.ingest(_:) | `public func ingest(_ record: JobRecord) async` |
+| 97 | func | public | JobSession.window(query:tokenLimit:) | `public func window(query: String, tokenLimit: Int) async -> String` |
+| 107 | func | public | JobSession.records(kind:) | `public func records(kind: String) async -> [JobRecord]` |
+| 117 | func | public | JobSession.fanOut(_:) | `public func fanOut(_ children: [JobChild]) async throws -> [JobChildResult]` |
 
 ### Job/JobStore.swift
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 4 | struct | public | JobRecord | `public struct JobRecord` |
-| 6 | var | public | JobRecord.kind | `public var kind: String` |
-| 9 | var | public | JobRecord.text | `public var text: String` |
+| 6 | var | public | JobRecord.kind | `public let kind: String` |
+| 9 | var | public | JobRecord.text | `public let text: String` |
 | 11 | func | public | JobRecord.init(kind:text:) | `public init(kind: String, text: String)` |
 | 24 | protocol | public | JobStore | `public protocol JobStore` |
 | 26 | func | public | JobStore.ingest(_:) | `func ingest(_ record: JobRecord) async` |

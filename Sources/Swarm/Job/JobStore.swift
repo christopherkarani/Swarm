@@ -3,10 +3,10 @@ import Foundation
 /// One note in a job's notes box.
 public struct JobRecord: Sendable, Equatable {
     /// Caller-chosen kind, such as `"note"` or `"outline"`.
-    public var kind: String
+    public let kind: String
 
     /// Note body.
-    public var text: String
+    public let text: String
 
     public init(kind: String, text: String) {
         self.kind = kind

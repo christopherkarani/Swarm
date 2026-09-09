@@ -77,7 +77,7 @@ let sections = try await Job().run("Write an essay about rivers") { session in
 }
 ```
 
-`JobStore` holds records. `JobSession.window` does the search.
+`JobStore` holds records. `JobSession.window` does the search and truncation.
 
 ## On-Device and Cloud — Same API
 

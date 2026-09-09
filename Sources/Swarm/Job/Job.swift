@@ -49,7 +49,8 @@ public struct JobChildResult: Sendable, Equatable {
 /// }
 /// ```
 ///
-/// v1 is in-process. A crash means start over. One fan-out per job.
+/// v1 is in-process. A crash means start over. One fan-out per ``run(_:body:)``.
+/// Reusing the same `Job` (or store) shares the notes box across runs.
 public struct Job: Sendable {
     private let store: any JobStore
 
@@ -80,15 +81,18 @@ public struct JobSession: Sendable {
         self.fanOutGate = JobFanOutGate()
     }
 
+    /// Append a note to this job's store.
     public func ingest(_ record: JobRecord) async {
         await store.ingest(record)
     }
 
     /// Search phrase plus size limit over this job's notes.
     ///
-    /// Empty query or no matches return `""`, not an error. Size is measured
-    /// with ``CharacterBasedTokenEstimator`` (~4 characters per token).
-    /// Stores do not implement this; the session always renders from
+    /// Matching is a case-insensitive substring of ``JobRecord/kind`` or
+    /// ``JobRecord/text``, in ingest order. Empty or whitespace-only query,
+    /// no matches, and `tokenLimit <= 0` return `""`, not an error. Size is
+    /// measured with ``CharacterBasedTokenEstimator`` (~4 characters per
+    /// token). Stores do not implement this; the session always renders from
     /// ``JobStore/records()``.
     public func window(query: String, tokenLimit: Int) async -> String {
         JobNotesWindow.render(
@@ -98,15 +102,18 @@ public struct JobSession: Sendable {
         )
     }
 
+    /// Exact `kind` match, ingest order. Unlike ``window(query:tokenLimit:)``,
+    /// this does not substring-search or ignore case.
     public func records(kind: String) async -> [JobRecord] {
         await store.records(kind: kind)
     }
 
-    /// Run helpers concurrently. Returns results sorted by child name.
+    /// Run helpers concurrently. Returns results sorted by trimmed child name.
     ///
     /// Empty list, empty names, and duplicate names fail before any helper
-    /// runs. A second call fails with ``JobError/fanOutAlreadyUsed``. Helper
-    /// output is not written into the notes box.
+    /// runs and do not consume the one fan-out. A second call fails with
+    /// ``JobError/fanOutAlreadyUsed``. Helper output is not written into the
+    /// notes box.
     public func fanOut(_ children: [JobChild]) async throws -> [JobChildResult] {
         let prepared = try JobFanOutPreparation.prepare(children)
         try await fanOutGate.claim()

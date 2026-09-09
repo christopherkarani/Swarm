@@ -503,8 +503,8 @@ last-answer chain.
 
 ```swift
 public struct JobRecord: Sendable, Equatable {
-    public var kind: String
-    public var text: String
+    public let kind: String
+    public let text: String
     public init(kind: String, text: String)
 }
 
@@ -556,12 +556,15 @@ public struct JobSession: Sendable {
 ```
 
 `Job.run` is app-owned steps: you ingest notes, retrieve windows, then
-`fanOut` once. Helpers run concurrently; results come back sorted by name.
-Empty names, duplicate names, and an empty child list fail closed. Helper
-output is not auto-ingested. v1 does not checkpoint.
+`fanOut` once per run. Helpers run concurrently; results come back sorted by
+trimmed name. Empty names, duplicate names, and an empty child list fail
+closed without consuming the fan-out. Helper output is not auto-ingested.
+v1 does not checkpoint.
 
-`JobStore` holds records in ingest order. `JobSession.window` always renders
-from `store.records()`; the store does not implement `window`.
+`JobStore` holds records in ingest order. `records(kind:)` is an exact kind
+match. `JobSession.window` always renders from `store.records()` with a
+case-insensitive substring of kind or text; the store does not implement
+`window`.
 
 ## 8) InputGuard and OutputGuard
 

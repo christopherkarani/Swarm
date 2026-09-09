@@ -15,7 +15,7 @@ public enum JobError: Error, Sendable, Equatable {
     /// `fanOut` was called with no children.
     case emptyFanOut
 
-    /// This job already ran its one fan-out.
+    /// This `Job.run` already used its one fan-out.
     case fanOutAlreadyUsed
 }
 

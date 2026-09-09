@@ -27,7 +27,7 @@ enum JobNotesWindow: Sendable {
                 continue
             }
             if pieces.isEmpty {
-                let maxChars = tokenLimit * 4
+                let maxChars = tokenLimit * CharacterBasedTokenEstimator.shared.charactersPerToken
                 return String(line.prefix(maxChars))
             }
             break

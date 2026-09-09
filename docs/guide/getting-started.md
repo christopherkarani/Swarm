@@ -426,8 +426,9 @@ let sections = try await Job().run("Write an essay about rivers") { session in
 }
 ```
 
-`JobSession.window` searches those notes. A custom `JobStore` only has to
-hold records (`ingest`, `records()`, `records(kind:)`).
+`JobSession.window` searches those notes (case-insensitive substring of kind
+or text). A custom `JobStore` only has to hold records (`ingest`,
+`records()` in ingest order, `records(kind:)` as an exact kind match).
 
 ### Durable: checkpoint and resume
 

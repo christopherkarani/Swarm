@@ -94,12 +94,12 @@ struct StoreBackedCompositionJobTests {
     @Test("one child failure cancels siblings")
     func childFailureCancelsSiblings() async {
         let failing = FailingAgentRuntime()
-        let delayed = MockAgentRuntime(response: "late", delay: .seconds(2))
+        let hanging = HangingAgentRuntime()
 
         do {
             _ = try await Job().run("topic") { session in
                 try await session.fanOut([
-                    JobChild(name: "slow", agent: delayed, brief: "wait"),
+                    JobChild(name: "slow", agent: hanging, brief: "wait"),
                     JobChild(name: "boom", agent: failing, brief: "fail"),
                 ])
             }
@@ -109,17 +109,18 @@ struct StoreBackedCompositionJobTests {
         } catch {
             Issue.record("unexpected error: \(error)")
         }
+        #expect(await hanging.cancelled)
     }
 
-    @Test("results are sorted by name even if completion order differs")
+    @Test("results are sorted by trimmed name")
     func resultsSortedByNameDespiteCompletionOrder() async throws {
-        let beta = MockAgentRuntime(response: "b", delay: .zero)
-        let alpha = MockAgentRuntime(response: "a", delay: .milliseconds(40))
+        let beta = MockAgentRuntime(response: "b")
+        let alpha = MockAgentRuntime(response: "a")
 
         let results = try await Job().run("topic") { session in
             try await session.fanOut([
                 JobChild(name: "beta", agent: beta, brief: "b"),
-                JobChild(name: "alpha", agent: alpha, brief: "a"),
+                JobChild(name: " alpha ", agent: alpha, brief: "a"),
             ])
         }
 
@@ -139,6 +140,35 @@ struct StoreBackedCompositionJobTests {
         #expect(await store.records() == [JobRecord(kind: "note", text: "hello")])
     }
 
+    @Test("records() is ingest order; records(kind:) is exact kind")
+    func recordsPreserveIngestOrderAndExactKind() async throws {
+        let store = InMemoryJobStore()
+        try await Job(store: store).run("topic") { session in
+            await session.ingest(JobRecord(kind: "note", text: "first"))
+            await session.ingest(JobRecord(kind: "outline", text: "middle"))
+            await session.ingest(JobRecord(kind: "note", text: "second"))
+            await session.ingest(JobRecord(kind: "notebook", text: "not-exact"))
+
+            #expect(await session.records(kind: "note") == [
+                JobRecord(kind: "note", text: "first"),
+                JobRecord(kind: "note", text: "second"),
+            ])
+            #expect(await session.records(kind: "NOTE").isEmpty)
+            #expect(await session.records(kind: "not").isEmpty)
+        }
+
+        #expect(await store.records() == [
+            JobRecord(kind: "note", text: "first"),
+            JobRecord(kind: "outline", text: "middle"),
+            JobRecord(kind: "note", text: "second"),
+            JobRecord(kind: "notebook", text: "not-exact"),
+        ])
+        #expect(await store.records(kind: "note") == [
+            JobRecord(kind: "note", text: "first"),
+            JobRecord(kind: "note", text: "second"),
+        ])
+    }
+
     @Test("records-only store still truncates windows through JobSession")
     func recordsOnlyStoreTruncatesWindowsThroughSession() async throws {
         let store = RecordingJobStore()
@@ -150,8 +180,19 @@ struct StoreBackedCompositionJobTests {
             #expect(truncated == "note")
             #expect(full == "note: alpha body")
             #expect(full.contains("beta body") == false)
+
+            let kindHit = await session.window(query: "alpha-outline", tokenLimit: 100)
+            #expect(kindHit == "")
+            await session.ingest(JobRecord(kind: "alpha-outline", text: "later"))
+            let afterIngest = await session.window(query: "alpha-outline", tokenLimit: 100)
+            #expect(afterIngest == "alpha-outline: later")
+
+            let caseInsensitive = await session.window(query: "ALPHA BODY", tokenLimit: 100)
+            #expect(caseInsensitive == "note: alpha body")
+            #expect(await session.window(query: "  ", tokenLimit: 100) == "")
+            #expect(await session.window(query: "alpha", tokenLimit: 0) == "")
         }
-        #expect(await store.records().map(\.text) == ["alpha body", "beta body"])
+        #expect(await store.records().map(\.text) == ["alpha body", "beta body", "later"])
     }
 
     @Test("a later step sees the helper result list")
@@ -186,6 +227,23 @@ struct StoreBackedCompositionJobTests {
         }
     }
 
+    @Test("validation failure does not consume the fan-out")
+    func validationFailureDoesNotConsumeFanOut() async throws {
+        let agent = MockAgentRuntime(response: "ok")
+        let results = try await Job().run("topic") { session in
+            do {
+                _ = try await session.fanOut([])
+                Issue.record("expected emptyFanOut")
+            } catch let error as JobError {
+                #expect(error == .emptyFanOut)
+            }
+            return try await session.fanOut([
+                JobChild(name: "alpha", agent: agent, brief: "a"),
+            ])
+        }
+        #expect(results.map(\.name) == ["alpha"])
+    }
+
     @Test("helper output is not auto-ingested")
     func helperOutputIsNotAutoIngested() async throws {
         let writer = MockAgentRuntime(response: "section")
@@ -198,6 +256,52 @@ struct StoreBackedCompositionJobTests {
             #expect(notes == [JobRecord(kind: "note", text: "alpha body")])
             #expect(await session.records(kind: "section").isEmpty)
         }
+    }
+}
+
+actor HangingAgentRuntime: AgentRuntime {
+    nonisolated let tools: [any AnyJSONTool] = []
+    nonisolated let instructions = "hang"
+    nonisolated let configuration: AgentConfiguration = .default
+    private var continuation: CheckedContinuation<AgentResult, Error>?
+    private(set) var cancelled = false
+
+    func run(
+        _: String,
+        session _: (any Session)?,
+        observer _: (any AgentObserver)?
+    ) async throws -> AgentResult {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if self.cancelled {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                self.continuation = continuation
+            }
+        } onCancel: {
+            Task { await self.resumeCancelled() }
+        }
+    }
+
+    func resumeCancelled() {
+        cancelled = true
+        continuation?.resume(throwing: CancellationError())
+        continuation = nil
+    }
+
+    nonisolated func stream(
+        _: String,
+        session _: (any Session)?,
+        observer _: (any AgentObserver)?
+    ) -> AsyncThrowingStream<AgentEvent, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            continuation.finish(throwing: CancellationError())
+        }
+    }
+
+    func cancel() async {
+        resumeCancelled()
     }
 }
 
