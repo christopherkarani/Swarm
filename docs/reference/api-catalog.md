@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 198 (205 including `Internal/GraphRuntime/`)
+- Source files scanned: 203 (210 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2325
 
 ## 1. Swarm (entry point)
@@ -2604,6 +2604,59 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 27 | struct | public | WorkflowCheckpointing | `public struct WorkflowCheckpointing` |
 | 49 | func | public | WorkflowCheckpointing.inMemory() | `public static func inMemory() -> WorkflowCheckpointing` |
 | 70 | func | public | WorkflowCheckpointing.fileSystem(directory:retention:) | `public static func fileSystem(directory: URL, retention: WorkflowCheckpointRetention = .default) -> WorkflowCheckpointing` |
+
+## 9b. Job
+
+### Job/Job.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 7 | struct | public | JobChild | `public struct JobChild` |
+| 8 | var | public | JobChild.name | `public let name: String` |
+| 9 | var | public | JobChild.agent | `public let agent: any AgentRuntime` |
+| 10 | var | public | JobChild.brief | `public let brief: String` |
+| 12 | func | public | JobChild.init(name:agent:brief:) | `public init(name: String, agent: some AgentRuntime, brief: String)` |
+| 20 | struct | public | JobChildResult | `public struct JobChildResult` |
+| 21 | var | public | JobChildResult.name | `public let name: String` |
+| 22 | var | public | JobChildResult.result | `public let result: AgentResult` |
+| 24 | func | public | JobChildResult.init(name:result:) | `public init(name: String, result: AgentResult)` |
+| 53 | struct | public | Job | `public struct Job` |
+| 56 | func | public | Job.init(store:) | `public init(store: any JobStore = InMemoryJobStore())` |
+| 61 | func | public | Job.run(_:body:) | `public func run<Output: Sendable>(_ input: String, body: @Sendable (JobSession) async throws -> Output) async throws -> Output` |
+| 70 | struct | public | JobSession | `public struct JobSession` |
+| 72 | var | public | JobSession.input | `public let input: String` |
+| 83 | func | public | JobSession.ingest(_:) | `public func ingest(_ record: JobRecord) async` |
+| 93 | func | public | JobSession.window(query:tokenLimit:) | `public func window(query: String, tokenLimit: Int) async -> String` |
+| 101 | func | public | JobSession.records(kind:) | `public func records(kind: String) async -> [JobRecord]` |
+| 110 | func | public | JobSession.fanOut(_:) | `public func fanOut(_ children: [JobChild]) async throws -> [JobChildResult]` |
+
+### Job/JobStore.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 4 | struct | public | JobRecord | `public struct JobRecord` |
+| 6 | var | public | JobRecord.kind | `public var kind: String` |
+| 9 | var | public | JobRecord.text | `public var text: String` |
+| 11 | func | public | JobRecord.init(kind:text:) | `public init(kind: String, text: String)` |
+| 24 | protocol | public | JobStore | `public protocol JobStore` |
+| 26 | func | public | JobStore.ingest(_:) | `func ingest(_ record: JobRecord) async` |
+| 29 | func | public | JobStore.records() | `func records() async -> [JobRecord]` |
+| 32 | func | public | JobStore.records(kind:) | `func records(kind: String) async -> [JobRecord]` |
+| 36 | class | public | InMemoryJobStore | `public actor InMemoryJobStore` |
+| 39 | func | public | InMemoryJobStore.init() | `public init()` |
+| 41 | func | public | InMemoryJobStore.ingest(_:) | `public func ingest(_ record: JobRecord) async` |
+| 45 | func | public | InMemoryJobStore.records() | `public func records() async -> [JobRecord]` |
+| 49 | func | public | InMemoryJobStore.records(kind:) | `public func records(kind: String) async -> [JobRecord]` |
+
+### Job/JobError.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 8 | enum | public | JobError | `public enum JobError` |
+| 10 | case | public | JobError.emptyChildName | `public case emptyChildName` |
+| 13 | case | public | JobError.duplicateChildName(_:) | `public case duplicateChildName(String)` |
+| 16 | case | public | JobError.emptyFanOut | `public case emptyFanOut` |
+| 19 | case | public | JobError.fanOutAlreadyUsed | `public case fanOutAlreadyUsed` |
 
 ## 10. MCP
 

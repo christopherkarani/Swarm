@@ -101,6 +101,15 @@ The `@Tool` macro generates tool schemas from Swift types at compile time.
 `FunctionTool` is available when you do not want macros.
 
 `Workflow` lets you chain, parallelize, route, repeat, and time out agent work.
+`Job` is the other composition tool: a shared notes box and helpers that each
+get their own brief, including when you only know how many helpers you need
+after an earlier step.
+
+| Need | Use |
+| --- | --- |
+| Last agent's answer becomes the next agent's input | `Workflow` |
+| Shared notes, different briefs, N decided after a step | `Job` |
+
 Add memory, guardrails, retries, fallbacks, streaming, tracing, MCP, and
 optional checkpoint/resume as your application grows.
 

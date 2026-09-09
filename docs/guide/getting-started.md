@@ -402,6 +402,33 @@ let result = try await Workflow()
     .run("What is 15% of $240?")
 ```
 
+### Shared notes (`Job`)
+
+`Workflow` passes the last answer along. Use `Job` when helpers share notes
+and each one needs a different brief — including when you only know N after
+an earlier step.
+
+| Need | Use |
+| --- | --- |
+| Last agent's answer becomes the next agent's input | `Workflow` |
+| Shared notes, different briefs, N decided after a step | `Job` |
+
+```swift
+let sections = try await Job().run("Write an essay about rivers") { session in
+    await session.ingest(JobRecord(kind: "note", text: "alpha: source"))
+    await session.ingest(JobRecord(kind: "note", text: "beta: mouth"))
+    let alpha = await session.window(query: "alpha", tokenLimit: 400)
+    let beta = await session.window(query: "beta", tokenLimit: 400)
+    return try await session.fanOut([
+        JobChild(name: "alpha", agent: writerA, brief: alpha),
+        JobChild(name: "beta", agent: writerB, brief: beta),
+    ])
+}
+```
+
+`JobSession.window` searches those notes. A custom `JobStore` only has to
+hold records (`ingest`, `records()`, `records(kind:)`).
+
 ### Durable: checkpoint and resume
 
 Durable Hive checkpoint/resume requires the **`Integrations`** SwiftPM trait
