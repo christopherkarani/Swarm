@@ -335,8 +335,8 @@ public struct AgentResponse: Sendable {
     /// It intentionally discards ``responseId``, ``agentName``, and the response
     /// ``timestamp``. ``AgentResult/duration`` is the sum of recorded tool-call
     /// durations, not wall-clock run time, and is `.zero` when no tools ran.
-    /// Tool-call identity is stable across repeated conversions when records
-    /// carry explicit ``ToolCallRecord/callId`` values.
+    /// Tool-call identity is stable across repeated conversions because each
+    /// record's stored ``ToolCallRecord/callId`` is reused.
     ///
     /// Example:
     /// ```swift

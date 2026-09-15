@@ -76,7 +76,7 @@ public struct AgentResult: Sendable, Equatable {
     /// Creates a new agent result from paired invocations.
     /// - Parameters:
     ///   - output: The final output text.
-    ///   - invocations: Tool invocations in order. Default: []
+    ///   - invocations: Tool invocations in order.
     ///   - iterationCount: Number of iterations. Default: 1
     ///   - duration: Execution duration. Default: .zero
     ///   - tokenUsage: Token usage stats. Default: nil
@@ -129,7 +129,7 @@ public struct AgentResult: Sendable, Equatable {
         )
     }
 
-    static func invocationsPairing(
+    private static func invocationsPairing(
         toolCalls: [ToolCall],
         toolResults: [ToolResult]
     ) -> [ToolInvocation] {
@@ -141,10 +141,9 @@ public struct AgentResult: Sendable, Equatable {
                 continue
             }
             let result = remainingResults.remove(at: index)
-            guard let invocation = ToolInvocation(call: call, result: result) else {
-                continue
+            if let invocation = ToolInvocation(call: call, result: result) {
+                paired.append(invocation)
             }
-            paired.append(invocation)
         }
 
         return paired

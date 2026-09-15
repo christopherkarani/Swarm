@@ -121,6 +121,47 @@ struct AgentResponseConversionTests {
         #expect(second.toolResults.first?.callId == knownID)
         #expect(first.toolCalls.first?.arguments["q"] == .string("hi"))
         #expect(first.toolResults.first?.output == .string("hi"))
+        #expect(first == second)
+    }
+
+    @Test("asResult is equal across conversions when callId was defaulted")
+    func defaultedCallIdsStayStable() {
+        let record = ToolCallRecord.success(
+            toolName: "echo",
+            result: .string("hi"),
+            duration: .milliseconds(2),
+            timestamp: Date(timeIntervalSince1970: 3)
+        )
+        let response = AgentResponse(
+            output: "done",
+            agentName: "Echo",
+            timestamp: Date(timeIntervalSince1970: 3),
+            toolCalls: [record]
+        )
+
+        #expect(response.asResult == response.asResult)
+        #expect(response.asResult.toolCalls.first?.id == record.callId)
+    }
+
+    @Test("ToolInvocation shares identity by construction and rejects mismatches")
+    func invocationIdentityByConstruction() {
+        let callID = UUID(uuidString: "01234567-89AB-CDEF-0123-456789ABCDEF")!
+        let call = ToolCall(id: callID, toolName: "calc", arguments: ["n": .int(2)])
+        let mismatched = ToolResult.success(
+            callId: UUID(uuidString: "FEDCBA98-7654-3210-FEDC-BA9876543210")!,
+            output: .int(4),
+            duration: .milliseconds(1)
+        )
+        #expect(ToolInvocation(call: call, result: mismatched) == nil)
+
+        let constructed = ToolInvocation(
+            call: call,
+            duration: .milliseconds(1),
+            outcome: .success(.int(4))
+        )
+        #expect(constructed.call.id == callID)
+        #expect(constructed.result.callId == callID)
+        #expect(ToolInvocation(call: call, result: constructed.result) != nil)
     }
 
     @Test("AgentResult pairing drops tool results with no matching call")
@@ -144,6 +185,62 @@ struct AgentResponseConversionTests {
         #expect(result.toolResults[0].callId == callID)
     }
 
+    @Test("AgentResult pairing omits calls with no matching result")
+    func dropsUnmatchedCalls() {
+        let pairedID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let unmatchedID = UUID(uuidString: "99999999-8888-7777-6666-555555555555")!
+        let pairedCall = ToolCall(id: pairedID, toolName: "kept", arguments: [:])
+        let unmatchedCall = ToolCall(id: unmatchedID, toolName: "lost", arguments: [:])
+        let matched = ToolResult.success(callId: pairedID, output: .string("ok"), duration: .zero)
+
+        let result = AgentResult(
+            output: "done",
+            toolCalls: [unmatchedCall, pairedCall],
+            toolResults: [matched]
+        )
+
+        #expect(result.invocations.count == 1)
+        #expect(result.toolCalls.map(\.id) == [pairedID])
+        #expect(result.toolResults.map(\.callId) == [pairedID])
+    }
+
+    @Test("WorkflowResultSnapshot decodes pre-invocation paired checkpoint payloads")
+    func snapshotDecodesLegacyPairedArrays() throws {
+        let callID = UUID(uuidString: "12345678-1234-1234-1234-123456789ABC")!
+        let call = ToolCall(
+            id: callID,
+            toolName: "calc",
+            arguments: ["n": .int(2)],
+            timestamp: Date(timeIntervalSince1970: 10)
+        )
+        let toolResult = ToolResult.success(callId: callID, output: .int(4), duration: .milliseconds(5))
+        let payload = LegacyWorkflowResultSnapshotPayload(
+            output: "4",
+            toolCalls: [call],
+            toolResults: [toolResult],
+            iterationCount: 2,
+            durationSeconds: 1,
+            durationAttoseconds: 0,
+            tokenUsage: TokenUsage(inputTokens: 3, outputTokens: 1),
+            metadata: ["source": .string("checkpoint")]
+        )
+
+        let decoded = try JSONDecoder().decode(
+            WorkflowResultSnapshot.self,
+            from: try JSONEncoder().encode(payload)
+        )
+        let restored = decoded.agentResult
+
+        #expect(decoded.output == "4")
+        #expect(restored.invocations.count == 1)
+        #expect(restored.toolCalls.map(\.id) == [callID])
+        #expect(restored.toolResults.map(\.callId) == [callID])
+        #expect(restored.toolResults.first?.output == .int(4))
+        #expect(restored.iterationCount == 2)
+        #expect(restored.tokenUsage == TokenUsage(inputTokens: 3, outputTokens: 1))
+        #expect(restored.metadata["source"] == .string("checkpoint"))
+    }
+
     @Test("empty tool list converts to zero duration and empty arrays")
     func emptyToolsStayEmpty() {
         let response = AgentResponse(
@@ -158,4 +255,16 @@ struct AgentResponseConversionTests {
         #expect(result.toolResults.isEmpty)
         #expect(result.duration == .zero)
     }
+}
+
+/// Checkpoint JSON shape from before `AgentResult` stored `invocations`.
+private struct LegacyWorkflowResultSnapshotPayload: Encodable {
+    let output: String
+    let toolCalls: [ToolCall]
+    let toolResults: [ToolResult]
+    let iterationCount: Int
+    let durationSeconds: Int64
+    let durationAttoseconds: Int64
+    let tokenUsage: TokenUsage?
+    let metadata: [String: SendableValue]
 }
