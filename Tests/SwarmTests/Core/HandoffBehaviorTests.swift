@@ -88,6 +88,20 @@ struct HandoffBehaviorTests {
         #expect(transformed?.metadata["erased"] == .bool(true))
         #expect(erased.effectiveToolName == "handoff_erased")
     }
+
+    @Test("Erased handoff preserves summarized history strategy (AC-001)")
+    func erasedConfigurationPreservesSummarizedHistory() {
+        let target = MockAgentRuntime(
+            instructions: "summarized-target",
+            configuration: AgentConfiguration(name: "summarized-target", defaultTracingEnabled: false)
+        )
+        let erased = target.asHandoff {
+            $0.history(.summarized(maxTokens: 80))
+        }
+
+        #expect(erased.history == .summarized(maxTokens: 80))
+        #expect(erased.nestHandoffHistory == true)
+    }
 }
 
 private actor HandoffCallbackRecorder {

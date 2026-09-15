@@ -640,6 +640,8 @@ the legacy marker protocols.
 
 Agents passed via the `handoffs` or `handoffAgents` init parameters are automatically wrapped as tool calls. The LLM can invoke them to delegate control.
 
+`AnyHandoffConfiguration` and `HandoffConfiguration` store a ``HandoffHistory`` value (`none`, `nested`, or `summarized(maxTokens:)`) so history strategy survives type erasure. ``nestHandoffHistory`` remains available as a derived boolean for source compatibility.
+
 ```swift
 // Via V3 canonical init
 let agent = try Agent("Route requests to the right specialist.") {
@@ -651,7 +653,14 @@ let triage = try Agent(
     instructions: "Route requests.",
     handoffAgents: [billingAgent, supportAgent, salesAgent]
 )
+
+// Typed options preserve summarized history after erasure
+let specialist = supportAgent.asHandoff {
+    $0.policy(.strict) // .summarized(maxTokens: 600) by default for strict
+}
 ```
+
+Use ``HandoffOptions/history(_:)`` or ``HandoffConfiguration``'s `history:` parameter instead of the deprecated `nestHandoffHistory:` boolean initializers.
 
 ## 11) Inference providers
 

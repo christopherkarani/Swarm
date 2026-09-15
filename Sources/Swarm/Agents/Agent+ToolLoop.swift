@@ -883,7 +883,10 @@ extension Agent {
                 let handoffContext = await context.copy(additionalValues: requestContext)
                 await applyContextValues(requestContext, to: handoffContext)
                 await preserveExecutionPath(from: context, in: handoffContext)
-                if handoffConfig.nestHandoffHistory {
+                switch handoffConfig.history {
+                case .none:
+                    break
+                case .nested, .summarized:
                     await addNestedHandoffHistory(
                         turnTranscript.conversationMessages,
                         to: handoffContext,
@@ -905,9 +908,15 @@ extension Agent {
                         if let receiver = targetAgent as? any HandoffReceiver {
                             return try await receiver.handleHandoff(handoffRequest, context: handoffContext)
                         } else {
+                            let nestSessionForHandoff: Bool = switch handoffConfig.history {
+                            case .none:
+                                false
+                            case .nested, .summarized:
+                                true
+                            }
                             let handoffSession = try await makeNestedHandoffSession(
                                 from: handoffContext,
-                                enabled: handoffConfig.nestHandoffHistory
+                                enabled: nestSessionForHandoff
                             )
                             return try await targetAgent.run(
                                 transformedData.input,

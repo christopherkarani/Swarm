@@ -118,6 +118,110 @@ struct AgentHandoffRuntimeTests {
         #expect(paths.first == ["source-agent"])
     }
 
+    @Test("Handoff with no history does not nest source transcript for regular Agent targets (AC-002)")
+    func handoffWithNoHistoryOmitsNestedTranscriptForRegularAgentTargets() async throws {
+        let sourceProvider = MockInferenceProvider()
+        await sourceProvider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(
+                        id: "call_handoff",
+                        name: "handoff_to_target",
+                        arguments: ["reason": .string("delegate")]
+                    ),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let targetProvider = MockInferenceProvider(responses: ["target done"])
+        let target = try Agent(
+            tools: [],
+            instructions: "Use prior context.",
+            configuration: AgentConfiguration(name: "target-agent", defaultTracingEnabled: false),
+            memory: ConversationMemory(),
+            inferenceProvider: targetProvider
+        )
+        let handoff = HandoffConfiguration(
+            targetAgent: target,
+            toolNameOverride: "handoff_to_target",
+            transform: { data in
+                HandoffInputData(
+                    sourceAgentName: data.sourceAgentName,
+                    targetAgentName: data.targetAgentName,
+                    input: "target-only payload",
+                    context: data.context,
+                    metadata: data.metadata
+                )
+            },
+            history: .none
+        )
+        let source = try Agent(
+            tools: [],
+            instructions: "Route to target.",
+            configuration: AgentConfiguration(name: "source-agent", defaultTracingEnabled: false),
+            memory: ConversationMemory(),
+            inferenceProvider: sourceProvider,
+            handoffs: [AnyHandoffConfiguration(handoff)]
+        )
+
+        _ = try await source.run("please route this")
+
+        let targetCalls = await targetProvider.generateMessageCalls
+        let messages = try #require(targetCalls.first?.messages)
+        #expect(!messages.contains { $0.role == .user && $0.content == "please route this" })
+        #expect(messages.contains { $0.role == .user && $0.content == "target-only payload" })
+    }
+
+    @Test("Summarized handoff history is passed to regular Agent targets (AC-002)")
+    func summarizedHandoffHistoryIsPassedToRegularAgentTargets() async throws {
+        let sourceProvider = MockInferenceProvider()
+        await sourceProvider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(
+                        id: "call_handoff",
+                        name: "handoff_to_target",
+                        arguments: ["reason": .string("delegate")]
+                    ),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let targetProvider = MockInferenceProvider(responses: ["target done"])
+        let target = try Agent(
+            tools: [],
+            instructions: "Use prior context.",
+            configuration: AgentConfiguration(name: "target-agent", defaultTracingEnabled: false),
+            memory: ConversationMemory(),
+            inferenceProvider: targetProvider
+        )
+        let handoff = HandoffConfiguration(
+            targetAgent: target,
+            toolNameOverride: "handoff_to_target",
+            history: .summarized(maxTokens: 80)
+        )
+        let source = try Agent(
+            tools: [],
+            instructions: "Route to target.",
+            configuration: AgentConfiguration(name: "source-agent", defaultTracingEnabled: false),
+            memory: ConversationMemory(),
+            inferenceProvider: sourceProvider,
+            handoffs: [AnyHandoffConfiguration(handoff)]
+        )
+
+        _ = try await source.run("please route this")
+
+        let targetCalls = await targetProvider.generateMessageCalls
+        let messages = try #require(targetCalls.first?.messages)
+        #expect(messages.contains { $0.role == .user && $0.content == "please route this" })
+    }
+
     @Test("Nested handoff history is passed to regular Agent targets")
     func nestedHandoffHistoryIsPassedToRegularAgentTargets() async throws {
         let sourceProvider = MockInferenceProvider()
@@ -156,7 +260,7 @@ struct AgentHandoffRuntimeTests {
                     metadata: data.metadata
                 )
             },
-            nestHandoffHistory: true
+            history: .nested
         )
         let source = try Agent(
             tools: [],

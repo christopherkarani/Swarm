@@ -287,6 +287,7 @@ final class APIAuditTests: XCTestCase {
         XCTAssertEqual(triage.handoffs[0].toolNameOverride, "transfer_to_billing")
         XCTAssertEqual(triage.handoffs[0].toolDescription, "Transfer billing/refund issues")
         XCTAssertTrue(triage.handoffs[0].nestHandoffHistory)
+        XCTAssertEqual(triage.handoffs[0].history, .summarized(maxTokens: 300))
     }
 
     // MARK: - AgentTool Tests

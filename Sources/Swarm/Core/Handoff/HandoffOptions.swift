@@ -185,7 +185,7 @@ public struct HandoffOptions<Target: AgentRuntime>: Sendable {
             onTransfer: onTransferCallback,
             transform: normalizedTransform,
             when: whenCallback,
-            nestHandoffHistory: historyStrategy.nestsHistory
+            history: historyStrategy
         )
     }
 
