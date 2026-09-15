@@ -878,7 +878,9 @@ extension Agent {
                     context: await context.snapshot,
                     metadata: initialHandoffData.metadata
                 )
-                let transformedData = handoffConfig.transform?(handoffData) ?? handoffData
+                let transformedData = handoffConfig.history.applyingSummaryMetadata(
+                    to: handoffConfig.transform?(handoffData) ?? handoffData
+                )
                 let requestContext = transformedData.context.merging(transformedData.metadata) { _, new in new }
                 let handoffContext = await context.copy(additionalValues: requestContext)
                 await applyContextValues(requestContext, to: handoffContext)
@@ -886,7 +888,13 @@ extension Agent {
                 switch handoffConfig.history {
                 case .none:
                     break
-                case .nested, .summarized:
+                case .nested:
+                    await addNestedHandoffHistory(
+                        turnTranscript.conversationMessages,
+                        to: handoffContext,
+                        skippingToolCallID: parsedCall.id
+                    )
+                case .summarized:
                     await addNestedHandoffHistory(
                         turnTranscript.conversationMessages,
                         to: handoffContext,
@@ -911,7 +919,9 @@ extension Agent {
                             let nestSessionForHandoff: Bool = switch handoffConfig.history {
                             case .none:
                                 false
-                            case .nested, .summarized:
+                            case .nested:
+                                true
+                            case .summarized:
                                 true
                             }
                             let handoffSession = try await makeNestedHandoffSession(

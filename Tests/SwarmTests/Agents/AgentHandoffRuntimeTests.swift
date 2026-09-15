@@ -222,6 +222,52 @@ struct AgentHandoffRuntimeTests {
         #expect(messages.contains { $0.role == .user && $0.content == "please route this" })
     }
 
+    @Test("Summarized handoff annotates metadata for typed configuration (AC-002)")
+    func summarizedHandoffAnnotatesMetadataForTypedConfiguration() async throws {
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(
+                        id: "call_handoff",
+                        name: "handoff_to_target",
+                        arguments: ["reason": .string("delegate")]
+                    ),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let target = RecordingHandoffReceiver(name: "target-agent")
+        let handoff = HandoffConfiguration(
+            targetAgent: target,
+            toolNameOverride: "handoff_to_target",
+            history: .summarized(maxTokens: 80)
+        )
+        let agent = try Agent(
+            tools: [],
+            instructions: "Route to target.",
+            configuration: AgentConfiguration(name: "source-agent", defaultTracingEnabled: false),
+            inferenceProvider: provider,
+            handoffs: [AnyHandoffConfiguration(handoff)]
+        )
+
+        _ = try await agent.run("please route this")
+
+        let request = try #require(await target.handoffRequests.first)
+        #expect(request.context["swarm.handoff.history.mode"] == .string("summarized"))
+        #expect(request.context["swarm.handoff.history.maxTokens"] == .int(80))
+
+        let snapshot = try #require(await target.contextSnapshots.first)
+        #expect(snapshot["swarm.handoff.history.mode"] == .string("summarized"))
+        #expect(snapshot["swarm.handoff.history.maxTokens"] == .int(80))
+
+        let messages = try #require(await target.contextMessages.first)
+        #expect(messages.contains { $0.content == "please route this" })
+    }
+
     @Test("Nested handoff history is passed to regular Agent targets")
     func nestedHandoffHistoryIsPassedToRegularAgentTargets() async throws {
         let sourceProvider = MockInferenceProvider()

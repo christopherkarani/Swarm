@@ -181,7 +181,7 @@ public typealias WhenCallback = @Sendable (AgentContext, any AgentRuntime) async
 ///     when: { context, _ in
 ///         await context.get("ready")?.boolValue ?? false
 ///     },
-///     nestHandoffHistory: true
+///     history: .nested
 /// )
 /// ```
 public struct HandoffConfiguration<Target: AgentRuntime>: Sendable {

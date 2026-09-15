@@ -435,6 +435,7 @@ final class APIAuditTests: XCTestCase {
         XCTAssertNil(handoff.transform)
         XCTAssertNil(handoff.when)
         XCTAssertFalse(handoff.nestHandoffHistory)
+        XCTAssertEqual(handoff.history, .none)
     }
 
     // MARK: - AgentContextProviding Tests

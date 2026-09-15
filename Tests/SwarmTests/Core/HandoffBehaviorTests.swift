@@ -48,6 +48,7 @@ struct HandoffBehaviorTests {
         #expect(transformed?.metadata["transformed"] == .bool(true))
         #expect(configuration.effectiveToolName == "handoff_to_target")
         #expect(configuration.effectiveToolDescription == "Route to target")
+        #expect(configuration.history == .nested)
         #expect(configuration.nestHandoffHistory == true)
     }
 
@@ -101,6 +102,47 @@ struct HandoffBehaviorTests {
 
         #expect(erased.history == .summarized(maxTokens: 80))
         #expect(erased.nestHandoffHistory == true)
+
+        let data = HandoffInputData(
+            sourceAgentName: "source",
+            targetAgentName: "summarized-target",
+            input: "payload"
+        )
+        let transformed = erased.transform?(data)
+        #expect(transformed?.metadata["swarm.handoff.history.mode"] == .string("summarized"))
+        #expect(transformed?.metadata["swarm.handoff.history.maxTokens"] == .int(80))
+    }
+
+    @Test("Typed wrap preserves summarized history through erasure")
+    func typedWrapPreservesSummarizedHistory() {
+        let target = MockAgentRuntime(
+            instructions: "wrapped-target",
+            configuration: AgentConfiguration(name: "wrapped-target", defaultTracingEnabled: false)
+        )
+        let typed = HandoffConfiguration(
+            targetAgent: target,
+            history: .summarized(maxTokens: 80)
+        )
+        let erased = AnyHandoffConfiguration(typed)
+
+        #expect(erased.history == .summarized(maxTokens: 80))
+        #expect(erased.nestHandoffHistory == true)
+        #expect(erased.transform == nil)
+    }
+
+    @Test("Deprecated nestHandoffHistory true maps to nested, never summarized")
+    func deprecatedBooleanInitMapsTrueToNested() {
+        let target = MockAgentRuntime(
+            instructions: "deprecated-target",
+            configuration: AgentConfiguration(name: "deprecated-target", defaultTracingEnabled: false)
+        )
+        let typed = HandoffConfiguration(targetAgent: target, nestHandoffHistory: true)
+        let erased = AnyHandoffConfiguration(targetAgent: target, nestHandoffHistory: true)
+        let disabled = AnyHandoffConfiguration(targetAgent: target, nestHandoffHistory: false)
+
+        #expect(typed.history == .nested)
+        #expect(erased.history == .nested)
+        #expect(disabled.history == .none)
     }
 }
 
