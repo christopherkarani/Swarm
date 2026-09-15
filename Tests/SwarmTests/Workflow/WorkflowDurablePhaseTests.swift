@@ -436,7 +436,11 @@ struct WorkflowDurablePhaseTests {
     @Test("channels output missing phase throws instead of empty success")
     func extractResultRejectsMissingPhaseChannel() throws {
         let output = HiveRunOutput<WorkflowDurableSchema>.channels([])
-        #expect(throws: WorkflowError.self) {
+        #expect(
+            throws: WorkflowError.invalidWorkflow(
+                reason: "Durable workflow finished without a phase channel"
+            )
+        ) {
             _ = try WorkflowDurableEngineTesting.extractResult(from: output)
         }
     }
@@ -449,9 +453,19 @@ struct WorkflowDurablePhaseTests {
                 value: "not-a-phase"
             ),
         ])
-        #expect(throws: WorkflowError.self) {
+        #expect(
+            throws: WorkflowError.invalidWorkflow(
+                reason: "Durable workflow phase channel has an invalid type"
+            )
+        ) {
             _ = try WorkflowDurableEngineTesting.extractResult(from: output)
         }
+    }
+
+    @Test("checkpoint identity maps to HiveThreadID at one engine site")
+    func hiveThreadIDUsesCheckpointRawValue() {
+        let id = WorkflowCheckpointID("review-run")
+        #expect(WorkflowDurableEngine.hiveThreadID(for: id).rawValue == id.rawValue)
     }
 
     // MARK: - Helpers

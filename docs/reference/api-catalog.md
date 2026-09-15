@@ -2550,6 +2550,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 |------|------|--------|------|-----------|
 | 6 | var | public | Workflow.durable | `public var durable: Workflow.Durable { get }` |
 | 8 | struct | public | Workflow.Durable | `public struct Durable` |
+| — | func | public | Workflow.Durable.configured(id:store:policy:) | `public func configured(id: WorkflowCheckpointID, store: WorkflowCheckpointing, policy: CheckpointPolicy = .onCompletion) -> DurableWorkflow` |
 
 ### Workflow/DurableWorkflow.swift
 

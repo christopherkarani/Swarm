@@ -430,12 +430,14 @@ Requires the **`Integrations`** SwiftPM trait (`traits: ["Integrations"]` or
 `--traits Integrations`) for real checkpoint/resume at **execute** time.
 
 With checkpoint/resume configured (or `resumeFrom` set), lean builds warn at
-`WorkflowCheckpointing.inMemory()` / `.fileSystem(directory:)` and
-`.durable.checkpoint` / `.checkpointing`, then throw
-`WorkflowError.durableRuntimeUnavailable` with the rebuild remedy. Without that
-configuration, bare execute still runs as a non-durable workflow. Query
-`WorkflowCheckpointing.isAvailable` or `Workflow.Durable.isAvailable` before
-opting in.
+`WorkflowCheckpointing.inMemory()` / `.fileSystem(directory:)`,
+`.durable.configured(id:store:)`, and `.durable.checkpoint` / `.checkpointing`,
+then throw `WorkflowError.durableRuntimeUnavailable` with the rebuild remedy.
+`DurableWorkflow.execute` / `resume` always throw that error on lean builds
+because both identity and store are required. Without deprecated checkpoint
+configuration, bare `Workflow.Durable.execute` still runs as a non-durable
+workflow. Query `WorkflowCheckpointing.isAvailable` or
+`Workflow.Durable.isAvailable` before opting in.
 
 ```swift
 public struct WorkflowCheckpointID: Hashable, Sendable, RawRepresentable, Codable {

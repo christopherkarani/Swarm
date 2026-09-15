@@ -111,12 +111,13 @@ struct WorkflowDurableEngine: Sendable {
     let policy: Workflow.Durable.CheckpointPolicy
     let resume: Bool
 
-    /// Maps a typed checkpoint identity to the Hive thread identifier used by the durable engine.
+    /// Single Integrations-engine conversion from a typed checkpoint identity to a Hive thread ID.
+    /// Callers must not construct `HiveThreadID` from an arbitrary session string.
     static func hiveThreadID(for checkpointID: WorkflowCheckpointID) -> HiveThreadID {
         HiveThreadID(checkpointID.rawValue)
     }
 
-    func run(startInput: String, hiveThreadID: HiveThreadID) async throws -> AgentResult {
+    func run(startInput: String) async throws -> AgentResult {
         if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
             throw error
         }
@@ -143,7 +144,7 @@ struct WorkflowDurableEngine: Sendable {
         )
 
         let runtime = try HiveRuntime(graph: graph, environment: environment)
-        let threadID = hiveThreadID
+        let threadID = Self.hiveThreadID(for: WorkflowCheckpointID(checkpointID))
 
         if resume {
             guard try await checkpointing.containsCheckpoint(for: checkpointID) else {

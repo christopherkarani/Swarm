@@ -1,7 +1,8 @@
 # Durable Execution
 
 Durable workflows persist progress to a checkpoint store and resume from a
-checkpoint ID after a crash, process restart, or explicit `resumeFrom`.
+checkpoint ID after a crash, process restart, or an explicit
+``DurableWorkflow/resume(_:from:)``.
 Checkpoint/resume requires the **`Integrations`** SwiftPM trait
 (`--traits Integrations` or `.package(..., traits: ["Integrations"])`).
 

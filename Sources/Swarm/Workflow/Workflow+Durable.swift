@@ -9,8 +9,9 @@ public extension Workflow {
 
         /// Whether the durable Hive engine is linked in this build.
         ///
-        /// Configuration APIs (``checkpoint(id:policy:)``, ``checkpointing(_:)``)
-        /// still type-check on lean builds. ``execute(_:resumeFrom:)`` throws when
+        /// Configuration APIs (``configured(id:store:policy:)``, ``checkpoint(id:policy:)``,
+        /// ``checkpointing(_:)``) still type-check on lean builds.
+        /// ``DurableWorkflow/execute(_:)`` and ``execute(_:resumeFrom:)`` throw when
         /// checkpointing is configured until you rebuild with `--traits Integrations`.
         public static var isAvailable: Bool {
             IntegrationsTrait.isEnabled
@@ -117,10 +118,7 @@ extension Workflow {
         )
 
         return try await executeWithTimeout {
-            try await engine.run(
-                startInput: input,
-                hiveThreadID: WorkflowDurableEngine.hiveThreadID(for: checkpointID)
-            )
+            try await engine.run(startInput: input)
         }
         #else
         throw WorkflowError.durableRuntimeUnavailable(
@@ -164,7 +162,7 @@ extension Workflow {
         )
 
         return try await executeWithTimeout {
-            try await engine.run(startInput: input, hiveThreadID: HiveThreadID(resolvedCheckpointID))
+            try await engine.run(startInput: input)
         }
         #else
         if checkpointID != nil || advancedConfiguration.checkpoint != nil || advancedConfiguration.checkpointing != nil {
