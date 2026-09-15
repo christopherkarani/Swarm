@@ -789,10 +789,16 @@ public enum AgentEvent: Sendable {
     }
 }
 
+public struct ToolInvocation: Sendable, Equatable {
+    public let call: ToolCall
+    public let result: ToolResult
+}
+
 public struct AgentResult: Sendable {
     public let output: String
-    public let toolCalls: [ToolCall]
-    public let toolResults: [ToolResult]
+    public let invocations: [ToolInvocation]
+    public var toolCalls: [ToolCall] { get }
+    public var toolResults: [ToolResult] { get }
     public let iterationCount: Int
     public let duration: Duration
     /// Provider-reported token usage, or `nil` when the backend does not expose counts
@@ -812,8 +818,8 @@ public struct AgentResponse: Sendable {
     public let iterationCount: Int
     /// Lossy compatibility projection onto `AgentResult`.
     /// Drops `responseId`, `agentName`, and response `timestamp`.
-    /// Mints new tool-call IDs on every access. `duration` is the sum of
-    /// recorded tool-call durations (`.zero` when no tools ran).
+    /// Reuses each `ToolCallRecord.callId` for stable tool identity.
+    /// `duration` is the sum of recorded tool-call durations (`.zero` when no tools ran).
     public var asResult: AgentResult { get }
 }
 
@@ -846,6 +852,7 @@ public struct ToolCallRecord: Sendable {
         case failure(message: String)
     }
 
+    public let callId: UUID
     public let toolName: String
     public let arguments: [String: SendableValue]
     public let duration: Duration

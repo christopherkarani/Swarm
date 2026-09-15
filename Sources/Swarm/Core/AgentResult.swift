@@ -5,12 +5,40 @@
 
 import Foundation
 
+// MARK: - ToolInvocation
+
+/// A single tool call paired with its execution result.
+///
+/// ``call`` and ``result`` always share identity: ``ToolCall/id`` equals
+/// ``ToolResult/callId``. Construct with ``init(call:duration:outcome:)`` or
+/// the failable ``init(call:result:)`` when both sides are already available.
+public struct ToolInvocation: Sendable, Equatable {
+    /// The tool call that was made.
+    public let call: ToolCall
+
+    /// The result of executing that call.
+    public let result: ToolResult
+
+    /// Pairs a call with a matching result when identifiers align.
+    public init?(call: ToolCall, result: ToolResult) {
+        guard call.id == result.callId else { return nil }
+        self.call = call
+        self.result = result
+    }
+
+    /// Builds a paired invocation from a call and a closed outcome.
+    public init(call: ToolCall, duration: Duration, outcome: ToolResult.Outcome) {
+        self.call = call
+        self.result = ToolResult(callId: call.id, duration: duration, outcome: outcome)
+    }
+}
+
 // MARK: - AgentResult
 
 /// The result of an agent execution.
 ///
 /// AgentResult captures all information about a completed agent run,
-/// including the output, tool calls made, timing, and optional metadata.
+/// including the output, tool invocations, timing, and optional metadata.
 ///
 /// Example:
 /// ```swift
@@ -24,11 +52,14 @@ public struct AgentResult: Sendable, Equatable {
     /// The final output text from the agent.
     public let output: String
 
+    /// Tool calls paired with their results, in execution order.
+    public let invocations: [ToolInvocation]
+
     /// All tool calls made during execution.
-    public let toolCalls: [ToolCall]
+    public var toolCalls: [ToolCall] { invocations.map(\.call) }
 
     /// Results of all tool executions.
-    public let toolResults: [ToolResult]
+    public var toolResults: [ToolResult] { invocations.map(\.result) }
 
     /// The number of iterations performed.
     public let iterationCount: Int
@@ -42,7 +73,35 @@ public struct AgentResult: Sendable, Equatable {
     /// Metadata about the execution.
     public let metadata: [String: SendableValue]
 
-    /// Creates a new agent result.
+    /// Creates a new agent result from paired invocations.
+    /// - Parameters:
+    ///   - output: The final output text.
+    ///   - invocations: Tool invocations in order. Default: []
+    ///   - iterationCount: Number of iterations. Default: 1
+    ///   - duration: Execution duration. Default: .zero
+    ///   - tokenUsage: Token usage stats. Default: nil
+    ///   - metadata: Additional metadata. Default: [:]
+    public init(
+        output: String,
+        invocations: [ToolInvocation],
+        iterationCount: Int = 1,
+        duration: Duration = .zero,
+        tokenUsage: TokenUsage? = nil,
+        metadata: [String: SendableValue] = [:]
+    ) {
+        self.output = output
+        self.invocations = invocations
+        self.iterationCount = iterationCount
+        self.duration = duration
+        self.tokenUsage = tokenUsage
+        self.metadata = metadata
+    }
+
+    /// Creates a new agent result by pairing parallel tool-call arrays.
+    ///
+    /// Calls are visited in order; the first unused result with a matching
+    /// ``ToolResult/callId`` is paired. Results that do not match any call are
+    /// dropped. Calls without a matching result are omitted from ``invocations``.
     /// - Parameters:
     ///   - output: The final output text.
     ///   - toolCalls: Tool calls made. Default: []
@@ -60,13 +119,35 @@ public struct AgentResult: Sendable, Equatable {
         tokenUsage: TokenUsage? = nil,
         metadata: [String: SendableValue] = [:]
     ) {
-        self.output = output
-        self.toolCalls = toolCalls
-        self.toolResults = toolResults
-        self.iterationCount = iterationCount
-        self.duration = duration
-        self.tokenUsage = tokenUsage
-        self.metadata = metadata
+        self.init(
+            output: output,
+            invocations: Self.invocationsPairing(toolCalls: toolCalls, toolResults: toolResults),
+            iterationCount: iterationCount,
+            duration: duration,
+            tokenUsage: tokenUsage,
+            metadata: metadata
+        )
+    }
+
+    static func invocationsPairing(
+        toolCalls: [ToolCall],
+        toolResults: [ToolResult]
+    ) -> [ToolInvocation] {
+        var remainingResults = toolResults
+        var paired: [ToolInvocation] = []
+
+        for call in toolCalls {
+            guard let index = remainingResults.firstIndex(where: { $0.callId == call.id }) else {
+                continue
+            }
+            let result = remainingResults.remove(at: index)
+            guard let invocation = ToolInvocation(call: call, result: result) else {
+                continue
+            }
+            paired.append(invocation)
+        }
+
+        return paired
     }
 }
 
@@ -116,6 +197,16 @@ extension AgentResult {
             lock.lock()
             defer { lock.unlock() }
             toolResults.append(result)
+            return self
+        }
+
+        /// Adds a paired tool invocation.
+        @discardableResult
+        package func addInvocation(_ invocation: ToolInvocation) -> Builder {
+            lock.lock()
+            defer { lock.unlock() }
+            toolCalls.append(invocation.call)
+            toolResults.append(invocation.result)
             return self
         }
 

@@ -144,6 +144,20 @@ struct ToolCallRecordTests {
         #expect(dictionary["outcome"] == nil)
     }
 
+    @Test("ToolCallRecord preserves explicit callId through asResult")
+    func callIdStableThroughAsResult() throws {
+        let knownID = UUID(uuidString: "FEDCBA98-7654-3210-FEDC-BA9876543210")!
+        let record = ToolCallRecord.success(
+            callId: knownID,
+            toolName: "echo",
+            result: .string("ok")
+        )
+        let response = AgentResponse(output: "x", agentName: "A", toolCalls: [record])
+        let result = response.asResult
+        #expect(result.toolCalls.first?.id == knownID)
+        #expect(result.toolResults.first?.callId == knownID)
+    }
+
     @Test("AgentResponse.asResult maps a failed record to a failed ToolResult")
     func asResultMapsFailureOutcome() throws {
         let record = ToolCallRecord.failure(

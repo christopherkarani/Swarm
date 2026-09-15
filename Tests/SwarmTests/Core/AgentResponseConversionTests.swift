@@ -92,9 +92,11 @@ struct AgentResponseConversionTests {
         #expect(result.toolCalls[0].id != result.toolCalls[1].id)
     }
 
-    @Test("asResult mints new tool-call IDs on every conversion")
-    func mintsNewToolCallIDs() throws {
+    @Test("asResult reuses ToolCallRecord callId across repeated conversions")
+    func reusesStableToolCallIDs() throws {
+        let knownID = UUID(uuidString: "A1B2C3D4-E5F6-7890-ABCD-EF1234567890")!
         let record = ToolCallRecord.success(
+            callId: knownID,
             toolName: "echo",
             arguments: ["q": .string("hi")],
             result: .string("hi"),
@@ -112,11 +114,34 @@ struct AgentResponseConversionTests {
         let second = response.asResult
         let firstID = try #require(first.toolCalls.first?.id)
         let secondID = try #require(second.toolCalls.first?.id)
-        #expect(firstID != secondID)
-        #expect(first.toolResults.first?.callId == firstID)
-        #expect(second.toolResults.first?.callId == secondID)
+        #expect(firstID == knownID)
+        #expect(secondID == knownID)
+        #expect(firstID == secondID)
+        #expect(first.toolResults.first?.callId == knownID)
+        #expect(second.toolResults.first?.callId == knownID)
         #expect(first.toolCalls.first?.arguments["q"] == .string("hi"))
         #expect(first.toolResults.first?.output == .string("hi"))
+    }
+
+    @Test("AgentResult pairing drops tool results with no matching call")
+    func dropsOrphanToolResults() {
+        let callID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let orphanID = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+        let call = ToolCall(id: callID, toolName: "a", arguments: [:])
+        let matched = ToolResult.success(callId: callID, output: .string("ok"), duration: .zero)
+        let orphan = ToolResult.failure(callId: orphanID, error: "lost", duration: .zero)
+
+        let result = AgentResult(
+            output: "done",
+            toolCalls: [call],
+            toolResults: [orphan, matched]
+        )
+
+        #expect(result.invocations.count == 1)
+        #expect(result.toolCalls.count == 1)
+        #expect(result.toolResults.count == 1)
+        #expect(result.toolCalls[0].id == callID)
+        #expect(result.toolResults[0].callId == callID)
     }
 
     @Test("empty tool list converts to zero duration and empty arrays")
