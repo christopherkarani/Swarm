@@ -431,6 +431,29 @@ struct WorkflowDurablePhaseTests {
         #expect(result.metadata["pass"] == .string("done"))
     }
 
+    // MARK: - Result extraction
+
+    @Test("channels output missing phase throws instead of empty success")
+    func extractResultRejectsMissingPhaseChannel() throws {
+        let output = HiveRunOutput<WorkflowDurableSchema>.channels([])
+        #expect(throws: WorkflowError.self) {
+            _ = try WorkflowDurableEngineTesting.extractResult(from: output)
+        }
+    }
+
+    @Test("channels output with invalid phase type throws instead of empty success")
+    func extractResultRejectsInvalidPhaseType() throws {
+        let output = HiveRunOutput<WorkflowDurableSchema>.channels([
+            HiveProjectedChannelValue(
+                id: WorkflowDurableSchema.phaseKey.id,
+                value: "not-a-phase"
+            ),
+        ])
+        #expect(throws: WorkflowError.self) {
+            _ = try WorkflowDurableEngineTesting.extractResult(from: output)
+        }
+    }
+
     // MARK: - Helpers
 
     private func makeDirectory() throws -> URL {

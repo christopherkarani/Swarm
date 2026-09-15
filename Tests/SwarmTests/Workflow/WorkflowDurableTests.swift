@@ -310,6 +310,45 @@ struct WorkflowDurableTests {
         #expect(result.output == "backup")
         #expect(result.metadata["workflow.fallback.used"] == .bool(true))
     }
+
+    @Test("configured durable workflow execute matches legacy checkpoint path")
+    func configuredExecuteMatchesLegacyPath() async throws {
+        let checkpointing = WorkflowCheckpointing.inMemory()
+        let workflow = Workflow()
+            .step(MockAgentRuntime(response: "done"))
+
+        let legacy = try await workflow
+            .durable
+            .checkpoint(id: "wf-configured-execute", policy: .everyStep)
+            .durable
+            .checkpointing(checkpointing)
+            .durable
+            .execute("start")
+
+        let configured = try await workflow
+            .durable
+            .configured(id: WorkflowCheckpointID("wf-configured-execute-v2"), store: checkpointing, policy: .everyStep)
+            .execute("start")
+
+        #expect(legacy.output == "done")
+        #expect(configured.output == "done")
+    }
+
+    @Test("configured durable workflow resume uses dedicated entry point")
+    func configuredResumeFromCheckpoint() async throws {
+        let checkpointing = WorkflowCheckpointing.inMemory()
+        let checkpointID = WorkflowCheckpointID("wf-configured-resume")
+        let durable = Workflow()
+            .step(MockAgentRuntime(response: "done"))
+            .durable
+            .configured(id: checkpointID, store: checkpointing, policy: .everyStep)
+
+        let first = try await durable.execute("start")
+        #expect(first.output == "done")
+
+        let resumed = try await durable.resume("ignored", from: checkpointID)
+        #expect(resumed.output == "done")
+    }
 }
 
 private actor WorkflowInvocationLog {
