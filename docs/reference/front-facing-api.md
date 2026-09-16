@@ -491,6 +491,81 @@ File-backed stores prune to keep-latest-N per run and load through a directory
 manifest. Resume identity is step kind + position + explicit `signature:` —
 not `fileID:line`. See [Durable Execution](/guide/durable-execution).
 
+## 7b) Job
+
+Shared notes box plus one fan-out of helpers. `Workflow` remains the
+last-answer chain.
+
+| Need | Use |
+| --- | --- |
+| Last agent's answer becomes the next agent's input | `Workflow` |
+| Shared notes, different briefs, N decided after a step | `Job` |
+
+```swift
+public struct JobRecord: Sendable, Equatable {
+    public let kind: String
+    public let text: String
+    public init(kind: String, text: String)
+}
+
+public protocol JobStore: Actor, Sendable {
+    func ingest(_ record: JobRecord) async
+    func records() async -> [JobRecord]
+    func records(kind: String) async -> [JobRecord]
+}
+
+public actor InMemoryJobStore: JobStore {
+    public init()
+}
+
+public struct JobChild: Sendable {
+    public let name: String
+    public let agent: any AgentRuntime
+    public let brief: String
+    public init(name: String, agent: some AgentRuntime, brief: String)
+}
+
+public struct JobChildResult: Sendable, Equatable {
+    public let name: String
+    public let result: AgentResult
+    public init(name: String, result: AgentResult)
+}
+
+public enum JobError: Error, Sendable, Equatable {
+    case emptyChildName
+    case duplicateChildName(String)
+    case emptyFanOut
+    case fanOutAlreadyUsed
+}
+
+public struct Job: Sendable {
+    public init(store: any JobStore = InMemoryJobStore())
+    public func run<Output: Sendable>(
+        _ input: String,
+        body: @Sendable (JobSession) async throws -> Output
+    ) async throws -> Output
+}
+
+public struct JobSession: Sendable {
+    public let input: String
+    public func ingest(_ record: JobRecord) async
+    public func window(query: String, tokenLimit: Int) async -> String
+    public func records(kind: String) async -> [JobRecord]
+    public func fanOut(_ children: [JobChild]) async throws -> [JobChildResult]
+}
+```
+
+`Job.run` is app-owned steps: you ingest notes, retrieve windows, then
+`fanOut` once per run. Helpers run concurrently; results come back sorted by
+trimmed name. Empty names, duplicate names, and an empty child list fail
+closed without consuming the fan-out. Helper output is not auto-ingested.
+v1 does not checkpoint.
+
+`JobStore` holds records in ingest order. `records(kind:)` is an exact kind
+match. `JobSession.window` always renders from `store.records()` with a
+case-insensitive substring of kind or text; the store does not implement
+`window`.
+
 ## 8) InputGuard and OutputGuard
 
 Concrete guardrails with static factories. Used as init parameters on `Agent`.
@@ -1044,5 +1119,5 @@ restart after `stop()`.
 - Handoff callback naming is `onTransfer` / `transform` / `when`.
 - Every public type conforms to `Sendable`.
 - Agent is a struct (value type). Execution state lives in `run()`.
-- `Workflow` is the single coordination primitive.
+- `Workflow` is the last-answer chain. `Job` is the shared-notes job with per-helper briefs.
 - No legacy types: `AgentBuilder`, `AnyAgent`, `AnyTool`, `ClosureInputGuardrail`, `ClosureOutputGuardrail`, `AgentBlueprint`, `AgentLoop`.
