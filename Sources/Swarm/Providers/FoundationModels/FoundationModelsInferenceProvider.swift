@@ -48,10 +48,10 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 ///
 /// ## Token usage
 ///
-/// Apple's Foundation Models SDK does not expose token-count APIs on
-/// `LanguageModelSession.Response` in the macOS 26.x SDK this package targets.
-/// ``InferenceResponse/usage`` and ``AgentResult/tokenUsage`` remain `nil`.
-/// Swarm does not estimate or fabricate token counts for this provider.
+/// On OS 27, ``InferenceResponse/usage`` comes from
+/// `LanguageModelSession.Response.usage` (`input.totalTokenCount` /
+/// `output.totalTokenCount`). On OS 26 that field does not exist, so usage
+/// stays `nil`. Swarm does not estimate or fabricate token counts.
 ///
 /// ## First-class Apple platform path
 ///
@@ -88,10 +88,12 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 ///
 /// ## Dynamic profiles
 ///
-/// Pass a ``DynamicProfile`` to re-resolve instructions, tool filters, generation
-/// overrides, and history policy on every turn (Apple WWDC 2026 semantics).
-/// Native `LanguageModelSession.DynamicProfile` is not in the macOS 26.2 SDK yet;
-/// Swarm's profile model works today and is designed to bridge when Apple ships it.
+/// Pass a Swarm ``DynamicProfile`` to re-resolve instructions, tool filters,
+/// generation overrides, and history policy on every capture turn. That type
+/// is **not** Apple's `LanguageModelSession.DynamicProfile` (OS 27). The
+/// names overlap; the modules do not. Capture still uses the Swarm model.
+/// A later revision can bridge to `LanguageModelSession(profile:)` on OS 27
+/// owned-loop without changing `.foundationModels(profile:)` call sites.
 ///
 /// ```swift
 /// let mode = ProfileMode(Phase.brainstorm)
@@ -200,12 +202,16 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         let resolved = resolveTurn(messages: messages, tools: [], options: options)
         let session = makeSession(tools: [], instructions: resolved.instructions)
         let generationOptions = makeGenerationOptions(from: resolved.options)
-        let promptText = flattenPrompt(
-            messages: resolved.messages,
-            tools: [],
-            options: resolved.options
-        )
         return StreamHelper.makeTrackedStream { continuation in
+            let fitted = await PromptEnvelope.enforce(
+                messages: resolved.messages,
+                profile: envelopeProfile
+            )
+            let promptText = flattenPrompt(
+                messages: fitted,
+                tools: [],
+                options: resolved.options
+            )
             do {
                 var previous = ""
                 for try await snapshot in session.streamResponse(to: promptText, options: generationOptions) {
@@ -247,19 +253,16 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
 
     public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
         let resolved = resolveTurn(messages: messages, tools: [], options: options)
-        let session = makeSession(tools: [], instructions: resolved.instructions)
         let generationOptions = makeGenerationOptions(from: resolved.options)
-        let prompt = flattenPrompt(
+        let turn = try await respondWithContextRecovery(
             messages: resolved.messages,
             tools: [],
-            options: resolved.options
+            flattenTools: [],
+            instructions: resolved.instructions,
+            options: resolved.options,
+            generationOptions: generationOptions
         )
-        do {
-            let response = try await session.respond(to: prompt, options: generationOptions)
-            return applyStopSequences(response.content, options: resolved.options)
-        } catch {
-            throw mapError(error)
-        }
+        return turn.content
     }
 
     public func generateWithToolCalls(
@@ -306,20 +309,21 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         }
 
         if effectiveTools.isEmpty {
-            let session = makeSession(tools: [], instructions: resolved.instructions)
             let generationOptions = makeGenerationOptions(from: resolved.options)
-            let prompt = flattenPrompt(
+            let turn = try await respondWithContextRecovery(
                 messages: resolved.messages,
                 tools: [],
-                options: resolved.options
+                flattenTools: [],
+                instructions: resolved.instructions,
+                options: resolved.options,
+                generationOptions: generationOptions
             )
-            do {
-                let response = try await session.respond(to: prompt, options: generationOptions)
-                let content = applyStopSequences(response.content, options: resolved.options)
-                return InferenceResponse(content: content, toolCalls: [], finishReason: .completed)
-            } catch {
-                throw mapError(error)
-            }
+            return InferenceResponse(
+                content: turn.content,
+                toolCalls: [],
+                finishReason: .completed,
+                usage: turn.usage
+            )
         }
 
         let store = FoundationModelsToolCaptureStore()
@@ -332,9 +336,13 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             )
         }
 
+        let fitted = await PromptEnvelope.enforce(
+            messages: resolved.messages,
+            profile: envelopeProfile
+        )
         let session = makeSession(tools: fmTools, instructions: resolved.instructions)
         let prompt = flattenPrompt(
-            messages: resolved.messages,
+            messages: fitted,
             tools: effectiveTools,
             options: resolved.options
         )
@@ -348,13 +356,14 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                 store: store,
                 turnEntries: turnEntries
             ) {
-                return captured
+                return captured.withUsage(FoundationModelsUsageMapping.tokenUsage(from: response))
             }
             let content = applyStopSequences(response.content, options: resolved.options)
             return InferenceResponse(
                 content: content,
                 toolCalls: [],
-                finishReason: .completed
+                finishReason: .completed,
+                usage: FoundationModelsUsageMapping.tokenUsage(from: response)
             )
         } catch {
             let turnEntries = Array(session.transcript.dropFirst(startCount))
@@ -364,6 +373,37 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                 error: error
             ) {
                 return captured
+            }
+            if FoundationModelsContextOverflow.matches(error) {
+                let retryMessages = await PromptEnvelope.enforce(
+                    messages: PromptEnvelope.compactForRetry(fitted),
+                    profile: envelopeProfile
+                )
+                let retrySession = makeSession(tools: fmTools, instructions: resolved.instructions)
+                let retryPrompt = flattenPrompt(
+                    messages: retryMessages,
+                    tools: effectiveTools,
+                    options: resolved.options
+                )
+                do {
+                    let response = try await retrySession.respond(to: retryPrompt, options: generationOptions)
+                    let retryEntries = Array(retrySession.transcript.dropFirst(0))
+                    if let captured = await FoundationModelsToolBridge.inferenceResponse(
+                        store: store,
+                        turnEntries: retryEntries
+                    ) {
+                        return captured.withUsage(FoundationModelsUsageMapping.tokenUsage(from: response))
+                    }
+                    let content = applyStopSequences(response.content, options: resolved.options)
+                    return InferenceResponse(
+                        content: content,
+                        toolCalls: [],
+                        finishReason: .completed,
+                        usage: FoundationModelsUsageMapping.tokenUsage(from: response)
+                    )
+                } catch {
+                    throw mapError(error)
+                }
             }
             throw mapError(error)
         }
@@ -466,6 +506,72 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         return (withSystem, applied.tools, applied.options, applied.instructions)
     }
 
+    var envelopeProfile: ContextProfile {
+        FoundationModelsContextBudget.profile(contextSize: model.contextSize)
+    }
+
+    func respondWithContextRecovery(
+        messages: [InferenceMessage],
+        tools: [any FoundationModels.Tool],
+        flattenTools: [ToolSchema],
+        instructions: String?,
+        options: InferenceOptions,
+        generationOptions: GenerationOptions
+    ) async throws -> (content: String, usage: TokenUsage?) {
+        let fitted = await PromptEnvelope.enforce(messages: messages, profile: envelopeProfile)
+        do {
+            return try await respondOnce(
+                messages: fitted,
+                tools: tools,
+                flattenTools: flattenTools,
+                instructions: instructions,
+                options: options,
+                generationOptions: generationOptions
+            )
+        } catch {
+            guard FoundationModelsContextOverflow.matches(error) else {
+                throw mapError(error)
+            }
+            let retry = await PromptEnvelope.enforce(
+                messages: PromptEnvelope.compactForRetry(fitted),
+                profile: envelopeProfile
+            )
+            do {
+                return try await respondOnce(
+                    messages: retry,
+                    tools: tools,
+                    flattenTools: flattenTools,
+                    instructions: instructions,
+                    options: options,
+                    generationOptions: generationOptions
+                )
+            } catch {
+                throw mapError(error)
+            }
+        }
+    }
+
+    func respondOnce(
+        messages: [InferenceMessage],
+        tools: [any FoundationModels.Tool],
+        flattenTools: [ToolSchema],
+        instructions: String?,
+        options: InferenceOptions,
+        generationOptions: GenerationOptions
+    ) async throws -> (content: String, usage: TokenUsage?) {
+        let session = makeSession(tools: tools, instructions: instructions)
+        let prompt = flattenPrompt(
+            messages: messages,
+            tools: flattenTools,
+            options: options
+        )
+        let response = try await session.respond(to: prompt, options: generationOptions)
+        return (
+            applyStopSequences(response.content, options: options),
+            FoundationModelsUsageMapping.tokenUsage(from: response)
+        )
+    }
+
     func makeSession(
         tools: [any FoundationModels.Tool],
         instructions: String?
@@ -499,95 +605,24 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     }
 
     func makeGenerationOptions(from options: InferenceOptions) -> GenerationOptions {
-        var generationOptions = GenerationOptions()
-        generationOptions.temperature = options.temperature
-        if let maxTokens = options.maxTokens {
-            generationOptions.maximumResponseTokens = maxTokens
-        }
-        if options.temperature == 0 {
-            generationOptions.sampling = .greedy
-        } else if let topP = options.topP, topP > 0, topP <= 1 {
-            generationOptions.sampling = .random(probabilityThreshold: topP)
-        }
-        return generationOptions
+        FoundationModelsGenerationOptions.make(from: options)
     }
 
     /// Serializes structured history into a single `Prompt` string.
     ///
     /// Required because `LanguageModelSession.respond(to:)` / `streamResponse(to:)`
-    /// take a `Prompt`, and this provider is session-less (a new
+    /// take a `Prompt`, and capture mode is session-less (a new
     /// `LanguageModelSession` per call cannot reuse Apple's transcript).
     func flattenPrompt(
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions
     ) -> String {
-        var lines: [String] = []
-        lines.reserveCapacity(messages.count)
-
-        for message in messages {
-            switch message.role {
-            case .system:
-                guard !message.content.isEmpty else { continue }
-                lines.append("System: \(message.content)")
-            case .user:
-                guard !message.content.isEmpty else { continue }
-                lines.append("User: \(message.content)")
-            case .assistant:
-                if !message.toolCalls.isEmpty {
-                    lines.append("Assistant requested tool calls:")
-                    for call in message.toolCalls {
-                        lines.append("- \(call.name)(\(encodeArguments(call.arguments)))")
-                    }
-                }
-                if !message.content.isEmpty {
-                    lines.append("Assistant: \(message.content)")
-                }
-            case .tool:
-                let prefix = message.name.map { "Tool result (\($0))" } ?? "Tool result"
-                if let callID = message.toolCallID, !callID.isEmpty {
-                    lines.append("\(prefix) [id=\(callID)]: \(message.content)")
-                } else {
-                    lines.append("\(prefix): \(message.content)")
-                }
-            }
-        }
-
-        var prompt = lines.joined(separator: "\n")
-
-        // Light guidance so the model prefers tools when required.
-        // WWDC 2026 adds GenerationOptions.toolCallingMode; the shipped macOS 26.x
-        // SDK used here does not yet expose that knob, so we guide via prompt text.
-        if !tools.isEmpty {
-            switch options.toolChoice {
-            case .required:
-                prompt += "\n\nYou must call one of the available tools before answering."
-            case let .specific(toolName):
-                prompt += "\n\nIf you need a tool, call \"\(toolName)\"."
-            case .auto, ToolChoice.none?, nil:
-                break
-            }
-        }
-
-        if let structuredOutput = options.structuredOutput {
-            prompt = StructuredOutputPromptBuilder.appendInstruction(to: prompt, request: structuredOutput)
-        }
-
-        return prompt
-    }
-
-    private func encodeArguments(_ arguments: [String: SendableValue]) -> String {
-        var object: [String: Any] = [:]
-        for (key, value) in arguments {
-            object[key] = value.toJSONObject()
-        }
-        guard JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
-              let string = String(data: data, encoding: .utf8)
-        else {
-            return "{}"
-        }
-        return string
+        FoundationModelsPromptFlattening.flatten(
+            messages: messages,
+            tools: tools,
+            options: options
+        )
     }
 
     func applyStopSequences(_ content: String, options: InferenceOptions) -> String {
@@ -607,24 +642,20 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     }
 
     func mapError(_ error: Error) -> AgentError {
-        if error is CancellationError {
-            return .cancelled
-        }
-        if let generationError = error as? LanguageModelSession.GenerationError {
-            switch generationError {
-            case .rateLimited:
-                return .generationFailed(reason: "Foundation Models rate limited the request.")
-            case .refusal:
-                return .generationFailed(reason: "Foundation Models refused the request.")
-            case .unsupportedLanguageOrLocale:
-                return .generationFailed(reason: "Foundation Models does not support this language or locale.")
-            case .concurrentRequests:
-                return .generationFailed(reason: "Foundation Models does not allow concurrent requests on one session.")
-            default:
-                return .generationFailed(reason: generationError.localizedDescription)
-            }
-        }
-        return .generationFailed(reason: String(describing: error))
+        FoundationModelsErrorMapping.map(error)
+    }
+}
+
+extension InferenceResponse {
+    fileprivate func withUsage(_ usage: TokenUsage?) -> InferenceResponse {
+        guard let usage else { return self }
+        return InferenceResponse(
+            content: content,
+            toolCalls: toolCalls,
+            finishReason: finishReason,
+            usage: self.usage ?? usage,
+            transcriptMessages: transcriptMessages
+        )
     }
 }
 

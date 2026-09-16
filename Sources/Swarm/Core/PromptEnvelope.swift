@@ -12,12 +12,16 @@ enum ContextWindow {
         let protectLeadingSystem: Bool
         let alwaysKeepLast: Bool
 
-        static func strict4k(_ profile: ContextProfile) -> Policy {
+        static func fitting(_ profile: ContextProfile) -> Policy {
             Policy(
                 maxTokens: profile.budget.maxInputTokens,
                 protectLeadingSystem: true,
                 alwaysKeepLast: true
             )
+        }
+
+        static func strict4k(_ profile: ContextProfile) -> Policy {
+            fitting(profile)
         }
     }
 
@@ -360,22 +364,70 @@ enum ContextWindow {
 
 /// Enforces context-envelope limits for provider prompts.
 enum PromptEnvelope {
+    static let omittedToolResult = "Tool result omitted to fit context."
+
     /// Drops oldest non-system messages until the conversation fits the profile budget.
     /// Roles stay. The latest message is always kept. A leading `.system` message is
     /// never dropped; if system + last still overflow, last (and if needed system
     /// text) is truncated so a non-empty system remains.
     ///
-    /// Non-``.strict4k`` presets are a no-op. The shared ``ContextWindow`` core is
-    /// still callable with an explicit budget independent of this gate.
+    /// Over-budget tool bodies are stubbed first (all but the last two), then the
+    /// shared ``ContextWindow`` core fits the remainder. This runs for every
+    /// profile, not only ``ContextProfile/strict4k``.
     static func enforce(messages: [InferenceMessage], profile: ContextProfile) async -> [InferenceMessage] {
-        guard profile.preset == .strict4k, !messages.isEmpty else {
+        guard !messages.isEmpty else {
             return messages
         }
 
+        let budget = profile.budget.maxInputTokens
+        var working = messages
+        if await tokenCount(of: working) > budget {
+            working = stubOlderToolResults(working, keepLast: 2)
+        }
+
         return await ContextWindow.fit(
-            messages: messages,
-            policy: .strict4k(profile),
+            messages: working,
+            policy: .fitting(profile),
             countTokens: { await PromptTokenBudgeting.countTokens(in: $0) }
         )
+    }
+
+    /// Keeps a leading system message and the latest turn. Used after Apple
+    /// rejects a prompt that still overflowed the estimated budget.
+    static func compactForRetry(_ messages: [InferenceMessage]) -> [InferenceMessage] {
+        guard let last = messages.last else {
+            return messages
+        }
+        if messages.first?.role == .system, messages[0] != last {
+            return [messages[0], last]
+        }
+        return [last]
+    }
+
+    private static func stubOlderToolResults(
+        _ messages: [InferenceMessage],
+        keepLast: Int
+    ) -> [InferenceMessage] {
+        let toolIndices = messages.indices.filter { messages[$0].role == .tool }
+        guard toolIndices.count > keepLast else {
+            return messages
+        }
+        let kept = Set(toolIndices.suffix(keepLast))
+        return messages.enumerated().map { index, message in
+            guard message.role == .tool, kept.contains(index) == false else {
+                return message
+            }
+            return InferenceMessage(
+                role: message.role,
+                content: omittedToolResult,
+                name: message.name,
+                toolCallID: message.toolCallID,
+                toolCalls: message.toolCalls
+            )
+        }
+    }
+
+    private static func tokenCount(of messages: [InferenceMessage]) async -> Int {
+        await PromptTokenBudgeting.countTokens(in: InferenceMessage.flattenPrompt(messages))
     }
 }

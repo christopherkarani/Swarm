@@ -73,12 +73,12 @@ public struct JobSession: Sendable {
     public let input: String
 
     private let store: any JobStore
-    private let fanOutGate: JobFanOutGate
+    private let fanOutGate: FanOutGate
 
     init(input: String, store: any JobStore) {
         self.input = input
         self.store = store
-        self.fanOutGate = JobFanOutGate()
+        self.fanOutGate = FanOutGate()
     }
 
     /// Append a note to this job's store.
@@ -144,15 +144,15 @@ public struct JobSession: Sendable {
             .sorted { $0.0 < $1.0 }
             .map { JobChildResult(name: $0.0, result: $0.1) }
     }
-}
 
-fileprivate actor JobFanOutGate {
-    private var used = false
+    private actor FanOutGate {
+        private var used = false
 
-    func claim() throws {
-        if used {
-            throw JobError.fanOutAlreadyUsed
+        func claim() throws {
+            if used {
+                throw JobError.fanOutAlreadyUsed
+            }
+            used = true
         }
-        used = true
     }
 }

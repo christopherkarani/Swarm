@@ -59,13 +59,15 @@ When the requested JSON Schema maps onto `GenerationSchema`, capture-mode
 the result `.providerNative`. `.jsonObject` and unmappable schemas stay
 prompt-instruction + parse (`.promptFallback`).
 
-Under `strict4k`, native mode still windows the conversation, but the provider
-seam is a role-tagged `[InferenceMessage]` array via
-`PromptEnvelope.enforce(messages:)`, not a flattened envelope string.
+Native mode windows the conversation to the model's `contextSize` (4096 on
+OS 26.0…26.3 back-deploy). The provider seam is a role-tagged
+`[InferenceMessage]` array via `PromptEnvelope.enforce(messages:)`, not a
+flattened envelope string.
 
 ## What native mode cannot honor
 
-Foundation Models has no timeout API. Swarm still wraps the native `respond` /
+Foundation Models has no timeout API on OS 26. OS 27 `LanguageModelError.timeout`
+maps to ``AgentError/generationFailed(reason:)``. Swarm still wraps the native `respond` /
 `streamResponse` call in ``AgentConfiguration/timeout``; if Apple's call ignores
 task cancellation until it returns, the timeout surfaces when that call ends.
 `maxIterations` is not applied inside Apple's loop. Mid-loop workflow
