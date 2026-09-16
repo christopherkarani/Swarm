@@ -452,6 +452,23 @@ public struct Workflow: Sendable {
         return copy
     }
 
+    /// Adds a workflow-level fallback step when the primary agent fails.
+    ///
+    /// - Parameters:
+    ///   - primary: Agent attempted first.
+    ///   - backup: Agent run when the primary exhausts retries.
+    ///   - retries: Number of times to retry the primary before falling back.
+    /// - Returns: A workflow with the fallback step appended.
+    public func fallback(
+        primary: some AgentRuntime,
+        to backup: some AgentRuntime,
+        retries: Int = 0
+    ) -> Workflow {
+        var copy = self
+        copy.steps.append(.fallback(primary: primary, backup: backup, retries: retries))
+        return copy
+    }
+
     /// Executes the workflow with the given input.
     ///
     /// Runs all steps in sequence, applying routing, parallel execution, and

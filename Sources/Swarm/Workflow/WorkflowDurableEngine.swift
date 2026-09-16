@@ -111,6 +111,12 @@ struct WorkflowDurableEngine: Sendable {
     let policy: Workflow.Durable.CheckpointPolicy
     let resume: Bool
 
+    /// Single Integrations-engine conversion from a typed checkpoint identity to a Hive thread ID.
+    /// Callers must not construct `HiveThreadID` from an arbitrary session string.
+    static func hiveThreadID(for checkpointID: WorkflowCheckpointID) -> HiveThreadID {
+        HiveThreadID(checkpointID.rawValue)
+    }
+
     func run(startInput: String) async throws -> AgentResult {
         if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
             throw error
@@ -138,7 +144,7 @@ struct WorkflowDurableEngine: Sendable {
         )
 
         let runtime = try HiveRuntime(graph: graph, environment: environment)
-        let threadID = HiveThreadID(checkpointID)
+        let threadID = Self.hiveThreadID(for: WorkflowCheckpointID(checkpointID))
 
         if resume {
             guard try await checkpointing.containsCheckpoint(for: checkpointID) else {
@@ -253,10 +259,10 @@ struct WorkflowDurableEngine: Sendable {
         case .channels(let values):
             guard let value = values.first(where: { $0.id == WorkflowDurableSchema.phaseKey.id })?.value
             else {
-                return AgentResult(output: "")
+                throw WorkflowError.invalidWorkflow(reason: "Durable workflow finished without a phase channel")
             }
             guard let phase = value as? WorkflowDurablePhase else {
-                return AgentResult(output: "")
+                throw WorkflowError.invalidWorkflow(reason: "Durable workflow phase channel has an invalid type")
             }
             switch phase {
             case .completed(let snapshot):
@@ -265,11 +271,13 @@ struct WorkflowDurableEngine: Sendable {
                 if let lastResult {
                     return lastResult.agentResult
                 }
-                if let currentInput = values.first(where: { $0.id == WorkflowDurableSchema.currentInputKey.id })?
-                    .value as? String {
-                    return AgentResult(output: currentInput)
+                guard let currentInput = values.first(where: { $0.id == WorkflowDurableSchema.currentInputKey.id })?
+                    .value as? String else {
+                    throw WorkflowError.invalidWorkflow(
+                        reason: "Durable workflow running phase is missing a current input channel"
+                    )
                 }
-                return AgentResult(output: "")
+                return AgentResult(output: currentInput)
             }
         }
     }
@@ -626,6 +634,19 @@ private struct LegacyRunState {
     private static func decoded<Value: Codable & Sendable>(_ data: Data?, as _: Value.Type) throws -> Value? {
         guard let data else { return nil }
         return try WorkflowCheckpointCodec<Value>().decode(data)
+    }
+}
+
+enum WorkflowDurableEngineTesting {
+    static func extractResult(from output: HiveRunOutput<WorkflowDurableSchema>) throws -> AgentResult {
+        let engine = WorkflowDurableEngine(
+            workflow: Workflow(),
+            checkpointing: WorkflowCheckpointing.inMemory(),
+            checkpointID: "testing",
+            policy: .onCompletion,
+            resume: false
+        )
+        return try engine.extractResult(from: output)
     }
 }
 #endif

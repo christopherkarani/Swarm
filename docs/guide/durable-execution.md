@@ -1,21 +1,28 @@
 # Durable Execution
 
 Durable workflows persist progress to a checkpoint store and resume from a
-checkpoint ID after a crash, process restart, or explicit `resumeFrom`.
+checkpoint ID after a crash, process restart, or an explicit
+``DurableWorkflow/resume(_:from:)``.
 Checkpoint/resume requires the **`Integrations`** SwiftPM trait
 (`--traits Integrations` or `.package(..., traits: ["Integrations"])`).
 
 ```swift
-let result = try await Workflow()
+let durable = Workflow()
     .step(fetchAgent)
     .step(analyzeAgent)
     .durable
-    .checkpoint(id: "weekly-report", policy: .everyStep)
-    .durable
-    .checkpointing(.fileSystem(directory: checkpointsURL))
-    .durable
-    .execute("Create this week's report", resumeFrom: nil)
+    .configured(
+        id: WorkflowCheckpointID("weekly-report"),
+        store: .fileSystem(directory: checkpointsURL),
+        policy: .everyStep
+    )
+
+let result = try await durable.execute("Create this week's report")
+let again = try await durable.resume("Create this week's report", from: WorkflowCheckpointID("weekly-report"))
 ```
+
+The deprecated `checkpoint` / `checkpointing` / `execute(_:resumeFrom:)` builders remain
+available for existing call sites. Prefer ``DurableWorkflow`` for new code.
 
 This page is the contract for what resume does — and what it does not do.
 

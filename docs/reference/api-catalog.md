@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 196 (203 including `Internal/GraphRuntime/`)
+- Source files scanned: 198 (205 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2325
 
 ## 1. Swarm (entry point)
@@ -2550,6 +2550,24 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 |------|------|--------|------|-----------|
 | 6 | var | public | Workflow.durable | `public var durable: Workflow.Durable { get }` |
 | 8 | struct | public | Workflow.Durable | `public struct Durable` |
+| — | func | public | Workflow.Durable.configured(id:store:policy:) | `public func configured(id: WorkflowCheckpointID, store: WorkflowCheckpointing, policy: CheckpointPolicy = .onCompletion) -> DurableWorkflow` |
+
+### Workflow/DurableWorkflow.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | struct | public | DurableWorkflow | `public struct DurableWorkflow` |
+| — | func | public | DurableWorkflow.execute(_:) | `public func execute(_ input: String) async throws -> AgentResult` |
+| — | func | public | DurableWorkflow.resume(_:from:) | `public func resume(_ input: String, from checkpointID: WorkflowCheckpointID) async throws -> AgentResult` |
+
+### Workflow/WorkflowCheckpointID.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | struct | public | WorkflowCheckpointID | `public struct WorkflowCheckpointID` |
+| — | var | public | WorkflowCheckpointID.rawValue | `public let rawValue: String` |
+| — | func | public | WorkflowCheckpointID.init(rawValue:) | `public init(rawValue: String)` |
+| — | func | public | WorkflowCheckpointID.init(_:) | `public init(_ rawValue: String)` |
 
 ### Workflow/Workflow.swift
 
@@ -2571,8 +2589,9 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 397 | func | public | Workflow.repeatUntil(maxIterations:signature:fileID:line:_:) | `public func repeatUntil(maxIterations: Int = 100, signature: String, fileID: StaticString = #fileID, line: UInt = #line, _ condition: @escaping @Sendable (AgentResult) -> Bool) -> Workflow` |
 | 423 | func | public | Workflow.timeout(_:) | `public func timeout(_ duration: Duration) -> Workflow` |
 | 449 | func | public | Workflow.observed(by:) | `public func observed(by observer: some AgentObserver) -> Workflow` |
+| — | func | public | Workflow.fallback(primary:to:retries:) | `public func fallback(primary: some AgentRuntime, to backup: some AgentRuntime, retries: Int = 0) -> Workflow` |
 | 476 | func | public | Workflow.run(_:) | `public func run(_ input: String) async throws -> AgentResult` |
-| 511 | func | public | Workflow.stream(_:) | `public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>` |
+| 528 | func | public | Workflow.stream(_:) | `public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>` |
 
 ### Workflow/WorkflowCheckpointing.swift
 

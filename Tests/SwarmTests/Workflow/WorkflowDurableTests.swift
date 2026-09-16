@@ -1,7 +1,23 @@
-#if SWARM_INTEGRATIONS
 import Foundation
 import Testing
 @testable import Swarm
+
+@Suite("Workflow durable configuration types")
+struct WorkflowDurableConfigurationTests {
+    @Test("WorkflowCheckpointID wraps a raw string and round-trips Codable")
+    func checkpointIDIsRawRepresentableAndCodable() throws {
+        let id = WorkflowCheckpointID("review-run")
+        #expect(id.rawValue == "review-run")
+        #expect(WorkflowCheckpointID(rawValue: "review-run") == id)
+        #expect(WorkflowCheckpointID("review-run") == id)
+
+        let encoded = try JSONEncoder().encode(id)
+        let decoded = try JSONDecoder().decode(WorkflowCheckpointID.self, from: encoded)
+        #expect(decoded == id)
+    }
+}
+
+#if SWARM_INTEGRATIONS
 
 @Suite("Workflow Advanced")
 struct WorkflowDurableTests {
@@ -79,8 +95,22 @@ struct WorkflowDurableTests {
             .durable
             .checkpoint(id: "wf-1")
 
-        await #expect(throws: WorkflowError.self) {
+        await #expect(throws: WorkflowError.checkpointStoreRequired) {
             _ = try await workflow.durable.execute("hello")
+        }
+    }
+
+    @Test("deprecated resume without checkpoint configuration still rejects")
+    func resumeWithoutCheckpointConfigurationThrows() async throws {
+        let workflow = Workflow()
+            .step(MockAgentRuntime(response: "ok"))
+
+        await #expect(
+            throws: WorkflowError.invalidWorkflow(
+                reason: "Cannot resume a workflow without durable checkpoint configuration"
+            )
+        ) {
+            _ = try await workflow.durable.execute("start", resumeFrom: "wf-none")
         }
     }
 
@@ -310,6 +340,68 @@ struct WorkflowDurableTests {
         #expect(result.output == "backup")
         #expect(result.metadata["workflow.fallback.used"] == .bool(true))
     }
+
+    @Test("Workflow.fallback is the preferred fallback builder")
+    func workflowFallbackPreferredAPI() async throws {
+        let result = try await Workflow()
+            .fallback(primary: FailingAgent(), to: MockAgentRuntime(response: "backup"), retries: 2)
+            .run("input")
+
+        #expect(result.output == "backup")
+        #expect(result.metadata["workflow.fallback.used"] == .bool(true))
+    }
+
+    @Test("configured durable workflow execute matches legacy checkpoint path")
+    func configuredExecuteMatchesLegacyPath() async throws {
+        let checkpointing = WorkflowCheckpointing.inMemory()
+        let workflow = Workflow()
+            .step(MockAgentRuntime(response: "done"))
+
+        let legacy = try await workflow
+            .durable
+            .checkpoint(id: "wf-configured-execute", policy: .everyStep)
+            .durable
+            .checkpointing(checkpointing)
+            .durable
+            .execute("start")
+
+        let configured = try await workflow
+            .durable
+            .configured(id: WorkflowCheckpointID("wf-configured-execute-v2"), store: checkpointing, policy: .everyStep)
+            .execute("start")
+
+        #expect(legacy.output == "done")
+        #expect(configured.output == "done")
+    }
+
+    @Test("configured durable workflow resume uses dedicated entry point")
+    func configuredResumeFromCheckpoint() async throws {
+        let checkpointing = WorkflowCheckpointing.inMemory()
+        let checkpointID = WorkflowCheckpointID("wf-configured-resume")
+        let durable = Workflow()
+            .step(MockAgentRuntime(response: "done"))
+            .durable
+            .configured(id: checkpointID, store: checkpointing, policy: .everyStep)
+
+        let first = try await durable.execute("start")
+        #expect(first.output == "done")
+
+        let resumed = try await durable.resume("ignored", from: checkpointID)
+        #expect(resumed.output == "done")
+    }
+
+    @Test("configured resume throws when checkpoint is missing")
+    func configuredResumeMissingCheckpoint() async throws {
+        let checkpointing = WorkflowCheckpointing.inMemory()
+        let durable = Workflow()
+            .step(MockAgentRuntime(response: "ok"))
+            .durable
+            .configured(id: WorkflowCheckpointID("wf-configured-known"), store: checkpointing)
+
+        await #expect(throws: WorkflowError.checkpointNotFound(id: "wf-configured-missing")) {
+            _ = try await durable.resume("start", from: WorkflowCheckpointID("wf-configured-missing"))
+        }
+    }
 }
 
 private actor WorkflowInvocationLog {
@@ -389,5 +481,35 @@ private actor FailingAgent: AgentRuntime {
     }
 
     func cancel() async {}
+}
+#endif
+
+#if !SWARM_INTEGRATIONS
+@Suite("Workflow durable lean configuration")
+struct WorkflowDurableLeanTests {
+    @Test("configured execute throws durableRuntimeUnavailable on lean builds")
+    func configuredExecuteThrowsWhenEngineUnavailable() async {
+        let durable = Workflow()
+            .step(MockAgentRuntime(response: "done"))
+            .durable
+            .configured(
+                id: WorkflowCheckpointID("lean-configured"),
+                store: .inMemory()
+            )
+
+        do {
+            _ = try await durable.execute("start")
+            Issue.record("configured execute should throw on lean builds")
+        } catch let error as WorkflowError {
+            guard case .durableRuntimeUnavailable(let reason) = error else {
+                Issue.record("expected durableRuntimeUnavailable, got \(error)")
+                return
+            }
+            #expect(reason.contains("Durable workflow execution"))
+            #expect(reason.contains("Integrations trait"))
+        } catch {
+            Issue.record("expected WorkflowError, got \(error)")
+        }
+    }
 }
 #endif

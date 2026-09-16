@@ -430,24 +430,53 @@ Requires the **`Integrations`** SwiftPM trait (`traits: ["Integrations"]` or
 `--traits Integrations`) for real checkpoint/resume at **execute** time.
 
 With checkpoint/resume configured (or `resumeFrom` set), lean builds warn at
-`WorkflowCheckpointing.inMemory()` / `.fileSystem(directory:)` and
-`.durable.checkpoint` / `.checkpointing`, then throw
-`WorkflowError.durableRuntimeUnavailable` with the rebuild remedy. Without that
-configuration, bare execute still runs as a non-durable workflow. Query
-`WorkflowCheckpointing.isAvailable` or `Workflow.Durable.isAvailable` before
-opting in.
+`WorkflowCheckpointing.inMemory()` / `.fileSystem(directory:)`,
+`.durable.configured(id:store:)`, and `.durable.checkpoint` / `.checkpointing`,
+then throw `WorkflowError.durableRuntimeUnavailable` with the rebuild remedy.
+`DurableWorkflow.execute` / `resume` always throw that error on lean builds
+because both identity and store are required. Without deprecated checkpoint
+configuration, bare `Workflow.Durable.execute` still runs as a non-durable
+workflow. Query `WorkflowCheckpointing.isAvailable` or
+`Workflow.Durable.isAvailable` before opting in.
 
 ```swift
+public struct WorkflowCheckpointID: Hashable, Sendable, RawRepresentable, Codable {
+    public let rawValue: String
+    public init(rawValue: String)
+    public init(_ rawValue: String)
+}
+
+public struct DurableWorkflow: Sendable {
+    public func execute(_ input: String) async throws -> AgentResult
+    public func resume(_ input: String, from checkpointID: WorkflowCheckpointID) async throws -> AgentResult
+}
+
 public extension Workflow {
     struct Durable: Sendable {
         static var isAvailable: Bool { get }
         enum CheckpointPolicy: Sendable { case onCompletion, everyStep }
 
+        func configured(
+            id: WorkflowCheckpointID,
+            store: WorkflowCheckpointing,
+            policy: CheckpointPolicy = .onCompletion
+        ) -> DurableWorkflow
+
+        @available(*, deprecated, message: "Use configured(id:store:policy:).")
         func checkpoint(id: String, policy: CheckpointPolicy = .onCompletion) -> Workflow
+        @available(*, deprecated, message: "Use configured(id:store:policy:).")
         func checkpointing(_ checkpointing: WorkflowCheckpointing) -> Workflow
+        @available(*, deprecated, message: "Use Workflow.fallback(primary:to:retries:).")
         func fallback(primary: some AgentRuntime, to backup: some AgentRuntime, retries: Int = 0) -> Workflow
+        @available(*, deprecated, message: "Use DurableWorkflow.execute(_:) or resume(_:from:).")
         func execute(_ input: String, resumeFrom checkpointID: String? = nil) async throws -> AgentResult
     }
+
+    func fallback(
+        primary: some AgentRuntime,
+        to backup: some AgentRuntime,
+        retries: Int = 0
+    ) -> Workflow
 }
 
 // Configuration-only in lean builds; factories warn immediately.
