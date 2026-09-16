@@ -144,10 +144,9 @@ public actor ParallelToolExecutor {
             return []
         }
 
-        let eligibility = try await validatedEligibility(for: calls, registry: registry)
+        try await validateToolsExist(in: calls, registry: registry)
         return try await executeCalls(
             calls,
-            eligibility: eligibility,
             using: registry,
             agent: agent,
             context: context,
@@ -277,10 +276,9 @@ public actor ParallelToolExecutor {
     ) async throws -> [ToolExecutionResult] {
         guard !calls.isEmpty else { return [] }
 
-        let eligibility = try await validatedEligibility(for: calls, registry: registry)
+        try await validateToolsExist(in: calls, registry: registry)
         return try await executeCalls(
             calls,
-            eligibility: eligibility,
             using: registry,
             agent: agent,
             context: context,
@@ -288,99 +286,45 @@ public actor ParallelToolExecutor {
         )
     }
 
-    /// Fail-fast validation plus per-tool parallel eligibility from `runtimePolicy()`.
+    /// Fail-fast validation before any Engine invocation.
     ///
-    /// Missing or disabled tools throw before any Engine invocation. A tool that
-    /// is disabled *after* this pre-pass still goes through Engine and surfaces
-    /// as a per-call failure when `stopOnToolError` is false.
-    private func validatedEligibility(
-        for calls: [ToolCall],
+    /// A tool that is disabled *after* this pre-pass still goes through Engine
+    /// and surfaces as a per-call failure when `stopOnToolError` is false.
+    private func validateToolsExist(
+        in calls: [ToolCall],
         registry: ToolRegistry
-    ) async throws -> [Bool] {
-        var eligibility: [Bool] = []
-        eligibility.reserveCapacity(calls.count)
+    ) async throws {
         for call in calls {
             guard let tool = await registry.tool(named: call.toolName), tool.isEnabled else {
                 throw AgentError.toolNotFound(name: call.toolName)
             }
-            eligibility.append(tool.executionSemantics.runtimePolicy().mayRunInParallel)
         }
-        return eligibility
     }
 
     private func executeCalls(
         _ calls: [ToolCall],
-        eligibility: [Bool],
         using registry: ToolRegistry,
         agent: any AgentRuntime,
         context: AgentContext?,
         stopOnToolError: Bool
     ) async throws -> [ToolExecutionResult] {
-        var results: [ToolExecutionResult] = []
-        results.reserveCapacity(calls.count)
-        var index = 0
-        while index < calls.count {
-            if eligibility[index] {
-                var end = index + 1
-                while end < calls.count, eligibility[end] {
-                    end += 1
-                }
-                let concurrentResults = try await executeConcurrent(
-                    Array(calls[index..<end]),
-                    using: registry,
-                    agent: agent,
-                    context: context,
-                    stopOnToolError: stopOnToolError
-                )
-                results.append(contentsOf: concurrentResults)
-                index = end
-            } else {
-                try Task.checkCancellation()
-                let mapped = try await engine.executeMapped(
-                    call: calls[index],
-                    registry: registry,
-                    agent: agent,
-                    context: context,
-                    stopOnToolError: stopOnToolError
-                )
-                results.append(mapped)
-                index += 1
-            }
-        }
-        return results
-    }
-
-    private func executeConcurrent(
-        _ calls: [ToolCall],
-        using registry: ToolRegistry,
-        agent: any AgentRuntime,
-        context: AgentContext?,
-        stopOnToolError: Bool
-    ) async throws -> [ToolExecutionResult] {
-        try await withThrowingTaskGroup(of: (Int, ToolExecutionResult).self) { group in
-            for (index, call) in calls.enumerated() {
-                group.addTask { [engine, registry, agent, context] in
-                    let mapped = try await engine.executeMapped(
-                        call: call,
-                        registry: registry,
-                        agent: agent,
-                        context: context,
-                        stopOnToolError: stopOnToolError
-                    )
-                    return (index, mapped)
-                }
-            }
-
-            var indexedResults: [(Int, ToolExecutionResult)] = []
-            indexedResults.reserveCapacity(calls.count)
-
-            for try await result in group {
-                try Task.checkCancellation()
-                indexedResults.append(result)
-            }
-
-            indexedResults.sort { $0.0 < $1.0 }
-            return indexedResults.map(\.1)
+        let outcomes = try await engine.executeBatch(
+            calls,
+            registry: registry,
+            agent: agent,
+            context: context,
+            resultBuilder: AgentResult.Builder(),
+            observer: nil,
+            tracing: nil,
+            stopOnToolError: stopOnToolError,
+            allowConcurrent: true
+        )
+        return zip(calls, outcomes).map { call, outcome in
+            ToolExecutionResult.from(
+                call: call,
+                result: outcome.result,
+                underlyingError: outcome.caughtError
+            )
         }
     }
 }

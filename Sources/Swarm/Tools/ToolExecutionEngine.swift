@@ -148,6 +148,110 @@ struct ToolExecutionEngine: Sendable {
         )
     }
 
+    /// Executes registry-backed calls using ``ToolBatchPlan``.
+    ///
+    /// Concurrent groups overlap via `withThrowingTaskGroup`. Returned outcomes
+    /// stay in input order. Each call uses ``execute`` (live builder, observer,
+    /// tracing). `stopOnToolError` rethrows the original tool error after
+    /// recording, matching ``executeMapped``.
+    ///
+    /// Concurrent groups are only formed when `allowConcurrent` is true **and**
+    /// the tool's ``ToolExecutionSemantics/runtimePolicy()`` allows overlap.
+    /// Missing tools are treated as parallel-eligible so they fail inside
+    /// ``execute`` rather than forcing a serial split. Isolated builders record
+    /// each overlapping call; results are merged onto `resultBuilder` in input
+    /// order. Observer and tracing callbacks for a concurrent group follow
+    /// completion order.
+    func executeBatch(
+        _ calls: [some ToolCallGoal],
+        registry: ToolRegistry,
+        agent: any AgentRuntime,
+        context: AgentContext?,
+        resultBuilder: AgentResult.Builder,
+        observer: (any AgentObserver)?,
+        tracing: TracingHelper?,
+        stopOnToolError: Bool,
+        allowConcurrent: Bool
+    ) async throws -> [Outcome] {
+        guard !calls.isEmpty else {
+            return []
+        }
+
+        var eligibility: [Bool] = []
+        eligibility.reserveCapacity(calls.count)
+        for call in calls {
+            let tool = await registry.tool(named: call.toolName)
+            let mayOverlap = tool?.executionSemantics.runtimePolicy().mayRunInParallel ?? true
+            eligibility.append(allowConcurrent && mayOverlap)
+        }
+
+        var outcomes = [Outcome?](repeating: nil, count: calls.count)
+        for group in ToolBatchPlan.groups(eligibility: eligibility) {
+            switch group {
+            case let .serial(index):
+                try Task.checkCancellation()
+                let outcome = try await execute(
+                    calls[index],
+                    registry: registry,
+                    agent: agent,
+                    context: context,
+                    resultBuilder: resultBuilder,
+                    observer: observer,
+                    tracing: tracing,
+                    stopOnToolError: false
+                )
+                outcomes[index] = outcome
+                if stopOnToolError, let error = outcome.caughtError {
+                    throw error
+                }
+
+            case let .concurrent(range):
+                try await withThrowingTaskGroup(of: (Int, Outcome).self) { taskGroup in
+                    for index in range {
+                        let goal = calls[index]
+                        taskGroup.addTask {
+                            let isolatedBuilder = AgentResult.Builder()
+                            let outcome = try await self.execute(
+                                goal,
+                                registry: registry,
+                                agent: agent,
+                                context: context,
+                                resultBuilder: isolatedBuilder,
+                                observer: observer,
+                                tracing: tracing,
+                                stopOnToolError: false
+                            )
+                            if stopOnToolError, let error = outcome.caughtError {
+                                throw error
+                            }
+                            return (index, outcome)
+                        }
+                    }
+
+                    var collected: [(Int, Outcome)] = []
+                    collected.reserveCapacity(range.count)
+                    for try await item in taskGroup {
+                        try Task.checkCancellation()
+                        collected.append(item)
+                    }
+                    collected.sort { $0.0 < $1.0 }
+                    for (index, outcome) in collected {
+                        _ = resultBuilder.addToolCall(outcome.call)
+                        _ = resultBuilder.addToolResult(outcome.result)
+                        outcomes[index] = outcome
+                    }
+                }
+            }
+        }
+
+        return outcomes.map { outcome in
+            guard let outcome else {
+                preconditionFailure("ToolExecutionEngine.executeBatch missing outcome")
+            }
+            return outcome
+        }
+    }
+
     private func elapsedDuration(since startNanoseconds: UInt64) -> Duration {
         let now = clock.nowNanoseconds()
         let elapsed = now >= startNanoseconds ? now - startNanoseconds : 0

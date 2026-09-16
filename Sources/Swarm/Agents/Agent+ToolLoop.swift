@@ -542,20 +542,57 @@ extension Agent {
             }
 
         case (.handoff, _), (.regular, _), (.membraneInternal, nil):
-            let engine = ToolExecutionEngine()
-            let outcome = try await executeWithinRemainingTimeout(startTime: startTime) {
-                try await engine.execute(
-                    parsedCall,
-                    registry: toolRegistry,
-                    agent: self,
-                    context: nil,
-                    resultBuilder: resultBuilder,
-                    observer: observer,
-                    tracing: tracing,
-                    stopOnToolError: false
-                )
-            }
+            try await executeRegularToolBatch(
+                calls: [parsedCall],
+                toolRegistry: toolRegistry,
+                memory: memory,
+                turnTranscript: &turnTranscript,
+                resultBuilder: resultBuilder,
+                observer: observer,
+                tracing: tracing,
+                membraneAdapter: membraneAdapter,
+                startTime: startTime
+            )
+        }
+    }
 
+    /// Registry-backed regular tools through ``ToolExecutionEngine/executeBatch``.
+    ///
+    /// Engine is invoked with `stopOnToolError: false` and
+    /// `allowConcurrent: configuration.parallelToolCalls`. After transcript and
+    /// memory updates, this throws ``AgentError/toolFailure`` when configured.
+    private func executeRegularToolBatch(
+        calls: [InferenceResponse.ParsedToolCall],
+        toolRegistry: ToolRegistry,
+        memory: (any Memory)?,
+        turnTranscript: inout AgentTurnTranscript,
+        resultBuilder: AgentResult.Builder,
+        observer: (any AgentObserver)?,
+        tracing: TracingHelper?,
+        membraneAdapter: (any MembraneAgentAdapter)?,
+        startTime: ContinuousClock.Instant
+    ) async throws {
+        guard !calls.isEmpty else {
+            return
+        }
+
+        let engine = ToolExecutionEngine()
+        let outcomes = try await executeWithinRemainingTimeout(startTime: startTime) {
+            try await engine.executeBatch(
+                calls,
+                registry: toolRegistry,
+                agent: self,
+                context: nil,
+                resultBuilder: resultBuilder,
+                observer: observer,
+                tracing: tracing,
+                stopOnToolError: false,
+                allowConcurrent: configuration.parallelToolCalls
+            )
+        }
+
+        var firstFailure: (toolName: String, message: String)?
+        for (parsedCall, outcome) in zip(calls, outcomes) {
             if outcome.result.isSuccess {
                 var toolOutputText = Self.toolOutputText(for: outcome.result.output)
                 if let membraneAdapter {
@@ -584,8 +621,8 @@ extension Agent {
                     result: toolOutputText,
                     toolCallID: parsedCall.id
                 )
-                if let activeMemory {
-                    await activeMemory.add(.tool(toolOutputText, toolName: parsedCall.name))
+                if let memory {
+                    await memory.add(.tool(toolOutputText, toolName: parsedCall.name))
                 }
             } else {
                 let errorMessage = outcome.result.errorMessage ?? "Unknown error"
@@ -594,17 +631,24 @@ extension Agent {
                     result: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
                     toolCallID: parsedCall.id
                 )
-                if let activeMemory {
-                    await activeMemory.add(.tool(
+                if let memory {
+                    await memory.add(.tool(
                         AgentTurnKernel.memoryToolErrorText(message: errorMessage),
                         toolName: parsedCall.name
                     ))
                 }
-
-                if configuration.stopOnToolError {
-                    throw AgentError.toolFailure(toolName: parsedCall.name, message: errorMessage, cause: nil)
+                if firstFailure == nil {
+                    firstFailure = (parsedCall.name, errorMessage)
                 }
             }
+        }
+
+        if configuration.stopOnToolError, let firstFailure {
+            throw AgentError.toolFailure(
+                toolName: firstFailure.toolName,
+                message: firstFailure.message,
+                cause: nil
+            )
         }
     }
 
@@ -727,12 +771,18 @@ extension Agent {
             toolCalls: response.toolCalls
         )
 
-        for parsedCall in response.toolCalls {
-            let kind = AgentTurnKernel.hostToolCallKind(
+        let hostKind: (InferenceResponse.ParsedToolCall) -> AgentTurnKernel.HostToolCallKind = { parsedCall in
+            AgentTurnKernel.hostToolCallKind(
                 isHandoffTool: handoffMap[parsedCall.name] != nil,
                 isMembraneInternal: membraneAdapter != nil
                     && MembraneInternalTools.isInternalTool(parsedCall.name)
             )
+        }
+
+        var callIndex = 0
+        while callIndex < response.toolCalls.count {
+            let parsedCall = response.toolCalls[callIndex]
+            let kind = hostKind(parsedCall)
 
             switch kind {
             case .handoff:
@@ -749,6 +799,7 @@ extension Agent {
                         membraneAdapter: membraneAdapter,
                         startTime: startTime
                     )
+                    callIndex += 1
                     continue
                 }
                 if let when = handoffConfig.when, await !when(context, handoffConfig.targetAgent) {
@@ -772,6 +823,7 @@ extension Agent {
                         result: toolError,
                         toolCallID: parsedCall.id
                     )
+                    callIndex += 1
                     continue
                 }
 
@@ -914,7 +966,7 @@ extension Agent {
                 // Return the handoff output to be used as the final result
                 return FinalAssistantResponse(content: result.output, structuredOutput: nil)
 
-            case .membraneInternal, .regular:
+            case .membraneInternal:
                 try await executeSingleToolCall(
                     parsedCall: parsedCall,
                     toolRegistry: toolRegistry,
@@ -927,6 +979,26 @@ extension Agent {
                     membraneAdapter: membraneAdapter,
                     startTime: startTime
                 )
+                callIndex += 1
+
+            case .regular:
+                var end = callIndex + 1
+                while end < response.toolCalls.count,
+                      hostKind(response.toolCalls[end]) == .regular {
+                    end += 1
+                }
+                try await executeRegularToolBatch(
+                    calls: Array(response.toolCalls[callIndex..<end]),
+                    toolRegistry: toolRegistry,
+                    memory: memory,
+                    turnTranscript: &turnTranscript,
+                    resultBuilder: resultBuilder,
+                    observer: observer,
+                    tracing: tracing,
+                    membraneAdapter: membraneAdapter,
+                    startTime: startTime
+                )
+                callIndex = end
             }
         }
 
