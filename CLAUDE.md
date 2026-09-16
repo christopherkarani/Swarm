@@ -254,9 +254,9 @@ swift package plugin --allow-writing-to-package-directory swiftformat
 - Native tool calling bridges Swarm `ToolSchema` to Apple's
   `FoundationModels.Tool`.
 - Swarm `DynamicProfile` / `Profile` / `DynamicInstructions` / `ProfileMode`
-  mirror WWDC 2026 Foundation Models Dynamic Profiles. The Apple native API
-  is not in macOS 26.2 SDK yet; Swarm profiles work today and re-resolve each
-  turn via `.foundationModels(profile:)`.
+  are Swarm types used by `.foundationModels(profile:)`. They are **not**
+  Apple's `LanguageModelSession.DynamicProfile` (OS 27). Do not mix the
+  modules. Capture still re-resolves the Swarm profile each turn.
 
 ### Mocks & Test Helpers
 

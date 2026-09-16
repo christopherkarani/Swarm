@@ -55,13 +55,53 @@ struct PromptEnvelopeTests {
         #expect(tokens <= ContextProfile.strict4k.budget.maxInputTokens)
     }
 
-    @Test("non-strict4k profiles leave messages unchanged")
-    func enforceIgnoresNonStrictProfiles() async {
-        let messages = [
-            InferenceMessage.system("system"),
-            .user(String(repeating: "u", count: 20_000)),
+    @Test("every profile fits the assembled prompt to its input budget")
+    func enforceFitsNonStrictProfiles() async {
+        let profile = ContextProfile.platformDefault
+        let maxTokens = profile.budget.maxInputTokens
+        let system = InferenceMessage.system("You are the system prompt. Keep this.")
+        let hugeUser = String(repeating: "u", count: (maxTokens + 200) * 4)
+        let messages = [system, .user(hugeUser)]
+
+        let result = await PromptEnvelope.enforce(messages: messages, profile: profile)
+
+        #expect(result.first?.role == .system)
+        #expect(result.contains(where: { $0.role == .system && !$0.content.isEmpty }))
+        #expect(result.last?.role == .user)
+        let tokens = await PromptTokenBudgeting.countTokens(in: InferenceMessage.flattenPrompt(result))
+        #expect(tokens <= maxTokens)
+    }
+
+    @Test("over-budget tool results are stubbed before the last two")
+    func enforceStubsOlderToolResults() async {
+        let profile = ContextProfile.lite(maxContextTokens: 400)
+        let padding = String(repeating: "p", count: 800)
+        let messages: [InferenceMessage] = [
+            .system("Stay."),
+            .tool(name: "websearch", content: "old-search \(padding)"),
+            .tool(name: "fetch_url", content: "old-page \(padding)"),
+            .tool(name: "websearch", content: "recent-search \(padding)"),
+            .tool(name: "fetch_url", content: "recent-page \(padding)"),
+            .user("needle-latest"),
         ]
-        let result = await PromptEnvelope.enforce(messages: messages, profile: .balanced)
-        #expect(result == messages)
+
+        let result = await PromptEnvelope.enforce(messages: messages, profile: profile)
+
+        #expect(result.contains(where: { $0.content.contains("old-search") }) == false)
+        #expect(result.contains(where: { $0.content.contains("old-page") }) == false)
+        #expect(result.last?.content == "needle-latest")
+        let tokens = await PromptTokenBudgeting.countTokens(in: InferenceMessage.flattenPrompt(result))
+        #expect(tokens <= profile.budget.maxInputTokens)
+    }
+
+    @Test("compactForRetry keeps leading system and the last turn")
+    func compactForRetryKeepsSystemAndLast() {
+        let compacted = PromptEnvelope.compactForRetry([
+            .system("Stay."),
+            .tool(name: "websearch", content: "huge dump"),
+            .user("needle-latest"),
+        ])
+        #expect(compacted.map(\.role) == [.system, .user])
+        #expect(compacted.map(\.content) == ["Stay.", "needle-latest"])
     }
 }

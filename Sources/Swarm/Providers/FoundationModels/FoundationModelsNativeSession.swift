@@ -25,6 +25,7 @@ struct FoundationModelsNativeSessionIdentity: Hashable, Sendable {
 struct FoundationModelsNativeTurnResult: Sendable {
     let content: String
     let transcriptMessages: [InferenceMessage]
+    let usage: TokenUsage?
 }
 
 /// Holds a `LanguageModelSession` so native mode can reuse Apple's transcript
@@ -277,6 +278,7 @@ extension FoundationModelsInferenceProvider {
             content: native.content,
             toolCalls: [],
             finishReason: .completed,
+            usage: native.usage,
             transcriptMessages: native.transcriptMessages
         )
     }
@@ -289,8 +291,9 @@ extension FoundationModelsInferenceProvider {
     ///     flattened into the first prompt (memory injection at session start).
     ///     On a **reused** session only the latest user message is sent.
     ///   - tools: Executing `FoundationModels.Tool` values (Task 2 wrappers).
-    ///   - options: Generation options. `toolChoice` is honored via prompt
-    ///     guidance on new sessions; Apple's SDK has no `toolCallingMode` yet.
+    ///   - options: Generation options. On OS 27, `toolChoice` maps to
+    ///     `GenerationOptions.toolCallingMode`. On OS 26, ``ToolChoice/required``
+    ///     is still prompt text.
     ///   - conversationID: Session key. Changing it discards the native session.
     ///   - onOutputChunk: When non-nil, uses `streamResponse` and reports text
     ///     deltas. Tool-call partials are not streamed — Apple executes tools
@@ -356,6 +359,7 @@ extension FoundationModelsInferenceProvider {
         do {
             try Task.checkCancellation()
             let content: String
+            let usage: TokenUsage?
             if let onOutputChunk {
                 let streamed = try await streamNativeResponse(
                     session: session,
@@ -363,10 +367,12 @@ extension FoundationModelsInferenceProvider {
                     options: generationOptions,
                     onOutputChunk: onOutputChunk
                 )
-                content = applyStopSequences(streamed, options: resolved.options)
+                content = applyStopSequences(streamed.content, options: resolved.options)
+                usage = streamed.usage
             } else {
                 let response = try await session.respond(to: prompt, options: generationOptions)
                 content = applyStopSequences(response.content, options: resolved.options)
+                usage = FoundationModelsUsageMapping.tokenUsage(from: response)
             }
             try Task.checkCancellation()
             let newEntries = session.transcript.dropFirst(startCount)
@@ -378,7 +384,8 @@ extension FoundationModelsInferenceProvider {
                 content: content,
                 transcriptMessages: transcriptMessages.isEmpty
                     ? [.assistant(content)]
-                    : transcriptMessages
+                    : transcriptMessages,
+                usage: usage
             )
         } catch let request as OwnedLoopHandoffRequest {
             await store.discard(lease)
@@ -416,8 +423,9 @@ extension FoundationModelsInferenceProvider {
         prompt: String,
         options: GenerationOptions,
         onOutputChunk: @Sendable (String) async -> Void
-    ) async throws -> String {
+    ) async throws -> (content: String, usage: TokenUsage?) {
         var previous = ""
+        var usage: TokenUsage?
         for try await snapshot in session.streamResponse(to: prompt, options: options) {
             try Task.checkCancellation()
             let current = snapshot.content
@@ -428,11 +436,12 @@ extension FoundationModelsInferenceProvider {
                 delta = current
             }
             previous = current
+            usage = FoundationModelsUsageMapping.tokenUsage(from: snapshot)
             if !delta.isEmpty {
                 await onOutputChunk(delta)
             }
         }
-        return previous
+        return (previous, usage)
     }
 }
 #endif

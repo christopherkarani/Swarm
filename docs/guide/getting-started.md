@@ -305,9 +305,10 @@ let agent = try Agent("You are a helpful text utility.",
 
 Returns an `AgentResult` with the agent's final output, tool call records, duration,
 and optional token usage. `tokenUsage` is populated only when the inference provider
-reports it on ``InferenceResponse/usage``. Apple Foundation Models does not expose a
-token-count API, so that path leaves `tokenUsage` as `nil` — Swarm does not fabricate
-counts. After a handoff, the parent `AgentResult` still reports the combined cost;
+reports it on ``InferenceResponse/usage``. On OS 27, Apple Foundation Models fills
+that from `LanguageModelSession.Response.usage`. On OS 26 the field is absent, so
+usage stays `nil` — Swarm does not fabricate counts. After a handoff, the parent
+`AgentResult` still reports the combined cost;
 `MetricsCollector` attributes tokens per agent span so nested runs are not counted twice.
 
 `AgentResponse.asResult` is a lossy compatibility projection: it keeps output,
@@ -475,7 +476,8 @@ custom backend:
 // On-device Apple Foundation Models (private, native tool calling)
 let agent = try Agent("You are helpful.", inferenceProvider: .foundationModels())
 
-// Dynamic profiles (WWDC 2026–aligned): switch instructions/tools/history per phase
+// Swarm DynamicProfile (not Apple's LanguageModelSession.DynamicProfile):
+// switch instructions/tools/history per capture turn.
 enum Phase { case brainstorm, review }
 let mode = ProfileMode(Phase.brainstorm)
 let profile = ModeSwitchingDynamicProfile(mode: mode) { phase in
@@ -576,5 +578,6 @@ The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only featur
 - **[Foundation Models](foundation-models.md)** -- Capture vs provider-owned tool loop
 - **[Remote Providers](remote-providers.md)** -- OpenAI-compatible HTTP (OpenAI, Azure, OpenRouter, Ollama, LM Studio)
 - **[Tools](../reference/front-facing-api.md#5-tool-and-functiontool)** -- `@Tool` macro, `FunctionTool`, `ToolCollection`, and `@ToolBuilder`
-- **[Workflow](../reference/front-facing-api.md#7-workflow)** -- Sequential, parallel, and routed execution
+- **[Workflow](../reference/front-facing-api.md#7-workflow)** -- Sequential, parallel, and routed last-answer chain
+- **[Job](../reference/front-facing-api.md#7b-job)** -- Shared notes, per-helper briefs, late N fan-out
 - **[Memory](../reference/front-facing-api.md#9-memory-factories)** -- Conversation, vector, summary, persistent

@@ -597,6 +597,27 @@ struct DocumentationFreshnessTests {
         throw DocumentationFreshnessError.missingLine(needle)
     }
 
+    @Test("public docs do not claim OS 27 Foundation Models APIs are missing")
+    func publicDocsDoNotClaimOS27FoundationModelsAPIsAreMissing() throws {
+        let files = [
+            "Sources/Swarm/Providers/FoundationModels/DynamicProfile.swift",
+            "Sources/Swarm/Providers/FoundationModels/FoundationModelsInferenceProvider.swift",
+            "Sources/Swarm/Providers/FoundationModels/FoundationModelsNativeSession.swift",
+            "CLAUDE.md",
+            "README.md",
+            "docs/guide/getting-started.md",
+            "docs/guide/foundation-models.md",
+            "docs/reference/front-facing-api.md",
+        ]
+        for file in files {
+            let text = try readRepoFile(file)
+            #expect(!text.contains("not in the macOS 26.2"), "\(file) must not claim native DynamicProfile is missing")
+            #expect(!text.contains("does not expose token-count"), "\(file) must not claim FM has no token API")
+            #expect(!text.contains("SDK has no `toolCallingMode`"), "\(file) must not claim toolCallingMode is missing")
+            #expect(!text.contains("Apple's SDK has no"), "\(file) must not claim Apple APIs are absent")
+        }
+    }
+
     private func countPublicCatalogSourceFiles() throws -> Int {
         try countSwarmSourceFiles(excludingGraphRuntime: true)
     }

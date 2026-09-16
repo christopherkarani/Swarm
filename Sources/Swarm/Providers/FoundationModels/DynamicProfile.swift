@@ -1,22 +1,22 @@
 // DynamicProfile.swift
 // Swarm Framework
 //
-// Swarm Dynamic Profiles — Apple WWDC 2026–aligned agent configuration.
+// Swarm Dynamic Profiles — capture-path agent configuration.
 //
-// Apple's FoundationModels `LanguageModelSession.DynamicProfile` API is documented
-// for WWDC 2026 but is **not** present in the macOS 26.2 / Xcode SDK shipping with
-// this repository's toolchain (`DynamicProfile` symbol count = 0 in the
-// FoundationModels.swiftinterface). Until that SDK lands, Swarm provides a
-// compatible profile model that:
+// This file defines Swarm's `DynamicProfile` / `Profile` / `DynamicInstructions`.
+// Those types are **not** Apple's `LanguageModelSession.DynamicProfile` (OS 27
+// FoundationModels). Same names, different modules. Do not import both and
+// expect them to be interchangeable.
 //
-// 1. Re-resolves instructions, tools, options, and history policy every turn
-//    (matching Apple's "body is re-evaluated each prompt" semantics).
+// Capture mode still resolves the Swarm profile every turn:
+//
+// 1. Re-resolves instructions, tools, options, and history policy.
 // 2. Supports baton-pass mode switching via ``ProfileMode``.
 // 3. Composes reusable instruction + tool bundles via ``DynamicInstructions``.
-// 4. Plugs into ``FoundationModelsInferenceProvider`` today.
+// 4. Plugs into ``FoundationModelsInferenceProvider``.
 //
-// When Apple's native API is available, a future revision can bridge
-// ``DynamicProfile`` → `LanguageModelSession(profile:)` without changing call sites.
+// Apple's native `LanguageModelSession(profile:)` is a later owned-loop bridge,
+// not a rename of these types.
 
 import Foundation
 
@@ -242,8 +242,9 @@ public struct DynamicInstructions: Sendable, Equatable {
 
 /// Resolves the active ``Profile`` for the next generation turn.
 ///
-/// Apple re-evaluates `DynamicProfile.body` on every prompt. Swarm mirrors that
-/// by calling ``resolve()`` at the start of each `generate` / `generateWithToolCalls`.
+/// Swarm calls ``resolve()`` at the start of each capture `generate` /
+/// `generateWithToolCalls`. This protocol is not Apple's
+/// `LanguageModelSession.DynamicProfile`.
 public protocol DynamicProfile: Sendable {
     /// Returns the profile that should drive the next model turn.
     func resolve() -> Profile

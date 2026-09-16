@@ -79,6 +79,7 @@ let sections = try await Job().run("Write an essay about rivers") { session in
 
 `JobStore` holds records. `JobSession.window` does the search and truncation.
 
+
 ## On-Device and Cloud — Same API
 
 Apple Foundation Models built in. Custom backends implement `InferenceProvider` and drop in without changing the agent loop.

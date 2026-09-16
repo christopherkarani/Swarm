@@ -220,10 +220,11 @@ struct PromptEnvelopeContextWindowTests {
             maxTokens: 70,
             tokensOf: { $0 }
         )
+        let tokensOf: (Int) -> Int = { $0 }
         let syncKept = ContextWindow.evictOldest(
             from: messages,
             maxTokens: 70,
-            tokensOf: { $0 }
+            tokensOf: tokensOf
         )
 
         #expect(syncKept == asyncKept)
