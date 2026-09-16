@@ -23,8 +23,24 @@ public enum HandoffHistory: Sendable, Equatable {
         switch self {
         case .none:
             false
-        case .nested, .summarized:
+        case .nested:
             true
+        case .summarized:
+            true
+        }
+    }
+
+    /// Adds the summary-budget annotations used by the handoff runtime.
+    func applyingSummaryMetadata(to data: HandoffInputData) -> HandoffInputData {
+        switch self {
+        case .none:
+            data
+        case .nested:
+            data
+        case let .summarized(maxTokens):
+            data
+                .settingMetadata(.string("swarm.handoff.history.mode"), "summarized")
+                .settingMetadata(.int("swarm.handoff.history.maxTokens"), maxTokens)
         }
     }
 }
@@ -185,30 +201,23 @@ public struct HandoffOptions<Target: AgentRuntime>: Sendable {
             onTransfer: onTransferCallback,
             transform: normalizedTransform,
             when: whenCallback,
-            nestHandoffHistory: historyStrategy.nestsHistory
+            history: historyStrategy
         )
     }
 
     private func composedTransform() -> TransformCallback? {
-        guard case let .summarized(maxTokens) = historyStrategy else {
+        guard case .summarized = historyStrategy else {
             return transformCallback
         }
 
-        let historyModeKey = HandoffMetadataKey<String>.string("swarm.handoff.history.mode")
-        let historyMaxTokensKey = HandoffMetadataKey<Int>.int("swarm.handoff.history.maxTokens")
-
         if let transformCallback {
             return { data in
-                transformCallback(data)
-                    .settingMetadata(historyModeKey, "summarized")
-                    .settingMetadata(historyMaxTokensKey, maxTokens)
+                historyStrategy.applyingSummaryMetadata(to: transformCallback(data))
             }
         }
 
         return { data in
-            data
-                .settingMetadata(historyModeKey, "summarized")
-                .settingMetadata(historyMaxTokensKey, maxTokens)
+            historyStrategy.applyingSummaryMetadata(to: data)
         }
     }
 

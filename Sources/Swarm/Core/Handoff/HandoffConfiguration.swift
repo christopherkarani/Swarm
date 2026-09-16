@@ -181,7 +181,7 @@ public typealias WhenCallback = @Sendable (AgentContext, any AgentRuntime) async
 ///     when: { context, _ in
 ///         await context.get("ready")?.boolValue ?? false
 ///     },
-///     nestHandoffHistory: true
+///     history: .nested
 /// )
 /// ```
 public struct HandoffConfiguration<Target: AgentRuntime>: Sendable {
@@ -221,12 +221,13 @@ public struct HandoffConfiguration<Target: AgentRuntime>: Sendable {
     /// should be available. If it returns `false`, the handoff is skipped.
     public let when: WhenCallback?
 
+    /// How source-agent conversation history is carried into the handoff.
+    public let history: HandoffHistory
+
     /// Whether to nest the handoff history in the target agent's context.
     ///
-    /// When `true`, the source agent's conversation history is nested
-    /// within the target agent's context, preserving the full chain
-    /// of interactions. When `false`, only the direct input is passed.
-    public let nestHandoffHistory: Bool
+    /// Derived from ``history``. Prefer ``history`` when configuring handoffs.
+    public var nestHandoffHistory: Bool { history.nestsHistory }
 
     // MARK: - Initialization
 
@@ -239,7 +240,7 @@ public struct HandoffConfiguration<Target: AgentRuntime>: Sendable {
     ///   - onTransfer: Pre-handoff callback. Default: nil
     ///   - transform: Input data filter. Default: nil
     ///   - when: Enablement check. Default: nil
-    ///   - nestHandoffHistory: Whether to nest history. Default: false
+    ///   - history: History strategy for the handoff. Default: `.none`
     public init(
         targetAgent: Target,
         toolNameOverride: String? = nil,
@@ -247,7 +248,7 @@ public struct HandoffConfiguration<Target: AgentRuntime>: Sendable {
         onTransfer: OnTransferCallback? = nil,
         transform: TransformCallback? = nil,
         when: WhenCallback? = nil,
-        nestHandoffHistory: Bool = false
+        history: HandoffHistory = .none
     ) {
         self.targetAgent = targetAgent
         self.toolNameOverride = toolNameOverride
@@ -255,7 +256,32 @@ public struct HandoffConfiguration<Target: AgentRuntime>: Sendable {
         self.onTransfer = onTransfer
         self.transform = transform
         self.when = when
-        self.nestHandoffHistory = nestHandoffHistory
+        self.history = history
+    }
+
+    /// Creates a new handoff configuration using a boolean history flag.
+    ///
+    /// - Parameters:
+    ///   - nestHandoffHistory: When `true`, maps to ``HandoffHistory/nested``; otherwise ``HandoffHistory/none``.
+    @available(*, deprecated, message: "Use history: HandoffHistory instead")
+    public init(
+        targetAgent: Target,
+        toolNameOverride: String? = nil,
+        toolDescription: String? = nil,
+        onTransfer: OnTransferCallback? = nil,
+        transform: TransformCallback? = nil,
+        when: WhenCallback? = nil,
+        nestHandoffHistory: Bool
+    ) {
+        self.init(
+            targetAgent: targetAgent,
+            toolNameOverride: toolNameOverride,
+            toolDescription: toolDescription,
+            onTransfer: onTransfer,
+            transform: transform,
+            when: when,
+            history: nestHandoffHistory ? .nested : .none
+        )
     }
 }
 

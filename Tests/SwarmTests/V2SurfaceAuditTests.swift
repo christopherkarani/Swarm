@@ -131,6 +131,7 @@ struct V2SurfaceAuditTests {
             when: nil,
             nestHandoffHistory: false
         )
+        #expect(erased.history == .none)
         #expect(erased.nestHandoffHistory == false)
         #expect(!erased.effectiveToolName.isEmpty)
     }
