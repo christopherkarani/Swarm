@@ -238,6 +238,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 37 | enum | public | ToolCallRecord.Outcome | `public enum Outcome` |
 | 39 | case | public | ToolCallRecord.Outcome.success(_:) | `public case success(SendableValue)` |
 | 42 | case | public | ToolCallRecord.Outcome.failure(message:) | `public case failure(message: String)` |
+| 44 | var | public | ToolCallRecord.callId | `public let callId: UUID` |
 | 45 | var | public | ToolCallRecord.toolName | `public let toolName: String` |
 | 48 | var | public | ToolCallRecord.arguments | `public let arguments: [String : SendableValue]` |
 | 51 | var | public | ToolCallRecord.duration | `public let duration: Duration` |
@@ -271,10 +272,14 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
+| 15 | struct | public | ToolInvocation | `public struct ToolInvocation` |
+| 16 | var | public | ToolInvocation.call | `public let call: ToolCall` |
+| 19 | var | public | ToolInvocation.result | `public let result: ToolResult` |
 | 23 | struct | public | AgentResult | `public struct AgentResult` |
 | 25 | var | public | AgentResult.output | `public let output: String` |
-| 28 | var | public | AgentResult.toolCalls | `public let toolCalls: [ToolCall]` |
-| 31 | var | public | AgentResult.toolResults | `public let toolResults: [ToolResult]` |
+| 28 | var | public | AgentResult.invocations | `public let invocations: [ToolInvocation]` |
+| 31 | var | public | AgentResult.toolCalls | `public var toolCalls: [ToolCall] { get }` |
+| 34 | var | public | AgentResult.toolResults | `public var toolResults: [ToolResult] { get }` |
 | 34 | var | public | AgentResult.iterationCount | `public let iterationCount: Int` |
 | 37 | var | public | AgentResult.duration | `public let duration: Duration` |
 | 40 | var | public | AgentResult.tokenUsage | `public let tokenUsage: TokenUsage?` |

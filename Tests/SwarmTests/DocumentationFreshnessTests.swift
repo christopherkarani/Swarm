@@ -351,7 +351,7 @@ struct DocumentationFreshnessTests {
         #expect(frontFacing.contains("MCPClient.getAllTools()"))
         #expect(frontFacing.contains("MCPToolBridge.bridgeTools()"))
         #expect(frontFacing.contains("Lossy compatibility projection onto `AgentResult`"))
-        #expect(frontFacing.contains("Mints new tool-call IDs on every access"))
+        #expect(frontFacing.contains("Reuses each `ToolCallRecord.callId` for stable tool identity."))
 
         let readiness = try readRepoFile("docs/guide/production-readiness-findings.md")
         #expect(readiness.contains("Historical snapshot of the 0.6.0 Foundation Models DX pass"))

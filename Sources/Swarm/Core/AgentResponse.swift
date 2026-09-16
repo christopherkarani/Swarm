@@ -41,6 +41,9 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
         case failure(message: String)
     }
 
+    /// Stable identifier shared with ``AgentResult`` tool calls when projected via ``AgentResponse/asResult``.
+    public let callId: UUID
+
     /// The name of the tool that was called.
     public let toolName: String
 
@@ -93,12 +96,14 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
     /// Prefer ``success(toolName:arguments:result:duration:timestamp:)`` or
     /// ``failure(toolName:arguments:error:duration:timestamp:)``.
     public init(
+        callId: UUID = TurnEnvironment.live.newUUID(),
         toolName: String,
         arguments: [String: SendableValue] = [:],
         duration: Duration = .zero,
         timestamp: Date = TurnEnvironment.live.now(),
         outcome: Outcome
     ) {
+        self.callId = callId
         self.toolName = toolName
         self.arguments = arguments
         self.duration = duration
@@ -114,6 +119,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
     /// Success ignores `errorMessage`; failure ignores `result`.
     @available(*, deprecated, message: "Use ToolCallRecord.success(...) or .failure(...)")
     public init(
+        callId: UUID = TurnEnvironment.live.newUUID(),
         toolName: String,
         arguments: [String: SendableValue] = [:],
         result: SendableValue = .null,
@@ -122,6 +128,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
         isSuccess: Bool = true,
         errorMessage: String? = nil
     ) {
+        self.callId = callId
         self.toolName = toolName
         self.arguments = arguments
         self.duration = duration
@@ -135,6 +142,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
 
     /// Creates a successful tool call record.
     public static func success(
+        callId: UUID = TurnEnvironment.live.newUUID(),
         toolName: String,
         arguments: [String: SendableValue] = [:],
         result: SendableValue,
@@ -142,6 +150,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
         timestamp: Date = TurnEnvironment.live.now()
     ) -> ToolCallRecord {
         ToolCallRecord(
+            callId: callId,
             toolName: toolName,
             arguments: arguments,
             duration: duration,
@@ -152,6 +161,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
 
     /// Creates a failed tool call record.
     public static func failure(
+        callId: UUID = TurnEnvironment.live.newUUID(),
         toolName: String,
         arguments: [String: SendableValue] = [:],
         error: String,
@@ -159,6 +169,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
         timestamp: Date = TurnEnvironment.live.now()
     ) -> ToolCallRecord {
         ToolCallRecord(
+            callId: callId,
             toolName: toolName,
             arguments: arguments,
             duration: duration,
@@ -168,6 +179,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case callId
         case toolName
         case arguments
         case result
@@ -179,6 +191,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        callId = try container.decodeIfPresent(UUID.self, forKey: .callId) ?? TurnEnvironment.live.newUUID()
         toolName = try container.decode(String.self, forKey: .toolName)
         arguments = try container.decode([String: SendableValue].self, forKey: .arguments)
         duration = try container.decode(Duration.self, forKey: .duration)
@@ -196,6 +209,7 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
 
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(callId, forKey: .callId)
         try container.encode(toolName, forKey: .toolName)
         try container.encode(arguments, forKey: .arguments)
         try container.encode(result, forKey: .result)
@@ -313,7 +327,7 @@ public struct AgentResponse: Sendable {
     /// Prefer ``AgentResult`` from ``Agent/run(_:session:observer:)`` when you
     /// need the canonical execution model. This conversion maps:
     /// - `output` -> `output`
-    /// - `toolCalls` -> newly minted `[ToolCall]` and `[ToolResult]` pairs
+    /// - `toolCalls` -> `[ToolCall]` and `[ToolResult]` pairs using each record's ``ToolCallRecord/callId``
     /// - `usage` -> `tokenUsage`
     /// - `metadata` -> `metadata`
     /// - `iterationCount` -> `iterationCount`
@@ -321,8 +335,8 @@ public struct AgentResponse: Sendable {
     /// It intentionally discards ``responseId``, ``agentName``, and the response
     /// ``timestamp``. ``AgentResult/duration`` is the sum of recorded tool-call
     /// durations, not wall-clock run time, and is `.zero` when no tools ran.
-    /// Each access mints new tool-call IDs, so two conversions of the same
-    /// response are not identity-equal.
+    /// Tool-call identity is stable across repeated conversions because each
+    /// record's stored ``ToolCallRecord/callId`` is reused.
     ///
     /// Example:
     /// ```swift
@@ -331,26 +345,18 @@ public struct AgentResponse: Sendable {
     /// print(result.output)  // "Hello"
     /// ```
     public var asResult: AgentResult {
-        // Convert ToolCallRecords to ToolCalls and ToolResults
-        var convertedToolCalls: [ToolCall] = []
-        var convertedToolResults: [ToolResult] = []
-
-        for record in toolCalls {
-            let callId = TurnEnvironment.live.newUUID()
-            let toolCall = ToolCall(
-                id: callId,
+        let invocations = toolCalls.map { record in
+            let call = ToolCall(
+                id: record.callId,
                 toolName: record.toolName,
                 arguments: record.arguments,
                 timestamp: record.timestamp
             )
-            convertedToolCalls.append(toolCall)
-
-            let toolResult = ToolResult(
-                callId: callId,
+            return ToolInvocation(
+                call: call,
                 duration: record.duration,
                 outcome: ToolResult.Outcome(record.outcome)
             )
-            convertedToolResults.append(toolResult)
         }
 
         // Calculate total duration from tool calls
@@ -358,8 +364,7 @@ public struct AgentResponse: Sendable {
 
         return AgentResult(
             output: output,
-            toolCalls: convertedToolCalls,
-            toolResults: convertedToolResults,
+            invocations: invocations,
             iterationCount: iterationCount,
             duration: totalDuration,
             tokenUsage: usage,
