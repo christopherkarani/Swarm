@@ -128,22 +128,33 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     private let ownsToolLoop: Bool
     let nativeSessionStore = FoundationModelsNativeSessionStore()
 
-    /// Whether the system language model is currently available on this device.
+    /// Whether ``SystemLanguageModel/default`` is currently available.
     public static var isAvailable: Bool {
-        SystemLanguageModel.default.availability == .available
+        isAvailable(.default)
+    }
+
+    /// Whether the supplied Apple `SystemLanguageModel` is available.
+    ///
+    /// Pass a use-case model (`SystemLanguageModel(useCase:)`) to check that
+    /// variant. This is not a Swarm type and not Apple's `LanguageModel` box
+    /// for Private Cloud Compute — that factory is a later OS 27 slice.
+    public static func isAvailable(_ model: SystemLanguageModel) -> Bool {
+        model.availability == .available
     }
 
     /// Creates a provider when Foundation Models are available; otherwise `nil`.
     public static func ifAvailable(
         configuration: FoundationModelsProviderConfiguration = .default,
         profile: (any DynamicProfile)? = nil,
-        ownsToolLoop: Bool = false
+        ownsToolLoop: Bool = false,
+        model: SystemLanguageModel = .default
     ) -> FoundationModelsInferenceProvider? {
-        guard isAvailable else { return nil }
+        guard isAvailable(model) else { return nil }
         return FoundationModelsInferenceProvider(
             configuration: configuration,
             profile: profile,
-            ownsToolLoop: ownsToolLoop
+            ownsToolLoop: ownsToolLoop,
+            model: model
         )
     }
 
@@ -154,14 +165,17 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     ///   - profile: Optional dynamic profile resolved every generation turn.
     ///   - ownsToolLoop: When true, this adapter advertises a provider-owned
     ///     tool loop and executes tools via the call's ``ToolCallExecutor``.
+    ///   - model: Apple `SystemLanguageModel` used for the session. Defaults to
+    ///     ``SystemLanguageModel/default``.
     public init(
         configuration: FoundationModelsProviderConfiguration = .default,
         profile: (any DynamicProfile)? = nil,
-        ownsToolLoop: Bool = false
+        ownsToolLoop: Bool = false,
+        model: SystemLanguageModel = .default
     ) {
         self.configuration = configuration
         self.dynamicProfile = profile
-        self.model = .default
+        self.model = model
         self.ownsToolLoop = ownsToolLoop
     }
 
@@ -670,9 +684,10 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
     /// Prefer this for macOS/iOS apps that want first-class Apple Intelligence
     /// integration. For custom backends, inject any ``InferenceProvider``.
     static func foundationModels(
-        configuration: FoundationModelsProviderConfiguration = .default
+        configuration: FoundationModelsProviderConfiguration = .default,
+        model: SystemLanguageModel = .default
     ) -> FoundationModelsInferenceProvider {
-        FoundationModelsInferenceProvider(configuration: configuration)
+        FoundationModelsInferenceProvider(configuration: configuration, model: model)
     }
 
     /// Creates an on-device adapter that owns the tool loop.
@@ -680,9 +695,14 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
     /// Agent supplies a ``ToolCallExecutor`` on each tool-calling call and
     /// does not iterate. Capture remains ``foundationModels()``.
     static func foundationModelsOwningToolLoop(
-        configuration: FoundationModelsProviderConfiguration = .default
+        configuration: FoundationModelsProviderConfiguration = .default,
+        model: SystemLanguageModel = .default
     ) -> FoundationModelsInferenceProvider {
-        FoundationModelsInferenceProvider(configuration: configuration, ownsToolLoop: true)
+        FoundationModelsInferenceProvider(
+            configuration: configuration,
+            ownsToolLoop: true,
+            model: model
+        )
     }
 
     /// Creates an on-device Apple Foundation Models provider with instructions.
@@ -718,23 +738,27 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
     /// generation overrides, history policy).
     static func foundationModels(
         profile: some DynamicProfile,
-        configuration: FoundationModelsProviderConfiguration = .default
+        configuration: FoundationModelsProviderConfiguration = .default,
+        model: SystemLanguageModel = .default
     ) -> FoundationModelsInferenceProvider {
         FoundationModelsInferenceProvider(
             configuration: configuration,
-            profile: profile
+            profile: profile,
+            model: model
         )
     }
 
     /// Creates an on-device owned-loop adapter driven by a Swarm ``DynamicProfile``.
     static func foundationModelsOwningToolLoop(
         profile: some DynamicProfile,
-        configuration: FoundationModelsProviderConfiguration = .default
+        configuration: FoundationModelsProviderConfiguration = .default,
+        model: SystemLanguageModel = .default
     ) -> FoundationModelsInferenceProvider {
         FoundationModelsInferenceProvider(
             configuration: configuration,
             profile: profile,
-            ownsToolLoop: true
+            ownsToolLoop: true,
+            model: model
         )
     }
 }

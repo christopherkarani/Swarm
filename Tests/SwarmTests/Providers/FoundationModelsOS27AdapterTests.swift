@@ -24,6 +24,26 @@ struct FoundationModelsOS27AdapterTests {
         #expect(profile.budget.maxInputTokens == 4096)
     }
 
+    #if canImport(FoundationModels)
+    @Test("injected SystemLanguageModel drives availability and the capture envelope")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func injectedModelDrivesAvailabilityAndEnvelope() {
+        let model = SystemLanguageModel.default
+        #expect(
+            FoundationModelsInferenceProvider.isAvailable(model)
+                == (model.availability == .available)
+        )
+        if FoundationModelsInferenceProvider.isAvailable(model) {
+            let provider = FoundationModelsInferenceProvider(model: model)
+            let expected = FoundationModelsContextBudget.profile(contextSize: model.contextSize)
+            #expect(provider.envelopeProfile.budget.maxInputTokens == expected.budget.maxInputTokens)
+            #expect(FoundationModelsInferenceProvider.ifAvailable(model: model) != nil)
+        } else {
+            #expect(FoundationModelsInferenceProvider.ifAvailable(model: model) == nil)
+        }
+    }
+    #endif
+
     @Test("required tool choice is prompt-injected only before OS 27")
     func requiredToolChoicePromptInjectionIsVersionGated() {
         let schema = ToolSchema(name: "lookup", description: "Look up", parameters: [])

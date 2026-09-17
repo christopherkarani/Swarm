@@ -817,7 +817,8 @@ available for source compatibility: `PromptTokenCountingInferenceProvider`,
 
 ```swift
 .foundationModels()                 // On-device first-class provider
-.foundationModels(profile: profile) // Dynamic profile re-resolved each turn
+.foundationModels(model: .default)  // Apple SystemLanguageModel (not Swarm Profile)
+.foundationModels(profile: profile) // Swarm DynamicProfile re-resolved each turn
 .openAICompatible(.ollama(model: "llama3.2"))
 .openAICompatible(.openAI(apiKey: "sk-...", model: "gpt-4o"))
 .textOnly(stringBackend)            // TextOnlyBackend → flatten adapter
@@ -826,7 +827,7 @@ available for source compatibility: `PromptTokenCountingInferenceProvider`,
 
 | Factory family | Return type | Notes |
 |----------------|-------------|-------|
-| `.foundationModels()` | `FoundationModelsInferenceProvider` | Built-in on-device path; Agent-owned tool loop (capture) |
+| `.foundationModels()` | `FoundationModelsInferenceProvider` | Built-in on-device path; Agent-owned tool loop (capture). Optional `model:` is Apple `SystemLanguageModel`. |
 | `.foundationModelsOwningToolLoop()` | `FoundationModelsInferenceProvider` | Same type; advertises a provider-owned tool loop |
 | `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Capture adapter driven by Swarm ``DynamicProfile`` (not Apple's OS 27 `LanguageModelSession.DynamicProfile`) |
 | `.openAICompatible(_:)` | `OpenAICompatibleProvider` | OpenAI / Azure / OpenRouter / Ollama / LM Studio over Chat Completions; Linux-first |
