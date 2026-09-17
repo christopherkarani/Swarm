@@ -914,6 +914,9 @@ OS 27 owned-loop can set ``FoundationModelsProviderConfiguration/reasoningLevel`
 (Swarm ``FoundationModelsReasoningLevel``, not Apple `ContextOptions`).
 ``ToolChoice/specific(toolName:)`` has no Apple `ToolCallingMode` case and
 stays a prompt sentence.
+Owned-loop applies Swarm ``ProfileHistoryPolicy`` before seeding a text-only
+Apple `Transcript`. It does not rename Swarm ``DynamicProfile`` to Apple's
+`LanguageModelSession.DynamicProfile`.
 See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`

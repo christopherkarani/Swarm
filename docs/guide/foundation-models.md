@@ -56,6 +56,12 @@ Apple `GenerationOptions.ToolCallingMode` is `allowed` / `disallowed` /
 keeps the prompt sentence that names the tool and maps the generation mode to
 `.allowed`.
 
+Owned-loop applies the Swarm ``Profile`` (instructions, ``ProfileToolFilter``,
+``ProfileHistoryPolicy``) before creating the session. Text-only history is
+seeded as an Apple `Transcript`. History that still has tool calls flattens
+into a `Prompt`. Swarm ``DynamicProfile`` is not Apple's
+`LanguageModelSession.DynamicProfile`.
+
 Native mode exists so you can take Apple's session loop for multi-round tools
 and transcript reuse. Capture stays the default because Swarm-side control
 (guardrails, checkpoints, memory injection) is the framework's differentiator.
