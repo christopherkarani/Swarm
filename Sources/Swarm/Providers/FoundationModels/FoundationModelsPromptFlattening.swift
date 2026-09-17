@@ -2,10 +2,11 @@ import Foundation
 
 /// Serializes structured history into a single `Prompt` string.
 ///
-/// `LanguageModelSession.respond(to:)` takes a `Prompt`, and capture mode
-/// creates a fresh session per call, so role-tagged history has to be labeled
-/// text. On OS 27, ``ToolChoice/required`` is `GenerationOptions.toolCallingMode`
-/// instead of a prompt sentence.
+/// Capture prefers ``FoundationModelsCaptureTranscript`` so Apple sees roles
+/// natively. This flatten path is the fallback when a message cannot be
+/// represented (assistant tool-call metadata or extra system text). On OS 27,
+/// ``ToolChoice/required`` is `GenerationOptions.toolCallingMode` instead of
+/// a prompt sentence.
 enum FoundationModelsPromptFlattening: Sendable {
     static let requiredToolGuidance = "You must call one of the available tools before answering."
 

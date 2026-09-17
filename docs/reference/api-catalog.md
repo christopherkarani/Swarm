@@ -2863,7 +2863,7 @@ OpenAI-compatible Chat Completions provider (`URLSession` only). Covers OpenAI, 
 
 ### Providers/FoundationModels/FoundationModelsInferenceProvider.swift
 
-First-class Apple Foundation Models path (on-device `SystemLanguageModel`, plus OS 27 `LanguageModel` / `PrivateCloudComputeLanguageModel`). Gated by `#if canImport(FoundationModels)` and `@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)`.
+First-class Apple Foundation Models path (on-device `SystemLanguageModel`, plus OS 27 `LanguageModel` / `PrivateCloudComputeLanguageModel`). Gated by `#if canImport(FoundationModels)` and `@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)`. Capture rehydrates `Transcript` when history is representable; flattening is the fallback.
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
