@@ -75,7 +75,10 @@ checkpoints do not fire.
 
 ## Availability
 
-Requires macOS/iOS 26+ with Apple Intelligence available. Linux and CI use
+Requires macOS/iOS 26+ with Apple Intelligence available. Check
+``FoundationModelsInferenceProvider/isAvailable(_:)`` against the
+`SystemLanguageModel` you will use (default or `SystemLanguageModel(useCase:)`).
+That type is Apple's, not Swarm ``DynamicProfile``. Linux and CI use
 ``OpenAICompatibleProvider`` (see [Remote Providers](remote-providers.md)) or
 capture-equivalent mock providers. ``.foundationModelsOwningToolLoop()`` still
 constructs; the first ``generateWithToolCalls`` / ``streamWithToolCalls``

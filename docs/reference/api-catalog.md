@@ -2871,13 +2871,14 @@ First-class on-device Apple Foundation Models path. Gated by `#if canImport(Foun
 | 24 | func | public | FoundationModelsProviderConfiguration.init(instructions:prewarmOnInit:) | `public init(instructions: String? = nil, prewarmOnInit: Bool = false)` |
 | 30 | var | public | FoundationModelsProviderConfiguration.default | `public static let default: FoundationModelsProviderConfiguration` |
 | 82 | struct | public | FoundationModelsInferenceProvider | `public struct FoundationModelsInferenceProvider` |
-| 94 | var | public | FoundationModelsInferenceProvider.isAvailable | `public static var isAvailable: Bool { get }` |
-| 99 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider?` |
-| 112 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil)` |
-| 487 | func | public | InferenceProvider.foundationModels(configuration:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
-| 493 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
-| 493 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
-| 509 | func | public | InferenceProvider.foundationModels(profile:configuration:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
+| 132 | var | public | FoundationModelsInferenceProvider.isAvailable | `public static var isAvailable: Bool { get }` |
+| 141 | func | public | FoundationModelsInferenceProvider.isAvailable(_:) | `public static func isAvailable(_ model: SystemLanguageModel) -> Bool` |
+| 146 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:ownsToolLoop:model:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider?` |
+| 170 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:ownsToolLoop:model:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default)` |
+| 687 | func | public | InferenceProvider.foundationModels(configuration:model:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 698 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:model:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 709 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
+| 739 | func | public | InferenceProvider.foundationModels(profile:configuration:model:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
 
 ### Providers/ToolCallExecutor.swift
 
