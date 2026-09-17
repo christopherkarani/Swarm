@@ -333,18 +333,22 @@ extension FoundationModelsInferenceProvider {
             toolNames: boundTools.map(\.name).sorted()
         )
         let instructions = resolved.instructions
+        let seed = FoundationModelsAppleProfileBridge.seed(
+            messages: resolved.messages,
+            instructions: instructions
+        )
         let store = nativeSessionStore
         let (session, reused, lease) = await store.tryBeginOwnedLoop(matching: identity) {
-            self.makeSession(tools: boundTools, instructions: instructions)
+            self.makeOwnedLoopSession(tools: boundTools, seed: seed)
         } recreate: { transcript in
             self.makeSession(tools: boundTools, transcript: transcript)
         }
 
         let prompt: String
         if reused {
-            prompt = resolved.messages.last(where: { $0.role == .user })?.content
-                ?? resolved.messages.last?.content
-                ?? ""
+            prompt = seed.pendingPrompt
+        } else if seed.canRehydrateTranscript {
+            prompt = seed.pendingPrompt
         } else {
             prompt = flattenPrompt(
                 messages: resolved.messages,
@@ -441,6 +445,20 @@ extension FoundationModelsInferenceProvider {
         }
         let response = try await session.respond(to: prompt, options: options)
         return (response.content, FoundationModelsUsageMapping.tokenUsage(from: response))
+    }
+
+    /// New owned-loop sessions prefer a text-only `Transcript` seed from the
+    /// resolved Swarm profile. Tool-bearing history still flattens.
+    func makeOwnedLoopSession(
+        tools: [any FoundationModels.Tool],
+        seed: FoundationModelsAppleProfileBridge.Seed
+    ) -> LanguageModelSession {
+        if seed.canRehydrateTranscript,
+           let transcript = FoundationModelsAppleProfileBridge.makeTranscript(from: seed.seedEntries)
+        {
+            return makeSession(tools: tools, transcript: transcript)
+        }
+        return makeSession(tools: tools, instructions: seed.instructions)
     }
 
     private func streamNativeResponse(

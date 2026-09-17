@@ -2919,6 +2919,8 @@ Experimental adapter wrapping a user `FoundationModels.Tool` as a Swarm `AnyJSON
 
 ### Providers/FoundationModels/DynamicProfile.swift
 
+Swarm capture-path types. Owned-loop consumes ``Profile`` / ``ProfileHistoryPolicy`` through an internal Apple profile bridge; these names are not `LanguageModelSession.DynamicProfile`.
+
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 30 | struct | public | Profile | `public struct Profile` |

@@ -530,7 +530,9 @@ the provider. On OS 27, pass
 `FoundationModelsProviderConfiguration(reasoningLevel: .deep)` to that factory
 for Apple `ContextOptions`. ``ToolChoice/specific(toolName:)`` is still a
 prompt sentence — Foundation Models has no `.specific` tool-calling mode.
-See [Foundation Models](foundation-models.md) for the trade-off table.
+Owned-loop applies Swarm ``ProfileHistoryPolicy`` (for example
+``.dropToolTranscript``) before seeding Apple `Transcript` when history is
+text-only. See [Foundation Models](foundation-models.md) for the trade-off table.
 
 ```swift
 let agent = try Agent(
