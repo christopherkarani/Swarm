@@ -71,6 +71,10 @@ import Foundation
 /// - ``toolFailure(toolName:message:cause:)``
 /// - ``invalidToolArguments(toolName:reason:)``
 ///
+/// ### Handoff Identity Errors
+/// - ``duplicateHandoffToolName(name:)``
+/// - ``handoffToolNameCollidesWithTool(name:)``
+///
 /// ### Model Errors
 /// - ``inferenceProviderUnavailable(reason:)``
 /// - ``contextWindowExceeded(tokenCount:limit:)``
@@ -334,6 +338,46 @@ public enum AgentError: Error, Sendable, Equatable {
     ///   - toolName: The name of the tool that received invalid arguments
     ///   - reason: A description of why the arguments were invalid
     case invalidToolArguments(toolName: String, reason: String)
+
+    // MARK: - Handoff Identity Errors
+
+    /// Two handoffs resolved to the same LLM-facing tool name.
+    ///
+    /// This error is thrown at `Agent` initialization when effective handoff
+    /// tool names are not unique. The default name is derived from the target
+    /// runtime's type, so two ``Agent`` values without `toolNameOverride` always
+    /// collide as `handoff_to_agent`.
+    ///
+    /// ## Recovery
+    ///
+    /// Give each handoff a unique override:
+    ///
+    /// ```swift
+    /// let triage = try Agent(
+    ///     "Route requests.",
+    ///     handoffs: [
+    ///         AnyHandoffConfiguration(targetAgent: billing, toolNameOverride: "handoff_to_billing"),
+    ///         AnyHandoffConfiguration(targetAgent: support, toolNameOverride: "handoff_to_support"),
+    ///     ]
+    /// )
+    /// ```
+    ///
+    /// - Parameter name: The colliding effective handoff tool name
+    case duplicateHandoffToolName(name: String)
+
+    /// A handoff's effective tool name equals a registered tool name.
+    ///
+    /// This error is thrown at `Agent` initialization when a handoff would be
+    /// advertised under the same name as a tool, whether that tool is enabled
+    /// or disabled. The collision would make the LLM tool list ambiguous and
+    /// dispatch undefined.
+    ///
+    /// ## Recovery
+    ///
+    /// Rename the tool or pass a distinct `toolNameOverride` on the handoff.
+    ///
+    /// - Parameter name: The shared tool and handoff name
+    case handoffToolNameCollidesWithTool(name: String)
 
     // MARK: - Model Errors
 
@@ -645,6 +689,10 @@ public enum AgentError: Error, Sendable, Equatable {
             n1 == n2 && m1 == m2 && Self.causeEquals(c1, c2)
         case let (.invalidToolArguments(a1, a2), .invalidToolArguments(b1, b2)):
             a1 == b1 && a2 == b2
+        case let (.duplicateHandoffToolName(a), .duplicateHandoffToolName(b)):
+            a == b
+        case let (.handoffToolNameCollidesWithTool(a), .handoffToolNameCollidesWithTool(b)):
+            a == b
         case let (.inferenceProviderUnavailable(a), .inferenceProviderUnavailable(b)):
             a == b
         case let (.contextWindowExceeded(a1, a2), .contextWindowExceeded(b1, b2)):
@@ -717,6 +765,10 @@ extension AgentError: LocalizedError {
             "Tool '\(toolName)' failed: \(message ?? cause.map(String.init(describing:)) ?? "unknown error")"
         case let .invalidToolArguments(toolName, reason):
             "Invalid arguments for tool '\(toolName)': \(reason)"
+        case let .duplicateHandoffToolName(name):
+            "Duplicate handoff tool name: '\(name)'"
+        case let .handoffToolNameCollidesWithTool(name):
+            "Handoff tool name collides with a registered tool: '\(name)'"
         case let .inferenceProviderUnavailable(reason):
             "Inference provider unavailable: \(reason)"
         case let .contextWindowExceeded(count, limit):
@@ -783,6 +835,10 @@ extension AgentError: LocalizedError {
             "Increase the timeout duration or optimize the task to complete faster."
         case .invalidToolArguments(let toolName, _):
             "Review the tool '\(toolName)' documentation and ensure all required parameters are provided."
+        case .duplicateHandoffToolName(let name):
+            "Give each handoff a unique toolNameOverride; '\(name)' is used more than once."
+        case .handoffToolNameCollidesWithTool(let name):
+            "Rename the tool or set a distinct toolNameOverride so '\(name)' is not shared."
         default:
             nil
         }
@@ -817,6 +873,10 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.toolFailure(toolName: \(toolName), message: \(message ?? "nil"), cause: \(cause.map { String(describing: type(of: $0)) } ?? "nil"))"
         case let .invalidToolArguments(toolName, reason):
             "AgentError.invalidToolArguments(toolName: \(toolName), reason: \(reason))"
+        case let .duplicateHandoffToolName(name):
+            "AgentError.duplicateHandoffToolName(name: \(name))"
+        case let .handoffToolNameCollidesWithTool(name):
+            "AgentError.handoffToolNameCollidesWithTool(name: \(name))"
         case let .inferenceProviderUnavailable(reason):
             "AgentError.inferenceProviderUnavailable(reason: \(reason))"
         case let .contextWindowExceeded(tokenCount, limit):
@@ -869,6 +929,8 @@ extension AgentError {
              .guardrailViolation,
              .contentFiltered,
              .invalidToolArguments,
+             .duplicateHandoffToolName,
+             .handoffToolNameCollidesWithTool,
              .toolExecutionFailed,
              .toolFailure,
              .toolNotFound,

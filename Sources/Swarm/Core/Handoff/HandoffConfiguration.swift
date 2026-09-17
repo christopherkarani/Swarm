@@ -293,12 +293,7 @@ public extension HandoffConfiguration {
     /// Returns `toolNameOverride` if set, otherwise generates a name
     /// from the target agent's type using snake_case convention.
     var effectiveToolName: String {
-        if let override = toolNameOverride {
-            return override
-        }
-        // Generate from type name: "ExecutorAgent" -> "handoff_to_executor_agent"
-        let typeName = String(describing: type(of: targetAgent))
-        return "handoff_to_\(typeName.camelCaseToSnakeCase())"
+        HandoffToolName(derivedFrom: targetAgent, override: toolNameOverride).rawValue
     }
 
     /// The effective description for this handoff tool.

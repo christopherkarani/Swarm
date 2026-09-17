@@ -120,11 +120,7 @@ public struct AnyHandoffConfiguration: Sendable {
 public extension AnyHandoffConfiguration {
     /// The effective tool name for this handoff.
     var effectiveToolName: String {
-        if let override = toolNameOverride {
-            return override
-        }
-        let typeName = String(describing: type(of: targetAgent))
-        return "handoff_to_\(typeName.camelCaseToSnakeCase())"
+        HandoffToolName(derivedFrom: targetAgent, override: toolNameOverride).rawValue
     }
 
     /// The effective description for this handoff tool.

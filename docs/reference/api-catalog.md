@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 209 (216 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2325
+- Source files scanned: 211 (218 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2327
 
 ## 1. Swarm (entry point)
 
@@ -140,7 +140,9 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 81 | case | public | AgentError.internalError(reason:) | `public case internalError(reason: String)` |
 | 84 | case | public | AgentError.toolCallingUnsupported | `public case toolCallingUnsupported` |
 | 593 | case | public | AgentError.providerOwnedToolLoopRequiresExecutor | `public case providerOwnedToolLoopRequiresExecutor` |
-| 628 | func | public | AgentError.==(_:_:) | `public static func == (lhs: AgentError, rhs: AgentError) -> Bool` |
+| 366 | case | public | AgentError.duplicateHandoffToolName(name:) | `public case duplicateHandoffToolName(name: String)` |
+| 380 | case | public | AgentError.handoffToolNameCollidesWithTool(name:) | `public case handoffToolNameCollidesWithTool(name: String)` |
+| 672 | func | public | AgentError.==(_:_:) | `public static func == (lhs: AgentError, rhs: AgentError) -> Bool` |
 | 90 | var | public | AgentError.errorDescription | `public var errorDescription: String? { get }` |
 | 139 | var | public | AgentError.recoverySuggestion | `public var recoverySuggestion: String? { get }` |
 | 152 | var | public | AgentError.debugDescription | `public var debugDescription: String { get }` |

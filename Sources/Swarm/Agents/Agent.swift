@@ -251,6 +251,10 @@ public struct Agent: AgentRuntime, Sendable {
     ///   - guardrailRunnerConfiguration: Configuration for guardrail runner. Default: .default
     ///   - handoffs: Handoff configurations for multi-agent orchestration. Default: []
     /// - Throws: `ToolRegistryError.duplicateToolName` if duplicate tool names are provided.
+    /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if two handoffs share an
+    ///   effective tool name.
+    /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if a handoff's
+    ///   effective name equals a registered tool name, including disabled tools.
     @_disfavoredOverload
     public init(
         tools: [any AnyJSONTool] = [],
@@ -284,6 +288,13 @@ public struct Agent: AgentRuntime, Sendable {
     /// ``runEnvironment`` defaults to ``AgentRunEnvironment/live`` so agents
     /// built through public initializers share dedup and session-serialization
     /// state exactly as they did when these dependencies were process globals.
+    ///
+    /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if two handoffs
+    ///   share an effective tool name.
+    /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if a
+    ///   handoff's effective name equals a registered tool name.
+    /// - Throws: `ToolRegistryError.duplicateToolName` if duplicate tool names
+    ///   are provided.
     init(
         tools: [any AnyJSONTool] = [],
         instructions: String = "",
@@ -312,6 +323,10 @@ public struct Agent: AgentRuntime, Sendable {
         self.inputGuardrails = inputGuardrails
         self.outputGuardrails = outputGuardrails
         self.guardrailRunnerConfiguration = guardrailRunnerConfiguration
+        try HandoffIdentity.validate(
+            handoffs: handoffs,
+            toolNames: Set(tools.map(\.name))
+        )
         _handoffs = handoffs
         toolRegistry = try ToolRegistry(tools: tools)
         inferenceCircuitBreaker = configuration.resilience.makeCircuitBreaker(
@@ -366,6 +381,10 @@ public struct Agent: AgentRuntime, Sendable {
     ///   - guardrailRunnerConfiguration: Configuration for guardrail runner. Default: .default
     ///   - handoffs: Handoff configurations for multi-agent orchestration. Default: []
     /// - Throws: `ToolRegistryError.duplicateToolName` if duplicate tool names are provided.
+    /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if two handoffs share an
+    ///   effective tool name.
+    /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if a handoff's
+    ///   effective name equals a registered tool name, including disabled tools.
     public init(
         tools: [some Tool] = [],
         instructions: String = "",
@@ -419,6 +438,10 @@ public struct Agent: AgentRuntime, Sendable {
     ///   - guardrailRunnerConfiguration: Configuration for guardrail runner. Default: .default
     ///   - handoffAgents: Agents to hand off to, automatically wrapped as handoff configurations.
     /// - Throws: `ToolRegistryError.duplicateToolName` if duplicate tool names are provided.
+    /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if two agents share an
+    ///   effective handoff tool name (for example two ``Agent`` values with no override).
+    /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if a handoff's
+    ///   effective name equals a registered tool name, including disabled tools.
     @_disfavoredOverload
     public init(
         tools: [any AnyJSONTool] = [],
@@ -477,6 +500,10 @@ public struct Agent: AgentRuntime, Sendable {
     ///   - handoffs: Handoff configurations for multi-agent orchestration. Default: `[]`
     ///   - tools: A `@ToolBuilder` closure producing the agent's tools. Default: empty.
     /// - Throws: `ToolRegistryError.duplicateToolName` if duplicate tool names are provided.
+    /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if two handoffs share an
+    ///   effective tool name.
+    /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if a handoff's
+    ///   effective name equals a registered tool name, including disabled tools.
     public init(
         _ instructions: String,
         configuration: AgentConfiguration = .default,

@@ -147,6 +147,8 @@ try Agent(
 )
 ```
 
+Effective handoff tool names must be unique among themselves and must not equal a registered tool `name` (enabled or not). Two `Agent` values passed as `handoffAgents:` without overrides collide as `handoff_to_agent` and throw `AgentError.duplicateHandoffToolName`. A colliding tool throws `AgentError.handoffToolNameCollidesWithTool`. Give each handoff a distinct `toolNameOverride` when targets share a runtime type.
+
 ## 4) Agent (V3 canonical init with @ToolBuilder)
 
 The recommended path for creating agents in V3. Takes an unlabeled instructions string and a `@ToolBuilder` trailing closure for tools. All other parameters are init arguments, not modifier methods.
@@ -606,7 +608,7 @@ those names. The deprecated `AgentContextProviding` protocol remains
 functional for compatibility: conformers provide a `contextKey`, then use
 `setTyped(_:)`, `typed(_:)`, `removeTyped(_:)`, and `hasTyped(_:)`. These
 type-indexed methods use a separate legacy namespace and do not appear in
-string-keyed snapshots. Migrate new code to `ContextKey<Value>` and the
+string-keyed snapshots. Migrate new code to ``ContextKey`` (`ContextKey<Value>`) and the
 `setTyped(_:value:)` / `getTyped(_:)` accessors. The deprecated
 `AgentContextKey` overloads of `get(_:)` and `set(_:value:)` remain available
 for existing string-keyed callers until the 0.7.0 breaking boundary.
@@ -714,6 +716,8 @@ the legacy marker protocols.
 ## 10) HandoffTool
 
 Agents passed via the `handoffs` or `handoffAgents` init parameters are automatically wrapped as tool calls. The LLM can invoke them to delegate control.
+
+Default names come from the target runtime type (`handoff_to_` + snake_case of `type(of:)`). `Agent` initialization rejects duplicate effective names (`AgentError.duplicateHandoffToolName`) and names that collide with a registered tool (`AgentError.handoffToolNameCollidesWithTool`), including disabled tools. After that check, the in-loop handoff map keeps the first entry if a name were ever repeated.
 
 `AnyHandoffConfiguration` and `HandoffConfiguration` store a ``HandoffHistory`` value (`none`, `nested`, or `summarized(maxTokens:)`) so history strategy survives type erasure. ``nestHandoffHistory`` remains available as a derived boolean for source compatibility.
 
@@ -992,6 +996,15 @@ public case toolFailure(toolName: String, message: String?, cause: (any Error)?)
 The previous `AgentError.toolExecutionFailed(toolName:underlyingError:)` case is deprecated
 but remains fully constructible and matchable; `message` carries the same flattened string
 that `underlyingError` used to.
+
+Handoff identity failures are thrown from `Agent` initialization, not from the tool loop:
+
+```swift
+public case duplicateHandoffToolName(name: String)
+public case handoffToolNameCollidesWithTool(name: String)
+```
+
+Both cases are `Equatable`, surface the colliding name in `errorDescription`, and are not retryable.
 
 ## 13) Public macros
 
