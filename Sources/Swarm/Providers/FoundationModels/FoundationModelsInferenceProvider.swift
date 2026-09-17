@@ -45,10 +45,10 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// ## Conversation history
 ///
 /// `LanguageModelSession.respond(to:)` accepts a `Prompt`, not a role-tagged
-/// message array. **Capture mode** (default) creates a fresh session per request —
-/// it does not keep Apple's accumulating `transcript` across Swarm turns — so
-/// structured ``InferenceMessage`` history is serialized into that prompt with
-/// role labels (`System:`, `User:`, `Assistant:`, `Tool result`).
+/// message array. **Capture mode** (default) creates a fresh session per request.
+/// Representable history is rehydrated as `LanguageModelSession(model:tools:transcript:)`.
+/// Messages that cannot be represented (assistant tool-call metadata, extra
+/// system text) still flatten into a role-labeled `Prompt`.
 ///
 /// **Provider-owned tool loop** (``foundationModelsOwningToolLoop()``) keeps
 /// a `LanguageModelSession` for the agent run so Apple's transcript and KV cache
@@ -267,16 +267,17 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         options: InferenceOptions
     ) -> AsyncThrowingStream<String, Error> {
         let resolved = resolveTurn(messages: messages, tools: [], options: options)
-        let session = makeSession(tools: [], instructions: resolved.instructions)
         let generationOptions = makeGenerationOptions(from: resolved.options)
         return StreamHelper.makeTrackedStream { continuation in
             let fitted = await PromptEnvelope.enforce(
                 messages: resolved.messages,
                 profile: envelopeProfile
             )
-            let promptText = flattenPrompt(
-                messages: fitted,
+            let (session, promptText) = makeCaptureTurn(
                 tools: [],
+                messages: fitted,
+                flattenTools: [],
+                instructions: resolved.instructions,
                 options: resolved.options
             )
             do {
@@ -407,10 +408,11 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             messages: resolved.messages,
             profile: envelopeProfile
         )
-        let session = makeSession(tools: fmTools, instructions: resolved.instructions)
-        let prompt = flattenPrompt(
+        let (session, prompt) = makeCaptureTurn(
+            tools: fmTools,
             messages: fitted,
-            tools: effectiveTools,
+            flattenTools: effectiveTools,
+            instructions: resolved.instructions,
             options: resolved.options
         )
         let generationOptions = makeGenerationOptions(from: resolved.options)
@@ -446,10 +448,11 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                     messages: PromptEnvelope.compactForRetry(fitted),
                     profile: envelopeProfile
                 )
-                let retrySession = makeSession(tools: fmTools, instructions: resolved.instructions)
-                let retryPrompt = flattenPrompt(
+                let (retrySession, retryPrompt) = makeCaptureTurn(
+                    tools: fmTools,
                     messages: retryMessages,
-                    tools: effectiveTools,
+                    flattenTools: effectiveTools,
+                    instructions: resolved.instructions,
                     options: resolved.options
                 )
                 do {
@@ -626,16 +629,42 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         options: InferenceOptions,
         generationOptions: GenerationOptions
     ) async throws -> (content: String, usage: TokenUsage?) {
-        let session = makeSession(tools: tools, instructions: instructions)
-        let prompt = flattenPrompt(
+        let (session, prompt) = makeCaptureTurn(
+            tools: tools,
             messages: messages,
-            tools: flattenTools,
+            flattenTools: flattenTools,
+            instructions: instructions,
             options: options
         )
         let response = try await session.respond(to: prompt, options: generationOptions)
         return (
             applyStopSequences(response.content, options: options),
             FoundationModelsUsageMapping.tokenUsage(from: response)
+        )
+    }
+
+    /// Capture turn: rehydrate `Transcript` when history is representable,
+    /// otherwise flatten into a `Prompt`.
+    func makeCaptureTurn(
+        tools: [any FoundationModels.Tool],
+        messages: [InferenceMessage],
+        flattenTools: [ToolSchema],
+        instructions: String?,
+        options: InferenceOptions
+    ) -> (session: LanguageModelSession, prompt: String) {
+        let seed = FoundationModelsCaptureTranscript.seed(
+            messages: messages,
+            instructions: instructions
+        )
+        if seed.canRehydrate {
+            if let transcript = FoundationModelsCaptureTranscript.makeTranscript(from: seed.seedEntries) {
+                return (makeSession(tools: tools, transcript: transcript), seed.pendingPrompt)
+            }
+            return (makeSession(tools: tools, instructions: instructions), seed.pendingPrompt)
+        }
+        return (
+            makeSession(tools: tools, instructions: instructions),
+            flattenPrompt(messages: messages, tools: flattenTools, options: options)
         )
     }
 
@@ -678,9 +707,8 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
 
     /// Serializes structured history into a single `Prompt` string.
     ///
-    /// Required because `LanguageModelSession.respond(to:)` / `streamResponse(to:)`
-    /// take a `Prompt`, and capture mode is session-less (a new
-    /// `LanguageModelSession` per call cannot reuse Apple's transcript).
+    /// Fallback when ``FoundationModelsCaptureTranscript`` cannot represent a
+    /// message (assistant tool-call metadata or extra system text).
     func flattenPrompt(
         messages: [InferenceMessage],
         tools: [ToolSchema],

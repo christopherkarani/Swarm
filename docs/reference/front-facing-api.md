@@ -917,6 +917,9 @@ stays a prompt sentence.
 Owned-loop applies Swarm ``ProfileHistoryPolicy`` before seeding a text-only
 Apple `Transcript`. It does not rename Swarm ``DynamicProfile`` to Apple's
 `LanguageModelSession.DynamicProfile`.
+Capture rehydrates a `Transcript` from user/assistant/tool messages when it
+can; flattening is the fallback for assistant tool-call metadata or extra
+system text.
 See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`

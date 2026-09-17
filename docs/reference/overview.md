@@ -20,4 +20,4 @@ The current API reference covers the supported public surface for Swarm 0.6.2. P
 | [MCP](/reference/api-catalog) | Model Context Protocol client and server |
 | [Providers](/reference/front-facing-api) | Foundation Models (on-device plus OS 27 `LanguageModel` / PCC), OpenAI-compatible remote, `InferenceProvider`, text-only backend wrap, `MultiProvider` routing |
 | [Remote providers](/guide/remote-providers) | OpenAI / Azure / OpenRouter / Ollama / LM Studio |
-| [Foundation Models modes](/guide/foundation-models) | Capture vs provider-owned tool loop; OS 27 PCC via `.foundationModels(model:)`; owned-loop `reasoningLevel` and Swarm profile / history → `Transcript`; `.specific` tool-choice stays prompt-only |
+| [Foundation Models modes](/guide/foundation-models) | Capture vs provider-owned tool loop; OS 27 PCC via `.foundationModels(model:)`; owned-loop `reasoningLevel` and Swarm profile / history → `Transcript`; capture `Transcript` rehydration; `.specific` tool-choice stays prompt-only |

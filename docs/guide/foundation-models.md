@@ -38,7 +38,7 @@ let agent = try Agent("Be helpful.", configuration: config,
 |---|---|---|
 | Tool loop owner | Swarm agent loop | InferenceProvider (Apple `LanguageModelSession`) |
 | Parallel tool calls | Yes (first `ToolCalls` group per turn) | Yes (Apple's session loop) |
-| Transcript / KV reuse | No (session rebuilt every Swarm iteration) | Transcript copied across `Agent.run` turns; Apple owns the inner loop |
+| Transcript / KV reuse | Fresh session per call; representable history rehydrates `Transcript`, else flattens | Transcript copied across `Agent.run` turns; Apple owns the inner loop |
 | Token streaming with tools | No | Not yet — the owned-loop generate path returns a finished turn |
 | Per-iteration memory injection | Yes | **No** — memory is injected when the native session starts |
 | Swarm `maxIterations` cap | Yes | **No** — Apple owns the inner loop |
