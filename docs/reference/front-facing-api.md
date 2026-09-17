@@ -884,6 +884,7 @@ available for source compatibility: `PromptTokenCountingInferenceProvider`,
 .foundationModels()                 // On-device first-class provider
 .foundationModels(model: .default)  // Apple SystemLanguageModel (not Swarm Profile)
 .foundationModels(profile: profile) // Swarm DynamicProfile re-resolved each turn
+.foundationModels(model: pcc)       // OS 27 Apple LanguageModel / PCC
 .openAICompatible(.ollama(model: "llama3.2"))
 .openAICompatible(.openAI(apiKey: "sk-...", model: "gpt-4o"))
 .textOnly(stringBackend)            // TextOnlyBackend → flatten adapter
@@ -895,6 +896,7 @@ available for source compatibility: `PromptTokenCountingInferenceProvider`,
 | `.foundationModels()` | `FoundationModelsInferenceProvider` | Built-in on-device path; Agent-owned tool loop (capture). Optional `model:` is Apple `SystemLanguageModel`. |
 | `.foundationModelsOwningToolLoop()` | `FoundationModelsInferenceProvider` | Same type; advertises a provider-owned tool loop |
 | `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Capture adapter driven by Swarm ``DynamicProfile`` (not Apple's OS 27 `LanguageModelSession.DynamicProfile`) |
+| `.foundationModels(model:)` | `FoundationModelsInferenceProvider` | OS 27+ Apple `LanguageModel`, including `PrivateCloudComputeLanguageModel`. `ifAvailable(model:)` does not fall back to on-device. |
 | `.openAICompatible(_:)` | `OpenAICompatibleProvider` | OpenAI / Azure / OpenRouter / Ollama / LM Studio over Chat Completions; Linux-first |
 | `.textOnly(_:)` | `TextOnlyConversationInferenceProviderAdapter` | Wraps a ``TextOnlyBackend``; only flatten site |
 | Custom `InferenceProvider` | your type | Implement the protocol for other backends |

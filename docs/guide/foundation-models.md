@@ -82,7 +82,20 @@ That type is Apple's, not Swarm ``DynamicProfile``. Linux and CI use
 ``OpenAICompatibleProvider`` (see [Remote Providers](remote-providers.md)) or
 capture-equivalent mock providers. ``.foundationModelsOwningToolLoop()`` still
 constructs; the first ``generateWithToolCalls`` / ``streamWithToolCalls``
-throws ``AgentError/modelNotAvailable(model:)`` if Apple Intelligence is off.
+throws ``AgentError/modelNotAvailable(model:)`` if the selected model is off.
+
+On OS 27 you can pass any Apple `LanguageModel`, including
+`PrivateCloudComputeLanguageModel`, to ``InferenceProvider/foundationModels(model:)``
+or ``FoundationModelsInferenceProvider/ifAvailable(model:)``.
+`ifAvailable(model:)` returns `nil` when that model's `availability` is not
+`.available`. It does **not** silently construct
+`SystemLanguageModel.default` — build an on-device provider yourself when PCC
+is offline or over quota. Swarm ``DynamicProfile`` is still the `profile:`
+argument, not `model:`.
+
+PCC uses a 32K context window and a daily quota.
+`PrivateCloudComputeLanguageModel.Error.quotaLimitReached` maps to
+``AgentError/rateLimitExceeded(retryAfter:)``.
 
 Live on-device tests:
 

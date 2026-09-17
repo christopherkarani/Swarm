@@ -124,7 +124,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
 {
     private let configuration: FoundationModelsProviderConfiguration
     private let dynamicProfile: (any DynamicProfile)?
-    private let model: SystemLanguageModel
+    let sessionModel: FoundationModelsSessionModel
     private let ownsToolLoop: Bool
     let nativeSessionStore = FoundationModelsNativeSessionStore()
 
@@ -137,7 +137,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     ///
     /// Pass a use-case model (`SystemLanguageModel(useCase:)`) to check that
     /// variant. This is not a Swarm type and not Apple's `LanguageModel` box
-    /// for Private Cloud Compute — that factory is a later OS 27 slice.
+    /// for Private Cloud Compute — use the OS 27 `LanguageModel` factory.
     public static func isAvailable(_ model: SystemLanguageModel) -> Bool {
         model.availability == .available
     }
@@ -158,6 +158,26 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         )
     }
 
+    /// Creates a provider when `model` is available; otherwise `nil`.
+    ///
+    /// Does not fall back to ``SystemLanguageModel/default``. Construct an
+    /// on-device provider yourself when PCC or another `LanguageModel` is off.
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    public static func ifAvailable(
+        model: some LanguageModel,
+        configuration: FoundationModelsProviderConfiguration = .default,
+        profile: (any DynamicProfile)? = nil,
+        ownsToolLoop: Bool = false
+    ) -> FoundationModelsInferenceProvider? {
+        guard FoundationModelsSessionModel.isAvailable(model) else { return nil }
+        return FoundationModelsInferenceProvider(
+            model: model,
+            configuration: configuration,
+            profile: profile,
+            ownsToolLoop: ownsToolLoop
+        )
+    }
+
     /// Creates a Foundation Models provider.
     ///
     /// - Parameters:
@@ -175,7 +195,29 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     ) {
         self.configuration = configuration
         self.dynamicProfile = profile
-        self.model = model
+        self.sessionModel = .system(model)
+        self.ownsToolLoop = ownsToolLoop
+    }
+
+    /// Creates a provider backed by an Apple `LanguageModel` (OS 27+).
+    ///
+    /// Use ``PrivateCloudComputeLanguageModel`` or any other
+    /// `FoundationModels.LanguageModel`. This does not accept a Swarm
+    /// ``DynamicProfile`` in the `model` position — pass that as `profile:`.
+    ///
+    /// `ifAvailable(model:)` returns `nil` when the concrete model's
+    /// `availability` is not `.available`. It does not silently fall back
+    /// to ``SystemLanguageModel/default``.
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    public init(
+        model: some LanguageModel,
+        configuration: FoundationModelsProviderConfiguration = .default,
+        profile: (any DynamicProfile)? = nil,
+        ownsToolLoop: Bool = false
+    ) {
+        self.configuration = configuration
+        self.dynamicProfile = profile
+        self.sessionModel = .languageModel(model)
         self.ownsToolLoop = ownsToolLoop
     }
 
@@ -184,9 +226,9 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     public var providerName: String? { "foundationmodels" }
     public var modelName: String? {
         if let profileID = dynamicProfile?.resolve().id, !profileID.isEmpty {
-            return "systemLanguageModel/\(profileID)"
+            return "\(sessionModel.displayName)/\(profileID)"
         }
-        return "systemLanguageModel"
+        return sessionModel.displayName
     }
     public var endpointURL: URL? { nil }
 
@@ -521,7 +563,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     }
 
     var envelopeProfile: ContextProfile {
-        FoundationModelsContextBudget.profile(contextSize: model.contextSize)
+        FoundationModelsContextBudget.profile(contextSize: sessionModel.contextSize)
     }
 
     func respondWithContextRecovery(
@@ -592,13 +634,9 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     ) -> LanguageModelSession {
         let session: LanguageModelSession
         if let instructions, !instructions.isEmpty {
-            session = LanguageModelSession(
-                model: model,
-                tools: tools,
-                instructions: instructions
-            )
+            session = sessionModel.makeSession(tools: tools, instructions: instructions)
         } else {
-            session = LanguageModelSession(model: model, tools: tools)
+            session = sessionModel.makeSession(tools: tools, instructions: nil)
         }
 
         if configuration.prewarmOnInit {
@@ -611,7 +649,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         tools: [any FoundationModels.Tool],
         transcript: Transcript
     ) -> LanguageModelSession {
-        let session = LanguageModelSession(model: model, tools: tools, transcript: transcript)
+        let session = sessionModel.makeSession(tools: tools, transcript: transcript)
         if configuration.prewarmOnInit {
             session.prewarm(promptPrefix: nil)
         }
@@ -759,6 +797,38 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
             profile: profile,
             ownsToolLoop: true,
             model: model
+        )
+    }
+
+    /// Creates a provider backed by an Apple `LanguageModel` (OS 27+).
+    ///
+    /// Pass ``PrivateCloudComputeLanguageModel`` or another `LanguageModel`.
+    /// Swarm ``DynamicProfile`` is the `profile:` argument, not `model:`.
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    static func foundationModels(
+        model: some LanguageModel,
+        configuration: FoundationModelsProviderConfiguration = .default,
+        profile: (any DynamicProfile)? = nil
+    ) -> FoundationModelsInferenceProvider {
+        FoundationModelsInferenceProvider(
+            model: model,
+            configuration: configuration,
+            profile: profile
+        )
+    }
+
+    /// Owned-loop adapter backed by an Apple `LanguageModel` (OS 27+).
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    static func foundationModelsOwningToolLoop(
+        model: some LanguageModel,
+        configuration: FoundationModelsProviderConfiguration = .default,
+        profile: (any DynamicProfile)? = nil
+    ) -> FoundationModelsInferenceProvider {
+        FoundationModelsInferenceProvider(
+            model: model,
+            configuration: configuration,
+            profile: profile,
+            ownsToolLoop: true
         )
     }
 }

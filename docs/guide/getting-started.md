@@ -476,6 +476,13 @@ custom backend:
 // On-device Apple Foundation Models (private, native tool calling)
 let agent = try Agent("You are helpful.", inferenceProvider: .foundationModels())
 
+// OS 27: pass any Apple LanguageModel, including PrivateCloudComputeLanguageModel.
+// ifAvailable(model:) returns nil when that model is off — no on-device fallback.
+let pccAgent = try Agent(
+    "You are helpful.",
+    inferenceProvider: .foundationModels(model: PrivateCloudComputeLanguageModel())
+)
+
 // Swarm DynamicProfile (not Apple's LanguageModelSession.DynamicProfile):
 // switch instructions/tools/history per capture turn.
 enum Phase { case brainstorm, review }
