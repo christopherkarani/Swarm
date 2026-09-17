@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 212 (219 including `Internal/GraphRuntime/`)
+- Source files scanned: 213 (220 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2347
 
 ## 1. Swarm (entry point)
@@ -2863,22 +2863,26 @@ OpenAI-compatible Chat Completions provider (`URLSession` only). Covers OpenAI, 
 
 ### Providers/FoundationModels/FoundationModelsInferenceProvider.swift
 
-First-class on-device Apple Foundation Models path. Gated by `#if canImport(FoundationModels)` and `@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)`.
+First-class Apple Foundation Models path (on-device `SystemLanguageModel`, plus OS 27 `LanguageModel` / `PrivateCloudComputeLanguageModel`). Gated by `#if canImport(FoundationModels)` and `@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)`.
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 16 | struct | public | FoundationModelsProviderConfiguration | `public struct FoundationModelsProviderConfiguration` |
-| 24 | func | public | FoundationModelsProviderConfiguration.init(instructions:prewarmOnInit:) | `public init(instructions: String? = nil, prewarmOnInit: Bool = false)` |
-| 30 | var | public | FoundationModelsProviderConfiguration.default | `public static let default: FoundationModelsProviderConfiguration` |
-| 82 | struct | public | FoundationModelsInferenceProvider | `public struct FoundationModelsInferenceProvider` |
+| 23 | func | public | FoundationModelsProviderConfiguration.init(instructions:prewarmOnInit:) | `public init(instructions: String? = nil, prewarmOnInit: Bool = false)` |
+| 29 | var | public | FoundationModelsProviderConfiguration.default | `public static let default: FoundationModelsProviderConfiguration` |
+| 122 | struct | public | FoundationModelsInferenceProvider | `public struct FoundationModelsInferenceProvider` |
 | 132 | var | public | FoundationModelsInferenceProvider.isAvailable | `public static var isAvailable: Bool { get }` |
 | 141 | func | public | FoundationModelsInferenceProvider.isAvailable(_:) | `public static func isAvailable(_ model: SystemLanguageModel) -> Bool` |
 | 146 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:ownsToolLoop:model:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider?` |
-| 170 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:ownsToolLoop:model:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default)` |
-| 687 | func | public | InferenceProvider.foundationModels(configuration:model:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
-| 698 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:model:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
-| 709 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
-| 739 | func | public | InferenceProvider.foundationModels(profile:configuration:model:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 166 | func | public | FoundationModelsInferenceProvider.ifAvailable(model:configuration:profile:ownsToolLoop:) | `public static func ifAvailable(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider?` |
+| 190 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:ownsToolLoop:model:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default)` |
+| 212 | func | public | FoundationModelsInferenceProvider.init(model:configuration:profile:ownsToolLoop:) | `public init(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false)` |
+| 724 | func | public | InferenceProvider.foundationModels(configuration:model:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 735 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:model:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 747 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
+| 777 | func | public | InferenceProvider.foundationModels(profile:configuration:model:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 808 | func | public | InferenceProvider.foundationModels(model:configuration:profile:) | `public static func foundationModels(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
+| 822 | func | public | InferenceProvider.foundationModelsOwningToolLoop(model:configuration:profile:) | `public static func foundationModelsOwningToolLoop(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
 
 ### Providers/ToolCallExecutor.swift
 

@@ -24,6 +24,35 @@ struct FoundationModelsOS27AdapterTests {
         #expect(profile.budget.maxInputTokens == 4096)
     }
 
+    @Test("PCC context size is the documented 32K window")
+    func privateCloudComputeContextSizeIs32768() {
+        #expect(FoundationModelsContextBudget.privateCloudComputeContextSize == 32768)
+        let profile = FoundationModelsContextBudget.profile(
+            contextSize: FoundationModelsContextBudget.privateCloudComputeContextSize
+        )
+        #expect(profile.budget.maxInputTokens == 32768)
+    }
+
+    @Test("quota limit strings map independently of Apple error types")
+    func quotaLimitStringsMatch() {
+        #expect(FoundationModelsQuotaLimit.stringMatches(FakeError("quotaLimitReached")))
+        #expect(FoundationModelsQuotaLimit.stringMatches(FakeError("Usage limit exceeded")))
+        #expect(FoundationModelsQuotaLimit.stringMatches(FakeError("usage limit reached")))
+        #expect(FoundationModelsQuotaLimit.stringMatches(FakeError("boom")) == false)
+    }
+
+    @Test("Linux configuration stays instructions and prewarm only")
+    func configurationSurfaceStaysInstructionsAndPrewarm() {
+        var configuration = FoundationModelsProviderConfiguration(
+            instructions: "Be brief.",
+            prewarmOnInit: true
+        )
+        #expect(configuration.instructions == "Be brief.")
+        #expect(configuration.prewarmOnInit)
+        configuration.prewarmOnInit = false
+        #expect(configuration.prewarmOnInit == false)
+    }
+
     #if canImport(FoundationModels)
     @Test("injected SystemLanguageModel drives availability and the capture envelope")
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
@@ -34,7 +63,7 @@ struct FoundationModelsOS27AdapterTests {
                 == (model.availability == .available)
         )
         if FoundationModelsInferenceProvider.isAvailable(model) {
-            let provider = FoundationModelsInferenceProvider(model: model)
+            let provider = FoundationModelsInferenceProvider(configuration: .default, model: model)
             let expected = FoundationModelsContextBudget.profile(contextSize: model.contextSize)
             #expect(provider.envelopeProfile.budget.maxInputTokens == expected.budget.maxInputTokens)
             #expect(FoundationModelsInferenceProvider.ifAvailable(model: model) != nil)
@@ -112,6 +141,50 @@ struct FoundationModelsOS27AdapterTests {
         let delay = try #require(retryAfter)
         #expect(delay > 0)
         #expect(delay <= 30)
+    }
+
+    @Test("quota host strings map onto rateLimitExceeded")
+    func quotaHostStringsMapThroughErrorMapping() {
+        let mapped = FoundationModelsErrorMapping.map(FakeError("quotaLimitReached"))
+        guard case .rateLimitExceeded(let retryAfter) = mapped else {
+            Issue.record("expected rateLimitExceeded, got \(mapped)")
+            return
+        }
+        #expect(retryAfter == nil)
+    }
+
+    @Test("PCC quotaLimitReached maps onto rateLimitExceeded")
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    func pccQuotaLimitReachedMaps() throws {
+        let reset = Date().addingTimeInterval(45)
+        let appleError = PrivateCloudComputeLanguageModel.Error.quotaLimitReached(
+            .init(resetDate: reset, debugDescription: "daily quota")
+        )
+        let mapped = FoundationModelsErrorMapping.map(appleError)
+        guard case let .rateLimitExceeded(retryAfter) = mapped else {
+            Issue.record("expected rateLimitExceeded, got \(mapped)")
+            return
+        }
+        let delay = try #require(retryAfter)
+        #expect(delay > 0)
+        #expect(delay <= 45)
+    }
+
+    @Test("ifAvailable(model:) follows the concrete LanguageModel, with no on-device fallback")
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    func languageModelIfAvailableDoesNotFallback() {
+        #if os(tvOS) || os(watchOS)
+        return
+        #else
+        let model = PrivateCloudComputeLanguageModel()
+        let available = FoundationModelsSessionModel.isAvailable(model)
+        #expect(available == (model.availability == .available))
+        if available {
+            #expect(FoundationModelsInferenceProvider.ifAvailable(model: model) != nil)
+        } else {
+            #expect(FoundationModelsInferenceProvider.ifAvailable(model: model) == nil)
+        }
+        #endif
     }
 
     @Test("OS 27 concurrentRequests is not treated as overflow")

@@ -38,6 +38,9 @@ enum FoundationModelsErrorMapping: Sendable {
         if FoundationModelsContextOverflow.stringMatches(error) {
             return .contextWindowExceeded(tokenCount: 0, limit: 0)
         }
+        if FoundationModelsQuotaLimit.stringMatches(error) {
+            return .rateLimitExceeded(retryAfter: nil)
+        }
         return .generationFailed(reason: error.localizedDescription)
     }
 
@@ -74,6 +77,9 @@ enum FoundationModelsErrorMapping: Sendable {
         if error is SystemLanguageModel.Error {
             return .modelNotAvailable(model: "Apple Foundation Models")
         }
+        if let pccError = error as? PrivateCloudComputeLanguageModel.Error {
+            return mapPrivateCloudComputeError(pccError)
+        }
         if let sessionError = error as? LanguageModelSession.Error {
             switch sessionError {
             case .concurrentRequests:
@@ -89,6 +95,19 @@ enum FoundationModelsErrorMapping: Sendable {
             }
         }
         return nil
+    }
+
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    private static func mapPrivateCloudComputeError(
+        _ error: PrivateCloudComputeLanguageModel.Error
+    ) -> AgentError {
+        switch error {
+        case let .quotaLimitReached(payload):
+            let retryAfter = payload.resetDate.map { max(0, $0.timeIntervalSinceNow) }
+            return .rateLimitExceeded(retryAfter: retryAfter)
+        @unknown default:
+            return .generationFailed(reason: error.localizedDescription)
+        }
     }
 
     private static func mapGenerationError(

@@ -239,8 +239,8 @@ extension FoundationModelsInferenceProvider {
         options: InferenceOptions,
         toolExecutor: ToolCallExecutor
     ) async throws -> InferenceResponse {
-        guard Self.isAvailable else {
-            throw AgentError.modelNotAvailable(model: "Apple Foundation Models")
+        guard sessionModel.isAvailable else {
+            throw AgentError.modelNotAvailable(model: sessionModel.displayName)
         }
 
         // Resolve before bridging so DynamicProfile toolFilter / toolChoice.none
