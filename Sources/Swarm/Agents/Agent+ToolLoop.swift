@@ -883,8 +883,9 @@ extension Agent {
                     to: handoffConfig.transform?(handoffData) ?? handoffData
                 )
                 let requestContext = transformedData.context.merging(transformedData.metadata) { _, new in new }
-                let handoffContext = await context.copy(additionalValues: requestContext)
-                await applyContextValues(requestContext, to: handoffContext)
+                let allowedContext = HandoffContextFilter.allowedValues(requestContext)
+                let handoffContext = await context.copy(additionalValues: allowedContext)
+                await applyContextValues(allowedContext, to: handoffContext)
                 await preserveExecutionPath(from: context, in: handoffContext)
                 switch handoffConfig.history {
                 case .none:
@@ -914,27 +915,24 @@ extension Agent {
                 let result: AgentResult
                 do {
                     result = try await executeWithinRemainingTimeout(startTime: startTime) {
-                        if let receiver = targetAgent as? any HandoffReceiver {
-                            return try await receiver.handleHandoff(handoffRequest, context: handoffContext)
-                        } else {
-                            let nestSessionForHandoff: Bool = switch handoffConfig.history {
-                            case .none:
-                                false
-                            case .nested:
-                                true
-                            case .summarized:
-                                true
-                            }
-                            let handoffSession = try await makeNestedHandoffSession(
-                                from: handoffContext,
-                                enabled: nestSessionForHandoff
-                            )
-                            return try await targetAgent.run(
-                                transformedData.input,
-                                session: handoffSession,
-                                observer: observer
-                            )
+                        let nestSessionForHandoff: Bool = switch handoffConfig.history {
+                        case .none:
+                            false
+                        case .nested:
+                            true
+                        case .summarized:
+                            true
                         }
+                        let handoffSession = try await makeNestedHandoffSession(
+                            from: handoffContext,
+                            enabled: nestSessionForHandoff
+                        )
+                        return try await targetAgent.handleHandoff(
+                            handoffRequest,
+                            context: handoffContext,
+                            session: handoffSession,
+                            observer: observer
+                        )
                     }
                 } catch {
                     let handoffDuration = ContinuousClock.now - handoffStart

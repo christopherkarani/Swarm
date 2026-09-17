@@ -76,6 +76,13 @@ public protocol AgentRuntime: Sendable {
     nonisolated func stream(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) -> AsyncThrowingStream<AgentEvent, Error>
 
     func cancel() async
+
+    func handleHandoff(
+        _ request: HandoffRequest,
+        context: AgentContext,
+        session: (any Session)?,
+        observer: (any AgentObserver)?
+    ) async throws -> AgentResult
 }
 ```
 
@@ -749,6 +756,8 @@ let specialist = supportAgent.asHandoff {
 ```
 
 Use ``HandoffOptions/history(_:)`` or ``HandoffConfiguration``'s `history:` parameter instead of the deprecated `nestHandoffHistory:` boolean initializers.
+
+Coordinator and in-loop dispatch always call ``AgentRuntime/handleHandoff(_:context:session:observer:)``. The default implementation filters reserved request-context prefixes (`auth`, `user_id`, `authorization`, `session`, `internal.`), writes `handoff_source` and optional `handoff_reason`, records execution, and runs the target with the supplied session and observer. `HandoffHistory.nested` and `.summarized` pass a nested session; `.none` passes `nil`. Override `handleHandoff` on any `AgentRuntime` — `as? HandoffReceiver` is gone. `HandoffReceiver` remains as a deprecated empty refinement.
 
 ## 11) Inference providers
 

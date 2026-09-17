@@ -110,6 +110,28 @@ public protocol AgentRuntime: Sendable {
         session: (any Session)?,
         observer: (any AgentObserver)?
     ) async throws -> AgentResponse
+
+    /// Handles a handoff from another agent.
+    ///
+    /// The default implementation filters reserved keys from `request.context`
+    /// (`auth`, `user_id`, `authorization`, `session`, `internal.` prefixes),
+    /// writes `handoff_source` and optional `handoff_reason`, records
+    /// execution, and calls ``run(_:session:observer:)``.
+    ///
+    /// - Parameters:
+    ///   - request: The handoff request containing input and context.
+    ///   - context: The shared orchestration context.
+    ///   - session: Optional nested conversation history for `.nested` /
+    ///     `.summarized` handoff history.
+    ///   - observer: Optional observer for lifecycle callbacks.
+    /// - Returns: The result of handling the handoff.
+    /// - Throws: `AgentError` if execution fails.
+    func handleHandoff(
+        _ request: HandoffRequest,
+        context: AgentContext,
+        session: (any Session)?,
+        observer: (any AgentObserver)?
+    ) async throws -> AgentResult
 }
 
 // MARK: - LegacyAgent Protocol Extensions
@@ -135,6 +157,33 @@ public extension AgentRuntime {
 
     /// Default handoffs (none).
     nonisolated var handoffs: [AnyHandoffConfiguration] { [] }
+
+    /// Default handoff handling shared by coordinator and in-loop dispatch.
+    ///
+    /// Merges filtered `request.context`, records provenance, then runs the
+    /// agent with the supplied session and observer.
+    func handleHandoff(
+        _ request: HandoffRequest,
+        context: AgentContext,
+        session: (any Session)?,
+        observer: (any AgentObserver)?
+    ) async throws -> AgentResult {
+        for (key, value) in HandoffContextFilter.allowedValues(request.context) {
+            await context.set(key, value: value)
+        }
+
+        await context.set(
+            "handoff_source",
+            value: .string(request.sourceAgentName)
+        )
+
+        if let reason = request.reason {
+            await context.set("handoff_reason", value: .string(reason))
+        }
+
+        await context.recordExecution(agentName: request.targetAgentName)
+        return try await run(request.input, session: session, observer: observer)
+    }
 }
 
 // MARK: - Agent Convenience Extensions

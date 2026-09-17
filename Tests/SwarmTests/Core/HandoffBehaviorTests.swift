@@ -159,6 +159,130 @@ struct HandoffBehaviorTests {
         #expect(erased.effectiveToolName == derived.rawValue)
         #expect(derived.rawValue.hasPrefix("handoff_to_"))
     }
+
+    @Test("HandoffContextFilter drops reserved prefixes and keeps safe keys")
+    func handoffContextFilterDropsReservedPrefixes() {
+        let filtered = HandoffContextFilter.allowedValues([
+            "user_id": .string("secret"),
+            "USER_ID": .string("upper"),
+            "auth_token": .string("tok"),
+            "authorization": .string("bearer"),
+            "session": .string("sess"),
+            "session_id": .string("sid"),
+            "internal.secret": .string("nope"),
+            "ticket": .string("t-1"),
+            "reason": .string("ok"),
+            "internal": .string("kept"),
+        ])
+
+        #expect(filtered["user_id"] == nil)
+        #expect(filtered["USER_ID"] == nil)
+        #expect(filtered["auth_token"] == nil)
+        #expect(filtered["authorization"] == nil)
+        #expect(filtered["session"] == nil)
+        #expect(filtered["session_id"] == nil)
+        #expect(filtered["internal.secret"] == nil)
+        #expect(filtered["ticket"] == .string("t-1"))
+        #expect(filtered["reason"] == .string("ok"))
+        #expect(filtered["internal"] == .string("kept"))
+    }
+
+    @Test("Coordinator handleHandoff path drops reserved user_id for a plain Agent")
+    func coordinatorDropsReservedUserIDForPlainAgent() async throws {
+        let provider = MockInferenceProvider(responses: ["done"])
+        let agent = try Agent(
+            "Handle work.",
+            configuration: AgentConfiguration(name: "target", defaultTracingEnabled: false),
+            inferenceProvider: provider
+        )
+        let coordinator = HandoffCoordinator()
+        await coordinator.register(agent, as: "target")
+        let context = AgentContext(input: "orig")
+
+        let result = try await coordinator.executeHandoff(
+            HandoffRequest(
+                sourceAgentName: "source",
+                targetAgentName: "target",
+                input: "do work",
+                reason: "specialist",
+                context: [
+                    "user_id": .string("secret"),
+                    "ticket": .string("t-1"),
+                ]
+            ),
+            context: context
+        )
+
+        #expect(result.result.output == "done")
+        #expect(await context.get("user_id") == nil)
+        #expect(await context.get("ticket") == .string("t-1"))
+        #expect(await context.get("handoff_source") == .string("source"))
+        #expect(await context.get("handoff_reason") == .string("specialist"))
+    }
+
+    @Test("Coordinator invokes custom handleHandoff without HandoffReceiver")
+    func coordinatorInvokesCustomHandleHandoffWithoutReceiverCast() async throws {
+        let target = CoordinatorRecordingRuntime()
+        let coordinator = HandoffCoordinator()
+        await coordinator.register(target, as: "target")
+        let context = AgentContext(input: "orig")
+
+        let result = try await coordinator.executeHandoff(
+            HandoffRequest(
+                sourceAgentName: "source",
+                targetAgentName: "target",
+                input: "payload"
+            ),
+            context: context
+        )
+
+        #expect(result.result.output == "handoff payload")
+        #expect(await target.handoffCount == 1)
+        #expect(await target.runCount == 0)
+    }
+}
+
+private actor CoordinatorRecordingRuntime: AgentRuntime {
+    nonisolated let tools: [any AnyJSONTool] = []
+    nonisolated let instructions = "Record coordinator handoffs"
+    nonisolated let configuration = AgentConfiguration(name: "target", defaultTracingEnabled: false)
+    nonisolated let memory: (any Memory)? = nil
+    nonisolated let inferenceProvider: (any InferenceProvider)? = nil
+    nonisolated let tracer: (any Tracer)? = nil
+    nonisolated let inputGuardrails: [any InputGuardrail] = []
+    nonisolated let outputGuardrails: [any OutputGuardrail] = []
+    nonisolated let handoffs: [AnyHandoffConfiguration] = []
+
+    private(set) var runCount = 0
+    private(set) var handoffCount = 0
+
+    func run(_: String, session _: (any Session)?, observer _: (any AgentObserver)?) async throws -> AgentResult {
+        runCount += 1
+        return AgentResult(output: "ran")
+    }
+
+    nonisolated func stream(
+        _ input: String,
+        session _: (any Session)?,
+        observer _: (any AgentObserver)?
+    ) -> AsyncThrowingStream<AgentEvent, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            continuation.yield(.lifecycle(.completed(result: AgentResult(output: "ran \(input)"))))
+            continuation.finish()
+        }
+    }
+
+    func cancel() async {}
+
+    func handleHandoff(
+        _ request: HandoffRequest,
+        context _: AgentContext,
+        session _: (any Session)?,
+        observer _: (any AgentObserver)?
+    ) async throws -> AgentResult {
+        handoffCount += 1
+        return AgentResult(output: "handoff \(request.input)")
+    }
 }
 
 private actor HandoffCallbackRecorder {

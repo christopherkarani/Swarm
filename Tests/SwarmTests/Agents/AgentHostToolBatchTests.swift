@@ -252,7 +252,7 @@ private struct HandshakeTool: AnyJSONTool {
     }
 }
 
-private actor HostBatchHandoffReceiver: HandoffReceiver {
+private actor HostBatchHandoffReceiver: AgentRuntime {
     nonisolated let tools: [any AnyJSONTool] = []
     nonisolated let instructions = "Record handoffs"
     nonisolated let configuration: AgentConfiguration
@@ -286,7 +286,12 @@ private actor HostBatchHandoffReceiver: HandoffReceiver {
 
     func cancel() async {}
 
-    func handleHandoff(_ request: HandoffRequest, context _: AgentContext) async throws -> AgentResult {
+    func handleHandoff(
+        _ request: HandoffRequest,
+        context _: AgentContext,
+        session _: (any Session)?,
+        observer _: (any AgentObserver)?
+    ) async throws -> AgentResult {
         handoffCount += 1
         return AgentResult(output: "handled \(request.input)")
     }
