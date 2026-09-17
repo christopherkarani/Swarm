@@ -1,9 +1,8 @@
-// LanguageModelSessionTests.swift
+// PromptToolCallingEmulationTests.swift
 // SwarmTests
 //
-// Tests for Foundation Models LanguageModelSession InferenceProvider conformance.
-// These tests verify prompt-based tool calling fallback since Foundation Models
-// don't natively support function calling via the public API.
+// Tests for prompt-envelope tool calling used by text-only inference backends.
+// Apple Foundation Models tool calling is covered by FoundationModels* tests.
 
 import Foundation
 @testable import Swarm
@@ -11,8 +10,8 @@ import Testing
 
 // MARK: - Tool Prompt Builder Tests
 
-@Suite("LanguageModelSession Tool Prompt Builder Tests")
-struct LanguageModelSessionToolPromptTests {
+@Suite("Prompt tool prompt builder")
+struct PromptToolPromptTests {
     @Test("Tool prompt includes tool definitions")
     func toolPromptIncludesDefinitions() {
         let tool = ToolSchema(
@@ -24,10 +23,10 @@ struct LanguageModelSessionToolPromptTests {
         )
         
         let basePrompt = "What is 2+2?"
-        let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
+        let prompt = PromptToolPromptBuilder.buildToolPrompt(
             basePrompt: basePrompt,
             tools: [tool],
-            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+            context: PromptToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(prompt.contains("Available tools:"))
@@ -41,10 +40,10 @@ struct LanguageModelSessionToolPromptTests {
     @Test("Tool prompt includes JSON format instructions")
     func toolPromptIncludesJSONFormat() {
         let tool = ToolSchema(name: "test", description: "Test tool", parameters: [])
-        let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
+        let prompt = PromptToolPromptBuilder.buildToolPrompt(
             basePrompt: "Hello",
             tools: [tool],
-            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+            context: PromptToolCallingContext(nonce: "nonce-123")
         )
 
         #expect(prompt.contains(#""swarm_tool_call""#))
@@ -73,10 +72,10 @@ struct LanguageModelSessionToolPromptTests {
             ]
         )
         
-        let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
+        let prompt = PromptToolPromptBuilder.buildToolPrompt(
             basePrompt: "What is the weather in London?",
             tools: [calculator, weather],
-            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+            context: PromptToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(prompt.contains("calculator:"))
@@ -88,10 +87,10 @@ struct LanguageModelSessionToolPromptTests {
     @Test("Tool prompt with no tools returns base prompt")
     func toolPromptWithNoTools() {
         let basePrompt = "Hello, how are you?"
-        let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
+        let prompt = PromptToolPromptBuilder.buildToolPrompt(
             basePrompt: basePrompt,
             tools: [],
-            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+            context: PromptToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(prompt == basePrompt)
@@ -111,10 +110,10 @@ struct LanguageModelSessionToolPromptTests {
             ]
         )
         
-        let prompt = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
+        let prompt = PromptToolPromptBuilder.buildToolPrompt(
             basePrompt: "Test",
             tools: [tool],
-            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+            context: PromptToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(prompt.contains("integer"))
@@ -127,13 +126,13 @@ struct LanguageModelSessionToolPromptTests {
 
 // MARK: - Tool Calling Emulation Tests
 
-@Suite("LanguageModelSession Tool Calling Emulation Tests")
-struct LanguageModelSessionToolCallingEmulationTests {
+@Suite("Prompt tool calling emulation")
+struct PromptToolCallingEmulationTests {
     @Test("No-tool emulation preserves the original prompt and returns completed content")
     func noToolEmulationPreservesPrompt() async throws {
         let basePrompt = "Say hi"
 
-        let response = try await LanguageModelSessionToolCallingEmulation.generateResponse(
+        let response = try await PromptToolCallingEmulation.generateResponse(
             prompt: basePrompt,
             tools: [],
             options: .default
@@ -152,9 +151,9 @@ struct LanguageModelSessionToolCallingEmulationTests {
         let tools = [
             ToolSchema(name: "lookup", description: "Look up information", parameters: []),
         ]
-        let context = LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+        let context = PromptToolCallingContext(nonce: "nonce-123")
 
-        let response = LanguageModelSessionToolCallingEmulation.makeInferenceResponse(
+        let response = PromptToolCallingEmulation.makeInferenceResponse(
             from: #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":{"query":"swift"}}}"#,
             availableTools: tools,
             context: context
@@ -172,9 +171,9 @@ struct LanguageModelSessionToolCallingEmulationTests {
         let tools = [
             ToolSchema(name: "lookup", description: "Look up information", parameters: []),
         ]
-        let context = LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+        let context = PromptToolCallingContext(nonce: "nonce-123")
 
-        let response = LanguageModelSessionToolCallingEmulation.makeInferenceResponse(
+        let response = PromptToolCallingEmulation.makeInferenceResponse(
             from: #"{"tool":"lookup","arguments":{"query":"swift""#,
             availableTools: tools,
             context: context
@@ -190,9 +189,9 @@ struct LanguageModelSessionToolCallingEmulationTests {
         let tools = [
             ToolSchema(name: "lookup", description: "Look up information", parameters: []),
         ]
-        let context = LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+        let context = PromptToolCallingContext(nonce: "nonce-123")
 
-        let response = LanguageModelSessionToolCallingEmulation.makeInferenceResponse(
+        let response = PromptToolCallingEmulation.makeInferenceResponse(
             from: "Here is the answer without a tool.",
             availableTools: tools,
             context: context
@@ -206,9 +205,9 @@ struct LanguageModelSessionToolCallingEmulationTests {
 
 // MARK: - Tool Call Parser Tests
 
-@Suite("LanguageModelSession Tool Call Parser Tests")
-struct LanguageModelSessionToolParserTests {
-    private let context = LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+@Suite("Prompt tool call parser")
+struct PromptToolParserTests {
+    private let context = PromptToolCallingContext(nonce: "nonce-123")
 
     @Test("Parse valid JSON tool call")
     func parseValidJSONToolCall() {
@@ -218,7 +217,7 @@ struct LanguageModelSessionToolParserTests {
             ToolSchema(name: "calculator", description: "Calc", parameters: [])
         ]
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -238,7 +237,7 @@ struct LanguageModelSessionToolParserTests {
             ToolSchema(name: "weather", description: "Weather", parameters: [])
         ]
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -255,7 +254,7 @@ struct LanguageModelSessionToolParserTests {
             ToolSchema(name: "search", description: "Search", parameters: [])
         ]
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -275,7 +274,7 @@ struct LanguageModelSessionToolParserTests {
             ToolSchema(name: "lookup", description: "Lookup", parameters: [])
         ]
 
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -298,7 +297,7 @@ struct LanguageModelSessionToolParserTests {
             ToolSchema(name: "lookup", description: "Lookup", parameters: [])
         ]
 
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -316,7 +315,7 @@ struct LanguageModelSessionToolParserTests {
             ToolSchema(name: "test", description: "Test", parameters: [])
         ]
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -335,7 +334,7 @@ struct LanguageModelSessionToolParserTests {
             ToolSchema(name: "createUser", description: "Create user", parameters: [])
         ]
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -354,7 +353,7 @@ struct LanguageModelSessionToolParserTests {
             ToolSchema(name: "search", description: "Search", parameters: [])
         ]
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -369,7 +368,7 @@ struct LanguageModelSessionToolParserTests {
     func returnNilForResponseWithoutJSON() {
         let response = "This is just a regular response without any tool calls."
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: [ToolSchema(name: "tool", description: "Tool", parameters: [])],
             context: context
@@ -386,7 +385,7 @@ struct LanguageModelSessionToolParserTests {
             ToolSchema(name: "knownTool", description: "Known", parameters: [])
         ]
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -401,7 +400,7 @@ struct LanguageModelSessionToolParserTests {
         {"tool": "test", "arguments": {invalid json
         """
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: [ToolSchema(name: "test", description: "Test", parameters: [])],
             context: context
@@ -414,7 +413,7 @@ struct LanguageModelSessionToolParserTests {
     func returnNilForJSONWithoutToolName() {
         let response = #"{"swarm_tool_call":{"nonce":"nonce-123","arguments":{"x":1}}}"#
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: [ToolSchema(name: "test", description: "Test", parameters: [])],
             context: context
@@ -427,7 +426,7 @@ struct LanguageModelSessionToolParserTests {
     func returnNilForWrongNonce() {
         let response = #"{"swarm_tool_call":{"nonce":"different","tool":"getTime","arguments":{}}}"#
 
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: [ToolSchema(name: "getTime", description: "Get time", parameters: [])],
             context: context
@@ -445,7 +444,7 @@ struct LanguageModelSessionToolParserTests {
         {"swarm_tool_call":{"nonce":"nonce-123","tool":"getTime","arguments":{}}}
         """
 
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: [ToolSchema(name: "getTime", description: "Get time", parameters: [])],
             context: context
@@ -462,7 +461,7 @@ struct LanguageModelSessionToolParserTests {
             ToolSchema(name: "getTime", description: "Get time", parameters: [])
         ]
         
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -475,22 +474,21 @@ struct LanguageModelSessionToolParserTests {
 
 // MARK: - Integration Tests (No Foundation Models Required)
 
-@Suite("LanguageModelSession Integration Tests")
-struct LanguageModelSessionIntegrationTests {
+@Suite("Prompt tool calling integration")
+struct PromptToolCallingIntegrationTests {
     @Test("generateWithToolCalls returns content when no tools provided")
     func generateWithToolCallsNoTools() async throws {
-        // Since we can't mock LanguageModelSession, we verify the parsing logic
-        // by testing the helper types directly
-        let toolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        // Parser-only check: text-only backends do not use Apple's session.
+        let toolCalls = PromptToolParser.parseToolCalls(
             from: "Just a normal response",
             availableTools: [],
-            context: LanguageModelSessionToolCallingContext(nonce: "nonce-123")
+            context: PromptToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(toolCalls == nil)
     }
 }
 
-// The LanguageModelSessionToolPromptBuilder and LanguageModelSessionToolParser types
-// are defined in Sources/Swarm/Providers/LanguageModelSessionHelpers.swift and are
+// The PromptToolPromptBuilder and PromptToolParser types
+// are defined in Sources/Swarm/Providers/PromptToolCallingEmulation.swift and are
 // available here via @testable import Swarm.

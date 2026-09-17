@@ -50,7 +50,7 @@ public extension TextOnlyBackend {
         tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
-        try await LanguageModelSessionToolCallingEmulation.generateResponse(
+        try await PromptToolCallingEmulation.generateResponse(
             prompt: prompt,
             tools: tools,
             options: options

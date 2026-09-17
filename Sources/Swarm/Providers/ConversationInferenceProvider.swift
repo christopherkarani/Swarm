@@ -228,7 +228,7 @@ public extension InferenceProvider {
         tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
-        try await LanguageModelSessionToolCallingEmulation.generateResponse(
+        try await PromptToolCallingEmulation.generateResponse(
             messages: messages,
             tools: tools,
             options: options

@@ -333,8 +333,9 @@ surface as semi-stable. The supported public reference documents are
   `scripts/ci/refresh-api-catalog-header.sh`; exhaustive rows stay hand-maintained.
 - For workflow examples, read `Sources/SwarmCapabilityShowcaseSupport/CapabilityShowcase.swift`
   — it touches every stable subsystem.
-- For provider behaviour, look at `Sources/Swarm/Providers/FoundationModels/`
-  and the `LanguageModelSession*` files.
+- For provider behaviour, look at `Sources/Swarm/Providers/FoundationModels/`.
+  Prompt-envelope tool emulation for text-only backends lives in
+  `PromptToolCallingEmulation.swift` and is not Apple's `LanguageModelSession`.
 - The `README.md` quick-start, the `docs/guide/getting-started.md` tutorial,
   and `docs/guide/agent-workspace.md` are the user-facing canonical docs —
   keep code samples consistent with them when changing surface area.
