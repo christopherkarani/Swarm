@@ -19,10 +19,21 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
     /// When true, prewarms the model after session creation.
     public var prewarmOnInit: Bool
 
+    /// OS 27 owned-loop reasoning overlay. Capture ignores this today.
+    ///
+    /// Mapped onto Apple `ContextOptions.ReasoningLevel` — this property is
+    /// not named `ContextOptions`.
+    public var reasoningLevel: FoundationModelsReasoningLevel?
+
     /// Creates a configuration.
-    public init(instructions: String? = nil, prewarmOnInit: Bool = false) {
+    public init(
+        instructions: String? = nil,
+        prewarmOnInit: Bool = false,
+        reasoningLevel: FoundationModelsReasoningLevel? = nil
+    ) {
         self.instructions = instructions
         self.prewarmOnInit = prewarmOnInit
+        self.reasoningLevel = reasoningLevel
     }
 
     /// Default configuration with no instructions and no prewarm.
@@ -660,6 +671,11 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         FoundationModelsGenerationOptions.make(from: options)
     }
 
+    /// Owned-loop OS 27 reasoning overlay. Capture ignores this.
+    var ownedLoopReasoningLevel: FoundationModelsReasoningLevel? {
+        configuration.reasoningLevel
+    }
+
     /// Serializes structured history into a single `Prompt` string.
     ///
     /// Required because `LanguageModelSession.respond(to:)` / `streamResponse(to:)`
@@ -839,10 +855,16 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
 public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
     public var instructions: String?
     public var prewarmOnInit: Bool
+    public var reasoningLevel: FoundationModelsReasoningLevel?
 
-    public init(instructions: String? = nil, prewarmOnInit: Bool = false) {
+    public init(
+        instructions: String? = nil,
+        prewarmOnInit: Bool = false,
+        reasoningLevel: FoundationModelsReasoningLevel? = nil
+    ) {
         self.instructions = instructions
         self.prewarmOnInit = prewarmOnInit
+        self.reasoningLevel = reasoningLevel
     }
 
     public static let `default` = FoundationModelsProviderConfiguration()

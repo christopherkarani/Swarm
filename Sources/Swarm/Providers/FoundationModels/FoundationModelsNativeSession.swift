@@ -354,6 +354,7 @@ extension FoundationModelsInferenceProvider {
         }
 
         let generationOptions = makeGenerationOptions(from: resolved.options)
+        let reasoningLevel = ownedLoopReasoningLevel
         let startCount = session.transcript.count
 
         do {
@@ -365,14 +366,20 @@ extension FoundationModelsInferenceProvider {
                     session: session,
                     prompt: prompt,
                     options: generationOptions,
+                    reasoningLevel: reasoningLevel,
                     onOutputChunk: onOutputChunk
                 )
                 content = applyStopSequences(streamed.content, options: resolved.options)
                 usage = streamed.usage
             } else {
-                let response = try await session.respond(to: prompt, options: generationOptions)
+                let response = try await respondNative(
+                    session: session,
+                    prompt: prompt,
+                    options: generationOptions,
+                    reasoningLevel: reasoningLevel
+                )
                 content = applyStopSequences(response.content, options: resolved.options)
-                usage = FoundationModelsUsageMapping.tokenUsage(from: response)
+                usage = response.usage
             }
             try Task.checkCancellation()
             let newEntries = session.transcript.dropFirst(startCount)
@@ -418,14 +425,55 @@ extension FoundationModelsInferenceProvider {
         }
     }
 
+    private func respondNative(
+        session: LanguageModelSession,
+        prompt: String,
+        options: GenerationOptions,
+        reasoningLevel: FoundationModelsReasoningLevel?
+    ) async throws -> (content: String, usage: TokenUsage?) {
+        if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *), let reasoningLevel {
+            let response = try await session.respond(
+                to: prompt,
+                options: options,
+                contextOptions: reasoningLevel.contextOptions
+            )
+            return (response.content, FoundationModelsUsageMapping.tokenUsage(from: response))
+        }
+        let response = try await session.respond(to: prompt, options: options)
+        return (response.content, FoundationModelsUsageMapping.tokenUsage(from: response))
+    }
+
     private func streamNativeResponse(
         session: LanguageModelSession,
         prompt: String,
         options: GenerationOptions,
+        reasoningLevel: FoundationModelsReasoningLevel?,
         onOutputChunk: @Sendable (String) async -> Void
     ) async throws -> (content: String, usage: TokenUsage?) {
         var previous = ""
         var usage: TokenUsage?
+        if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *), let reasoningLevel {
+            for try await snapshot in session.streamResponse(
+                to: prompt,
+                options: options,
+                contextOptions: reasoningLevel.contextOptions
+            ) {
+                try Task.checkCancellation()
+                let current = snapshot.content
+                let delta: String
+                if current.hasPrefix(previous) {
+                    delta = String(current.dropFirst(previous.count))
+                } else {
+                    delta = current
+                }
+                previous = current
+                usage = FoundationModelsUsageMapping.tokenUsage(from: snapshot)
+                if !delta.isEmpty {
+                    await onOutputChunk(delta)
+                }
+            }
+            return (previous, usage)
+        }
         for try await snapshot in session.streamResponse(to: prompt, options: options) {
             try Task.checkCancellation()
             let current = snapshot.content

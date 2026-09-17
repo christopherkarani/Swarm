@@ -859,6 +859,11 @@ public enum ToolChoice: Sendable, Equatable, Codable {
     case required
 
     /// Force the model to use a specific tool.
+    ///
+    /// Apple Foundation Models `GenerationOptions.ToolCallingMode` has
+    /// `allowed`, `disallowed`, and `required` only — there is no `.specific`
+    /// case. ``FoundationModelsInferenceProvider`` keeps the prompt sentence
+    /// that names the tool and maps this choice to `.allowed`.
     case specific(toolName: String)
 
     // MARK: Private

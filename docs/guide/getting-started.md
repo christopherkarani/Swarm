@@ -526,7 +526,11 @@ By default Swarm **captures** Foundation Models tool calls (including a parallel
 group in one turn) and executes them in the agent loop (guardrails, checkpoints,
 per-iteration memory). Construct ``InferenceProvider/foundationModelsOwningToolLoop()``
 for a provider-owned tool loop — Agent reads Capabilities and does not type-cast
-the provider. See [Foundation Models](foundation-models.md) for the trade-off table.
+the provider. On OS 27, pass
+`FoundationModelsProviderConfiguration(reasoningLevel: .deep)` to that factory
+for Apple `ContextOptions`. ``ToolChoice/specific(toolName:)`` is still a
+prompt sentence — Foundation Models has no `.specific` tool-calling mode.
+See [Foundation Models](foundation-models.md) for the trade-off table.
 
 ```swift
 let agent = try Agent(

@@ -6,7 +6,12 @@ import FoundationModels
 /// Builds Apple `GenerationOptions` from Swarm ``InferenceOptions``.
 ///
 /// Uses `samplingMode` (the `sampling` alias is deprecated). On OS 27,
-/// `toolCallingMode` maps ``ToolChoice/required`` and ``ToolChoice/none``.
+/// `toolCallingMode` maps ``ToolChoice/required`` → `.required` and
+/// ``ToolChoice/none`` → `.disallowed`.
+///
+/// Apple `GenerationOptions.ToolCallingMode` has no `.specific` case.
+/// ``ToolChoice/specific(toolName:)`` stays a prompt sentence
+/// (`If you need a tool, call "name".`) and maps to `.allowed`.
 enum FoundationModelsGenerationOptions: Sendable {
     static func make(from options: InferenceOptions) -> GenerationOptions {
         var generationOptions = GenerationOptions()
