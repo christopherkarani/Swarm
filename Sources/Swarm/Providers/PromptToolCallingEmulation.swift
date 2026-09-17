@@ -1,30 +1,31 @@
 //
-//  LanguageModelSessionHelpers.swift
+//  PromptToolCallingEmulation.swift
 //  Swarm
 //
-//  Internal helpers for LanguageModelSession prompt building and tool call parsing.
-//  Extracted to enable unit testing without requiring FoundationModels.
+//  Prompt-envelope tool calling for text-only InferenceProvider backends.
+//  This is not Apple's LanguageModelSession. Foundation Models tool calling
+//  goes through FoundationModelsInferenceProvider and FoundationModels.Tool.
 //
 
 import Foundation
 
-// MARK: - LanguageModelSessionToolCallingContext
+// MARK: - PromptToolCallingContext
 
 /// Per-request metadata used to distinguish Swarm-owned tool-call envelopes from ordinary model text.
-struct LanguageModelSessionToolCallingContext: Sendable, Equatable {
+struct PromptToolCallingContext: Sendable, Equatable {
     static let envelopeKey = "swarm_tool_call"
 
     let nonce: String
 
-    static func make() -> LanguageModelSessionToolCallingContext {
-        LanguageModelSessionToolCallingContext(nonce: UUID().uuidString)
+    static func make() -> PromptToolCallingContext {
+        PromptToolCallingContext(nonce: UUID().uuidString)
     }
 }
 
-// MARK: - LanguageModelSessionToolPromptBuilder
+// MARK: - PromptToolPromptBuilder
 
-/// Builds tool-aware prompts for use with Foundation Models' prompt-based tool calling.
-enum LanguageModelSessionToolPromptBuilder {
+/// Builds tool-aware prompts for text-only backends that cannot call tools natively.
+enum PromptToolPromptBuilder {
     /// Builds a prompt that includes tool definitions and format instructions.
     /// - Parameters:
     ///   - basePrompt: The original user prompt.
@@ -34,7 +35,7 @@ enum LanguageModelSessionToolPromptBuilder {
     static func buildToolPrompt(
         basePrompt: String,
         tools: [ToolSchema],
-        context: LanguageModelSessionToolCallingContext,
+        context: PromptToolCallingContext,
         structuredOutput: StructuredOutputRequest? = nil,
         maxToolDefTokens _: Int = 200
     ) -> String {
@@ -58,7 +59,7 @@ enum LanguageModelSessionToolPromptBuilder {
 
     static func toolCallingInstructions(
         tools: [ToolSchema],
-        context: LanguageModelSessionToolCallingContext,
+        context: PromptToolCallingContext,
         structuredOutput: StructuredOutputRequest? = nil
     ) -> String {
         toolCallingInstructions(
@@ -104,7 +105,7 @@ enum LanguageModelSessionToolPromptBuilder {
 
     private static func toolCallingInstructions(
         toolDefsText: String,
-        context: LanguageModelSessionToolCallingContext,
+        context: PromptToolCallingContext,
         structuredOutput: StructuredOutputRequest?
     ) -> String {
         var prompt = """
@@ -112,7 +113,7 @@ enum LanguageModelSessionToolPromptBuilder {
             \(toolDefsText)
 
             If you decide to use a tool, respond with only a single JSON object in this exact format and no surrounding text:
-            {"\(LanguageModelSessionToolCallingContext.envelopeKey)": {"nonce": "\(context.nonce)", "tool": "tool_name", "arguments": {"param1": "value1"}}}
+            {"\(PromptToolCallingContext.envelopeKey)": {"nonce": "\(context.nonce)", "tool": "tool_name", "arguments": {"param1": "value1"}}}
 
             Never emit that JSON envelope unless you are requesting a tool call.
             If no tool is needed, respond normally without JSON.
@@ -148,10 +149,10 @@ enum LanguageModelSessionToolPromptBuilder {
     }
 }
 
-// MARK: - LanguageModelSessionToolParser
+// MARK: - PromptToolParser
 
-/// Parses tool calls from model response text for Foundation Models' prompt-based tool calling.
-enum LanguageModelSessionToolParser {
+/// Parses Swarm `swarm_tool_call` envelopes from model response text.
+enum PromptToolParser {
     /// Parses tool calls from a model's text response.
     /// - Parameters:
     ///   - content: The model's response text.
@@ -161,7 +162,7 @@ enum LanguageModelSessionToolParser {
     static func parseToolCalls(
         from content: String,
         availableTools: [ToolSchema],
-        context: LanguageModelSessionToolCallingContext
+        context: PromptToolCallingContext
     ) -> [InferenceResponse.ParsedToolCall]? {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -199,7 +200,7 @@ enum LanguageModelSessionToolParser {
     private static func debugParseFailure(
         _ candidate: String,
         availableTools: [ToolSchema],
-        context: LanguageModelSessionToolCallingContext
+        context: PromptToolCallingContext
     ) -> String {
         let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.first != "{" || trimmed.last != "}" {
@@ -211,8 +212,8 @@ enum LanguageModelSessionToolParser {
         guard let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return "failed to deserialize JSON"
         }
-        guard let envelope = jsonObject[LanguageModelSessionToolCallingContext.envelopeKey] as? [String: Any] else {
-            return "missing envelope key '\(LanguageModelSessionToolCallingContext.envelopeKey)'; keys=\(jsonObject.keys.joined(separator: ", "))"
+        guard let envelope = jsonObject[PromptToolCallingContext.envelopeKey] as? [String: Any] else {
+            return "missing envelope key '\(PromptToolCallingContext.envelopeKey)'; keys=\(jsonObject.keys.joined(separator: ", "))"
         }
         guard let nonce = envelope["nonce"] as? String else {
             return "missing nonce in envelope"
@@ -231,7 +232,7 @@ enum LanguageModelSessionToolParser {
     private static func parseToolCallsFromExactEnvelope(
         _ candidate: String,
         availableTools: [ToolSchema],
-        context: LanguageModelSessionToolCallingContext
+        context: PromptToolCallingContext
     ) -> [InferenceResponse.ParsedToolCall]? {
         let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.first == "{", trimmed.last == "}" else {
@@ -247,7 +248,7 @@ enum LanguageModelSessionToolParser {
                 return nil
             }
 
-            guard let envelope = jsonObject[LanguageModelSessionToolCallingContext.envelopeKey] as? [String: Any] else {
+            guard let envelope = jsonObject[PromptToolCallingContext.envelopeKey] as? [String: Any] else {
                 return nil
             }
 
@@ -332,10 +333,10 @@ enum LanguageModelSessionToolParser {
     }
 }
 
-// MARK: - LanguageModelSessionToolCallingEmulation
+// MARK: - PromptToolCallingEmulation
 
-/// Coordinates prompt-based tool calling for Foundation Models.
-enum LanguageModelSessionToolCallingEmulation {
+/// Coordinates prompt-envelope tool calling for text-only inference backends.
+enum PromptToolCallingEmulation {
     /// Generates a tool-aware response using a text-generation closure.
     static func generateResponse(
         prompt: String,
@@ -343,8 +344,8 @@ enum LanguageModelSessionToolCallingEmulation {
         options: InferenceOptions,
         generateText: @Sendable (String, InferenceOptions) async throws -> String
     ) async throws -> InferenceResponse {
-        let context = LanguageModelSessionToolCallingContext.make()
-        let promptToGenerate = LanguageModelSessionToolPromptBuilder.buildToolPrompt(
+        let context = PromptToolCallingContext.make()
+        let promptToGenerate = PromptToolPromptBuilder.buildToolPrompt(
             basePrompt: prompt,
             tools: tools,
             context: context,
@@ -362,7 +363,7 @@ enum LanguageModelSessionToolCallingEmulation {
         options: InferenceOptions,
         generateText: @Sendable ([InferenceMessage], InferenceOptions) async throws -> String
     ) async throws -> InferenceResponse {
-        let context = LanguageModelSessionToolCallingContext.make()
+        let context = PromptToolCallingContext.make()
         var outgoing = messages
         if tools.isEmpty {
             if let structuredOutput = options.structuredOutput {
@@ -373,7 +374,7 @@ enum LanguageModelSessionToolCallingEmulation {
             }
         } else {
             outgoing.append(.system(
-                LanguageModelSessionToolPromptBuilder.toolCallingInstructions(
+                PromptToolPromptBuilder.toolCallingInstructions(
                     tools: tools,
                     context: context,
                     structuredOutput: options.structuredOutput
@@ -389,7 +390,7 @@ enum LanguageModelSessionToolCallingEmulation {
     static func makeInferenceResponse(
         from generatedText: String,
         availableTools: [ToolSchema],
-        context: LanguageModelSessionToolCallingContext
+        context: PromptToolCallingContext
     ) -> InferenceResponse {
         guard !availableTools.isEmpty else {
             return InferenceResponse(
@@ -399,7 +400,7 @@ enum LanguageModelSessionToolCallingEmulation {
             )
         }
 
-        if let parsedToolCalls = LanguageModelSessionToolParser.parseToolCalls(
+        if let parsedToolCalls = PromptToolParser.parseToolCalls(
             from: generatedText,
             availableTools: availableTools,
             context: context
