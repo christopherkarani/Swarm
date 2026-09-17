@@ -43,6 +43,10 @@ extension Agent {
     }
 
     /// Executes the agent and enforces a structured output contract for the final assistant response.
+    ///
+    /// When ``StructuredOutputRequest/required`` is `false`, JSON parse failure
+    /// does not throw: ``StructuredOutputResult/value`` is `.null` and
+    /// ``StructuredOutputResult/rawJSON`` is the assistant text.
     public func runStructured(
         _ input: String,
         request: StructuredOutputRequest,
@@ -79,6 +83,27 @@ extension Agent {
             await activeRuns.finish(runID)
             throw normalizeCancellation(error)
         }
+    }
+
+    /// Executes the agent and decodes the structured output as `Output`.
+    ///
+    /// Swarm decodes ``StructuredOutputResult/rawJSON`` once. Invalid JSON for
+    /// `Output` throws ``AgentError/structuredOutputDecodingFailed(reason:underlying:)``.
+    /// The non-generic ``runStructured(_:request:session:observer:)`` is unchanged.
+    public func runStructured<Output: Decodable & Sendable>(
+        _ type: Output.Type,
+        _ input: String,
+        request: StructuredOutputRequest,
+        session: (any Session)? = nil,
+        observer: (any AgentObserver)? = nil
+    ) async throws -> DecodedStructuredAgentResult<Output> {
+        let result = try await runStructured(
+            input,
+            request: request,
+            session: session,
+            observer: observer
+        )
+        return try DecodedStructuredAgentResult<Output>.decoding(result, as: type)
     }
 
     public func stream(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {

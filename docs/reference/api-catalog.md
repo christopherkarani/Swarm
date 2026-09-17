@@ -6,7 +6,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
 - Source files scanned: 212 (219 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2332
+- Public/open symbols cataloged: 2347
 
 ## 1. Swarm (entry point)
 
@@ -142,6 +142,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 593 | case | public | AgentError.providerOwnedToolLoopRequiresExecutor | `public case providerOwnedToolLoopRequiresExecutor` |
 | 366 | case | public | AgentError.duplicateHandoffToolName(name:) | `public case duplicateHandoffToolName(name: String)` |
 | 380 | case | public | AgentError.handoffToolNameCollidesWithTool(name:) | `public case handoffToolNameCollidesWithTool(name: String)` |
+| 565 | case | public | AgentError.structuredOutputDecodingFailed(reason:underlying:) | `public case structuredOutputDecodingFailed(reason: String, underlying: (any Error)?)` |
 | 672 | func | public | AgentError.==(_:_:) | `public static func == (lhs: AgentError, rhs: AgentError) -> Bool` |
 | 90 | var | public | AgentError.errorDescription | `public var errorDescription: String? { get }` |
 | 139 | var | public | AgentError.recoverySuggestion | `public var recoverySuggestion: String? { get }` |
@@ -1081,6 +1082,21 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 747 | func | public | AsyncThrowingStream.distinctUntilChanged() | `public func distinctUntilChanged() -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 798 | func | public | AsyncThrowingStream.scan(_:_:) | `public func scan<T>(_ initial: T, _ combine: @escaping (T, AgentEvent) async throws -> T) -> AsyncThrowingStream<T, any Error> where T : Sendable` |
 
+### Core/StructuredOutput.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 11 | enum | public | StructuredOutputFormat | `public enum StructuredOutputFormat` |
+| 35 | struct | public | StructuredOutputRequest | `public struct StructuredOutputRequest` |
+| 47 | var | public | StructuredOutputRequest.required | `public var required: Bool` |
+| 56 | struct | public | StructuredOutputResult | `public struct StructuredOutputResult` |
+| 91 | struct | public | StructuredAgentResult | `public struct StructuredAgentResult` |
+| 107 | struct | public | DecodedStructuredAgentResult | `public struct DecodedStructuredAgentResult<Output> where Output : Sendable` |
+| 109 | var | public | DecodedStructuredAgentResult.agentResult | `public let agentResult: AgentResult` |
+| 111 | var | public | DecodedStructuredAgentResult.structuredOutput | `public let structuredOutput: StructuredOutputResult` |
+| 113 | var | public | DecodedStructuredAgentResult.output | `public let output: Output` |
+| 115 | func | public | DecodedStructuredAgentResult.init(agentResult:structuredOutput:output:) | `public init(agentResult: AgentResult, structuredOutput: StructuredOutputResult, output: Output)` |
+
 ### Core/SwarmConfiguration.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -1129,6 +1145,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 260 | func | public | Agent.init(_:configuration:memory:inferenceProvider:tracer:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:tools:) | `public init(_ instructions: String, configuration: AgentConfiguration = .default, memory: (any Memory)? = nil, inferenceProvider: (any InferenceProvider)? = nil, tracer: (any Tracer)? = nil, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffs: [AnyHandoffConfiguration] = [], @ToolBuilder tools: () -> [any AnyJSONTool] = { [] }) throws` |
 | 1130 | func | public | Agent.makeDefaultMemory() | `public static func makeDefaultMemory() throws -> any Memory` _(Integrations: `DefaultAgentMemory`; lean: `SlidingWindowMemory`)_ |
 | 295 | func | public | Agent.run(_:session:observer:) | `public func run(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResult` |
+| 50 | func | public | Agent.runStructured(_:request:session:observer:) | `public func runStructured(_ input: String, request: StructuredOutputRequest, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> StructuredAgentResult` |
+| 93 | func | public | Agent.runStructured(_:_:request:session:observer:) | `public func runStructured<Output>(_ type: Output.Type, _ input: String, request: StructuredOutputRequest, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> DecodedStructuredAgentResult<Output> where Output : Decodable, Output : Sendable` |
 | 303 | func | public | Agent.cancel() | `public func cancel() async` |
 | 313 | func | public | Agent.stream(_:session:observer:) | `public func stream(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 336 | func | public | Agent.runWithResponse(_:session:observer:) | `public func runWithResponse(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
@@ -2920,6 +2938,8 @@ Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationMo
 | 145 | func | public | MultiProvider.setModel(_:) | `public func setModel(_ model: String)` |
 | 153 | func | public | MultiProvider.clearModel() | `public func clearModel()` |
 | 168 | func | public | MultiProvider.generate(prompt:options:) | `public func generate(prompt: String, options: InferenceOptions) async throws -> String` |
+| 257 | func | public | MultiProvider.generateStructured(messages:request:options:) | `public func generateStructured(messages: [InferenceMessage], request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` |
+| 271 | func | public | MultiProvider.generateStructured(prompt:request:options:) | `public func generateStructured(prompt: String, request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` |
 | 181 | func | public | MultiProvider.stream(prompt:options:) | `public nonisolated func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, any Error>` |
 | 209 | func | public | MultiProvider.generateWithToolCalls(prompt:tools:options:) | `public func generateWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
 | 222 | func | public | MultiProvider.hasProvider(for:) | `public func hasProvider(for prefix: String) -> Bool` |

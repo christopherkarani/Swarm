@@ -259,6 +259,49 @@ agent.webSearch(WebSearchTool.Configuration(enabled: false))
 agent.observed(by: myObserver)                          // returns some AgentRuntime
 ```
 
+### Structured output
+
+`Agent.runStructured` has an untyped path and an additive typed overload.
+`StructuredAgentResult` is unchanged. Pass an `Output.Type` to decode
+`structuredOutput.rawJSON` once inside Swarm:
+
+```swift
+public struct StructuredAgentResult: Sendable, Equatable {
+    public let agentResult: AgentResult
+    public let structuredOutput: StructuredOutputResult
+}
+
+public struct DecodedStructuredAgentResult<Output: Sendable>: Sendable {
+    public let agentResult: AgentResult
+    public let structuredOutput: StructuredOutputResult
+    public let output: Output
+}
+
+public func runStructured(
+    _ input: String,
+    request: StructuredOutputRequest,
+    session: (any Session)? = nil,
+    observer: (any AgentObserver)? = nil
+) async throws -> StructuredAgentResult
+
+public func runStructured<Output: Decodable & Sendable>(
+    _ type: Output.Type,
+    _ input: String,
+    request: StructuredOutputRequest,
+    session: (any Session)? = nil,
+    observer: (any AgentObserver)? = nil
+) async throws -> DecodedStructuredAgentResult<Output>
+```
+
+`StructuredOutputRequest.required` defaults to `true` (throw on JSON parse
+failure). When `required` is `false`, the non-generic path does not throw:
+`structuredOutput.value` is `.null` and `rawJSON` is the assistant text. The
+generic `runStructured<Output>` overload still throws
+`AgentError.structuredOutputDecodingFailed` if `Output` cannot be decoded.
+
+`MultiProvider` overrides both `generateStructured` overloads and forwards to
+the routed child with the same resolve rules as `generate(messages:)`.
+
 ## 5) Tool and FunctionTool
 
 ### `@Tool` macro (recommended)
@@ -1023,6 +1066,13 @@ public case handoffToolNameCollidesWithTool(name: String)
 ```
 
 Both cases are `Equatable`, surface the colliding name in `errorDescription`, and are not retryable.
+
+Typed structured-output decode failures keep the original error through
+`underlying`, compared in `==` like `toolFailure` `cause`:
+
+```swift
+public case structuredOutputDecodingFailed(reason: String, underlying: (any Error)?)
+```
 
 ## 13) Public macros
 
