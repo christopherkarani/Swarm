@@ -249,6 +249,38 @@ public actor MultiProvider: InferenceProvider {
         return try await provider.generate(messages: messages, options: options)
     }
 
+    /// Routes a structured-output request to the provider selected by the current model.
+    ///
+    /// Uses the same resolve rules as ``generate(messages:options:)`` so a child
+    /// that overrides ``InferenceProvider/generateStructured(messages:request:options:)``
+    /// runs instead of the protocol prompt-fallback on `MultiProvider`.
+    public func generateStructured(
+        messages: [InferenceMessage],
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        let provider = resolveProvider(for: currentModel)
+        return try await provider.generateStructured(
+            messages: messages,
+            request: request,
+            options: options
+        )
+    }
+
+    /// Routes a flattened-prompt structured-output request to the current model provider.
+    public func generateStructured(
+        prompt: String,
+        request: StructuredOutputRequest,
+        options: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        let provider = resolveProvider(for: currentModel)
+        return try await provider.generateStructured(
+            prompt: prompt,
+            request: request,
+            options: options
+        )
+    }
+
     public func generateWithToolCalls(
         messages: [InferenceMessage],
         tools: [ToolSchema],

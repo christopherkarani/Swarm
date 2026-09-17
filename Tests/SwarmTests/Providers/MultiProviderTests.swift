@@ -417,3 +417,131 @@ struct MultiProviderInferenceProviderTests {
         #expect(response.content == "Tool response from openai")
     }
 }
+
+// MARK: - RecordingStructuredMockProvider
+
+/// Child provider that records native `generateStructured` so MultiProvider
+/// forwarding can be distinguished from the protocol prompt-fallback path.
+actor RecordingStructuredMockProvider: InferenceProvider {
+    let name: String
+    nonisolated let capabilities: InferenceProviderCapabilities = [.structuredOutputs]
+    private(set) var generateCalls: [String] = []
+    private(set) var structuredMessageCalls: [(messages: [InferenceMessage], request: StructuredOutputRequest)] = []
+    private(set) var structuredPromptCalls: [(prompt: String, request: StructuredOutputRequest)] = []
+
+    init(name: String) {
+        self.name = name
+    }
+
+    var structuredResult: StructuredOutputResult {
+        StructuredOutputResult(
+            format: .jsonObject,
+            rawJSON: #"{"source":"\#(name)"}"#,
+            value: .dictionary(["source": .string(name)]),
+            source: .providerNative
+        )
+    }
+
+    func generate(prompt: String, options _: InferenceOptions) async throws -> String {
+        generateCalls.append(prompt)
+        return "Response from \(name)"
+    }
+
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        try await generate(prompt: InferenceMessage.flattenPrompt(messages), options: options)
+    }
+
+    func generateStructured(
+        messages: [InferenceMessage],
+        request: StructuredOutputRequest,
+        options _: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        structuredMessageCalls.append((messages, request))
+        return structuredResult
+    }
+
+    func generateStructured(
+        prompt: String,
+        request: StructuredOutputRequest,
+        options _: InferenceOptions
+    ) async throws -> StructuredOutputResult {
+        structuredPromptCalls.append((prompt, request))
+        return structuredResult
+    }
+}
+
+// MARK: - MultiProviderStructuredOutputTests
+
+@Suite("MultiProvider generateStructured forwarding")
+struct MultiProviderStructuredOutputTests {
+    @Test("generateStructured(messages:) forwards to the routed child (AC-005)")
+    func generateStructuredMessagesForwardsToRoutedChild() async throws {
+        let defaultProvider = RecordingStructuredMockProvider(name: "default")
+        let child = RecordingStructuredMockProvider(name: "native")
+        let multiProvider = MultiProvider(defaultProvider: defaultProvider)
+        try await multiProvider.register(prefix: "native", provider: child)
+        await multiProvider.setModel("native/model")
+
+        let request = StructuredOutputRequest(format: .jsonObject)
+        let messages = [InferenceMessage.user("Return native JSON.")]
+        let result = try await multiProvider.generateStructured(
+            messages: messages,
+            request: request,
+            options: .default
+        )
+
+        #expect(result.source == .providerNative)
+        #expect(result.rawJSON == #"{"source":"native"}"#)
+        #expect(await child.structuredMessageCalls.count == 1)
+        #expect(await child.structuredMessageCalls.first?.request == request)
+        #expect(await child.structuredPromptCalls.isEmpty)
+        #expect(await child.generateCalls.isEmpty)
+        #expect(await defaultProvider.structuredMessageCalls.isEmpty)
+        #expect(await defaultProvider.generateCalls.isEmpty)
+    }
+
+    @Test("generateStructured(prompt:) forwards to the routed child (AC-005)")
+    func generateStructuredPromptForwardsToRoutedChild() async throws {
+        let defaultProvider = RecordingStructuredMockProvider(name: "default")
+        let child = RecordingStructuredMockProvider(name: "openai")
+        let multiProvider = MultiProvider(defaultProvider: defaultProvider)
+        try await multiProvider.register(prefix: "openai", provider: child)
+        await multiProvider.setModel("openai/gpt-4")
+
+        let request = StructuredOutputRequest(format: .jsonObject)
+        let result = try await multiProvider.generateStructured(
+            prompt: "Return native JSON.",
+            request: request,
+            options: .default
+        )
+
+        #expect(result.source == .providerNative)
+        #expect(result.rawJSON == #"{"source":"openai"}"#)
+        #expect(await child.structuredPromptCalls.count == 1)
+        #expect(await child.structuredPromptCalls.first?.prompt == "Return native JSON.")
+        #expect(await child.structuredMessageCalls.isEmpty)
+        #expect(await child.generateCalls.isEmpty)
+        #expect(await defaultProvider.structuredPromptCalls.isEmpty)
+        #expect(await defaultProvider.generateCalls.isEmpty)
+    }
+
+    @Test("generateStructured uses the default provider when no prefix matches")
+    func generateStructuredFallsBackToDefaultProvider() async throws {
+        let defaultProvider = RecordingStructuredMockProvider(name: "default")
+        let child = RecordingStructuredMockProvider(name: "native")
+        let multiProvider = MultiProvider(defaultProvider: defaultProvider)
+        try await multiProvider.register(prefix: "native", provider: child)
+        await multiProvider.setModel("unknown/model")
+
+        let result = try await multiProvider.generateStructured(
+            messages: [.user("Q")],
+            request: StructuredOutputRequest(format: .jsonObject),
+            options: .default
+        )
+
+        #expect(result.rawJSON == #"{"source":"default"}"#)
+        #expect(await defaultProvider.structuredMessageCalls.count == 1)
+        #expect(await child.structuredMessageCalls.isEmpty)
+        #expect(await defaultProvider.generateCalls.isEmpty)
+    }
+}
