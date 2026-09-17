@@ -84,6 +84,9 @@ import Foundation
 /// - ``generationFailed(reason:)``
 /// - ``modelNotAvailable(model:)``
 ///
+/// ### Structured Output Errors
+/// - ``structuredOutputDecodingFailed(reason:underlying:)``
+///
 /// ### Rate Limiting Errors
 /// - ``rateLimitExceeded(retryAfter:)``
 ///
@@ -543,6 +546,24 @@ public enum AgentError: Error, Sendable, Equatable {
     /// - Parameter model: The name of the unavailable model
     case modelNotAvailable(model: String)
 
+    // MARK: - Structured Output Errors
+
+    /// Decoding a typed structured-output payload failed.
+    ///
+    /// Thrown by ``Agent/runStructured(_:_:request:session:observer:)`` when
+    /// ``StructuredOutputResult/rawJSON`` cannot be decoded as the requested
+    /// `Output` type. JSON parse failures on the non-generic path still throw
+    /// ``generationFailed(reason:)`` when ``StructuredOutputRequest/required``
+    /// is `true`.
+    ///
+    /// The `underlying` error is compared in ``==`` by dynamic type and
+    /// description, matching ``toolFailure(toolName:message:cause:)``.
+    ///
+    /// - Parameters:
+    ///   - reason: Human-readable summary of the decode failure.
+    ///   - underlying: The original decode error, when one exists.
+    case structuredOutputDecodingFailed(reason: String, underlying: (any Error)?)
+
     // MARK: - Rate Limiting Errors
 
     /// Rate limit was exceeded.
@@ -667,7 +688,8 @@ public enum AgentError: Error, Sendable, Equatable {
     /// must do the same.
     case providerOwnedToolLoopRequiresExecutor
 
-    /// Element-wise equality. The `toolFailure` cause compares by dynamic type
+    /// Element-wise equality. The `toolFailure` cause and
+    /// `structuredOutputDecodingFailed` underlying error compare by dynamic type
     /// and description because `(any Error)?` has no structural equality.
     public static func == (lhs: AgentError, rhs: AgentError) -> Bool {
         switch (lhs, rhs) {
@@ -707,6 +729,8 @@ public enum AgentError: Error, Sendable, Equatable {
             a == b
         case let (.modelNotAvailable(a), .modelNotAvailable(b)):
             a == b
+        case let (.structuredOutputDecodingFailed(r1, u1), .structuredOutputDecodingFailed(r2, u2)):
+            r1 == r2 && Self.causeEquals(u1, u2)
         case let (.rateLimitExceeded(a), .rateLimitExceeded(b)):
             a == b
         case let (.embeddingFailed(a), .embeddingFailed(b)):
@@ -722,6 +746,17 @@ public enum AgentError: Error, Sendable, Equatable {
         default:
             false
         }
+    }
+
+    private static func causeTypeName(_ error: (any Error)?) -> String {
+        error.map { String(describing: type(of: $0)) } ?? "nil"
+    }
+
+    private static func causeMessage(reason: String, underlying: (any Error)?) -> String {
+        if reason.isEmpty == false {
+            return reason
+        }
+        return underlying.map(String.init(describing:)) ?? "unknown error"
     }
 
     private static func causeEquals(_ lhs: (any Error)?, _ rhs: (any Error)?) -> Bool {
@@ -783,6 +818,8 @@ extension AgentError: LocalizedError {
             "Generation failed: \(reason)"
         case let .modelNotAvailable(model):
             "Model not available: \(model)"
+        case let .structuredOutputDecodingFailed(reason, underlying):
+            "Structured output decoding failed: \(Self.causeMessage(reason: reason, underlying: underlying))"
         case let .rateLimitExceeded(retryAfter):
             if let retryAfter {
                 "Rate limit exceeded, retry after \(retryAfter) seconds"
@@ -839,6 +876,8 @@ extension AgentError: LocalizedError {
             "Give each handoff a unique toolNameOverride; '\(name)' is used more than once."
         case .handoffToolNameCollidesWithTool(let name):
             "Rename the tool or set a distinct toolNameOverride so '\(name)' is not shared."
+        case .structuredOutputDecodingFailed:
+            "Ensure the model returned JSON that matches the requested Output type."
         default:
             nil
         }
@@ -891,6 +930,8 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.generationFailed(reason: \(reason))"
         case let .modelNotAvailable(model):
             "AgentError.modelNotAvailable(model: \(model))"
+        case let .structuredOutputDecodingFailed(reason, underlying):
+            "AgentError.structuredOutputDecodingFailed(reason: \(reason), underlying: \(Self.causeTypeName(underlying)))"
         case let .rateLimitExceeded(retryAfter):
             "AgentError.rateLimitExceeded(retryAfter: \(String(describing: retryAfter)))"
         case let .embeddingFailed(reason):
@@ -937,6 +978,7 @@ extension AgentError {
              .contextWindowExceeded,
              .unsupportedLanguage,
              .modelNotAvailable,
+             .structuredOutputDecodingFailed,
              .agentNotFound,
              .internalError,
              .toolCallingUnsupported,

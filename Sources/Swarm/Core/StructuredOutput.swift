@@ -34,6 +34,16 @@ public enum StructuredOutputFormat: Sendable, Equatable, Codable {
 /// Swarm-owned request for a structured response.
 public struct StructuredOutputRequest: Sendable, Equatable, Codable {
     public var format: StructuredOutputFormat
+    /// Whether JSON parse failure is fatal on the untyped
+    /// ``Agent/runStructured(_:request:session:observer:)`` path.
+    ///
+    /// The default `true` throws ``AgentError/generationFailed(reason:)`` when
+    /// the assistant text is not valid JSON. When `false`, parse failure
+    /// returns ``StructuredAgentResult`` whose ``StructuredOutputResult/value``
+    /// is `.null` and ``StructuredOutputResult/rawJSON`` is the assistant text.
+    /// Typed ``Agent/runStructured(_:_:request:session:observer:)`` still throws
+    /// ``AgentError/structuredOutputDecodingFailed(reason:underlying:)`` if
+    /// `Output` cannot be decoded.
     public var required: Bool
 
     public init(format: StructuredOutputFormat, required: Bool = true) {
@@ -88,6 +98,50 @@ public struct StructuredAgentResult: Sendable, Equatable {
     }
 }
 
+/// Agent result plus a decoded structured payload.
+///
+/// Returned by ``Agent/runStructured(_:_:request:session:observer:)`` when the
+/// caller supplies an `Output` type. ``StructuredAgentResult`` remains the
+/// untyped companion from the non-generic
+/// ``Agent/runStructured(_:request:session:observer:)``.
+public struct DecodedStructuredAgentResult<Output: Sendable>: Sendable {
+    /// The completed agent run.
+    public let agentResult: AgentResult
+    /// Parsed JSON as ``SendableValue``, plus the raw text decoded as `Output`.
+    public let structuredOutput: StructuredOutputResult
+    /// The decoded `Output` value.
+    public let output: Output
+
+    public init(
+        agentResult: AgentResult,
+        structuredOutput: StructuredOutputResult,
+        output: Output
+    ) {
+        self.agentResult = agentResult
+        self.structuredOutput = structuredOutput
+        self.output = output
+    }
+}
+
+extension DecodedStructuredAgentResult where Output: Decodable {
+    static func decoding(_ result: StructuredAgentResult, as type: Output.Type) throws -> Self {
+        do {
+            let data = Data(result.structuredOutput.rawJSON.utf8)
+            let output = try JSONDecoder().decode(type, from: data)
+            return Self(
+                agentResult: result.agentResult,
+                structuredOutput: result.structuredOutput,
+                output: output
+            )
+        } catch {
+            throw AgentError.structuredOutputDecodingFailed(
+                reason: "Failed to decode structured output as \(type)",
+                underlying: error
+            )
+        }
+    }
+}
+
 enum StructuredOutputPromptBuilder {
     static func instruction(for request: StructuredOutputRequest) -> String {
         switch request.format {
@@ -132,7 +186,12 @@ enum StructuredOutputParser {
     ) throws -> StructuredOutputResult {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let data = trimmed.data(using: .utf8) else {
-            throw AgentError.generationFailed(reason: "Structured output is not valid UTF-8")
+            return try parseFailure(
+                assistantText: text,
+                request: request,
+                source: source,
+                reason: "Structured output is not valid UTF-8"
+            )
         }
 
         do {
@@ -145,10 +204,30 @@ enum StructuredOutputParser {
                 source: source
             )
         } catch {
-            throw AgentError.generationFailed(
+            return try parseFailure(
+                assistantText: text,
+                request: request,
+                source: source,
                 reason: "Failed to parse structured output JSON: \(error.localizedDescription)"
             )
         }
+    }
+
+    private static func parseFailure(
+        assistantText: String,
+        request: StructuredOutputRequest,
+        source: StructuredOutputResult.Source,
+        reason: String
+    ) throws -> StructuredOutputResult {
+        guard request.required == false else {
+            throw AgentError.generationFailed(reason: reason)
+        }
+        return StructuredOutputResult(
+            format: request.format,
+            rawJSON: assistantText,
+            value: .null,
+            source: source
+        )
     }
 }
 
