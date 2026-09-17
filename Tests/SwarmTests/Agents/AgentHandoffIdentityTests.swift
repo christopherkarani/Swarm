@@ -109,6 +109,52 @@ struct AgentHandoffIdentityTests {
         )
     }
 
+    @Test("withHandoffs two Agent values throw duplicateHandoffToolName")
+    func withHandoffsTwoAgentsThrowDuplicateToolName() throws {
+        let billing = try Agent("billing")
+        let support = try Agent("support")
+
+        #expect(throws: AgentError.duplicateHandoffToolName(name: "handoff_to_agent")) {
+            _ = try Agent("triage").withHandoffs([billing, support])
+        }
+    }
+
+    @Test("withHandoffs colliding with a tool throws")
+    func withHandoffsCollidingWithToolThrows() throws {
+        let writer = try Agent("writer")
+        let colliding = MockTool(name: "handoff_to_agent", description: "Look things up")
+
+        #expect(throws: AgentError.handoffToolNameCollidesWithTool(name: "handoff_to_agent")) {
+            _ = try Agent(tools: [colliding], instructions: "triage")
+                .withHandoffs([writer])
+        }
+    }
+
+    @Test("withTools colliding with a handoff throws")
+    func withToolsCollidingWithHandoffThrows() throws {
+        let writer = try Agent("writer")
+        let parent = try Agent(
+            "triage",
+            handoffs: [
+                AnyHandoffConfiguration(targetAgent: writer, toolNameOverride: "search"),
+            ]
+        )
+
+        #expect(throws: AgentError.handoffToolNameCollidesWithTool(name: "search")) {
+            _ = try parent.withTools([SearchCollisionTool()])
+        }
+    }
+
+    @Test("Builder assignment of two Agent targets throws duplicateHandoffToolName")
+    func builderAssignmentOfTwoAgentsThrows() throws {
+        let billing = try Agent("billing")
+        let support = try Agent("support")
+
+        #expect(throws: AgentError.duplicateHandoffToolName(name: "handoff_to_agent")) {
+            _ = try Agent.Builder().handoffs(billing, support)
+        }
+    }
+
     @Test("Handoff identity errors are Equatable, described, and not retryable")
     func handoffIdentityErrorsAreDescribedAndNotRetryable() {
         let duplicate = AgentError.duplicateHandoffToolName(name: "handoff_to_agent")
@@ -123,6 +169,17 @@ struct AgentHandoffIdentityTests {
         #expect(!duplicate.isRetryable)
         #expect(!collision.isRetryable)
     }
+}
+
+private struct SearchCollisionTool: Tool {
+    struct Input: Codable, Sendable {}
+    typealias Output = String
+
+    let name = "search"
+    let description = "Look things up"
+    let parameters: [ToolParameter] = []
+
+    func execute(_: Input) async throws -> String { "ok" }
 }
 
 private struct DisabledHandoffCollisionTool: AnyJSONTool, Sendable {

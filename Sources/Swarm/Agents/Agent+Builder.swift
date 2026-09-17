@@ -149,43 +149,67 @@ public extension Agent {
         }
 
         /// Sets the handoff configurations.
+        ///
+        /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if two handoffs share
+        ///   an effective tool name.
+        /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if a handoff's
+        ///   effective name equals a tool already added to this builder.
         @discardableResult
-        public func handoffs(_ handoffs: [AnyHandoffConfiguration]) -> Builder {
-            var copy = self
-            copy._handoffs = handoffs
-            return copy
+        public func handoffs(_ handoffs: [AnyHandoffConfiguration]) throws -> Builder {
+            try assigningHandoffs(handoffs)
         }
 
         /// Adds a handoff configuration.
+        ///
+        /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if the new handoff
+        ///   reuses an effective tool name already on this builder.
+        /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if the new
+        ///   handoff's effective name equals a tool already added to this builder.
         @discardableResult
-        public func addHandoff(_ handoff: AnyHandoffConfiguration) -> Builder {
-            var copy = self
-            copy._handoffs.append(handoff)
-            return copy
+        public func addHandoff(_ handoff: AnyHandoffConfiguration) throws -> Builder {
+            try assigningHandoffs(_handoffs + [handoff])
         }
 
         /// Adds a handoff target with typed options.
+        ///
+        /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if the new handoff
+        ///   reuses an effective tool name already on this builder.
+        /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if the new
+        ///   handoff's effective name equals a tool already added to this builder.
         @discardableResult
         public func handoff<Target: AgentRuntime>(
             to target: Target,
             configure: (HandoffOptions<Target>) -> HandoffOptions<Target> = { $0 }
-        ) -> Builder {
-            var copy = self
-            copy._handoffs.append(configure(HandoffOptions()).erasedConfiguration(for: target))
-            return copy
+        ) throws -> Builder {
+            try assigningHandoffs(
+                _handoffs + [configure(HandoffOptions()).erasedConfiguration(for: target)]
+            )
         }
 
         /// Adds multiple handoff targets.
+        ///
+        /// Two ``Agent`` values without overrides share `handoff_to_agent` and throw.
+        /// Pass `[AnyHandoffConfiguration]` with distinct `toolNameOverride` values, or
+        /// use ``handoff(to:configure:)`` with `.name(_:)`, when targets share a type.
+        ///
+        /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if two targets share
+        ///   an effective handoff tool name.
+        /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if a target's
+        ///   effective name equals a tool already added to this builder.
         @discardableResult
-        public func handoffs<each Target: AgentRuntime>(_ targets: repeat each Target) -> Builder {
-            var copy = self
-            repeat copy._handoffs.append(AnyHandoffConfiguration(targetAgent: each targets))
-            return copy
+        public func handoffs<each Target: AgentRuntime>(_ targets: repeat each Target) throws -> Builder {
+            var next = _handoffs
+            repeat next.append(AnyHandoffConfiguration(targetAgent: each targets))
+            return try assigningHandoffs(next)
         }
 
         /// Builds an agent from the configured compatibility values.
         ///
         /// - Throws: `ToolRegistryError.duplicateToolName` if duplicate tool names are provided.
+        /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if two handoffs share
+        ///   an effective tool name.
+        /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if a handoff's
+        ///   effective name equals a registered tool name.
         public func build() throws -> Agent {
             try Agent(
                 tools: _tools,
@@ -211,6 +235,16 @@ public extension Agent {
         private var _outputGuardrails: [any OutputGuardrail] = []
         private var _guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default
         private var _handoffs: [AnyHandoffConfiguration] = []
+
+        private func assigningHandoffs(_ handoffs: [AnyHandoffConfiguration]) throws -> Builder {
+            try HandoffIdentity.validate(
+                handoffs: handoffs,
+                toolNames: Set(_tools.map(\.name))
+            )
+            var copy = self
+            copy._handoffs = handoffs
+            return copy
+        }
     }
 }
 
@@ -282,10 +316,13 @@ public extension Agent {
     ///
     /// Example:
     /// ```swift
-    /// let triage = Agent(
+    /// let triage = try Agent(
     ///     name: "Triage",
     ///     instructions: "Route requests",
-    ///     handoffAgents: [billingAgent, supportAgent]
+    ///     handoffs: [
+    ///         billingAgent.asHandoff { $0.name("handoff_to_billing") },
+    ///         supportAgent.asHandoff { $0.name("handoff_to_support") },
+    ///     ]
     /// )
     /// ```
     ///
@@ -302,6 +339,10 @@ public extension Agent {
     ///   - guardrailRunnerConfiguration: Guardrail runner config. Default: .default
     ///   - handoffAgents: Agents to use as handoff targets.
     /// - Throws: `ToolRegistryError.duplicateToolName` if duplicate tool names are provided.
+    /// - Throws: ``AgentError/duplicateHandoffToolName(name:)`` if two agents share
+    ///   an effective handoff tool name (for example two ``Agent`` values).
+    /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if a handoff's
+    ///   effective name equals a registered tool name.
     init(
         name: String,
         instructions: String = "",

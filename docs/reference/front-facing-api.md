@@ -147,7 +147,7 @@ try Agent(
 )
 ```
 
-Effective handoff tool names must be unique among themselves and must not equal a registered tool `name` (enabled or not). Two `Agent` values passed as `handoffAgents:` without overrides collide as `handoff_to_agent` and throw `AgentError.duplicateHandoffToolName`. A colliding tool throws `AgentError.handoffToolNameCollidesWithTool`. Give each handoff a distinct `toolNameOverride` when targets share a runtime type.
+Effective handoff tool names must be unique among themselves and must not equal a registered tool `name` (enabled or not). Two `Agent` values passed as `handoffAgents:` without overrides collide as `handoff_to_agent` and throw `AgentError.duplicateHandoffToolName`. A colliding tool throws `AgentError.handoffToolNameCollidesWithTool`. The same checks run on `withHandoffs`, `withTools`, and `Agent.Builder` handoff setters. Give each handoff a distinct `toolNameOverride` when targets share a runtime type.
 
 ## 4) Agent (V3 canonical init with @ToolBuilder)
 
@@ -717,7 +717,7 @@ the legacy marker protocols.
 
 Agents passed via the `handoffs` or `handoffAgents` init parameters are automatically wrapped as tool calls. The LLM can invoke them to delegate control.
 
-Default names come from the target runtime type (`handoff_to_` + snake_case of `type(of:)`). `Agent` initialization rejects duplicate effective names (`AgentError.duplicateHandoffToolName`) and names that collide with a registered tool (`AgentError.handoffToolNameCollidesWithTool`), including disabled tools. After that check, the in-loop handoff map keeps the first entry if a name were ever repeated.
+Default names come from the target runtime type (`handoff_to_` + snake_case of `type(of:)`). `Agent` initialization, `withHandoffs`, `withTools`, and `Agent.Builder` handoff setters reject duplicate effective names (`AgentError.duplicateHandoffToolName`) and names that collide with a registered tool (`AgentError.handoffToolNameCollidesWithTool`), including disabled tools. After that check, the in-loop handoff map keeps the first entry if a name were ever repeated.
 
 `AnyHandoffConfiguration` and `HandoffConfiguration` store a ``HandoffHistory`` value (`none`, `nested`, or `summarized(maxTokens:)`) so history strategy survives type erasure. ``nestHandoffHistory`` remains available as a derived boolean for source compatibility.
 
@@ -727,10 +727,14 @@ let agent = try Agent("Route requests to the right specialist.") {
     // tools
 }
 
-// With handoff agents (convenience init)
+// Distinct overrides when targets share a runtime type
 let triage = try Agent(
-    instructions: "Route requests.",
-    handoffAgents: [billingAgent, supportAgent, salesAgent]
+    "Route requests.",
+    handoffs: [
+        billingAgent.asHandoff { $0.name("handoff_to_billing") },
+        supportAgent.asHandoff { $0.name("handoff_to_support") },
+        salesAgent.asHandoff { $0.name("handoff_to_sales") },
+    ]
 )
 
 // Typed options preserve summarized history after erasure
