@@ -157,7 +157,7 @@ a provider on every agent.
 
 | Provider | Use it when |
 |---|---|
-| Apple Foundation Models | You want on-device inference, or OS 27 Private Cloud Compute via `.foundationModels(model:)` |
+| Apple Foundation Models | You want on-device inference, OS 27 Private Cloud Compute via `.foundationModels(model:)`, or owned-loop `reasoningLevel` |
 | Ollama or LM Studio | You want a local HTTP model for development or private deployments |
 | OpenAI, Azure, or OpenRouter | You want a cloud model through an OpenAI-compatible API |
 | Custom provider | You need another model backend or an internal service |

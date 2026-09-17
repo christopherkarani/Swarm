@@ -92,6 +92,17 @@ struct FoundationModelsOS27AdapterTests {
         }
     }
 
+    @Test("configuration carries an optional Swarm reasoning level")
+    func configurationCarriesReasoningLevel() {
+        let empty = FoundationModelsProviderConfiguration()
+        #expect(empty.reasoningLevel == nil)
+        let deep = FoundationModelsProviderConfiguration(reasoningLevel: .deep)
+        #expect(deep.reasoningLevel == .deep)
+        #expect(FoundationModelsReasoningLevel.allCases.map(\.rawValue) == [
+            "light", "moderate", "deep",
+        ])
+    }
+
     @Test("specific tool choice still names the tool in the prompt")
     func specificToolChoiceStaysInPrompt() {
         let schema = ToolSchema(name: "lookup", description: "Look up", parameters: [])
@@ -222,6 +233,40 @@ struct FoundationModelsOS27AdapterTests {
         let generation = FoundationModelsGenerationOptions.make(from: options)
         #expect(generation.toolCallingMode == .required)
         #expect(generation.samplingMode == .greedy)
+    }
+
+    @Test("specific tool choice maps to allowed because Apple has no specific mode")
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    func specificToolChoiceMapsToAllowed() {
+        #expect(
+            FoundationModelsGenerationOptions.toolCallingMode(for: .specific(toolName: "lookup"))
+                == .allowed
+        )
+    }
+
+    @Test("Swarm reasoning levels map onto Apple ContextOptions.ReasoningLevel")
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    func reasoningLevelsMapToAppleContextOptions() {
+        #expect(FoundationModelsReasoningLevel.light.appleReasoningLevel == .light)
+        #expect(FoundationModelsReasoningLevel.moderate.appleReasoningLevel == .moderate)
+        #expect(FoundationModelsReasoningLevel.deep.appleReasoningLevel == .deep)
+        #expect(FoundationModelsReasoningLevel.deep.contextOptions.reasoningLevel == .deep)
+    }
+
+    @Test("owned-loop reads reasoningLevel from configuration")
+    @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+    func ownedLoopReadsReasoningLevel() {
+        #if os(tvOS) || os(watchOS)
+        return
+        #else
+        let provider = FoundationModelsInferenceProvider(
+            configuration: .init(reasoningLevel: .moderate),
+            ownsToolLoop: true
+        )
+        #expect(provider.ownedLoopReasoningLevel == .moderate)
+        let capture = FoundationModelsInferenceProvider()
+        #expect(capture.ownedLoopReasoningLevel == nil)
+        #endif
     }
     #endif
 }

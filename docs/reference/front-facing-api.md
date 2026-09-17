@@ -910,6 +910,10 @@ Opt in to a provider-owned tool loop with
 by constructing ``InferenceProvider/foundationModelsOwningToolLoop()``.
 Capture remains the default. Structured outputs use guided generation when
 the JSON Schema maps; otherwise prompt+parse.
+OS 27 owned-loop can set ``FoundationModelsProviderConfiguration/reasoningLevel``
+(Swarm ``FoundationModelsReasoningLevel``, not Apple `ContextOptions`).
+``ToolChoice/specific(toolName:)`` has no Apple `ToolCallingMode` case and
+stays a prompt sentence.
 See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`

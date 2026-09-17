@@ -45,6 +45,17 @@ let agent = try Agent("Be helpful.", configuration: config,
 | Mid-loop checkpoints | Yes | **No** |
 | Per-turn guardrail interception | Yes (wraps Swarm's loop) | **No** — input/tool guardrails run **inside** each tool body |
 
+On OS 27, set ``FoundationModelsProviderConfiguration/reasoningLevel`` to
+``FoundationModelsReasoningLevel/light``, ``moderate``, or ``deep``. Owned-loop
+`respond` / `streamResponse` pass Apple `ContextOptions(reasoningLevel:)`.
+Capture ignores the overlay for now. The Swarm enum is not Apple's
+`ContextOptions` type.
+
+Apple `GenerationOptions.ToolCallingMode` is `allowed` / `disallowed` /
+`required` only. ``ToolChoice/specific(toolName:)`` has no Apple case — Swarm
+keeps the prompt sentence that names the tool and maps the generation mode to
+`.allowed`.
+
 Native mode exists so you can take Apple's session loop for multi-round tools
 and transcript reuse. Capture stays the default because Swarm-side control
 (guardrails, checkpoints, memory injection) is the framework's differentiator.
