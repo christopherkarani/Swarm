@@ -227,7 +227,10 @@ public struct Agent: AgentRuntime, Sendable {
     /// ```swift
     /// let agent = try Agent(
     ///     "Route requests to the right specialist.",
-    ///     handoffs: [billingAgent.asHandoff(), supportAgent.asHandoff()]
+    ///     handoffs: [
+    ///         billingAgent.asHandoff { $0.name("handoff_to_billing") },
+    ///         supportAgent.asHandoff { $0.name("handoff_to_support") },
+    ///     ]
     /// )
     /// ```
     ///
