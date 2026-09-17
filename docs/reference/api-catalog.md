@@ -2915,10 +2915,6 @@ Experimental adapter wrapping a user `FoundationModels.Tool` as a Swarm `AnyJSON
 | 291 | class | public | ProfileMode | `public final class ProfileMode<Mode>` |
 | 314 | struct | public | ModeSwitchingDynamicProfile | `public struct ModeSwitchingDynamicProfile<Mode>` |
 
-### Providers/LanguageModelSession.swift
-
-Apple's `LanguageModelSession` is not an `InferenceProvider`. Use ``FoundationModelsInferenceProvider``.
-
 ### Providers/MultiProvider.swift
 
 | Line | Kind | Access | Name | Signature |
