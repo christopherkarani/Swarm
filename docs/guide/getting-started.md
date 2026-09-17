@@ -185,6 +185,14 @@ guard let provider = FoundationModelsInferenceProvider.ifAvailable() else {
 let agent = try Agent("You are helpful.", inferenceProvider: provider)
 ```
 
+`ifAvailable()` is `nil` when ``FoundationModelsInferenceProvider/isAvailable`` is
+`false`. That boolean is ``availability`` `==` ``FoundationModelsAvailability/available``.
+Switch on ``FoundationModelsInferenceProvider/availability`` when you need the
+reason (`.deviceNotEligible`, `.appleIntelligenceNotEnabled`, `.modelNotReady`,
+or `.unrecognized` for an Apple reason this SDK does not know). Without the
+FoundationModels framework (Linux), there is no provider type — treat availability
+as `.unavailable(.frameworkUnavailable)`.
+
 ### OpenAI-compatible remote provider (Linux / no Apple Intelligence)
 
 Same agent loop, `URLSession` only. Prompt content is sent to `baseURL` —
@@ -475,6 +483,14 @@ custom backend:
 ```swift
 // On-device Apple Foundation Models (private, native tool calling)
 let agent = try Agent("You are helpful.", inferenceProvider: .foundationModels())
+
+// OS 27 reasoning intensity (ignored on OS 26; nil leaves Apple's default)
+let reasoned = try Agent(
+    "You are helpful.",
+    inferenceProvider: .foundationModels(
+        configuration: FoundationModelsProviderConfiguration(reasoningLevel: .deep)
+    )
+)
 
 // Swarm DynamicProfile (not Apple's LanguageModelSession.DynamicProfile):
 // switch instructions/tools/history per capture turn.

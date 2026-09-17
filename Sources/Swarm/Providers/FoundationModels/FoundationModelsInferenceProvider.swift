@@ -17,15 +17,39 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
     public var instructions: String?
 
     /// When true, prewarms the model after session creation.
+    ///
+    /// Defaults to `false`. Capture stays flag-only; an owned-loop provider on
+    /// OS 27 prewarms each new session even when this is false.
     public var prewarmOnInit: Bool
 
+    /// On-device reasoning intensity for OS 27 Foundation Models.
+    ///
+    /// `nil` leaves Apple's default. Ignored on OS 26. Maps onto
+    /// `ContextOptions.reasoningLevel` (``FoundationModelsReasoningLevel/light``,
+    /// ``FoundationModelsReasoningLevel/moderate``,
+    /// ``FoundationModelsReasoningLevel/deep``).
+    /// Not a field on cross-provider ``InferenceOptions``.
+    public var reasoningLevel: FoundationModelsReasoningLevel?
+
     /// Creates a configuration.
-    public init(instructions: String? = nil, prewarmOnInit: Bool = false) {
+    ///
+    /// - Parameters:
+    ///   - instructions: Optional system instructions applied to each session.
+    ///   - prewarmOnInit: When true, prewarms the model after session creation.
+    ///     Defaults to `false`. Capture stays opt-in; owned-loop on OS 27
+    ///     always prewarms.
+    ///   - reasoningLevel: OS 27 reasoning intensity. `nil` leaves Apple's default.
+    public init(
+        instructions: String? = nil,
+        prewarmOnInit: Bool = false,
+        reasoningLevel: FoundationModelsReasoningLevel? = nil
+    ) {
         self.instructions = instructions
         self.prewarmOnInit = prewarmOnInit
+        self.reasoningLevel = reasoningLevel
     }
 
-    /// Default configuration with no instructions and no prewarm.
+    /// Default configuration with no instructions, no prewarm, and Apple's reasoning default.
     public static let `default` = FoundationModelsProviderConfiguration()
 }
 
@@ -128,9 +152,25 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     private let ownsToolLoop: Bool
     let nativeSessionStore = FoundationModelsNativeSessionStore()
 
+    /// OS 27 reasoning level from configuration. Readable from the native-session file.
+    var configuredReasoningLevel: FoundationModelsReasoningLevel? {
+        configuration.reasoningLevel
+    }
+
+    /// On-device Foundation Models availability for this process.
+    ///
+    /// Switch on the result when you need the reason the model is missing.
+    /// ``isAvailable`` is `true` exactly when this value is
+    /// ``FoundationModelsAvailability/available``.
+    public static var availability: FoundationModelsAvailability {
+        FoundationModelsAvailabilityMapping.map(SystemLanguageModel.default.availability)
+    }
+
     /// Whether the system language model is currently available on this device.
+    ///
+    /// Equivalent to ``availability`` `==` ``FoundationModelsAvailability/available``.
     public static var isAvailable: Bool {
-        SystemLanguageModel.default.availability == .available
+        availability == .available
     }
 
     /// Creates a provider when Foundation Models are available; otherwise `nil`.
@@ -214,7 +254,12 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             )
             do {
                 var previous = ""
-                for try await snapshot in session.streamResponse(to: promptText, options: generationOptions) {
+                for try await snapshot in FoundationModelsContextOptions.streamResponse(
+                    session,
+                    to: promptText,
+                    options: generationOptions,
+                    reasoningLevel: configuration.reasoningLevel
+                ) {
                     let current = snapshot.content
                     let delta: String
                     if current.hasPrefix(previous) {
@@ -350,7 +395,12 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         let startCount = session.transcript.count
 
         do {
-            let response = try await session.respond(to: prompt, options: generationOptions)
+            let response = try await FoundationModelsContextOptions.respond(
+                session,
+                to: prompt,
+                options: generationOptions,
+                reasoningLevel: configuration.reasoningLevel
+            )
             let turnEntries = Array(session.transcript.dropFirst(startCount))
             if let captured = await FoundationModelsToolBridge.inferenceResponse(
                 store: store,
@@ -386,7 +436,12 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                     options: resolved.options
                 )
                 do {
-                    let response = try await retrySession.respond(to: retryPrompt, options: generationOptions)
+                    let response = try await FoundationModelsContextOptions.respond(
+                        retrySession,
+                        to: retryPrompt,
+                        options: generationOptions,
+                        reasoningLevel: configuration.reasoningLevel
+                    )
                     let retryEntries = Array(retrySession.transcript.dropFirst(0))
                     if let captured = await FoundationModelsToolBridge.inferenceResponse(
                         store: store,
@@ -438,11 +493,12 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                 )
                 let session = makeSession(tools: [], instructions: resolved.instructions)
                 let generationOptions = makeGenerationOptions(from: resolved.options)
-                let response = try await session.respond(
+                let response = try await FoundationModelsContextOptions.respond(
+                    session,
                     to: prompt,
                     schema: schema,
-                    includeSchemaInPrompt: true,
-                    options: generationOptions
+                    options: generationOptions,
+                    reasoningLevel: configuration.reasoningLevel
                 )
                 return StructuredOutputResult(
                     format: request.format,
@@ -565,7 +621,12 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             tools: flattenTools,
             options: options
         )
-        let response = try await session.respond(to: prompt, options: generationOptions)
+        let response = try await FoundationModelsContextOptions.respond(
+            session,
+            to: prompt,
+            options: generationOptions,
+            reasoningLevel: configuration.reasoningLevel
+        )
         return (
             applyStopSequences(response.content, options: options),
             FoundationModelsUsageMapping.tokenUsage(from: response)
@@ -587,9 +648,11 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             session = LanguageModelSession(model: model, tools: tools)
         }
 
-        if configuration.prewarmOnInit {
-            session.prewarm(promptPrefix: nil)
-        }
+        FoundationModelsPrewarm.apply(
+            to: session,
+            prewarmOnInit: configuration.prewarmOnInit,
+            ownsToolLoop: ownsToolLoop
+        )
         return session
     }
 
@@ -598,9 +661,11 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         transcript: Transcript
     ) -> LanguageModelSession {
         let session = LanguageModelSession(model: model, tools: tools, transcript: transcript)
-        if configuration.prewarmOnInit {
-            session.prewarm(promptPrefix: nil)
-        }
+        FoundationModelsPrewarm.apply(
+            to: session,
+            prewarmOnInit: configuration.prewarmOnInit,
+            ownsToolLoop: ownsToolLoop
+        )
         return session
     }
 
@@ -742,13 +807,23 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
 #else
 
 /// Stub configuration when FoundationModels is unavailable (e.g. Linux CI).
+///
+/// Field defaults match the Apple configuration so Linux call sites compile.
 public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
     public var instructions: String?
+    /// When true, would prewarm after session creation. Ignored on Linux. Defaults to `false`.
     public var prewarmOnInit: Bool
+    /// OS 27 reasoning intensity. Stored for API parity; ignored without Foundation Models.
+    public var reasoningLevel: FoundationModelsReasoningLevel?
 
-    public init(instructions: String? = nil, prewarmOnInit: Bool = false) {
+    public init(
+        instructions: String? = nil,
+        prewarmOnInit: Bool = false,
+        reasoningLevel: FoundationModelsReasoningLevel? = nil
+    ) {
         self.instructions = instructions
         self.prewarmOnInit = prewarmOnInit
+        self.reasoningLevel = reasoningLevel
     }
 
     public static let `default` = FoundationModelsProviderConfiguration()

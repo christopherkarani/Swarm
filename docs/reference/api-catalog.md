@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 209 (216 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2325
+- Source files scanned: 213 (220 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2340
 
 ## 1. Swarm (entry point)
 
@@ -2838,18 +2838,47 @@ OpenAI-compatible Chat Completions provider (`URLSession` only). Covers OpenAI, 
 | struct | public | OpenAICompatibleProvider | `public struct OpenAICompatibleProvider` |
 | func | public | InferenceProvider.openAICompatible(_:) | `public static func openAICompatible(_ configuration: OpenAICompatibleProviderConfiguration, session: URLSession = .shared) -> OpenAICompatibleProvider` |
 
+### Providers/FoundationModels/FoundationModelsContextOptions.swift
+
+Swarm-owned OS 27 reasoning level. Always compiled (including Linux). Apple `ContextOptions` mapping stays behind `#if canImport(FoundationModels)`.
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 12 | enum | public | FoundationModelsReasoningLevel | `public enum FoundationModelsReasoningLevel` |
+| 14 | case | public | FoundationModelsReasoningLevel.light | `public case light` |
+| 16 | case | public | FoundationModelsReasoningLevel.moderate | `public case moderate` |
+| 18 | case | public | FoundationModelsReasoningLevel.deep | `public case deep` |
+
+### Providers/FoundationModels/FoundationModelsAvailability.swift
+
+Swarm-owned on-device availability. Always compiled (including Linux). Apple `SystemLanguageModel.Availability` mapping stays behind `#if canImport(FoundationModels)`. Without the framework, callers treat availability as `.unavailable(.frameworkUnavailable)`.
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 19 | enum | public | FoundationModelsAvailability | `public enum FoundationModelsAvailability` |
+| 21 | case | public | FoundationModelsAvailability.available | `public case available` |
+| 23 | case | public | FoundationModelsAvailability.unavailable | `public case unavailable(UnavailableReason)` |
+| 26 | enum | public | FoundationModelsAvailability.UnavailableReason | `public enum UnavailableReason` |
+| 28 | case | public | FoundationModelsAvailability.UnavailableReason.deviceNotEligible | `public case deviceNotEligible` |
+| 30 | case | public | FoundationModelsAvailability.UnavailableReason.appleIntelligenceNotEnabled | `public case appleIntelligenceNotEnabled` |
+| 32 | case | public | FoundationModelsAvailability.UnavailableReason.modelNotReady | `public case modelNotReady` |
+| 36 | case | public | FoundationModelsAvailability.UnavailableReason.frameworkUnavailable | `public case frameworkUnavailable` |
+| 38 | case | public | FoundationModelsAvailability.UnavailableReason.unrecognized | `public case unrecognized` |
+
 ### Providers/FoundationModels/FoundationModelsInferenceProvider.swift
 
 First-class on-device Apple Foundation Models path. Gated by `#if canImport(FoundationModels)` and `@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)`.
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 16 | struct | public | FoundationModelsProviderConfiguration | `public struct FoundationModelsProviderConfiguration` |
-| 24 | func | public | FoundationModelsProviderConfiguration.init(instructions:prewarmOnInit:) | `public init(instructions: String? = nil, prewarmOnInit: Bool = false)` |
-| 30 | var | public | FoundationModelsProviderConfiguration.default | `public static let default: FoundationModelsProviderConfiguration` |
+| 15 | struct | public | FoundationModelsProviderConfiguration | `public struct FoundationModelsProviderConfiguration` |
+| 32 | var | public | FoundationModelsProviderConfiguration.reasoningLevel | `public var reasoningLevel: FoundationModelsReasoningLevel?` |
+| 41 | func | public | FoundationModelsProviderConfiguration.init(instructions:prewarmOnInit:reasoningLevel:) | `public init(instructions: String? = nil, prewarmOnInit: Bool = false, reasoningLevel: FoundationModelsReasoningLevel? = nil)` |
+| 52 | var | public | FoundationModelsProviderConfiguration.default | `public static let default: FoundationModelsProviderConfiguration` |
 | 82 | struct | public | FoundationModelsInferenceProvider | `public struct FoundationModelsInferenceProvider` |
-| 94 | var | public | FoundationModelsInferenceProvider.isAvailable | `public static var isAvailable: Bool { get }` |
-| 99 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider?` |
+| 164 | var | public | FoundationModelsInferenceProvider.availability | `public static var availability: FoundationModelsAvailability { get }` |
+| 171 | var | public | FoundationModelsInferenceProvider.isAvailable | `public static var isAvailable: Bool { get }` |
+| 176 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider?` |
 | 112 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil)` |
 | 487 | func | public | InferenceProvider.foundationModels(configuration:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |
 | 493 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default) -> FoundationModelsInferenceProvider` |

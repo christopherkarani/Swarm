@@ -842,6 +842,18 @@ Opt in to a provider-owned tool loop with
 by constructing ``InferenceProvider/foundationModelsOwningToolLoop()``.
 Capture remains the default. Structured outputs use guided generation when
 the JSON Schema maps; otherwise prompt+parse.
+On OS 27, ``FoundationModelsProviderConfiguration/reasoningLevel``
+(``FoundationModelsReasoningLevel/light``,
+``FoundationModelsReasoningLevel/moderate``,
+``FoundationModelsReasoningLevel/deep``) is passed as `contextOptions:`.
+`nil` leaves Apple's default and is ignored on OS 26. This is not a field on
+``InferenceOptions``.
+``FoundationModelsInferenceProvider/availability`` is the on-device
+``FoundationModelsAvailability`` enum. ``isAvailable`` remains
+`availability == .available`. Without FoundationModels, callers should treat
+availability as ``FoundationModelsAvailability/unavailable(_:)``
+``.frameworkUnavailable``; there is no Linux provider stub. PCC quota reasons
+are not on this enum.
 See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`

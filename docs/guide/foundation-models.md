@@ -75,7 +75,12 @@ checkpoints do not fire.
 
 ## Availability
 
-Requires macOS/iOS 26+ with Apple Intelligence available. Linux and CI use
+Requires macOS/iOS 26+ with Apple Intelligence available. Switch on
+``FoundationModelsInferenceProvider/availability``
+(``FoundationModelsAvailability``) for the reason; ``isAvailable`` is
+`availability == .available`. Without FoundationModels (Linux), treat
+availability as `.unavailable(.frameworkUnavailable)` — there is no Linux
+provider stub. Linux and CI use
 ``OpenAICompatibleProvider`` (see [Remote Providers](remote-providers.md)) or
 capture-equivalent mock providers. ``.foundationModelsOwningToolLoop()`` still
 constructs; the first ``generateWithToolCalls`` / ``streamWithToolCalls``

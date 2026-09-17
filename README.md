@@ -40,7 +40,12 @@ print(result.output)
 
 The example uses Apple Foundation Models on supported devices. Use an
 OpenAI-compatible provider, Ollama, a mock provider, or the deterministic
-examples when Foundation Models is unavailable.
+examples when Foundation Models is unavailable. Switch on
+`FoundationModelsInferenceProvider.availability` when you need the reason;
+`isAvailable` stays `availability == .available`. On OS 27, pass
+`FoundationModelsProviderConfiguration(reasoningLevel:)` (`.light` /
+`.moderate` / `.deep`) for on-device reasoning; `nil` leaves Apple's default
+and is ignored on OS 26.
 
 ## Install
 

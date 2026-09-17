@@ -370,7 +370,12 @@ extension FoundationModelsInferenceProvider {
                 content = applyStopSequences(streamed.content, options: resolved.options)
                 usage = streamed.usage
             } else {
-                let response = try await session.respond(to: prompt, options: generationOptions)
+                let response = try await FoundationModelsContextOptions.respond(
+                    session,
+                    to: prompt,
+                    options: generationOptions,
+                    reasoningLevel: configuredReasoningLevel
+                )
                 content = applyStopSequences(response.content, options: resolved.options)
                 usage = FoundationModelsUsageMapping.tokenUsage(from: response)
             }
@@ -426,7 +431,12 @@ extension FoundationModelsInferenceProvider {
     ) async throws -> (content: String, usage: TokenUsage?) {
         var previous = ""
         var usage: TokenUsage?
-        for try await snapshot in session.streamResponse(to: prompt, options: options) {
+        for try await snapshot in FoundationModelsContextOptions.streamResponse(
+            session,
+            to: prompt,
+            options: options,
+            reasoningLevel: configuredReasoningLevel
+        ) {
             try Task.checkCancellation()
             let current = snapshot.content
             let delta: String
