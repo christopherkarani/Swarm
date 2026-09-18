@@ -40,21 +40,23 @@ struct AgentTurnTranscript: Sendable, Equatable {
         }
 
         init(_ message: InferenceMessage) {
-            switch message.role {
-            case .system: self = .system(message.content)
-            case .user: self = .user(message.content)
-            case .assistant:
+            switch message.body {
+            case let .system(content):
+                self = .system(content)
+            case let .user(content):
+                self = .user(content)
+            case let .assistant(content, toolCalls):
                 self = .assistant(
-                    message.content,
-                    toolCalls: message.toolCalls.map {
+                    content,
+                    toolCalls: toolCalls.map {
                         InferenceResponse.ParsedToolCall(id: $0.id, name: $0.name, arguments: $0.arguments)
                     }
                 )
-            case .tool:
+            case let .tool(name, content, toolCallID):
                 self = .toolResult(
-                    toolName: message.name ?? "previous",
-                    result: message.content,
-                    toolCallID: message.toolCallID
+                    toolName: name,
+                    result: content,
+                    toolCallID: toolCallID
                 )
             }
         }
