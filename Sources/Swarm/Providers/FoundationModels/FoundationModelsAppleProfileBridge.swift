@@ -163,13 +163,15 @@ extension FoundationModelsAppleProfileBridge {
             return .prompt(
                 Transcript.Prompt(
                     id: UUID().uuidString,
-                    segments: [textSegment(text)]
+                    segments: [textSegment(text)],
+                    options: GenerationOptions()
                 )
             )
         case let .response(text):
             return .response(
                 Transcript.Response(
                     id: UUID().uuidString,
+                    assetIDs: [],
                     segments: [textSegment(text)]
                 )
             )

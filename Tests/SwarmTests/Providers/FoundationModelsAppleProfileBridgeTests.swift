@@ -84,6 +84,29 @@ struct FoundationModelsAppleProfileBridgeTests {
         ])
     }
 
+    @Test("rehydrate pending prompt keeps ToolChoice.specific suffix")
+    func rehydratePendingPromptKeepsSpecificToolChoice() {
+        let seed = FoundationModelsAppleProfileBridge.seed(
+            messages: [
+                .user("look it up"),
+                .assistant("thinking"),
+                .user("thanks"),
+            ],
+            instructions: nil
+        )
+        #expect(seed.canRehydrateTranscript)
+        #expect(seed.pendingPrompt == "thanks")
+
+        let lookup = ToolSchema(name: "lookup", description: "Look up", parameters: [])
+        let prompt = FoundationModelsPromptFlattening.appendTurnSuffixes(
+            to: seed.pendingPrompt,
+            tools: [lookup],
+            options: InferenceOptions(toolChoice: .specific(toolName: "lookup"))
+        )
+        #expect(prompt.contains(#"call "lookup""#))
+        #expect(prompt.hasPrefix("thanks"))
+    }
+
     @Test("does not alias Swarm Profile onto Apple DynamicProfile")
     func swarmTypesStaySwarmTypes() {
         let profile = Profile(id: "review", instructions: "Be precise.", history: .dropToolTranscript)
