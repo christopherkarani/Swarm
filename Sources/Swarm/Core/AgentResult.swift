@@ -210,13 +210,19 @@ extension AgentResult {
             return self
         }
 
-        /// Appends a completed invocation and removes the first pending call
-        /// with the same ID, if one is still waiting.
+        /// Appends a completed invocation and removes its pending counterpart.
+        ///
+        /// Prefers the pending ``ToolCall`` equal to ``ToolInvocation/call`` so a
+        /// later same-ID sibling is not cleared. If that exact call is not
+        /// pending, removes the first pending call with the same ID so
+        /// ``addToolResult(_:)`` cannot pair the completed work twice.
         @discardableResult
         package func addInvocation(_ invocation: ToolInvocation) -> Builder {
             lock.lock()
             defer { lock.unlock() }
-            if let index = pendingCalls.firstIndex(where: { $0.id == invocation.call.id }) {
+            if let index = pendingCalls.firstIndex(of: invocation.call)
+                ?? pendingCalls.firstIndex(where: { $0.id == invocation.call.id })
+            {
                 pendingCalls.remove(at: index)
             }
             completedInvocations.append(invocation)

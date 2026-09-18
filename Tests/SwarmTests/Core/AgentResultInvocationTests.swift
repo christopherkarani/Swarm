@@ -105,6 +105,29 @@ struct AgentResultInvocationTests {
         #expect(result.invocations[0].result.output == .int(2))
     }
 
+    @Test("addInvocation removes the exact pending call when two share a call ID")
+    func addInvocationRemovesExactPendingAmongDuplicateIDs() {
+        let builder = AgentResult.Builder()
+        let callID = UUID()
+        let first = ToolCall(id: callID, toolName: "first")
+        let second = ToolCall(id: callID, toolName: "second")
+        _ = builder.addToolCall(first)
+        _ = builder.addToolCall(second)
+        _ = builder.addInvocation(
+            ToolInvocation(call: second, duration: .zero, outcome: .success(.int(2)))
+        )
+        _ = builder.addToolResult(
+            ToolResult.success(callId: callID, output: .int(1), duration: .zero)
+        )
+
+        let result = builder.build()
+        #expect(result.invocations.count == 2)
+        #expect(result.invocations[0].call.toolName == "second")
+        #expect(result.invocations[0].result.output == .int(2))
+        #expect(result.invocations[1].call.toolName == "first")
+        #expect(result.invocations[1].result.output == .int(1))
+    }
+
     private var providerResolutionSourceURL: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
