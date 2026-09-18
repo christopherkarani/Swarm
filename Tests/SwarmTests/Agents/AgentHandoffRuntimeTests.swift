@@ -472,6 +472,49 @@ struct AgentHandoffRuntimeTests {
         #expect(!handoffResult.isSuccess)
         #expect(handoffResult.errorMessage == "Handoff is not enabled")
     }
+
+    @Test("Unique handoff name overrides execute two Agent targets without trapping")
+    func uniqueHandoffNameOverridesExecuteTwoAgentTargets() async throws {
+        let sourceProvider = MockInferenceProvider()
+        await sourceProvider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(
+                        id: "call_handoff",
+                        name: "handoff_to_billing",
+                        arguments: ["reason": .string("invoice")]
+                    ),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let billing = try Agent(
+            "Handle billing.",
+            configuration: AgentConfiguration(name: "billing", defaultTracingEnabled: false),
+            inferenceProvider: MockInferenceProvider(responses: ["billing handled"])
+        )
+        let support = try Agent(
+            "Handle support.",
+            configuration: AgentConfiguration(name: "support", defaultTracingEnabled: false),
+            inferenceProvider: MockInferenceProvider(responses: ["support handled"])
+        )
+        let triage = try Agent(
+            "Route requests.",
+            configuration: AgentConfiguration(name: "triage", defaultTracingEnabled: false),
+            inferenceProvider: sourceProvider,
+            handoffs: [
+                AnyHandoffConfiguration(targetAgent: billing, toolNameOverride: "handoff_to_billing"),
+                AnyHandoffConfiguration(targetAgent: support, toolNameOverride: "handoff_to_support"),
+            ]
+        )
+
+        let result = try await triage.run("invoice question")
+
+        #expect(result.output == "billing handled")
+    }
 }
 
 private actor HandoffPredicateGate {

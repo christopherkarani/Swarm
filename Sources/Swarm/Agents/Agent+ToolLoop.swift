@@ -762,7 +762,8 @@ extension Agent {
         startTime: ContinuousClock.Instant
     ) async throws -> FinalAssistantResponse? {
         let handoffMap = Dictionary(
-            uniqueKeysWithValues: _handoffs.map { ($0.effectiveToolName, $0) }
+            _handoffs.map { ($0.effectiveToolName, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
 
         let assistantContent = AgentTurnKernel.assistantContent(for: response)

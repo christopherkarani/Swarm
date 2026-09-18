@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 209 (216 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2325
+- Source files scanned: 211 (218 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2327
 
 ## 1. Swarm (entry point)
 
@@ -140,7 +140,9 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 81 | case | public | AgentError.internalError(reason:) | `public case internalError(reason: String)` |
 | 84 | case | public | AgentError.toolCallingUnsupported | `public case toolCallingUnsupported` |
 | 593 | case | public | AgentError.providerOwnedToolLoopRequiresExecutor | `public case providerOwnedToolLoopRequiresExecutor` |
-| 628 | func | public | AgentError.==(_:_:) | `public static func == (lhs: AgentError, rhs: AgentError) -> Bool` |
+| 366 | case | public | AgentError.duplicateHandoffToolName(name:) | `public case duplicateHandoffToolName(name: String)` |
+| 380 | case | public | AgentError.handoffToolNameCollidesWithTool(name:) | `public case handoffToolNameCollidesWithTool(name: String)` |
+| 672 | func | public | AgentError.==(_:_:) | `public static func == (lhs: AgentError, rhs: AgentError) -> Bool` |
 | 90 | var | public | AgentError.errorDescription | `public var errorDescription: String? { get }` |
 | 139 | var | public | AgentError.recoverySuggestion | `public var recoverySuggestion: String? { get }` |
 | 152 | var | public | AgentError.debugDescription | `public var debugDescription: String { get }` |
@@ -1122,6 +1124,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 111 | func | public | Agent.init(_:tools:instructions:configuration:memory:tracer:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:) | `public init(_ inferenceProvider: any InferenceProvider, tools: [any AnyJSONTool] = [], instructions: String = "", configuration: AgentConfiguration = .default, memory: (any Memory)? = nil, tracer: (any Tracer)? = nil, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffs: [AnyHandoffConfiguration] = []) throws` |
 | 150 | func | public | Agent.init(tools:instructions:configuration:memory:inferenceProvider:tracer:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:) | `public init(tools: [some Tool] = [], instructions: String = "", configuration: AgentConfiguration = .default, memory: (any Memory)? = nil, inferenceProvider: (any InferenceProvider)? = nil, tracer: (any Tracer)? = nil, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffs: [AnyHandoffConfiguration] = []) throws` |
 | 203 | func | public | Agent.init(tools:instructions:configuration:memory:inferenceProvider:tracer:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffAgents:) | `public init(tools: [any AnyJSONTool] = [], instructions: String = "", configuration: AgentConfiguration = .default, memory: (any Memory)? = nil, inferenceProvider: (any InferenceProvider)? = nil, tracer: (any Tracer)? = nil, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffAgents: [any AgentRuntime]) throws` |
+| 647 | func | public | Agent.withHandoffs(_:) | `public @discardableResult func withHandoffs(_ agents: [any AgentRuntime]) throws -> Agent` |
 | 260 | func | public | Agent.init(_:configuration:memory:inferenceProvider:tracer:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:tools:) | `public init(_ instructions: String, configuration: AgentConfiguration = .default, memory: (any Memory)? = nil, inferenceProvider: (any InferenceProvider)? = nil, tracer: (any Tracer)? = nil, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffs: [AnyHandoffConfiguration] = [], @ToolBuilder tools: () -> [any AnyJSONTool] = { [] }) throws` |
 | 1130 | func | public | Agent.makeDefaultMemory() | `public static func makeDefaultMemory() throws -> any Memory` _(Integrations: `DefaultAgentMemory`; lean: `SlidingWindowMemory`)_ |
 | 295 | func | public | Agent.run(_:session:observer:) | `public func run(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResult` |
@@ -1146,10 +1149,10 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 1402 | func | public | Agent.Builder.outputGuardrails(_:) | `public @discardableResult func outputGuardrails(_ guardrails: [any OutputGuardrail]) -> Agent.Builder` |
 | 1412 | func | public | Agent.Builder.addOutputGuardrail(_:) | `public @discardableResult func addOutputGuardrail(_ guardrail: any OutputGuardrail) -> Agent.Builder` |
 | 1422 | func | public | Agent.Builder.guardrailRunnerConfiguration(_:) | `public @discardableResult func guardrailRunnerConfiguration(_ configuration: GuardrailRunnerConfiguration) -> Agent.Builder` |
-| 1432 | func | public | Agent.Builder.handoffs(_:) | `public @discardableResult func handoffs(_ handoffs: [AnyHandoffConfiguration]) -> Agent.Builder` |
-| 1442 | func | public | Agent.Builder.addHandoff(_:) | `public @discardableResult func addHandoff(_ handoff: AnyHandoffConfiguration) -> Agent.Builder` |
-| 1457 | func | public | Agent.Builder.handoff(to:configure:) | `public @discardableResult func handoff<Target>(to target: Target, configure: (HandoffOptions<Target>) -> HandoffOptions<Target> = { $0 }) -> Agent.Builder where Target : AgentRuntime` |
-| 1476 | func | public | Agent.Builder.handoffs(_:) | `public @discardableResult func handoffs<each Target>(_ targets: repeat each Target) -> Agent.Builder where repeat each Target : AgentRuntime` |
+| 1432 | func | public | Agent.Builder.handoffs(_:) | `public @discardableResult func handoffs(_ handoffs: [AnyHandoffConfiguration]) throws -> Agent.Builder` |
+| 1442 | func | public | Agent.Builder.addHandoff(_:) | `public @discardableResult func addHandoff(_ handoff: AnyHandoffConfiguration) throws -> Agent.Builder` |
+| 1457 | func | public | Agent.Builder.handoff(to:configure:) | `public @discardableResult func handoff<Target>(to target: Target, configure: (HandoffOptions<Target>) -> HandoffOptions<Target> = { $0 }) throws -> Agent.Builder where Target : AgentRuntime` |
+| 1476 | func | public | Agent.Builder.handoffs(_:) | `public @discardableResult func handoffs<each Target>(_ targets: repeat each Target) throws -> Agent.Builder where repeat each Target : AgentRuntime` |
 | 1485 | func | public | Agent.Builder.build() | `public func build() throws -> Agent` |
 | 1542 | func | public | Agent.init(name:instructions:tools:inferenceProvider:memory:tracer:configuration:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:) | `public init(name: String, instructions: String = "", tools: [any AnyJSONTool] = [], inferenceProvider: (any InferenceProvider)? = nil, memory: (any Memory)? = nil, tracer: (any Tracer)? = nil, configuration: AgentConfiguration = .default, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffs: [AnyHandoffConfiguration] = []) throws` |
 | 1604 | func | public | Agent.init(name:instructions:tools:inferenceProvider:memory:tracer:configuration:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffAgents:) | `public init(name: String, instructions: String = "", tools: [any AnyJSONTool] = [], inferenceProvider: (any InferenceProvider)? = nil, memory: (any Memory)? = nil, tracer: (any Tracer)? = nil, configuration: AgentConfiguration = .default, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffAgents: [any AgentRuntime]) throws` |

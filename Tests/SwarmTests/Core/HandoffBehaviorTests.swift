@@ -144,6 +144,21 @@ struct HandoffBehaviorTests {
         #expect(erased.history == .nested)
         #expect(disabled.history == .none)
     }
+
+    @Test("Typed and erased effectiveToolName share HandoffToolName derivation")
+    func typedAndErasedEffectiveToolNameShareDerivation() {
+        let target = MockAgentRuntime(
+            instructions: "named-target",
+            configuration: AgentConfiguration(name: "named-target", defaultTracingEnabled: false)
+        )
+        let typed = HandoffConfiguration(targetAgent: target)
+        let erased = AnyHandoffConfiguration(typed)
+        let derived = HandoffToolName(derivedFrom: target, override: nil)
+
+        #expect(typed.effectiveToolName == derived.rawValue)
+        #expect(erased.effectiveToolName == derived.rawValue)
+        #expect(derived.rawValue.hasPrefix("handoff_to_"))
+    }
 }
 
 private actor HandoffCallbackRecorder {

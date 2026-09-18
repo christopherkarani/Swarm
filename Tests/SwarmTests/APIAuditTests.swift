@@ -216,14 +216,18 @@ final class APIAuditTests: XCTestCase {
         let billing = try Agent(name: "Billing", instructions: "Handle billing")
         let support = try Agent(name: "Support", instructions: "Handle support")
 
-        let triage = try Agent(
-            name: "Triage",
-            instructions: "Route requests",
-            handoffAgents: [billing, support]
-        )
-
-        let handoffs = triage.handoffs
-        XCTAssertEqual(handoffs.count, 2)
+        XCTAssertThrowsError(
+            try Agent(
+                name: "Triage",
+                instructions: "Route requests",
+                handoffAgents: [billing, support]
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? AgentError,
+                .duplicateHandoffToolName(name: "handoff_to_agent")
+            )
+        }
     }
 
     func testAgentHandoffAgentsTargetsCorrectAgents() async throws {
@@ -258,9 +262,31 @@ final class APIAuditTests: XCTestCase {
         let support = try Agent(name: "Support", instructions: "Handle support")
         let sales = try Agent(name: "Sales", instructions: "Handle sales")
 
+        XCTAssertThrowsError(
+            try Agent.Builder()
+                .instructions("Route requests")
+                .handoffs(billing, support, sales)
+                .build()
+        ) { error in
+            XCTAssertEqual(
+                error as? AgentError,
+                .duplicateHandoffToolName(name: "handoff_to_agent")
+            )
+        }
+    }
+
+    func testAgentBuilderHandoffsWithUniqueOverridesAddsAllTargets() async throws {
+        let billing = try Agent(name: "Billing", instructions: "Handle billing")
+        let support = try Agent(name: "Support", instructions: "Handle support")
+        let sales = try Agent(name: "Sales", instructions: "Handle sales")
+
         let triage = try Agent.Builder()
             .instructions("Route requests")
-            .handoffs(billing, support, sales)
+            .handoffs([
+                AnyHandoffConfiguration(targetAgent: billing, toolNameOverride: "handoff_to_billing"),
+                AnyHandoffConfiguration(targetAgent: support, toolNameOverride: "handoff_to_support"),
+                AnyHandoffConfiguration(targetAgent: sales, toolNameOverride: "handoff_to_sales"),
+            ])
             .build()
 
         XCTAssertEqual(triage.handoffs.count, 3)

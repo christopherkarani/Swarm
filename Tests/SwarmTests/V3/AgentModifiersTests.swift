@@ -234,16 +234,16 @@ struct AgentModifiersTests {
     func handoffsModifierMultiple() throws {
         let helper1 = try Agent("helper one")
         let helper2 = try Agent("helper two")
-        let agent = try Agent("triage")
-            .withHandoffs([helper1, helper2])
-        #expect(agent.handoffs.count == 2)
+        #expect(throws: AgentError.duplicateHandoffToolName(name: "handoff_to_agent")) {
+            _ = try Agent("triage").withHandoffs([helper1, helper2])
+        }
     }
 
     @Test("handoffs modifier is copy-on-write")
     func handoffsCopyOnWrite() throws {
         let original = try Agent("test")
         let helper = try Agent("helper")
-        let modified = original.withHandoffs([helper])
+        let modified = try original.withHandoffs([helper])
         #expect(original.handoffs.isEmpty)
         #expect(modified.handoffs.count == 1)
     }
