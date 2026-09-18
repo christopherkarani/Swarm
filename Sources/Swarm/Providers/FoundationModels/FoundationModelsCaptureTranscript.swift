@@ -46,7 +46,7 @@ enum FoundationModelsCaptureTranscript: Sendable {
             instructions: instructions,
             seedEntries: entries,
             pendingPrompt: pending,
-            canRehydrate: mapped.canRehydrate
+            canRehydrate: mapped.canRehydrate && messages.last?.role == .user
         )
     }
 

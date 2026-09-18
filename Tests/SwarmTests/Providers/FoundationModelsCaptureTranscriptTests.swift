@@ -50,6 +50,18 @@ struct FoundationModelsCaptureTranscriptTests {
         )
     }
 
+    @Test("history that does not end with a user turn cannot rehydrate")
+    func historyNotEndingWithUserCannotRehydrate() {
+        let seed = FoundationModelsCaptureTranscript.seed(
+            messages: [
+                .user("u1"),
+                .assistant("a1"),
+            ],
+            instructions: nil
+        )
+        #expect(seed.canRehydrate == false)
+    }
+
     @Test("unpaired tool output cannot rehydrate a Transcript")
     func unpairedToolOutputCannotRehydrate() {
         let seed = FoundationModelsCaptureTranscript.seed(
