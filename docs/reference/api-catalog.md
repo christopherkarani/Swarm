@@ -5,13 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-<<<<<<< HEAD
 - Source files scanned: 211 (218 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2327
-=======
-- Source files scanned: 209 (216 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2326
->>>>>>> db6823c7 (Constrain ToolArguments.require and optional to the four-value lattice so unsupported types fail at compile time.)
+- Public/open symbols cataloged: 2328
 
 ## 1. Swarm (entry point)
 
