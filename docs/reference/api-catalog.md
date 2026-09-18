@@ -5,8 +5,13 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
+<<<<<<< HEAD
 - Source files scanned: 211 (218 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2327
+=======
+- Source files scanned: 209 (216 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2326
+>>>>>>> db6823c7 (Constrain ToolArguments.require and optional to the four-value lattice so unsupported types fail at compile time.)
 
 ## 1. Swarm (entry point)
 
@@ -1209,8 +1214,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 10 | var | public | ToolArguments.raw | `public let raw: [String : SendableValue]` |
 | 11 | var | public | ToolArguments.toolName | `public let toolName: String` |
 | 13 | func | public | ToolArguments.init(_:toolName:) | `public init(_ arguments: [String : SendableValue], toolName: String = "tool")` |
-| 19 | func | public | ToolArguments.require(_:as:) | `public func require<T>(_ key: String, as type: T.Type = T.self) throws -> T` |
-| 45 | func | public | ToolArguments.optional(_:as:) | `public func optional<T>(_ key: String, as type: T.Type = T.self) -> T?` |
+| 19 | func | public | ToolArguments.require(_:as:) | `public func require<T: ToolArgumentValue>(_ key: String, as type: T.Type = T.self) throws -> T` |
+| 45 | func | public | ToolArguments.optional(_:as:) | `public func optional<T: ToolArgumentValue>(_ key: String, as type: T.Type = T.self) -> T?` |
 | 57 | func | public | ToolArguments.string(_:default:) | `public func string(_ key: String, default defaultValue: String = "") -> String` |
 | 62 | func | public | ToolArguments.int(_:default:) | `public func int(_ key: String, default defaultValue: Int = 0) -> Int` |
 | 96 | struct | public | FunctionTool | `public struct FunctionTool` |
@@ -1260,6 +1265,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
+| 1194 | protocol | public | ToolArgumentValue | `public protocol ToolArgumentValue : Sendable` _(Lattice: `String`, `Int`, `Double`, `Bool`.)_ |
 | 32 | protocol | public | AnyJSONTool | `public protocol AnyJSONTool : Sendable` |
 | 34 | var | public | AnyJSONTool.name | `public var name: String { get }` |
 | 37 | var | public | AnyJSONTool.description | `public var description: String { get }` |

@@ -1185,10 +1185,25 @@ public struct FunctionTool: AnyJSONTool, Sendable {
 
 // MARK: - ToolArguments
 
+/// Types that ``ToolArguments/require(_:as:)`` and ``ToolArguments/optional(_:as:)``
+/// can extract from a tool-call argument dictionary.
+///
+/// The lattice is `String`, `Int`, `Double`, and `Bool`. Other `Sendable` types
+/// such as `URL` do not conform and fail at compile time. Decoding arbitrary
+/// `Decodable` payloads still uses unconstrained ``SendableValue/decode()``.
+public protocol ToolArgumentValue: Sendable {}
+
+extension String: ToolArgumentValue {}
+extension Int: ToolArgumentValue {}
+extension Double: ToolArgumentValue {}
+extension Bool: ToolArgumentValue {}
+
 /// A convenience wrapper for extracting typed values from tool arguments.
 ///
 /// `ToolArguments` provides a type-safe interface for accessing the raw
 /// `[String: SendableValue]` dictionary passed to tool execution.
+/// ``require(_:as:)`` and ``optional(_:as:)`` are generic over
+/// ``ToolArgumentValue`` only (`String`, `Int`, `Double`, `Bool`).
 ///
 /// ## Usage
 ///
@@ -1207,20 +1222,20 @@ public struct FunctionTool: AnyJSONTool, Sendable {
     ///     // Arguments with defaults
 ///     let roundResult = args.string("round", default: "up")
 ///
-    ///     // Perform calculation...
+///     // Perform calculation...
 ///     return .double(result)
 /// }
 /// ```
 ///
 /// ## Type Support
 ///
-/// The following types are supported for extraction:
+/// Extraction is constrained to ``ToolArgumentValue``:
 /// - `String` - Extracts from `.string` values
 /// - `Int` - Extracts from `.int` values
 /// - `Double` - Extracts from `.double` values
 /// - `Bool` - Extracts from `.bool` values
 ///
-/// - SeeAlso: ``FunctionTool``
+/// - SeeAlso: ``FunctionTool``, ``ToolArgumentValue``
 public struct ToolArguments: Sendable {
     /// The raw arguments dictionary.
     public let raw: [String: SendableValue]
@@ -1238,14 +1253,14 @@ public struct ToolArguments: Sendable {
         self.toolName = toolName
     }
 
-    /// Gets a required argument of the specified type.
+    /// Gets a required argument of the specified ``ToolArgumentValue`` type.
     ///
     /// - Parameters:
     ///   - key: The argument key.
-    ///   - type: The expected type (inferred by default).
+    ///   - type: The expected lattice type (inferred by default).
     /// - Returns: The typed value.
     /// - Throws: ``AgentError/invalidToolArguments`` if missing or wrong type.
-    public func require<T>(_ key: String, as type: T.Type = T.self) throws -> T {
+    public func require<T: ToolArgumentValue>(_ key: String, as type: T.Type = T.self) throws -> T {
         guard let value = raw[key] else {
             throw AgentError.invalidToolArguments(
                 toolName: toolName,
@@ -1270,13 +1285,13 @@ public struct ToolArguments: Sendable {
         return result
     }
 
-    /// Gets an optional argument of the specified type.
+    /// Gets an optional argument of the specified ``ToolArgumentValue`` type.
     ///
     /// - Parameters:
     ///   - key: The argument key.
-    ///   - type: The expected type (inferred by default).
+    ///   - type: The expected lattice type (inferred by default).
     /// - Returns: The typed value, or `nil` if missing or wrong type.
-    public func optional<T>(_ key: String, as type: T.Type = T.self) -> T? {
+    public func optional<T: ToolArgumentValue>(_ key: String, as type: T.Type = T.self) -> T? {
         guard let value = raw[key] else { return nil }
         return switch value {
         case let .string(s) where type == String.self: s as? T

@@ -280,6 +280,11 @@ let greet = FunctionTool(
 }
 ```
 
+`ToolArguments.require` and `optional` extract only `ToolArgumentValue` types:
+`String`, `Int`, `Double`, and `Bool`. Other `Sendable` types such as `URL` do
+not compile. `SendableValue.decode()` remains unconstrained for `Decodable`
+payloads.
+
 `ToolExecutionSemantics.runtimePolicy()` is the public derivation of retry,
 approval, and parallel eligibility. ``ToolExecutionSemantics/automatic`` stays
 approval-free and parallel-eligible. `ParallelToolExecutor` serializes each
