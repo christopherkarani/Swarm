@@ -155,8 +155,10 @@ public struct AgentResult: Sendable, Equatable {
 extension AgentResult {
     /// Builder for constructing AgentResult incrementally during execution.
     ///
-    /// Use this builder to accumulate results as an agent runs, then
-    /// call `build()` to create the final result.
+    /// Tool work is stored as pending ``ToolCall`` values and completed
+    /// ``ToolInvocation`` values. ``addToolResult(_:)`` pairs the first pending
+    /// call with a matching ``ToolResult/callId``. ``build()`` emits completed
+    /// invocations only; unpaired pending calls are omitted.
     package final class Builder: @unchecked Sendable {
         // MARK: Internal
 
@@ -181,31 +183,43 @@ extension AgentResult {
             return self
         }
 
-        /// Adds a tool call.
+        /// Records a pending tool call.
         @discardableResult
         package func addToolCall(_ call: ToolCall) -> Builder {
             lock.lock()
             defer { lock.unlock() }
-            toolCalls.append(call)
+            pendingCalls.append(call)
             return self
         }
 
-        /// Adds a tool result.
+        /// Pairs the first pending call with a matching ``ToolResult/callId``.
+        ///
+        /// A result whose call ID is not pending is ignored and does not
+        /// become a completed invocation.
         @discardableResult
         package func addToolResult(_ result: ToolResult) -> Builder {
             lock.lock()
             defer { lock.unlock() }
-            toolResults.append(result)
+            guard let index = pendingCalls.firstIndex(where: { $0.id == result.callId }) else {
+                return self
+            }
+            let call = pendingCalls.remove(at: index)
+            if let invocation = ToolInvocation(call: call, result: result) {
+                completedInvocations.append(invocation)
+            }
             return self
         }
 
-        /// Adds a paired tool invocation.
+        /// Appends a completed invocation and removes the first pending call
+        /// with the same ID, if one is still waiting.
         @discardableResult
         package func addInvocation(_ invocation: ToolInvocation) -> Builder {
             lock.lock()
             defer { lock.unlock() }
-            toolCalls.append(invocation.call)
-            toolResults.append(invocation.result)
+            if let index = pendingCalls.firstIndex(where: { $0.id == invocation.call.id }) {
+                pendingCalls.remove(at: index)
+            }
+            completedInvocations.append(invocation)
             return self
         }
 
@@ -311,8 +325,7 @@ extension AgentResult {
 
             return AgentResult(
                 output: output,
-                toolCalls: toolCalls,
-                toolResults: toolResults,
+                invocations: completedInvocations,
                 iterationCount: iterationCount,
                 duration: duration,
                 tokenUsage: combinedUsage,
@@ -323,8 +336,8 @@ extension AgentResult {
         // MARK: Private
 
         private var output: String = ""
-        private var toolCalls: [ToolCall] = []
-        private var toolResults: [ToolResult] = []
+        private var pendingCalls: [ToolCall] = []
+        private var completedInvocations: [ToolInvocation] = []
         private var iterationCount: Int = 0
         private var startTime: ContinuousClock.Instant?
         private var tokenUsage: TokenUsage?
