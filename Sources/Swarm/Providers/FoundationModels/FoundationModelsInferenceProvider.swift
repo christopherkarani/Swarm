@@ -657,10 +657,15 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             instructions: instructions
         )
         if seed.canRehydrate {
+            let prompt = FoundationModelsPromptFlattening.appendTurnSuffixes(
+                to: seed.pendingPrompt,
+                tools: flattenTools,
+                options: options
+            )
             if let transcript = FoundationModelsCaptureTranscript.makeTranscript(from: seed.seedEntries) {
-                return (makeSession(tools: tools, transcript: transcript), seed.pendingPrompt)
+                return (makeSession(tools: tools, transcript: transcript), prompt)
             }
-            return (makeSession(tools: tools, instructions: instructions), seed.pendingPrompt)
+            return (makeSession(tools: tools, instructions: instructions), prompt)
         }
         return (
             makeSession(tools: tools, instructions: instructions),

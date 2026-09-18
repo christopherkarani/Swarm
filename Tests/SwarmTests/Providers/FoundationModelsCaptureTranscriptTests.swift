@@ -16,7 +16,7 @@ struct FoundationModelsCaptureTranscriptTests {
             messages: messages,
             instructions: nil
         )
-        #expect(mapped.canRehydrate)
+        #expect(mapped.canRehydrate == false)
         #expect(mapped.entries == [
             .prompt("what is the weather?"),
             .response("I'll check."),
@@ -48,6 +48,40 @@ struct FoundationModelsCaptureTranscriptTests {
             FoundationModelsCaptureTranscript.messages(from: seed.seedEntries)
                 == [.user("u1"), .assistant("a1")]
         )
+    }
+
+    @Test("unpaired tool output cannot rehydrate a Transcript")
+    func unpairedToolOutputCannotRehydrate() {
+        let seed = FoundationModelsCaptureTranscript.seed(
+            messages: [
+                .user("what is the weather?"),
+                .assistant("I'll check."),
+                .tool(name: "weather", content: "72F", toolCallID: "call-1"),
+            ],
+            instructions: nil
+        )
+        #expect(seed.canRehydrate == false)
+    }
+
+    @Test("rehydrate pending prompt keeps ToolChoice.specific suffix")
+    func rehydratePendingPromptKeepsSpecificToolChoice() {
+        let seed = FoundationModelsCaptureTranscript.seed(
+            messages: [
+                .user("u1"),
+                .assistant("a1"),
+                .user("look up"),
+            ],
+            instructions: nil
+        )
+        #expect(seed.canRehydrate)
+        let lookup = ToolSchema(name: "lookup", description: "Look up", parameters: [])
+        let prompt = FoundationModelsPromptFlattening.appendTurnSuffixes(
+            to: seed.pendingPrompt,
+            tools: [lookup],
+            options: InferenceOptions(toolChoice: .specific(toolName: "lookup"))
+        )
+        #expect(prompt.contains(#"call "lookup""#))
+        #expect(prompt.hasPrefix("look up"))
     }
 
     @Test("assistant tool-call metadata cannot rehydrate")
