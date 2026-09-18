@@ -90,7 +90,11 @@ struct ToolExecutionEngine: Sendable {
                 await tracing.traceToolResult(spanId: spanId, name: toolName, result: output.description, duration: measured)
             }
 
-            await observer?.onToolEnd(context: context, agent: agent, result: result)
+            await observer?.onToolEnd(
+                context: context,
+                agent: agent,
+                invocation: ToolInvocation(call: call, duration: measured, outcome: .success(output))
+            )
 
             return Outcome(call: call, result: result, caughtError: nil)
         } catch {
@@ -104,7 +108,15 @@ struct ToolExecutionEngine: Sendable {
                 await tracing.traceToolError(spanId: spanId, name: toolName, error: error)
             }
 
-            await observer?.onToolEnd(context: context, agent: agent, result: result)
+            await observer?.onToolEnd(
+                context: context,
+                agent: agent,
+                invocation: ToolInvocation(
+                    call: call,
+                    duration: measured,
+                    outcome: .failure(message: errorMessage)
+                )
+            )
 
             if stopOnToolError {
                 throw AgentError.toolFailure(toolName: toolName, message: errorMessage, cause: error)

@@ -513,7 +513,15 @@ extension Agent {
                         duration: duration
                     )
                 }
-                await observer?.onToolEnd(context: nil, agent: self, result: result)
+                await observer?.onToolEnd(
+                    context: nil,
+                    agent: self,
+                    invocation: ToolInvocation(
+                        call: call,
+                        duration: duration,
+                        outcome: .success(.string(output))
+                    )
+                )
                 return
             } catch {
                 let duration = ContinuousClock.now - toolStartTime
@@ -523,7 +531,15 @@ extension Agent {
                 if let spanID {
                     await tracing?.traceToolError(spanId: spanID, name: parsedCall.name, error: error)
                 }
-                await observer?.onToolEnd(context: nil, agent: self, result: result)
+                await observer?.onToolEnd(
+                    context: nil,
+                    agent: self,
+                    invocation: ToolInvocation(
+                        call: call,
+                        duration: duration,
+                        outcome: .failure(message: message)
+                    )
+                )
                 if configuration.stopOnToolError {
                     throw AgentError.toolFailure(toolName: parsedCall.name, message: message, cause: error)
                 }

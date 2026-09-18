@@ -102,6 +102,20 @@ public protocol AgentObserver: Sendable {
     ///   - result: The result returned by the tool.
     func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async
 
+    /// Called when a tool execution finishes, with the paired call and result.
+    ///
+    /// Production writers pass ``ToolInvocation`` so observers can name the tool
+    /// without a side store. The protocol-extension default forwards
+    /// ``ToolInvocation/result`` to ``onToolEnd(context:agent:result:)`` so
+    /// existing conformers keep compiling.
+    ///
+    /// - Parameters:
+    ///   - context: Optional agent context for orchestration scenarios.
+    ///   - agent: The agent that called the tool.
+    ///   - invocation: The paired tool call and result. ``ToolCall/id`` equals
+    ///     ``ToolResult/callId``.
+    func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async
+
     /// Called when an LLM inference begins.
     ///
     /// `[InferenceMessage]` is the source of truth for the transcript the
@@ -225,6 +239,11 @@ public extension AgentObserver {
 
     /// Default no-op implementation for tool end.
     func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async {}
+
+    /// Default implementation forwards ``invocation.result`` to the result-only hook.
+    func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async {
+        await onToolEnd(context: context, agent: agent, result: invocation.result)
+    }
 
     /// Default no-op implementation for LLM start.
     func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async {}
@@ -393,6 +412,16 @@ package struct CompositeObserver: AgentObserver {
             for hook in observers {
                 group.addTask {
                     await hook.onToolEnd(context: context, agent: agent, result: result)
+                }
+            }
+        }
+    }
+
+    package func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async {
+        await withTaskGroup(of: Void.self) { group in
+            for hook in observers {
+                group.addTask {
+                    await hook.onToolEnd(context: context, agent: agent, invocation: invocation)
                 }
             }
         }
@@ -594,6 +623,18 @@ public struct LoggingObserver: AgentObserver {
         // For logging, we'll just log success/failure
         let status = result.isSuccess ? "succeeded" : "failed"
         Log.agents.info("Tool execution \(status)\(contextId) - duration: \(result.duration)")
+    }
+
+    public func onToolEnd(context: AgentContext?, agent _: any AgentRuntime, invocation: ToolInvocation) async {
+        let contextId = if let context {
+            " [context: \(context.executionId)]"
+        } else {
+            ""
+        }
+        let status = invocation.result.isSuccess ? "succeeded" : "failed"
+        Log.agents.info(
+            "Tool execution \(status)\(contextId) - name: \(invocation.call.toolName), duration: \(invocation.result.duration)"
+        )
     }
 
     public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [InferenceMessage]) async {
