@@ -62,6 +62,20 @@ public struct EnvironmentAgent: AgentRuntime, Sendable {
         await base.cancel()
     }
 
+    public func handleHandoff(
+        _ request: HandoffRequest,
+        context: AgentContext,
+        session: (any Session)?,
+        observer: (any AgentObserver)?
+    ) async throws -> AgentResult {
+        var env = AgentEnvironmentValues.current
+        modify(&env)
+
+        return try await AgentEnvironmentValues.$current.withValue(env) {
+            try await base.handleHandoff(request, context: context, session: session, observer: observer)
+        }
+    }
+
     // MARK: - Private
 
     private func envForStream() -> AgentEnvironment {

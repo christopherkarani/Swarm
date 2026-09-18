@@ -40,6 +40,20 @@ struct ObservedAgent<Wrapped: AgentRuntime>: AgentRuntime {
         try await wrapped.runWithResponse(input, session: session, observer: combined(with: additionalObserver))
     }
 
+    func handleHandoff(
+        _ request: HandoffRequest,
+        context: AgentContext,
+        session: (any Session)?,
+        observer additionalObserver: (any AgentObserver)?
+    ) async throws -> AgentResult {
+        try await wrapped.handleHandoff(
+            request,
+            context: context,
+            session: session,
+            observer: combined(with: additionalObserver)
+        )
+    }
+
     private nonisolated func combined(with additionalObserver: (any AgentObserver)?) -> any AgentObserver {
         guard let additionalObserver else {
             return observer

@@ -116,6 +116,9 @@ struct AgentHandoffRuntimeTests {
 
         let paths = await target.executionPaths
         #expect(paths.first == ["source-agent"])
+        let session = try #require(await target.handoffSessions.first)
+        let sessionItems = try await session.getAllItems()
+        #expect(sessionItems.contains { $0.content == "please route this" })
     }
 
     @Test("Handoff with no history does not nest source transcript for regular Agent targets (AC-002)")
@@ -515,6 +518,292 @@ struct AgentHandoffRuntimeTests {
 
         #expect(result.output == "billing handled")
     }
+
+    @Test("Default handleHandoff on Agent drops reserved keys and writes provenance")
+    func defaultHandleHandoffOnAgentDropsReservedKeysAndWritesProvenance() async throws {
+        let provider = MockInferenceProvider(responses: ["done"])
+        let agent = try Agent(
+            "Handle work.",
+            configuration: AgentConfiguration(name: "target", defaultTracingEnabled: false),
+            inferenceProvider: provider
+        )
+        let context = AgentContext(input: "orig")
+        let session = InMemorySession()
+
+        let result = try await agent.handleHandoff(
+            HandoffRequest(
+                sourceAgentName: "source",
+                targetAgentName: "target",
+                input: "do work",
+                reason: "specialist",
+                context: [
+                    "user_id": .string("secret"),
+                    "auth_token": .string("tok"),
+                    "ticket": .string("t-1"),
+                ]
+            ),
+            context: context,
+            session: session,
+            observer: nil
+        )
+
+        #expect(result.output == "done")
+        #expect(await context.get("user_id") == nil)
+        #expect(await context.get("auth_token") == nil)
+        #expect(await context.get("ticket") == .string("t-1"))
+        #expect(await context.get("handoff_source") == .string("source"))
+        #expect(await context.get("handoff_reason") == .string("specialist"))
+        #expect(await context.getExecutionPath() == ["target"])
+        let messages = try await session.getAllItems()
+        #expect(messages.contains { $0.role == .user && $0.content == "do work" })
+    }
+
+    @Test("In-loop nested handoff to a plain Agent keeps session history (AC-006, AC-007)")
+    func inLoopNestedHandoffToPlainAgentKeepsSessionHistory() async throws {
+        let sourceProvider = MockInferenceProvider()
+        await sourceProvider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(
+                        id: "call_handoff",
+                        name: "handoff_to_target",
+                        arguments: ["reason": .string("delegate")]
+                    ),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let targetProvider = MockInferenceProvider(responses: ["target done"])
+        let target = try Agent(
+            tools: [],
+            instructions: "Use prior context.",
+            configuration: AgentConfiguration(name: "target-agent", defaultTracingEnabled: false),
+            memory: ConversationMemory(),
+            inferenceProvider: targetProvider
+        )
+        let source = try Agent(
+            tools: [],
+            instructions: "Route to target.",
+            configuration: AgentConfiguration(name: "source-agent", defaultTracingEnabled: false),
+            memory: ConversationMemory(),
+            inferenceProvider: sourceProvider,
+            handoffs: [
+                AnyHandoffConfiguration(
+                    HandoffConfiguration(
+                        targetAgent: target,
+                        toolNameOverride: "handoff_to_target",
+                        transform: { data in
+                            var injected = data.context
+                            injected["user_id"] = .string("injected-user")
+                            injected["ticket"] = .string("t-42")
+                            return HandoffInputData(
+                                sourceAgentName: data.sourceAgentName,
+                                targetAgentName: data.targetAgentName,
+                                input: "target-only payload",
+                                context: injected,
+                                metadata: data.metadata
+                            )
+                        },
+                        history: .nested
+                    )
+                ),
+            ]
+        )
+
+        let result = try await source.run("please route this")
+
+        #expect(result.output == "target done")
+        let targetCalls = await targetProvider.generateMessageCalls
+        let messages = try #require(targetCalls.first?.messages)
+        #expect(messages.contains { $0.role == .user && $0.content == "please route this" })
+        #expect(messages.contains { $0.role == .user && $0.content == "target-only payload" })
+    }
+
+    @Test("In-loop handoff invokes AgentRuntime handleHandoff without HandoffReceiver (AC-006)")
+    func inLoopHandoffInvokesCustomHandleHandoffWithoutReceiverCast() async throws {
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(
+                        id: "call_handoff",
+                        name: "handoff_to_target",
+                        arguments: ["reason": .string("needs specialist")]
+                    ),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let target = RecordingHandoffRuntime(name: "target-agent")
+        let source = try Agent(
+            tools: [],
+            instructions: "Route to target.",
+            configuration: AgentConfiguration(name: "source-agent", defaultTracingEnabled: false),
+            inferenceProvider: provider,
+            handoffs: [
+                AnyHandoffConfiguration(
+                    HandoffConfiguration(
+                        targetAgent: target,
+                        toolNameOverride: "handoff_to_target",
+                        transform: { data in
+                            var injected = data.context
+                            injected["user_id"] = .string("injected-user")
+                            injected["ticket"] = .string("t-42")
+                            return HandoffInputData(
+                                sourceAgentName: data.sourceAgentName,
+                                targetAgentName: data.targetAgentName,
+                                input: data.input,
+                                context: injected,
+                                metadata: data.metadata
+                            )
+                        }
+                    )
+                ),
+            ]
+        )
+
+        let result = try await source.run("please route this")
+
+        #expect(result.output == "handled please route this")
+        #expect(await target.handoffCount == 1)
+        #expect(await target.runCount == 0)
+        let snapshot = try #require(await target.contextSnapshots.first)
+        #expect(snapshot["user_id"] == nil)
+        #expect(snapshot["ticket"] == .string("t-42"))
+        let request = try #require(await target.handoffRequests.first)
+        #expect(request.context["user_id"] == .string("injected-user"))
+        #expect(request.reason == "needs specialist")
+    }
+
+    @Test("Nested handoff history passes a session into handleHandoff (AC-007)")
+    func nestedHandoffHistoryPassesSessionIntoHandleHandoff() async throws {
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(
+                        id: "call_handoff",
+                        name: "handoff_to_target",
+                        arguments: ["reason": .string("delegate")]
+                    ),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let target = RecordingHandoffRuntime(name: "target-agent")
+        let source = try Agent(
+            tools: [],
+            instructions: "Route to target.",
+            configuration: AgentConfiguration(name: "source-agent", defaultTracingEnabled: false),
+            inferenceProvider: provider,
+            handoffs: [
+                AnyHandoffConfiguration(
+                    HandoffConfiguration(
+                        targetAgent: target,
+                        toolNameOverride: "handoff_to_target",
+                        history: .nested
+                    )
+                ),
+            ]
+        )
+
+        _ = try await source.run("please route this")
+
+        let session = try #require(await target.handoffSessions.first)
+        let items = try await session.getAllItems()
+        #expect(items.contains { $0.role == .user && $0.content == "please route this" })
+    }
+
+    @Test("EnvironmentAgent forwards handleHandoff to the base runtime")
+    func environmentAgentForwardsHandleHandoff() async throws {
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(
+                        id: "call_handoff",
+                        name: "handoff_to_target",
+                        arguments: ["reason": .string("delegate")]
+                    ),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let target = RecordingHandoffRuntime(name: "target-agent")
+        let wrapped = target.memory(ConversationMemory())
+        let source = try Agent(
+            tools: [],
+            instructions: "Route to target.",
+            configuration: AgentConfiguration(name: "source-agent", defaultTracingEnabled: false),
+            inferenceProvider: provider,
+            handoffs: [
+                AnyHandoffConfiguration(
+                    HandoffConfiguration(targetAgent: wrapped, toolNameOverride: "handoff_to_target")
+                ),
+            ]
+        )
+
+        let result = try await source.run("please route this")
+
+        #expect(result.output == "handled please route this")
+        #expect(await target.handoffCount == 1)
+        #expect(await target.runCount == 0)
+    }
+
+    @Test("ObservedAgent forwards handleHandoff and combines observers")
+    func observedAgentForwardsHandleHandoffAndCombinesObservers() async throws {
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(
+                        id: "call_handoff",
+                        name: "handoff_to_target",
+                        arguments: ["reason": .string("delegate")]
+                    ),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+        ])
+
+        let target = RecordingHandoffRuntime(name: "target-agent")
+        let attached = RecordingStartObserver()
+        let runObserver = RecordingStartObserver()
+        let wrapped = target.observed(by: attached)
+        let source = try Agent(
+            tools: [],
+            instructions: "Route to target.",
+            configuration: AgentConfiguration(name: "source-agent", defaultTracingEnabled: false),
+            inferenceProvider: provider,
+            handoffs: [
+                AnyHandoffConfiguration(
+                    HandoffConfiguration(targetAgent: wrapped, toolNameOverride: "handoff_to_target")
+                ),
+            ]
+        )
+
+        let result = try await source.run("please route this", observer: runObserver)
+
+        #expect(result.output == "handled please route this")
+        #expect(await target.handoffCount == 1)
+        #expect(await target.runCount == 0)
+        #expect(await attached.startAgentNames == ["target-agent"])
+        #expect(await runObserver.startAgentNames.contains("target-agent"))
+    }
 }
 
 private actor HandoffPredicateGate {
@@ -599,7 +888,7 @@ private actor GateDisablingToolCallProvider: InferenceProvider, MessagesFromProm
     }
 }
 
-private actor RecordingHandoffReceiver: HandoffReceiver {
+private actor RecordingHandoffReceiver: AgentRuntime {
     nonisolated let tools: [any AnyJSONTool] = []
     nonisolated let instructions = "Record handoff requests"
     nonisolated let configuration: AgentConfiguration
@@ -612,6 +901,7 @@ private actor RecordingHandoffReceiver: HandoffReceiver {
 
     private(set) var runInputs: [String] = []
     private(set) var handoffRequests: [HandoffRequest] = []
+    private(set) var handoffSessions: [any Session] = []
     private(set) var contextSnapshots: [[String: SendableValue]] = []
     private(set) var contextMessages: [[MemoryMessage]] = []
     private(set) var executionPaths: [[String]] = []
@@ -638,12 +928,84 @@ private actor RecordingHandoffReceiver: HandoffReceiver {
 
     func cancel() async {}
 
-    func handleHandoff(_ request: HandoffRequest, context: AgentContext) async throws -> AgentResult {
+    func handleHandoff(
+        _ request: HandoffRequest,
+        context: AgentContext,
+        session: (any Session)?,
+        observer _: (any AgentObserver)?
+    ) async throws -> AgentResult {
         handoffRequests.append(request)
+        if let session {
+            handoffSessions.append(session)
+        }
         contextSnapshots.append(await context.snapshot)
         contextMessages.append(await context.getMessages())
         executionPaths.append(await context.getExecutionPath())
         return AgentResult(output: "handled \(request.input)")
+    }
+}
+
+private actor RecordingHandoffRuntime: AgentRuntime {
+    nonisolated let tools: [any AnyJSONTool] = []
+    nonisolated let instructions = "Record handleHandoff without HandoffReceiver"
+    nonisolated let configuration: AgentConfiguration
+    nonisolated let memory: (any Memory)? = nil
+    nonisolated let inferenceProvider: (any InferenceProvider)? = nil
+    nonisolated let tracer: (any Tracer)? = nil
+    nonisolated let inputGuardrails: [any InputGuardrail] = []
+    nonisolated let outputGuardrails: [any OutputGuardrail] = []
+    nonisolated let handoffs: [AnyHandoffConfiguration] = []
+
+    private(set) var runCount = 0
+    private(set) var handoffCount = 0
+    private(set) var handoffRequests: [HandoffRequest] = []
+    private(set) var handoffSessions: [any Session] = []
+    private(set) var contextSnapshots: [[String: SendableValue]] = []
+
+    init(name: String) {
+        configuration = AgentConfiguration(name: name, defaultTracingEnabled: false)
+    }
+
+    func run(_: String, session _: (any Session)?, observer _: (any AgentObserver)?) async throws -> AgentResult {
+        runCount += 1
+        return AgentResult(output: "ran")
+    }
+
+    nonisolated func stream(
+        _ input: String,
+        session _: (any Session)?,
+        observer _: (any AgentObserver)?
+    ) -> AsyncThrowingStream<AgentEvent, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            continuation.yield(.lifecycle(.completed(result: AgentResult(output: "ran \(input)"))))
+            continuation.finish()
+        }
+    }
+
+    func cancel() async {}
+
+    func handleHandoff(
+        _ request: HandoffRequest,
+        context: AgentContext,
+        session: (any Session)?,
+        observer: (any AgentObserver)?
+    ) async throws -> AgentResult {
+        handoffCount += 1
+        handoffRequests.append(request)
+        if let session {
+            handoffSessions.append(session)
+        }
+        contextSnapshots.append(await context.snapshot)
+        await observer?.onAgentStart(context: context, agent: self, input: request.input)
+        return AgentResult(output: "handled \(request.input)")
+    }
+}
+
+private actor RecordingStartObserver: AgentObserver {
+    private(set) var startAgentNames: [String] = []
+
+    func onAgentStart(context _: AgentContext?, agent: any AgentRuntime, input _: String) async {
+        startAgentNames.append(agent.name)
     }
 }
 

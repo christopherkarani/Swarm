@@ -5,8 +5,13 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 211 (218 including `Internal/GraphRuntime/`)
+<<<<<<< HEAD
+- Source files scanned: 212 (219 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2328
+=======
+- Source files scanned: 212 (219 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2332
+>>>>>>> 7883ef97 (Dispatch every handoff through AgentRuntime.handleHandoff so Agent and custom runtimes share reserved-key filtering and nested sessions.)
 
 ## 1. Swarm (entry point)
 
@@ -309,6 +314,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 89 | func | public | AgentRuntime.stream(_:session:observer:) | `public nonisolated func stream(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 92 | func | public | AgentRuntime.cancel() | `public func cancel() async` |
 | 108 | func | public | AgentRuntime.runWithResponse(_:session:observer:) | `public func runWithResponse(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) async throws -> AgentResponse` |
+| 129 | func | public | AgentRuntime.handleHandoff(_:context:session:observer:) | `public func handleHandoff(_ request: HandoffRequest, context: AgentContext, session: (any Session)?, observer: (any AgentObserver)?) async throws -> AgentResult` |
 | 119 | var | public | AgentRuntime.name | `public nonisolated var name: String { get }` |
 | 122 | var | public | AgentRuntime.memory | `public nonisolated var memory: (any Memory)? { get }` |
 | 125 | var | public | AgentRuntime.inferenceProvider | `public nonisolated var inferenceProvider: (any InferenceProvider)? { get }` |
@@ -319,6 +325,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 144 | func | public | AgentRuntime.run(_:observer:) | `public func run(_ input: String, observer: (any AgentObserver)? = nil) async throws -> AgentResult` |
 | 149 | func | public | AgentRuntime.stream(_:observer:) | `public nonisolated func stream(_ input: String, observer: (any AgentObserver)? = nil) -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 164 | func | public | AgentRuntime.runWithResponse(_:session:observer:) | `public func runWithResponse(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
+| 143 | func | public | AgentRuntime.handleHandoff(_:context:session:observer:) | `public func handleHandoff(_ request: HandoffRequest, context: AgentContext, session: (any Session)?, observer: (any AgentObserver)?) async throws -> AgentResult` |
 | 205 | func | public | AgentRuntime.runWithResponse(_:observer:) | `public func runWithResponse(_ input: String, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
 | 221 | protocol | public | InferenceProvider | `public protocol InferenceProvider : Sendable` |
 | 223 | var | public | InferenceProvider.capabilities | `public var capabilities: InferenceProviderCapabilities { get }` |
@@ -550,6 +557,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 33 | func | public | EnvironmentAgent.run(_:session:observer:) | `public func run(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) async throws -> AgentResult` |
 | 46 | func | public | EnvironmentAgent.stream(_:session:observer:) | `public nonisolated func stream(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 61 | func | public | EnvironmentAgent.cancel() | `public func cancel() async` |
+| 65 | func | public | EnvironmentAgent.handleHandoff(_:context:session:observer:) | `public func handleHandoff(_ request: HandoffRequest, context: AgentContext, session: (any Session)?, observer: (any AgentObserver)?) async throws -> AgentResult` |
 | 86 | func | public | AgentRuntime.environment(_:_:) | `public func environment<V>(_ keyPath: WritableKeyPath<AgentEnvironment, V>, _ value: V) -> EnvironmentAgent where V : Sendable` |
 | 97 | func | public | AgentRuntime.memory(_:) | `public func memory(_ memory: any Memory) -> EnvironmentAgent` |
 
@@ -662,9 +670,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 94 | var | public | HandoffResult.transferredContext | `public let transferredContext: [String : SendableValue]` |
 | 97 | var | public | HandoffResult.timestamp | `public let timestamp: Date` |
 | 107 | func | public | HandoffResult.init(targetAgentName:input:result:transferredContext:timestamp:) | `public init(targetAgentName: String, input: String, result: AgentResult, transferredContext: [String : SendableValue], timestamp: Date = Date())` |
-| 159 | protocol | public | HandoffReceiver | `public protocol HandoffReceiver : AgentRuntime` |
-| 174 | func | public | HandoffReceiver.handleHandoff(_:context:) | `public func handleHandoff(_ request: HandoffRequest, context: AgentContext) async throws -> AgentResult` |
-| 197 | func | public | HandoffReceiver.handleHandoff(_:context:) | `public func handleHandoff(_ request: HandoffRequest, context: AgentContext) async throws -> AgentResult` |
+| 129 | protocol | public | HandoffReceiver | `@available(*, deprecated, message: "Use AgentRuntime.handleHandoff(_:context:session:observer:) instead.") public protocol HandoffReceiver : AgentRuntime` |
 | 457 | var | public | HandoffRequest.description | `public var description: String { get }` |
 | 472 | var | public | HandoffResult.description | `public var description: String { get }` |
 
