@@ -80,6 +80,10 @@ enum FoundationModelsCaptureTranscript: Sendable {
                 guard !message.content.isEmpty else { continue }
                 entries.append(.response(message.content))
             case .tool:
+                // Apple Transcript pairs ToolOutput with a preceding ToolCalls
+                // group. This mapper never emits ToolCalls, so unpaired tool
+                // results cannot rehydrate.
+                canRehydrate = false
                 entries.append(
                     .toolOutput(
                         name: message.name ?? "",
@@ -134,13 +138,15 @@ extension FoundationModelsCaptureTranscript {
             return .prompt(
                 Transcript.Prompt(
                     id: UUID().uuidString,
-                    segments: [textSegment(text)]
+                    segments: [textSegment(text)],
+                    options: GenerationOptions()
                 )
             )
         case let .response(text):
             return .response(
                 Transcript.Response(
                     id: UUID().uuidString,
+                    assetIDs: [],
                     segments: [textSegment(text)]
                 )
             )
