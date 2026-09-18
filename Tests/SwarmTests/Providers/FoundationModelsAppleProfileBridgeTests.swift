@@ -84,6 +84,18 @@ struct FoundationModelsAppleProfileBridgeTests {
         ])
     }
 
+    @Test("history that does not end with a user turn cannot rehydrate")
+    func historyNotEndingWithUserCannotRehydrate() {
+        let seed = FoundationModelsAppleProfileBridge.seed(
+            messages: [
+                .user("u1"),
+                .assistant("a1"),
+            ],
+            instructions: nil
+        )
+        #expect(seed.canRehydrateTranscript == false)
+    }
+
     @Test("rehydrate pending prompt keeps ToolChoice.specific suffix")
     func rehydratePendingPromptKeepsSpecificToolChoice() {
         let seed = FoundationModelsAppleProfileBridge.seed(
