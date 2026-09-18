@@ -36,19 +36,14 @@ extension Agent {
     }
 
     func makeResponse(from result: AgentResult, responseID: String) -> AgentResponse {
-        let toolCallsById = Dictionary(uniqueKeysWithValues: result.toolCalls.map { ($0.id, $0) })
-        let toolCallRecords: [ToolCallRecord] = result.toolResults.compactMap { toolResult in
-            guard let toolCall = toolCallsById[toolResult.callId] else {
-                Log.agents.warning("Tool result missing matching call: \(toolResult.callId)")
-                return nil
-            }
-
-            return ToolCallRecord(
-                toolName: toolCall.toolName,
-                arguments: toolCall.arguments,
-                duration: toolResult.duration,
-                timestamp: toolCall.timestamp,
-                outcome: ToolCallRecord.Outcome(toolResult.outcome)
+        let toolCallRecords: [ToolCallRecord] = result.invocations.map { invocation in
+            ToolCallRecord(
+                callId: invocation.call.id,
+                toolName: invocation.call.toolName,
+                arguments: invocation.call.arguments,
+                duration: invocation.result.duration,
+                timestamp: invocation.call.timestamp,
+                outcome: ToolCallRecord.Outcome(invocation.result.outcome)
             )
         }
 
