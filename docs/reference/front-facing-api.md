@@ -854,6 +854,41 @@ public protocol InferenceProvider: Sendable {
 }
 ```
 
+### InferenceMessage
+
+```swift
+public struct InferenceMessage: Sendable, Equatable {
+    public enum Body: Sendable, Equatable {
+        case system(String)
+        case user(String)
+        case assistant(String, toolCalls: [ToolCall] = [])
+        case tool(name: String, content: String, toolCallID: String?)
+    }
+
+    public let body: Body
+    public var role: Role { get }
+    public var content: String { get }
+    public var name: String? { get }
+    public var toolCallID: String? { get }
+    public var toolCalls: [ToolCall] { get }
+
+    public init(body: Body)
+
+    @available(*, deprecated, message: "Use init(body:) or the role factories.")
+    public init(
+        role: Role,
+        content: String,
+        name: String? = nil,
+        toolCallID: String? = nil,
+        toolCalls: [ToolCall] = []
+    )
+}
+```
+
+Prefer `InferenceMessage(body:)` or the role factories (`system`, `user`, `assistant`, `tool`). The payload is a closed `Body`: a user or system message cannot store tool calls, and a tool result always has a name. Historical `role`, `content`, `name`, `toolCallID`, and `toolCalls` remain as computed projections of `body`.
+
+The deprecated memberwise `init(role:content:name:toolCallID:toolCalls:)` maps `.system` → `.system(content)`, `.user` → `.user(content)`, `.assistant` → `.assistant(content, toolCalls:)`, and `.tool` → `.tool(name: name ?? "tool", content: content, toolCallID:)`. Extra fields for that role are dropped.
+
 Agent reads ``InferenceProviderCapabilities`` and ``InferenceProvider/promptTokenCounter``
 directly from ``InferenceProvider``. Deprecated marker protocols remain available
 for source compatibility, but capability bits and the structured-message methods
@@ -950,6 +985,8 @@ public enum AgentEvent: Sendable {
         case partial(update: PartialToolCallUpdate)
         case completed(call: ToolCall, result: ToolResult)
         case failed(call: ToolCall, error: AgentError)
+
+        public static func completed(_ invocation: ToolInvocation) -> Self
     }
 
     public enum Output: Sendable {
@@ -983,6 +1020,11 @@ public enum AgentEvent: Sendable {
 public struct ToolInvocation: Sendable, Equatable {
     public let call: ToolCall
     public let result: ToolResult
+}
+
+public protocol AgentObserver: Sendable {
+    func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async
+    func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async
 }
 
 public struct AgentResult: Sendable {
@@ -1056,6 +1098,10 @@ public struct ToolCallRecord: Sendable {
 ```
 
 Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The deprecated `ToolResult.init(callId:isSuccess:output:duration:errorMessage:)` and `ToolCallRecord` compatibility initializer remain available until the documented breaking boundary. They map independently supplied fields to the closed outcome using the historical rules: success ignores `errorMessage`, failure ignores `output`, and a nil failure message becomes `"Tool execution failed"`. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
+
+`AgentEvent.Tool.completed(_ invocation:)` yields `.completed(call:result:)` from a paired `ToolInvocation`. The enum associated values stay `call` and `result`.
+
+Production writers call `onToolEnd(context:agent:invocation:)` so observers can name the tool without a side store. The protocol-extension default forwards `invocation.result` to the result-only `onToolEnd(context:agent:result:)` so existing conformers keep compiling.
 
 ### Tool failure errors
 
