@@ -858,11 +858,26 @@ public protocol InferenceProvider: Sendable {
 
 ```swift
 public struct InferenceMessage: Sendable, Equatable {
+    public enum Role: String, Sendable, Codable {
+        case system
+        case user
+        case assistant
+        case tool
+    }
+
     public enum Body: Sendable, Equatable {
         case system(String)
         case user(String)
         case assistant(String, toolCalls: [ToolCall] = [])
         case tool(name: String, content: String, toolCallID: String?)
+    }
+
+    /// Provider-native tool call on an assistant body. Not the host `ToolCall`
+    /// (`id: UUID`, `toolName`) used by `AgentEvent.Tool` and `ToolInvocation`.
+    public struct ToolCall: Sendable, Equatable {
+        public let id: String?
+        public let name: String
+        public let arguments: [String: SendableValue]
     }
 
     public let body: Body
@@ -882,10 +897,15 @@ public struct InferenceMessage: Sendable, Equatable {
         toolCallID: String? = nil,
         toolCalls: [ToolCall] = []
     )
+
+    public static func system(_ content: String) -> InferenceMessage
+    public static func user(_ content: String) -> InferenceMessage
+    public static func assistant(_ content: String, toolCalls: [ToolCall] = []) -> InferenceMessage
+    public static func tool(name: String, content: String, toolCallID: String? = nil) -> InferenceMessage
 }
 ```
 
-Prefer `InferenceMessage(body:)` or the role factories (`system`, `user`, `assistant`, `tool`). The payload is a closed `Body`: a user or system message cannot store tool calls, and a tool result always has a name. Historical `role`, `content`, `name`, `toolCallID`, and `toolCalls` remain as computed projections of `body`.
+Prefer `InferenceMessage(body:)` or the role factories (`system`, `user`, `assistant`, `tool`). The payload is a closed `Body`: a user or system message cannot store tool calls, and a tool result always has a name. Historical `role`, `content`, `name`, `toolCallID`, and `toolCalls` remain as computed projections of `body`. Assistant `toolCalls` are `InferenceMessage.ToolCall` values, not host `ToolCall` records.
 
 The deprecated memberwise `init(role:content:name:toolCallID:toolCalls:)` maps `.system` → `.system(content)`, `.user` → `.user(content)`, `.assistant` → `.assistant(content, toolCalls:)`, and `.tool` → `.tool(name: name ?? "tool", content: content, toolCallID:)`. Extra fields for that role are dropped.
 
@@ -1025,6 +1045,7 @@ public struct ToolInvocation: Sendable, Equatable {
 public protocol AgentObserver: Sendable {
     func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async
     func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async
+    // ... other requirements ...
 }
 
 public struct AgentResult: Sendable {
