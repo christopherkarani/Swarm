@@ -5,13 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-<<<<<<< HEAD
-- Source files scanned: 212 (219 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2328
-=======
 - Source files scanned: 212 (219 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2332
->>>>>>> 7883ef97 (Dispatch every handoff through AgentRuntime.handleHandoff so Agent and custom runtimes share reserved-key filtering and nested sessions.)
 
 ## 1. Swarm (entry point)
 
