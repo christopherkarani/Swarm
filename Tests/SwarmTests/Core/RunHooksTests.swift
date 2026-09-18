@@ -88,6 +88,15 @@ private actor RecordingObserver: AgentObserver {
     }
 }
 
+/// Records ``onToolEnd(context:agent:invocation:)`` so composite forwarding can be pinned.
+private actor InvocationRecordingObserver: AgentObserver {
+    var invocationNames: [String] = []
+
+    func onToolEnd(context _: AgentContext?, agent _: any AgentRuntime, invocation: ToolInvocation) async {
+        invocationNames.append(invocation.call.toolName)
+    }
+}
+
 // MARK: - AgentObserverDefaultImplementationTests
 
 @Suite("AgentObserver Default Implementations")
@@ -107,6 +116,12 @@ struct AgentObserverDefaultImplementationTests {
         await observer.onHandoff(context: nil, fromAgent: agent, toAgent: agent)
         await observer.onToolStart(context: nil, agent: agent, call: ToolCall(toolName: "test_tool", arguments: [:]))
         await observer.onToolEnd(context: nil, agent: agent, result: ToolResult.success(callId: UUID(), output: .string("result"), duration: .seconds(1)))
+        let invocation = ToolInvocation(
+            call: ToolCall(toolName: "test_tool", arguments: [:]),
+            duration: .seconds(1),
+            outcome: .success(.string("result"))
+        )
+        await observer.onToolEnd(context: nil, agent: agent, invocation: invocation)
         await observer.onLLMStart(context: nil, agent: agent, systemPrompt: nil, inputMessages: [InferenceMessage]())
         await observer.onLLMEnd(context: nil, agent: agent, response: "response", usage: nil)
         await observer.onGuardrailTriggered(
@@ -263,6 +278,24 @@ struct CompositeAgentObserverTests {
         #expect(events.contains("llmStart:0"))
         #expect(events.contains("llmEnd:none"))
         #expect(events.contains("guardrail:pii_filter:output"))
+    }
+
+    @Test("CompositeObserver forwards onToolEnd(invocation:) to children")
+    func compositeForwardsToolEndInvocation() async {
+        let recorder = InvocationRecordingObserver()
+        let composite = CompositeObserver(observers: [recorder])
+        let agent = MockAgentForAgentObserver()
+        let call = ToolCall(toolName: "calculator", arguments: ["x": .int(5)])
+        let invocation = ToolInvocation(
+            call: call,
+            duration: .seconds(1),
+            outcome: .success(.int(10))
+        )
+
+        await composite.onToolEnd(context: nil, agent: agent, invocation: invocation)
+
+        let names = await recorder.invocationNames
+        #expect(names == ["calculator"])
     }
 }
 
