@@ -345,10 +345,12 @@ extension FoundationModelsInferenceProvider {
         }
 
         let prompt: String
-        if reused {
-            prompt = seed.pendingPrompt
-        } else if seed.canRehydrateTranscript {
-            prompt = seed.pendingPrompt
+        if reused || seed.canRehydrateTranscript {
+            prompt = FoundationModelsPromptFlattening.appendTurnSuffixes(
+                to: seed.pendingPrompt,
+                tools: boundSchemas,
+                options: resolved.options
+            )
         } else {
             prompt = flattenPrompt(
                 messages: resolved.messages,

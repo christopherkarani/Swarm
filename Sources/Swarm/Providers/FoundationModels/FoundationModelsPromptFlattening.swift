@@ -45,8 +45,20 @@ enum FoundationModelsPromptFlattening: Sendable {
             }
         }
 
-        var prompt = lines.joined(separator: "\n")
+        let prompt = lines.joined(separator: "\n")
+        return appendTurnSuffixes(to: prompt, tools: tools, options: options)
+    }
 
+    /// Tool-choice and structured-output sentences that flatten appends after history.
+    ///
+    /// Transcript rehydration still needs these: the pending user turn is a
+    /// raw prompt, not a flattened history string.
+    static func appendTurnSuffixes(
+        to prompt: String,
+        tools: [ToolSchema],
+        options: InferenceOptions
+    ) -> String {
+        var prompt = prompt
         if shouldPromptInjectToolChoice, !tools.isEmpty {
             switch options.toolChoice {
             case .required:
