@@ -86,7 +86,7 @@ enum FoundationModelsAppleProfileBridge: Sendable {
             instructions: instructions,
             seedEntries: entries,
             pendingPrompt: pending,
-            canRehydrateTranscript: mapped.canRehydrate
+            canRehydrateTranscript: mapped.canRehydrate && messages.last?.role == .user
         )
     }
 
