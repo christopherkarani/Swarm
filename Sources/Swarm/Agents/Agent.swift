@@ -595,6 +595,10 @@ public struct Agent: AgentRuntime, Sendable {
     /// the TaskLocal environment snapshot, package globals, and the agent's
     /// base tools — and resolves them exactly once into an
     /// ``AgentTurnDependencies`` value.
+    ///
+    /// Ranking lives only on ``AgentTurnDependencyResolver``. Inference options
+    /// and runtime environment are assembled by that same resolver after the
+    /// shell reads ``ResponseTracker``.
     func resolveTurnDependencies() async throws -> AgentTurnDependencies {
         let query = AgentTurnDependencyQuery(
             configuration: configuration,

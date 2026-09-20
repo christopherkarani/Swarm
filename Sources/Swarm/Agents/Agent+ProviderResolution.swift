@@ -11,16 +11,23 @@ extension Agent {
         session: (any Session)?,
         provider: any InferenceProvider
     ) async -> InferenceOptions {
-        await AgentDependencyResolver.inferenceOptions(
+        let sessionID = session?.sessionId
+        let latestResponseID: String?
+        if let sessionID {
+            latestResponseID = await runEnvironment.responseTracker.getLatestResponseId(for: sessionID)
+        } else {
+            latestResponseID = nil
+        }
+        return AgentTurnDependencyResolver.inferenceOptions(
             configuration: configuration,
             capabilities: providerCapabilities(for: provider),
-            sessionID: session?.sessionId,
-            responseTracker: runEnvironment.responseTracker
+            sessionID: sessionID,
+            latestResponseID: latestResponseID
         )
     }
 
     func providerCapabilities(for provider: any InferenceProvider) -> InferenceProviderCapabilities {
-        AgentDependencyResolver.providerCapabilities(for: provider)
+        AgentTurnDependencyResolver.providerCapabilities(for: provider)
     }
 
     func responseID(from result: AgentResult) -> String {

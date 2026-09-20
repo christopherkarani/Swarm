@@ -309,7 +309,7 @@ extension Agent {
         for provider: any InferenceProvider,
         snapshot: AgentEnvironment
     ) -> AgentEnvironment {
-        AgentDependencyResolver.runtimeEnvironment(snapshot, addingTokenCounterFrom: provider)
+        AgentTurnDependencyResolver.runtimeEnvironment(snapshot, addingTokenCounterFrom: provider)
     }
 
     func applyStructuredOutputMetadata(
