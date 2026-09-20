@@ -596,9 +596,9 @@ public struct Agent: AgentRuntime, Sendable {
     /// base tools — and resolves them exactly once into an
     /// ``AgentTurnDependencies`` value.
     ///
-    /// Ranking lives only on ``AgentTurnDependencyResolver``. Inference options
-    /// and runtime environment are assembled by that same resolver after the
-    /// shell reads ``ResponseTracker``.
+    /// Ranking lives only on ``AgentTurnDependencyResolver``. This gather step
+    /// does not read ``ResponseTracker``; the shell awaits the tracker before
+    /// calling ``AgentTurnDependencyResolver/inferenceOptions``.
     func resolveTurnDependencies() async throws -> AgentTurnDependencies {
         let query = AgentTurnDependencyQuery(
             configuration: configuration,

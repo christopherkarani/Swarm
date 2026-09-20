@@ -360,26 +360,22 @@ struct AgentTurnDependenciesTests {
 
     @Test("Runtime environment merges the provider token counter when present")
     func runtimeEnvironmentTokenCounterMerge() {
-        func identity(_ counter: any PromptTokenCounter) -> ObjectIdentifier {
-            ObjectIdentifier(counter as AnyObject)
-        }
-
         let countingProvider = MockInferenceProvider(responses: ["counted"])
         let bare = BareTurnDependencyInferenceProvider()
-        let originalCounter = EstimatedPromptTokenCounter.shared
+        let originalCounter = IdentityTurnDependencyTokenCounter()
         let environment = AgentEnvironment(promptTokenCounter: originalCounter)
 
         let merged = AgentTurnDependencyResolver.runtimeEnvironment(
             environment,
             addingTokenCounterFrom: countingProvider
         )
-        #expect(identity(merged.promptTokenCounter) == identity(countingProvider))
+        #expect((merged.promptTokenCounter as AnyObject) === (countingProvider as AnyObject))
 
         let preserved = AgentTurnDependencyResolver.runtimeEnvironment(
             environment,
             addingTokenCounterFrom: bare
         )
-        #expect(identity(preserved.promptTokenCounter) == identity(originalCounter))
+        #expect((preserved.promptTokenCounter as AnyObject) === (originalCounter as AnyObject))
     }
 
     // MARK: - Inference options (pure values; shell owns ResponseTracker)
@@ -577,5 +573,13 @@ private struct StubTurnDependencyTool: AnyJSONTool {
 private struct BareTurnDependencyInferenceProvider: InferenceProvider {
     func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
         "bare"
+    }
+}
+
+/// Reference-identity counter. ``EstimatedPromptTokenCounter`` is a struct, so
+/// `ObjectIdentifier(counter as AnyObject)` boxes a new value on each call.
+private final class IdentityTurnDependencyTokenCounter: PromptTokenCounter, Sendable {
+    func countTokens(in text: String) async throws -> Int {
+        max(1, text.count)
     }
 }
