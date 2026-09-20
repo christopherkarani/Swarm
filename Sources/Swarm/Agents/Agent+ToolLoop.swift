@@ -39,13 +39,13 @@ extension Agent {
 
         // Retrieve relevant context from memory (enables RAG for VectorMemory)
         let activeMemory = dependencies.memory
+        let memoryHooks = dependencies.memoryHooks
         var memoryContext = ""
         if let mem = activeMemory {
             let contextProfile = configuration.effectiveContextProfile
             let tokenLimit = contextProfile.memoryTokenLimit
             memoryContext = try await executeWithinRemainingTimeout(startTime: startTime) {
-                let hooks = MemoryHooks.resolved(from: mem)
-                if let contextForQuery = hooks.contextForQuery {
+                if let contextForQuery = memoryHooks.contextForQuery {
                     return await contextForQuery(
                         MemoryQuery(
                             text: input,
@@ -63,11 +63,11 @@ extension Agent {
             conversationMessages: try buildInitialConversationHistory(
                 sessionHistory: sessionHistory,
                 input: input,
-                memory: activeMemory,
+                memoryHooks: memoryHooks,
                 memoryContext: memoryContext
             )
         )
-        let systemMessage = buildSystemMessage(memory: activeMemory, memoryContext: memoryContext)
+        let systemMessage = buildSystemMessage(memoryHooks: memoryHooks, memoryContext: memoryContext)
         await executionContext.recordExecution(agentName: name)
 
         let enableStreaming = configuration.enableStreaming && observer != nil
@@ -377,14 +377,14 @@ extension Agent {
     private func buildInitialConversationHistory(
         sessionHistory: [MemoryMessage],
         input: String,
-        memory: (any Memory)?,
+        memoryHooks: MemoryHooks,
         memoryContext: String = ""
     ) throws -> [ConversationMessage] {
         let transcript = SwarmTranscript(memoryMessages: sessionHistory)
         try transcript.validateReplayCompatibility()
 
         var history: [ConversationMessage] = []
-        history.append(.system(buildSystemMessage(memory: memory, memoryContext: memoryContext)))
+        history.append(.system(buildSystemMessage(memoryHooks: memoryHooks, memoryContext: memoryContext)))
 
         for entry in transcript.entries {
             switch entry.role {
@@ -857,16 +857,9 @@ extension Agent {
                 _ = resultBuilder.addToolCall(handoffCall)
                 await observer?.onHandoff(context: context, fromAgent: self, toAgent: targetAgent)
 
-                // Find the last user message to use as handoff input
-                let lastUserMessage = turnTranscript.conversationMessages.last(where: {
-                    if case .user = $0 { return true }
-                    return false
-                })
-                let lastUserText: String? = if case let .user(content) = lastUserMessage {
-                    content
-                } else {
-                    nil
-                }
+                let lastUserText = HandoffPreparation.lastUserText(
+                    from: turnTranscript.conversationMessages
+                )
                 let handoffInput = AgentTurnKernel.handoffInput(
                     lastUserText: lastUserText,
                     reason: reason
@@ -895,53 +888,35 @@ extension Agent {
                     context: await context.snapshot,
                     metadata: initialHandoffData.metadata
                 )
-                let transformedData = handoffConfig.history.applyingSummaryMetadata(
-                    to: handoffConfig.transform?(handoffData) ?? handoffData
+                let prepared = HandoffPreparation.prepare(
+                    sourceAgentName: handoffData.sourceAgentName,
+                    targetAgentName: handoffData.targetAgentName,
+                    lastUserText: lastUserText,
+                    reason: reason,
+                    transformed: handoffConfig.transform?(handoffData) ?? handoffData,
+                    history: handoffConfig.history,
+                    conversation: turnTranscript.conversationMessages,
+                    skippingToolCallID: parsedCall.id
                 )
-                let requestContext = transformedData.context.merging(transformedData.metadata) { _, new in new }
-                let allowedContext = HandoffContextFilter.allowedValues(requestContext)
+                let allowedContext = prepared.allowedContext
                 let handoffContext = await context.copy(additionalValues: allowedContext)
                 await applyContextValues(allowedContext, to: handoffContext)
                 await preserveExecutionPath(from: context, in: handoffContext)
-                switch handoffConfig.history {
-                case .none:
-                    break
-                case .nested:
+                if prepared.nestsSession {
                     await addNestedHandoffHistory(
-                        turnTranscript.conversationMessages,
-                        to: handoffContext,
-                        skippingToolCallID: parsedCall.id
-                    )
-                case .summarized:
-                    await addNestedHandoffHistory(
-                        turnTranscript.conversationMessages,
-                        to: handoffContext,
-                        skippingToolCallID: parsedCall.id
+                        prepared.historyProjection.messages,
+                        to: handoffContext
                     )
                 }
 
-                let handoffRequest = HandoffRequest(
-                    sourceAgentName: transformedData.sourceAgentName,
-                    targetAgentName: transformedData.targetAgentName,
-                    input: transformedData.input,
-                    reason: reason.isEmpty ? nil : reason,
-                    context: requestContext
-                )
+                let handoffRequest = prepared.request
 
                 let result: AgentResult
                 do {
                     result = try await executeWithinRemainingTimeout(startTime: startTime) {
-                        let nestSessionForHandoff: Bool = switch handoffConfig.history {
-                        case .none:
-                            false
-                        case .nested:
-                            true
-                        case .summarized:
-                            true
-                        }
                         let handoffSession = try await makeNestedHandoffSession(
                             from: handoffContext,
-                            enabled: nestSessionForHandoff
+                            enabled: prepared.nestsSession
                         )
                         return try await targetAgent.handleHandoff(
                             handoffRequest,
@@ -1075,8 +1050,7 @@ extension Agent {
 
     private func addNestedHandoffHistory(
         _ conversationHistory: [ConversationMessage],
-        to context: AgentContext,
-        skippingToolCallID skippedToolCallID: String?
+        to context: AgentContext
     ) async {
         for message in conversationHistory {
             switch message {
@@ -1085,21 +1059,14 @@ extension Agent {
             case let .user(content):
                 await context.addMessage(SwarmTranscriptCodec.encodeMessage(role: .user, content: content))
             case let .assistant(content, toolCalls):
-                let nestedToolCalls = toolCalls.filter { $0.id != skippedToolCallID }
-                guard toolCalls.isEmpty || !nestedToolCalls.isEmpty else {
-                    continue
-                }
                 await context.addMessage(
                     SwarmTranscriptCodec.encodeMessage(
                         role: .assistant,
                         content: content,
-                        toolCalls: nestedToolCalls
+                        toolCalls: toolCalls
                     )
                 )
             case let .toolResult(toolName, result, toolCallID):
-                guard toolCallID != skippedToolCallID else {
-                    continue
-                }
                 await context.addMessage(
                     SwarmTranscriptCodec.encodeMessage(
                         role: .tool,
@@ -1115,7 +1082,7 @@ extension Agent {
     // MARK: - Prompt Building
 
     private func buildSystemMessage(
-        memory: (any Memory)?,
+        memoryHooks: MemoryHooks,
         memoryContext: String = ""
     ) -> String {
         let baseInstructions = instructions.isEmpty
@@ -1126,10 +1093,9 @@ extension Agent {
             return baseInstructions
         }
 
-        let hooks = memory.map { MemoryHooks.resolved(from: $0) } ?? .empty
-        let title = hooks.memoryPromptTitle ?? "Relevant Context from Memory"
-        let priority = hooks.memoryPriority
-        let guidance = hooks.memoryPromptGuidance ?? {
+        let title = memoryHooks.memoryPromptTitle ?? "Relevant Context from Memory"
+        let priority = memoryHooks.memoryPriority
+        let guidance = memoryHooks.memoryPromptGuidance ?? {
             guard priority == .primary else { return nil }
             return "Use the memory context as primary source of truth before calling tools."
         }()

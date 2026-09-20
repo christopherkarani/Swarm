@@ -220,6 +220,41 @@ struct HandoffBehaviorTests {
         #expect(await context.get("handoff_reason") == .string("specialist"))
     }
 
+    @Test("Coordinator configuration path applies summarized history metadata")
+    func coordinatorConfigurationAppliesSummarizedMetadata() async throws {
+        let target = CoordinatorRecordingRuntime()
+        let coordinator = HandoffCoordinator()
+        await coordinator.register(target, as: "target")
+        let context = AgentContext(input: "orig")
+        let configuration = AnyHandoffConfiguration(
+            targetAgent: target,
+            transform: { data in
+                var transformed = data
+                transformed.metadata["transformed"] = .bool(true)
+                return transformed
+            },
+            history: .summarized(maxTokens: 80)
+        )
+
+        let result = try await coordinator.executeHandoff(
+            HandoffRequest(
+                sourceAgentName: "source",
+                targetAgentName: "target",
+                input: "payload",
+                reason: "delegate"
+            ),
+            context: context,
+            configuration: configuration,
+            observer: nil
+        )
+
+        #expect(result.result.output == "handoff payload")
+        #expect(result.transferredContext["transformed"] == .bool(true))
+        #expect(result.transferredContext["swarm.handoff.history.mode"] == .string("summarized"))
+        #expect(result.transferredContext["swarm.handoff.history.maxTokens"] == .int(80))
+        #expect(await target.handoffCount == 1)
+    }
+
     @Test("Coordinator invokes custom handleHandoff without HandoffReceiver")
     func coordinatorInvokesCustomHandleHandoffWithoutReceiverCast() async throws {
         let target = CoordinatorRecordingRuntime()
