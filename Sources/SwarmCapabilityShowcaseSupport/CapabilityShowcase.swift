@@ -16,6 +16,7 @@ public enum CapabilityFamily: String, CaseIterable, Sendable, Hashable {
     case mcp = "mcp"
     case providers = "providers"
     case foundationModels = "foundation-models"
+    case voice = "voice"
 }
 
 public enum CapabilityScenarioKind: String, Sendable {
@@ -300,6 +301,13 @@ private extension CapabilityShowcase {
                 families: [.foundationModels, .providers],
                 kind: .deterministic,
                 runHandler: runFoundationModelsScenario
+            ),
+            .init(
+                id: "voice",
+                name: "Voice",
+                families: [.voice],
+                kind: .deterministic,
+                runHandler: runVoiceScenario
             ),
         ]
 
