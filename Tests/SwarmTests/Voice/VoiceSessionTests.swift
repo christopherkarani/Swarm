@@ -7,7 +7,7 @@ import Foundation
 @testable import Swarm
 import Testing
 
-@Suite("Voice Session", .ephemeralDefaultStores)
+@Suite("Voice Session", .ephemeralDefaultStores, .timeLimit(.minutes(1)))
 struct VoiceSessionTests {
     @Test("listenAndRespond speaks streamed tokens and records transcripts")
     func listenAndRespondSpeaksStreamedTokens() async throws {
@@ -23,11 +23,7 @@ struct VoiceSessionTests {
             textToSpeech: textToSpeech
         )
         let collector = VoiceEventCollector()
-        let pump = Task {
-            for await event in voice.events {
-                await collector.append(event)
-            }
-        }
+        await collector.attach(to: voice)
 
         let turn = try await voice.listenAndRespond()
 
@@ -35,7 +31,9 @@ struct VoiceSessionTests {
         #expect(turn.spokenUtterances.contains("Hello world."))
         #expect(await textToSpeech.spoken.contains("Hello world."))
 
-        let events = await collector.snapshot()
+        let events = await collector.waitUntil { snapshot in
+            snapshot.contains(.speakingFinished("Hello world."))
+        }
         #expect(events.contains(.partialTranscript("hel")))
         #expect(events.contains(.finalTranscript("hello there")))
         #expect(events.contains(where: { event in
@@ -44,7 +42,7 @@ struct VoiceSessionTests {
         }))
         #expect(events.contains(.speaking("Hello world.")))
         #expect(events.contains(.speakingFinished("Hello world.")))
-        pump.cancel()
+        await collector.cancel()
     }
 
     @Test("empty transcript does not start the agent")
@@ -70,12 +68,16 @@ struct VoiceSessionTests {
             speechToText: MockSpeechToText(),
             textToSpeech: textToSpeech
         )
+        let collector = VoiceEventCollector()
+        await collector.attach(to: voice)
         let first = Task {
             try await voice.respond(to: "hello")
         }
-        await waitForEvent(on: voice) { event in
-            if case .speaking = event { return true }
-            return false
+        _ = await collector.waitUntil { events in
+            events.contains { event in
+                if case .speaking = event { return true }
+                return false
+            }
         }
 
         await #expect(throws: VoiceError.busy) {
@@ -101,12 +103,13 @@ struct VoiceSessionTests {
             speechToText: speechToText,
             textToSpeech: textToSpeech
         )
+        let collector = VoiceEventCollector()
+        await collector.attach(to: voice)
         let listen = Task {
             try await voice.listenAndRespond()
         }
-        await waitForEvent(on: voice) { event in
-            if case .phase(.listening) = event { return true }
-            return false
+        _ = await collector.waitUntil { events in
+            events.contains(.phase(.listening))
         }
 
         await voice.stop()
@@ -193,24 +196,49 @@ struct VoiceSessionTests {
 
 private actor VoiceEventCollector {
     private var events: [VoiceEvent] = []
+    private var waiters: [Waiter] = []
+    private var pump: Task<Void, Never>?
+
+    private struct Waiter {
+        let predicate: @Sendable ([VoiceEvent]) -> Bool
+        let continuation: CheckedContinuation<[VoiceEvent], Never>
+    }
+
+    func attach(to voice: VoiceSession) async {
+        let stream = voice.events
+        pump = Task {
+            for await event in stream {
+                self.append(event)
+            }
+        }
+        await Task.yield()
+    }
 
     func append(_ event: VoiceEvent) {
         events.append(event)
-    }
-
-    func snapshot() -> [VoiceEvent] {
-        events
-    }
-}
-
-private func waitForEvent(
-    on voice: VoiceSession,
-    matching: @Sendable (VoiceEvent) -> Bool
-) async {
-    for await event in voice.events {
-        if matching(event) {
-            return
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending {
+            if waiter.predicate(events) {
+                waiter.continuation.resume(returning: events)
+            } else {
+                waiters.append(waiter)
+            }
         }
+    }
+
+    func waitUntil(_ predicate: @escaping @Sendable ([VoiceEvent]) -> Bool) async -> [VoiceEvent] {
+        if predicate(events) {
+            return events
+        }
+        return await withCheckedContinuation { continuation in
+            waiters.append(Waiter(predicate: predicate, continuation: continuation))
+        }
+    }
+
+    func cancel() {
+        pump?.cancel()
+        pump = nil
     }
 }
 
