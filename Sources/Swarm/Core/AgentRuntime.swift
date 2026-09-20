@@ -216,35 +216,10 @@ public extension AgentRuntime {
         observer: (any AgentObserver)? = nil
     ) async throws -> AgentResponse {
         let result = try await run(input, session: session, observer: observer)
-
-        // Use reduce(into:) instead of uniqueKeysWithValues to avoid crash on duplicate IDs
-        let toolCallsById = result.toolCalls.reduce(into: [UUID: ToolCall]()) { dict, call in
-            dict[call.id] = call
-        }
-
-        let toolCallRecords: [ToolCallRecord] = result.toolResults.compactMap { toolResult in
-            guard let toolCall = toolCallsById[toolResult.callId] else {
-                Log.agents.warning("Tool result missing matching call: \(toolResult.callId)")
-                return nil
-            }
-            return ToolCallRecord(
-                toolName: toolCall.toolName,
-                arguments: toolCall.arguments,
-                duration: toolResult.duration,
-                timestamp: toolCall.timestamp,
-                outcome: ToolCallRecord.Outcome(toolResult.outcome)
-            )
-        }
-
-        return AgentResponse(
-            responseId: TurnEnvironment.live.newID(),
-            output: result.output,
-            agentName: configuration.name,
-            timestamp: TurnEnvironment.live.now(),
-            metadata: result.metadata,
-            toolCalls: toolCallRecords,
-            usage: result.tokenUsage,
-            iterationCount: result.iterationCount
+        return AgentResponseProjection.make(
+            from: result,
+            responseID: TurnEnvironment.live.newID(),
+            agentName: configuration.name
         )
     }
 

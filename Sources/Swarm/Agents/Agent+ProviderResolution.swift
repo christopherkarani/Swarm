@@ -43,26 +43,7 @@ extension Agent {
     }
 
     func makeResponse(from result: AgentResult, responseID: String) -> AgentResponse {
-        let toolCallRecords: [ToolCallRecord] = result.invocations.map { invocation in
-            ToolCallRecord(
-                callId: invocation.call.id,
-                toolName: invocation.call.toolName,
-                arguments: invocation.call.arguments,
-                duration: invocation.result.duration,
-                timestamp: invocation.call.timestamp,
-                outcome: ToolCallRecord.Outcome(invocation.result.outcome)
-            )
-        }
-
-        return AgentResponse(
-            responseId: responseID,
-            output: result.output,
-            agentName: configuration.name,
-            metadata: result.metadata,
-            toolCalls: toolCallRecords,
-            usage: result.tokenUsage,
-            iterationCount: result.iterationCount
-        )
+        AgentResponseProjection.make(from: result, responseID: responseID, agentName: configuration.name)
     }
 
     func finalizeAssistantResponse(
