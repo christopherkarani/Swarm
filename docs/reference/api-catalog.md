@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 227 (234 including `Internal/GraphRuntime/`)
+- Source files scanned: 231 (238 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2347
 
 ## 1. Swarm (entry point)
@@ -3223,6 +3223,29 @@ Turn-based coordinator. Swarm does not accept audio; `VoiceSession` wraps
 | 64 | func | public | VoiceSession.listenAndRespond() | `public func listenAndRespond() async throws -> VoiceTurnResult` |
 | 77 | func | public | VoiceSession.respond(to:) | `public func respond(to transcript: String) async throws -> VoiceTurnResult` |
 | 88 | func | public | VoiceSession.stop() | `public func stop() async` |
+
+### Voice/AppleSpeechToText.swift
+
+Apple-only (`#if canImport(Speech)`). Linux catalog still lists the source file.
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 19 | actor | public | AppleSpeechToText | `public actor AppleSpeechToText` |
+| 29 | func | public | AppleSpeechToText.prepareForSession() | `public func prepareForSession() async throws -> Locale` |
+
+### Voice/AppleTextToSpeech.swift
+
+Apple-only (`#if canImport(AVFoundation)`).
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 17 | actor | public | AppleTextToSpeech | `public actor AppleTextToSpeech` |
+
+### Voice/VoiceSession+Apple.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 18 | func | public | VoiceSession.appleOnDevice(agent:session:locale:configuration:installAssetsIfNeeded:) | `public static func appleOnDevice(agent: any AgentRuntime, session: (any Session)? = nil, locale: Locale = .current, configuration: VoiceSessionConfiguration = .default, installAssetsIfNeeded: Bool = false) async throws -> VoiceSession` |
 
 ## 15. Companion Products
 

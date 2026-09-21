@@ -32,6 +32,9 @@ struct DocumentationFreshnessTests {
         #expect(catalog.contains("scripts/ci/refresh-api-catalog-header.sh"))
         #expect(catalog.contains("| \(workflowStreamLine) | func | public | Workflow.stream(_:)"))
         #expect(catalog.contains("| 42 | enum | public | Swarm | `public enum Swarm` |"))
+        #expect(catalog.contains("VoiceSession.appleOnDevice"))
+        #expect(catalog.contains("AppleSpeechToText"))
+        #expect(catalog.contains("AppleTextToSpeech"))
         #expect(!catalog.contains("| 12 | struct | public | LLM | `public struct LLM` |"))
         #expect(!catalog.contains("LLM.ollama"))
         #expect(!catalog.contains("ConduitProviderSelection"))
@@ -601,6 +604,11 @@ struct DocumentationFreshnessTests {
     func voiceGuideStatesSwarmDoesNotAcceptAudio() throws {
         let guide = try readRepoFile("docs/guide/voice.md")
         #expect(guide.contains("Swarm does not accept audio"))
+        #expect(guide.contains("NSMicrophoneUsageDescription"))
+        #expect(guide.contains("NSSpeechRecognitionUsageDescription"))
+        #expect(guide.contains("Barge-in is not in v1"))
+        #expect(guide.contains("appleOnDevice"))
+        #expect(guide.contains("installAssetsIfNeeded"))
         #expect(!guide.contains("struct VoiceAgent"))
         #expect(!guide.localizedCaseInsensitiveContains("realtime voice"))
     }

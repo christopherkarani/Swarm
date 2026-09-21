@@ -1183,7 +1183,24 @@ public actor VoiceSession {
     public func respond(to transcript: String) async throws -> VoiceTurnResult
     public func stop() async
 }
+
+#if canImport(Speech)
+@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+extension VoiceSession {
+    public static func appleOnDevice(
+        agent: any AgentRuntime,
+        session: (any Session)?,
+        locale: Locale,
+        configuration: VoiceSessionConfiguration,
+        installAssetsIfNeeded: Bool
+    ) async throws -> VoiceSession
+}
+#endif
 ```
+
+`AppleSpeechToText` (`SpeechAnalyzer` + `SpeechTranscriber`) and
+`AppleTextToSpeech` (`AVSpeechSynthesizer`) are Apple-only. They are not
+available on Linux.
 
 See the [Voice guide](/guide/voice).
 

@@ -50,7 +50,32 @@ Protocols, `VoiceSession`, and test doubles compile on Linux. Inject scripted
 
 ## Live Apple capture
 
-Live microphone adapters are optional convenience types. A host app that opens
-the mic must declare `NSMicrophoneUsageDescription` and
+On Apple platforms, `AppleSpeechToText` uses `SpeechAnalyzer` +
+`SpeechTranscriber` (not `SFSpeechRecognizer`) and `AppleTextToSpeech` uses
+`AVSpeechSynthesizer`. Construct both through `VoiceSession.appleOnDevice`.
+
+A host app that opens the mic must declare `NSMicrophoneUsageDescription` and
 `NSSpeechRecognitionUsageDescription`. Language assets may be missing on the
-first offline run; the default is not to download them automatically.
+first offline run. `installAssetsIfNeeded` defaults to `false` so the first
+listen cannot surprise-download.
+
+Barge-in is not in v1.
+
+```swift
+#if canImport(Speech)
+if #available(macOS 26.0, iOS 26.0, visionOS 26.0, *) {
+    let voice = try await VoiceSession.appleOnDevice(
+        agent: agent,
+        session: InMemorySession(),
+        installAssetsIfNeeded: false
+    )
+    let turn = try await voice.listenAndRespond()
+}
+#endif
+```
+
+Deterministic CLI (no microphone):
+
+```bash
+swift run --package-path Examples/VoiceAgent VoiceAgent --demo "Hello there."
+```
