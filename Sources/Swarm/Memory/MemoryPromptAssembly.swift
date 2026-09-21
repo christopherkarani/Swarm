@@ -55,6 +55,17 @@ enum MemoryPromptAssembly {
         return kept
     }
 
+    /// Window-build failure items, newest first.
+    ///
+    /// `limit` keeps a prefix. `MemoryMessage.formatContext` selects from the
+    /// newest message. Oldest-first input would make that prefix the oldest
+    /// messages.
+    static func fallbackItems(from messages: [MemoryMessage]) -> [MemoryPromptItem] {
+        messages.reversed().map { message in
+            MemoryPromptItem(text: message.formattedContent)
+        }
+    }
+
     private static func trim(
         _ text: String,
         tokenLimit: Int,

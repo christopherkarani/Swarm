@@ -144,9 +144,7 @@ public actor ContextCoreMemory: Memory {
                 MemoryPromptItem(text: "[\(chunk.role.rawValue)]: \(chunk.content)")
             }
         } catch {
-            return messages.map { message in
-                MemoryPromptItem(text: message.formattedContent)
-            }
+            return MemoryPromptAssembly.fallbackItems(from: messages)
         }
     }
 

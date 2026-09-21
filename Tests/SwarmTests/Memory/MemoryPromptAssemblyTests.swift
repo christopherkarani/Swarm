@@ -129,4 +129,31 @@ struct MemoryPromptAssemblyTests {
 
         #expect(kept == [MemoryPromptItem(text: "kept")])
     }
+
+    @Test("Window-build fallback items are newest-first so the prefix keeps recent messages")
+    func windowBuildFallbackItemsAreNewestFirst() async {
+        let messages = [
+            MemoryMessage.user("older"),
+            MemoryMessage.assistant("middle"),
+            MemoryMessage.system("newer"),
+        ]
+
+        let items = MemoryPromptAssembly.fallbackItems(from: messages)
+
+        #expect(items.map(\.text) == [
+            "[system]: newer",
+            "[assistant]: middle",
+            "[user]: older",
+        ])
+
+        let kept = await MemoryPromptAssembly.limit(
+            items,
+            maxItems: 1,
+            maxItemTokens: 100,
+            tokenLimit: 100,
+            estimate: countCharacters
+        )
+
+        #expect(kept == [MemoryPromptItem(text: "[system]: newer")])
+    }
 }
