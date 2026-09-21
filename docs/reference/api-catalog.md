@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 229 (236 including `Internal/GraphRuntime/`)
+- Source files scanned: 231 (238 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2347
 
 ## 1. Swarm (entry point)
@@ -171,26 +171,27 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 82 | case | public | AgentEvent.Tool.partial(update:) | `public case partial(update: PartialToolCallUpdate)` |
 | 85 | case | public | AgentEvent.Tool.completed(call:result:) | `public case completed(call: ToolCall, result: ToolResult)` |
 | 88 | case | public | AgentEvent.Tool.failed(call:error:) | `public case failed(call: ToolCall, error: AgentError)` |
-| 92 | enum | public | AgentEvent.Output | `public enum Output` |
-| 94 | case | public | AgentEvent.Output.token(_:) | `public case token(String)` |
-| 97 | case | public | AgentEvent.Output.chunk(_:) | `public case chunk(String)` |
-| 100 | case | public | AgentEvent.Output.thinking(thought:) | `public case thinking(thought: String)` |
-| 103 | case | public | AgentEvent.Output.thinkingPartial(_:) | `public case thinkingPartial(String)` |
-| 107 | enum | public | AgentEvent.Handoff | `public enum Handoff` |
-| 109 | case | public | AgentEvent.Handoff.requested(from:to:reason:) | `public case requested(from: String, to: String, reason: String?)` |
-| 112 | case | public | AgentEvent.Handoff.completed(from:to:) | `public case completed(from: String, to: String)` |
-| 115 | case | public | AgentEvent.Handoff.started(from:to:input:) | `public case started(from: String, to: String, input: String)` |
-| 118 | case | public | AgentEvent.Handoff.completedWithResult(from:to:result:) | `public case completedWithResult(from: String, to: String, result: AgentResult)` |
-| 121 | case | public | AgentEvent.Handoff.skipped(from:to:reason:) | `public case skipped(from: String, to: String, reason: String)` |
-| 125 | enum | public | AgentEvent.Observation | `public enum Observation` |
-| 127 | case | public | AgentEvent.Observation.decision(_:options:) | `public case decision(String, options: [String]?)` |
-| 130 | case | public | AgentEvent.Observation.planUpdated(_:stepCount:) | `public case planUpdated(String, stepCount: Int)` |
-| 133 | case | public | AgentEvent.Observation.guardrailStarted(name:type:) | `public case guardrailStarted(name: String, type: GuardrailType)` |
-| 136 | case | public | AgentEvent.Observation.guardrailPassed(name:type:) | `public case guardrailPassed(name: String, type: GuardrailType)` |
-| 139 | case | public | AgentEvent.Observation.guardrailTriggered(name:type:message:) | `public case guardrailTriggered(name: String, type: GuardrailType, message: String?)` |
-| 142 | case | public | AgentEvent.Observation.memoryAccessed(operation:count:) | `public case memoryAccessed(operation: MemoryOperation, count: Int)` |
-| 145 | case | public | AgentEvent.Observation.llmStarted(model:promptTokens:) | `public case llmStarted(model: String?, promptTokens: Int?)` |
-| 148 | case | public | AgentEvent.Observation.llmCompleted(model:promptTokens:completionTokens:duration:) | `public case llmCompleted(model: String?, promptTokens: Int?, completionTokens: Int?, duration: TimeInterval)` |
+| 94 | func | public | AgentEvent.Tool.completed(_:) | `public static func completed(_ invocation: ToolInvocation) -> Self` |
+| 100 | enum | public | AgentEvent.Output | `public enum Output` |
+| 102 | case | public | AgentEvent.Output.token(_:) | `public case token(String)` |
+| 105 | case | public | AgentEvent.Output.chunk(_:) | `public case chunk(String)` |
+| 108 | case | public | AgentEvent.Output.thinking(thought:) | `public case thinking(thought: String)` |
+| 111 | case | public | AgentEvent.Output.thinkingPartial(_:) | `public case thinkingPartial(String)` |
+| 115 | enum | public | AgentEvent.Handoff | `public enum Handoff` |
+| 117 | case | public | AgentEvent.Handoff.requested(from:to:reason:) | `public case requested(from: String, to: String, reason: String?)` |
+| 120 | case | public | AgentEvent.Handoff.completed(from:to:) | `public case completed(from: String, to: String)` |
+| 123 | case | public | AgentEvent.Handoff.started(from:to:input:) | `public case started(from: String, to: String, input: String)` |
+| 126 | case | public | AgentEvent.Handoff.completedWithResult(from:to:result:) | `public case completedWithResult(from: String, to: String, result: AgentResult)` |
+| 129 | case | public | AgentEvent.Handoff.skipped(from:to:reason:) | `public case skipped(from: String, to: String, reason: String)` |
+| 133 | enum | public | AgentEvent.Observation | `public enum Observation` |
+| 135 | case | public | AgentEvent.Observation.decision(_:options:) | `public case decision(String, options: [String]?)` |
+| 138 | case | public | AgentEvent.Observation.planUpdated(_:stepCount:) | `public case planUpdated(String, stepCount: Int)` |
+| 141 | case | public | AgentEvent.Observation.guardrailStarted(name:type:) | `public case guardrailStarted(name: String, type: GuardrailType)` |
+| 144 | case | public | AgentEvent.Observation.guardrailPassed(name:type:) | `public case guardrailPassed(name: String, type: GuardrailType)` |
+| 147 | case | public | AgentEvent.Observation.guardrailTriggered(name:type:message:) | `public case guardrailTriggered(name: String, type: GuardrailType, message: String?)` |
+| 150 | case | public | AgentEvent.Observation.memoryAccessed(operation:count:) | `public case memoryAccessed(operation: MemoryOperation, count: Int)` |
+| 153 | case | public | AgentEvent.Observation.llmStarted(model:promptTokens:) | `public case llmStarted(model: String?, promptTokens: Int?)` |
+| 156 | case | public | AgentEvent.Observation.llmCompleted(model:promptTokens:completionTokens:duration:) | `public case llmCompleted(model: String?, promptTokens: Int?, completionTokens: Int?, duration: TimeInterval)` |
 | 244 | enum | public | GuardrailType | `public enum GuardrailType` |
 | 245 | case | public | GuardrailType.input | `public case input` |
 | 246 | case | public | GuardrailType.output | `public case output` |
@@ -936,9 +937,10 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 84 | func | public | AgentObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 89 | func | public | AgentObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 98 | func | public | AgentObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
-| 115 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async` |
-| 131 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `@available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.") public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async` |
-| 140 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async` |
+| 117 | func | public | AgentObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async` |
+| 129 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async` |
+| 145 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `@available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.") public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async` |
+| 154 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async` |
 | 125 | func | public | AgentObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
 | 133 | func | public | AgentObserver.onThinking(context:agent:thought:) | `public func onThinking(context: AgentContext?, agent: any AgentRuntime, thought: String) async` |
 | 141 | func | public | AgentObserver.onThinkingPartial(context:agent:partialThought:) | `public func onThinkingPartial(context: AgentContext?, agent: any AgentRuntime, partialThought: String) async` |
@@ -952,9 +954,10 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 184 | func | public | AgentObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 187 | func | public | AgentObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 190 | func | public | AgentObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
-| 230 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async` |
-| 234 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `@available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.") public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [MemoryMessage]) async` |
-| 237 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context _: AgentContext?, agent _: any AgentRuntime, response _: String, usage _: TokenUsage?) async` |
+| 244 | func | public | AgentObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async` |
+| 249 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async` |
+| 253 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `@available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.") public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [MemoryMessage]) async` |
+| 256 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context _: AgentContext?, agent _: any AgentRuntime, response _: String, usage _: TokenUsage?) async` |
 | 199 | func | public | AgentObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context _: AgentContext?, guardrailName _: String, guardrailType _: GuardrailType, result _: GuardrailResult) async` |
 | 202 | func | public | AgentObserver.onThinking(context:agent:thought:) | `public func onThinking(context _: AgentContext?, agent _: any AgentRuntime, thought _: String) async` |
 | 205 | func | public | AgentObserver.onThinkingPartial(context:agent:partialThought:) | `public func onThinkingPartial(context _: AgentContext?, agent _: any AgentRuntime, partialThought _: String) async` |
@@ -987,8 +990,9 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 475 | func | public | LoggingObserver.onHandoff(context:fromAgent:toAgent:) | `public func onHandoff(context: AgentContext?, fromAgent: any AgentRuntime, toAgent: any AgentRuntime) async` |
 | 486 | func | public | LoggingObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async` |
 | 495 | func | public | LoggingObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent _: any AgentRuntime, result: ToolResult) async` |
-| 507 | func | public | LoggingObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [InferenceMessage]) async` |
-| 516 | func | public | LoggingObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent _: any AgentRuntime, response _: String, usage: TokenUsage?) async` |
+| 628 | func | public | LoggingObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent _: any AgentRuntime, invocation: ToolInvocation) async` |
+| 640 | func | public | LoggingObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [InferenceMessage]) async` |
+| 649 | func | public | LoggingObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent _: any AgentRuntime, response _: String, usage: TokenUsage?) async` |
 | 530 | func | public | LoggingObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
 | 540 | func | public | LoggingObserver.onThinking(context:agent:thought:) | `public func onThinking(context: AgentContext?, agent _: any AgentRuntime, thought: String) async` |
 | 550 | func | public | LoggingObserver.onOutputToken(context:agent:token:) | `public func onOutputToken(context: AgentContext?, agent _: any AgentRuntime, token: String) async` |
@@ -2844,6 +2848,41 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 69 | func | public | MCPToolBridge.bridgeTools() | `public func bridgeTools() async throws -> [any AnyJSONTool]` |
 
 ## 11. Providers
+
+### Providers/ConversationInferenceProvider.swift
+
+Provider-facing conversation message. The payload is a closed `Body`; `role`, `content`, `name`, `toolCallID`, and `toolCalls` project from `body`.
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 74 | struct | public | InferenceMessage | `public struct InferenceMessage` |
+| 75 | enum | public | InferenceMessage.Role | `public enum Role` |
+| 76 | case | public | InferenceMessage.Role.system | `public case system` |
+| 77 | case | public | InferenceMessage.Role.user | `public case user` |
+| 78 | case | public | InferenceMessage.Role.assistant | `public case assistant` |
+| 79 | case | public | InferenceMessage.Role.tool | `public case tool` |
+| 86 | enum | public | InferenceMessage.Body | `public enum Body` |
+| 88 | case | public | InferenceMessage.Body.system(_:) | `public case system(String)` |
+| 90 | case | public | InferenceMessage.Body.user(_:) | `public case user(String)` |
+| 92 | case | public | InferenceMessage.Body.assistant(_:toolCalls:) | `public case assistant(String, toolCalls: [InferenceMessage.ToolCall] = [])` |
+| 94 | case | public | InferenceMessage.Body.tool(name:content:toolCallID:) | `public case tool(name: String, content: String, toolCallID: String?)` |
+| 98 | struct | public | InferenceMessage.ToolCall | `public struct ToolCall` |
+| 99 | var | public | InferenceMessage.ToolCall.id | `public let id: String?` |
+| 100 | var | public | InferenceMessage.ToolCall.name | `public let name: String` |
+| 101 | var | public | InferenceMessage.ToolCall.arguments | `public let arguments: [String: SendableValue]` |
+| 103 | func | public | InferenceMessage.ToolCall.init(id:name:arguments:) | `public init(id: String? = nil, name: String, arguments: [String: SendableValue])` |
+| 111 | var | public | InferenceMessage.body | `public let body: InferenceMessage.Body` |
+| 114 | var | public | InferenceMessage.role | `public var role: InferenceMessage.Role { get }` |
+| 128 | var | public | InferenceMessage.content | `public var content: String { get }` |
+| 140 | var | public | InferenceMessage.name | `public var name: String? { get }` |
+| 150 | var | public | InferenceMessage.toolCallID | `public var toolCallID: String? { get }` |
+| 160 | var | public | InferenceMessage.toolCalls | `public var toolCalls: [InferenceMessage.ToolCall] { get }` |
+| 172 | func | public | InferenceMessage.init(body:) | `public init(body: InferenceMessage.Body)` |
+| 192 | func | public | InferenceMessage.init(role:content:name:toolCallID:toolCalls:) | `@available(*, deprecated, message: "Use init(body:) or the role factories.") public init(role: InferenceMessage.Role, content: String, name: String? = nil, toolCallID: String? = nil, toolCalls: [InferenceMessage.ToolCall] = [])` |
+| 211 | func | public | InferenceMessage.system(_:) | `public static func system(_ content: String) -> InferenceMessage` |
+| 215 | func | public | InferenceMessage.user(_:) | `public static func user(_ content: String) -> InferenceMessage` |
+| 219 | func | public | InferenceMessage.assistant(_:toolCalls:) | `public static func assistant(_ content: String, toolCalls: [InferenceMessage.ToolCall] = []) -> InferenceMessage` |
+| 223 | func | public | InferenceMessage.tool(name:content:toolCallID:) | `public static func tool(name: String, content: String, toolCallID: String? = nil) -> InferenceMessage` |
 
 ### Providers/OpenAICompatible/OpenAICompatibleProvider.swift
 

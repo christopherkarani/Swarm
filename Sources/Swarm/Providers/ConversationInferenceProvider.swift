@@ -66,12 +66,32 @@ public extension InferenceProviderCapabilities {
 public protocol CapabilityReportingInferenceProvider: InferenceProvider {}
 
 /// A provider-facing conversation message used by structured inference integrations.
+///
+/// The payload is a closed ``Body``: system text, user text, assistant text with
+/// optional tool calls, or a named tool result. Historical ``role``, ``content``,
+/// ``name``, ``toolCallID``, and ``toolCalls`` remain as computed projections of
+/// ``body``.
 public struct InferenceMessage: Sendable, Equatable {
     public enum Role: String, Sendable, Codable {
         case system
         case user
         case assistant
         case tool
+    }
+
+    /// Closed payload of one provider conversation item.
+    ///
+    /// Each case carries only the fields that role allows. A user or system
+    /// message cannot store tool calls; a tool result always has a name.
+    public enum Body: Sendable, Equatable {
+        /// System instruction text.
+        case system(String)
+        /// User turn text.
+        case user(String)
+        /// Assistant text with optional native tool calls.
+        case assistant(String, toolCalls: [ToolCall] = [])
+        /// Named tool result with optional provider call id.
+        case tool(name: String, content: String, toolCallID: String?)
     }
 
     /// Tool-call metadata attached to assistant messages so providers can continue native tool loops.
@@ -87,12 +107,88 @@ public struct InferenceMessage: Sendable, Equatable {
         }
     }
 
-    public let role: Role
-    public let content: String
-    public let name: String?
-    public let toolCallID: String?
-    public let toolCalls: [ToolCall]
+    /// System, user, assistant, or tool payload.
+    public let body: Body
 
+    /// Role projected from ``body``.
+    public var role: Role {
+        switch body {
+        case .system:
+            .system
+        case .user:
+            .user
+        case .assistant:
+            .assistant
+        case .tool:
+            .tool
+        }
+    }
+
+    /// Text content projected from ``body``.
+    public var content: String {
+        switch body {
+        case let .system(text), let .user(text):
+            text
+        case let .assistant(text, _):
+            text
+        case let .tool(_, content, _):
+            content
+        }
+    }
+
+    /// Tool name when ``body`` is ``Body/tool(name:content:toolCallID:)``; otherwise `nil`.
+    public var name: String? {
+        switch body {
+        case let .tool(name, _, _):
+            name
+        case .system, .user, .assistant:
+            nil
+        }
+    }
+
+    /// Provider call id when ``body`` is ``Body/tool(name:content:toolCallID:)``; otherwise `nil`.
+    public var toolCallID: String? {
+        switch body {
+        case let .tool(_, _, id):
+            id
+        case .system, .user, .assistant:
+            nil
+        }
+    }
+
+    /// Tool calls when ``body`` is ``Body/assistant(_:toolCalls:)``; otherwise `[]`.
+    public var toolCalls: [ToolCall] {
+        switch body {
+        case let .assistant(_, toolCalls):
+            toolCalls
+        case .system, .user, .tool:
+            []
+        }
+    }
+
+    /// Creates a message from a closed body.
+    ///
+    /// - Parameter body: System, user, assistant, or tool payload.
+    public init(body: Body) {
+        self.body = body
+    }
+
+    /// Creates a message from independent role and payload fields.
+    ///
+    /// Mapping: ``Role/system`` becomes ``Body/system(_:)`` and drops `name`,
+    /// `toolCallID`, and `toolCalls`. ``Role/user`` becomes ``Body/user(_:)``
+    /// and drops the same extra fields. ``Role/assistant`` becomes
+    /// ``Body/assistant(_:toolCalls:)`` and drops `name` and `toolCallID`.
+    /// ``Role/tool`` becomes ``Body/tool(name:content:toolCallID:)`` using
+    /// `name ?? "tool"` and drops `toolCalls`.
+    ///
+    /// - Parameters:
+    ///   - role: Historical role used to choose the body case.
+    ///   - content: Text stored on that case.
+    ///   - name: Tool name. Used only for ``Role/tool``; absent values become `"tool"`.
+    ///   - toolCallID: Provider call id. Used only for ``Role/tool``.
+    ///   - toolCalls: Native tool calls. Used only for ``Role/assistant``.
+    @available(*, deprecated, message: "Use init(body:) or the role factories.")
     public init(
         role: Role,
         content: String,
@@ -100,23 +196,28 @@ public struct InferenceMessage: Sendable, Equatable {
         toolCallID: String? = nil,
         toolCalls: [ToolCall] = []
     ) {
-        self.role = role
-        self.content = content
-        self.name = name
-        self.toolCallID = toolCallID
-        self.toolCalls = toolCalls
+        switch role {
+        case .system:
+            body = .system(content)
+        case .user:
+            body = .user(content)
+        case .assistant:
+            body = .assistant(content, toolCalls: toolCalls)
+        case .tool:
+            body = .tool(name: name ?? "tool", content: content, toolCallID: toolCallID)
+        }
     }
 
     public static func system(_ content: String) -> InferenceMessage {
-        InferenceMessage(role: .system, content: content)
+        InferenceMessage(body: .system(content))
     }
 
     public static func user(_ content: String) -> InferenceMessage {
-        InferenceMessage(role: .user, content: content)
+        InferenceMessage(body: .user(content))
     }
 
     public static func assistant(_ content: String, toolCalls: [ToolCall] = []) -> InferenceMessage {
-        InferenceMessage(role: .assistant, content: content, toolCalls: toolCalls)
+        InferenceMessage(body: .assistant(content, toolCalls: toolCalls))
     }
 
     public static func tool(
@@ -124,7 +225,7 @@ public struct InferenceMessage: Sendable, Equatable {
         content: String,
         toolCallID: String? = nil
     ) -> InferenceMessage {
-        InferenceMessage(role: .tool, content: content, name: name, toolCallID: toolCallID)
+        InferenceMessage(body: .tool(name: name, content: content, toolCallID: toolCallID))
     }
 }
 
