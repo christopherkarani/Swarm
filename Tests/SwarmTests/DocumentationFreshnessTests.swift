@@ -597,6 +597,14 @@ struct DocumentationFreshnessTests {
         throw DocumentationFreshnessError.missingLine(needle)
     }
 
+    @Test("voice guide states Swarm does not accept audio")
+    func voiceGuideStatesSwarmDoesNotAcceptAudio() throws {
+        let guide = try readRepoFile("docs/guide/voice.md")
+        #expect(guide.contains("Swarm does not accept audio"))
+        #expect(!guide.contains("struct VoiceAgent"))
+        #expect(!guide.localizedCaseInsensitiveContains("realtime voice"))
+    }
+
     @Test("public docs do not claim OS 27 Foundation Models APIs are missing")
     func publicDocsDoNotClaimOS27FoundationModelsAPIsAreMissing() throws {
         let files = [

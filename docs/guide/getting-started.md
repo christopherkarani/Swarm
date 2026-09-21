@@ -365,6 +365,24 @@ for message in await conversation.messages {
 }
 ```
 
+### Voice (`VoiceSession`)
+
+`VoiceSession` wraps an existing agent for one spoken (or injected) turn.
+Swarm does not accept audio — the coordinator calls `agent.stream` with text
+and speaks output sentences through a `TextToSpeech` adapter.
+
+```swift
+let voice = VoiceSession(
+    agent: agent,
+    speechToText: mySpeechToText,
+    textToSpeech: myTextToSpeech
+)
+let turn = try await voice.respond(to: "What's 2 plus 2?")
+```
+
+See [Voice](voice.md) for listen/respond, sentence buffering, and live-mic
+plist requirements.
+
 ## Multi-Agent Workflows
 
 ### Sequential pipeline
@@ -591,6 +609,7 @@ The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only featur
 
 - **[Agents](../reference/front-facing-api.md#3-agent-struct-primary-init)** -- Agent types, configuration, tool calling
 - **[Foundation Models](foundation-models.md)** -- Capture vs provider-owned tool loop
+- **[Voice](voice.md)** -- Turn-based `VoiceSession` around an existing Agent
 - **[Remote Providers](remote-providers.md)** -- OpenAI-compatible HTTP (OpenAI, Azure, OpenRouter, Ollama, LM Studio)
 - **[Tools](../reference/front-facing-api.md#5-tool-and-functiontool)** -- `@Tool` macro, `FunctionTool`, `ToolCollection`, and `@ToolBuilder`
 - **[Workflow](../reference/front-facing-api.md#7-workflow)** -- Sequential, parallel, and routed last-answer chain

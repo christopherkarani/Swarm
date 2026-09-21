@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 216 (223 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2379
+- Source files scanned: 227 (234 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2347
 
 ## 1. Swarm (entry point)
 
@@ -3150,6 +3150,79 @@ Swarm capture-path types. Owned-loop consumes ``Profile`` / ``ProfileHistoryPoli
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 27 | var | public | Duration.timeInterval | `public var timeInterval: TimeInterval { get }` |
+
+## 14b. Voice
+
+Turn-based coordinator. Swarm does not accept audio; `VoiceSession` wraps
+`Agent.stream` with host-injected speech adapters.
+
+### Voice/VoiceError.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 12 | enum | public | VoiceError | `public enum VoiceError: Error, Sendable, Equatable` |
+| 14 | case | public | VoiceError.busy | `public case busy` |
+| 17 | case | public | VoiceError.emptyTranscript | `public case emptyTranscript` |
+| 20 | case | public | VoiceError.notAuthorized | `public case notAuthorized(reason: String)` |
+| 23 | case | public | VoiceError.unsupportedLocale | `public case unsupportedLocale(String)` |
+| 26 | case | public | VoiceError.assetUnavailable | `public case assetUnavailable(reason: String)` |
+| 29 | case | public | VoiceError.speechFailed | `public case speechFailed(reason: String)` |
+| 32 | case | public | VoiceError.synthesisFailed | `public case synthesisFailed(reason: String)` |
+| 35 | case | public | VoiceError.agentFinishedWithoutResult | `public case agentFinishedWithoutResult` |
+| 38 | case | public | VoiceError.cancelled | `public case cancelled` |
+
+### Voice/VoiceEvent.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 9 | enum | public | VoicePhase | `public enum VoicePhase: String, Sendable, Equatable` |
+| 23 | enum | public | VoiceEvent | `public enum VoiceEvent: Sendable, Equatable` |
+
+### Voice/SpeechTranscript.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 13 | struct | public | SpeechTranscript | `public struct SpeechTranscript: Sendable, Equatable` |
+| 24 | func | public | SpeechTranscript.init(text:isFinal:) | `public init(text: String, isFinal: Bool)` |
+
+### Voice/VoiceSessionConfiguration.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 9 | struct | public | VoiceSessionConfiguration | `public struct VoiceSessionConfiguration: Sendable, Equatable` |
+| 36 | var | public | VoiceSessionConfiguration.default | `public static let \`default\`: VoiceSessionConfiguration` |
+
+### Voice/VoiceTurnResult.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 11 | struct | public | VoiceTurnResult | `public struct VoiceTurnResult: Sendable` |
+
+### Voice/SpeechToText.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 12 | protocol | public | SpeechToText | `public protocol SpeechToText: Sendable` |
+| 14 | func | public | SpeechToText.start() | `func start() -> AsyncThrowingStream<SpeechTranscript, Error>` |
+| 17 | func | public | SpeechToText.stop() | `func stop() async` |
+
+### Voice/TextToSpeech.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 9 | protocol | public | TextToSpeech | `public protocol TextToSpeech: Sendable` |
+| 11 | func | public | TextToSpeech.speak(_:) | `func speak(_ text: String) async throws` |
+| 14 | func | public | TextToSpeech.stop() | `func stop() async` |
+
+### Voice/VoiceSession.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 16 | actor | public | VoiceSession | `public actor VoiceSession` |
+| 41 | func | public | VoiceSession.init(agent:speechToText:textToSpeech:session:configuration:) | `public init(agent: any AgentRuntime, speechToText: any SpeechToText, textToSpeech: any TextToSpeech, session: (any Session)? = nil, configuration: VoiceSessionConfiguration = .default)` |
+| 64 | func | public | VoiceSession.listenAndRespond() | `public func listenAndRespond() async throws -> VoiceTurnResult` |
+| 77 | func | public | VoiceSession.respond(to:) | `public func respond(to transcript: String) async throws -> VoiceTurnResult` |
+| 88 | func | public | VoiceSession.stop() | `public func stop() async` |
 
 ## 15. Companion Products
 
