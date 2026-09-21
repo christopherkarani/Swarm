@@ -104,6 +104,40 @@ struct AgentTurnDependenciesTests {
         #expect(sameInstance(dependencies.provider, privateGlobal))
     }
 
+    @Test("Privacy-required prefers private explicit, then private environment, then private global")
+    func privacyRequiredPrivateAmbientOrder() throws {
+        let configuration = AgentConfiguration.default.inferencePolicy(InferencePolicy(privacyRequired: true))
+        let explicitPrivate = MockInferenceProvider(
+            responses: ["explicit"],
+            capabilities: [.privateInference]
+        )
+        let environmentPrivate = MockInferenceProvider(
+            responses: ["environment"],
+            capabilities: [.privateInference]
+        )
+        let globalPrivate = MockInferenceProvider(
+            responses: ["global"],
+            capabilities: [.privateInference]
+        )
+
+        let fromExplicit = try AgentTurnDependencyResolver.resolve(query(
+            configuration: configuration,
+            explicitProvider: explicitPrivate,
+            environmentProvider: environmentPrivate,
+            globalProvider: globalPrivate,
+            foundationModels: nil
+        ))
+        #expect(sameInstance(fromExplicit.provider, explicitPrivate))
+
+        let fromEnvironment = try AgentTurnDependencyResolver.resolve(query(
+            configuration: configuration,
+            environmentProvider: environmentPrivate,
+            globalProvider: globalPrivate,
+            foundationModels: nil
+        ))
+        #expect(sameInstance(fromEnvironment.provider, environmentPrivate))
+    }
+
     @Test("Privacy-required throws when no private provider exists")
     func privacyRequiredThrowsWithoutPrivateProvider() {
         let configuration = AgentConfiguration.default.inferencePolicy(InferencePolicy(privacyRequired: true))
@@ -172,6 +206,20 @@ struct AgentTurnDependenciesTests {
 
     // MARK: - Tracer resolution
 
+    @Test("Tracer prefers explicit tracer over environment tracer")
+    func tracerPrefersExplicitOverEnvironment() throws {
+        let explicit = SwiftLogTracer(minimumLevel: .debug)
+        let environmentTracer = SwiftLogTracer(minimumLevel: .info)
+        var environment = AgentEnvironment()
+        environment.tracer = environmentTracer
+
+        let explicitWins = try resolve(explicitTracer: explicit, environment: environment)
+        #expect(identical(explicitWins.tracer, explicit as (any Tracer)?))
+
+        let environmentUsed = try resolve(explicitTracer: nil, environment: environment)
+        #expect(identical(environmentUsed.tracer, environmentTracer as (any Tracer)?))
+    }
+
     @Test("Tracer prefers explicit tracer and composes the auto-attached collector")
     func tracerComposition() throws {
         let tracer = SwiftLogTracer(minimumLevel: .debug)
@@ -190,6 +238,13 @@ struct AgentTurnDependenciesTests {
             metricsCollector: collector
         )
         #expect(identical(collectorAsTracer.tracer, collector as (any Tracer)?))
+
+        let collectorOnly = try resolve(
+            configuration: .default.autoAttachMetricsCollector(true).defaultTracingEnabled(false),
+            explicitTracer: nil,
+            metricsCollector: collector
+        )
+        #expect(identical(collectorOnly.tracer, collector as (any Tracer)?))
 
         let withoutCollector = try resolve(
             configuration: .default.autoAttachMetricsCollector(false),
@@ -284,6 +339,122 @@ struct AgentTurnDependenciesTests {
         let disabled = try resolve(environment: AgentEnvironment(membrane: .disabled))
         #expect(disabled.membraneAdapter == nil)
         #expect(disabled.membraneEnvironment?.isEnabled == false)
+    }
+
+    // MARK: - Provider capabilities
+
+    @Test("Provider capabilities always include conversationMessages")
+    func providerCapabilitiesIncludeConversationMessages() {
+        let provider = MockInferenceProvider(
+            responses: ["ok"],
+            capabilities: [.responseContinuation]
+        )
+
+        let capabilities = AgentTurnDependencyResolver.providerCapabilities(for: provider)
+
+        #expect(capabilities.contains(.responseContinuation))
+        #expect(capabilities.contains(.conversationMessages))
+    }
+
+    // MARK: - Runtime environment
+
+    @Test("Runtime environment merges the provider token counter when present")
+    func runtimeEnvironmentTokenCounterMerge() {
+        let countingProvider = MockInferenceProvider(responses: ["counted"])
+        let bare = BareTurnDependencyInferenceProvider()
+        let originalCounter = IdentityTurnDependencyTokenCounter()
+        let environment = AgentEnvironment(promptTokenCounter: originalCounter)
+
+        let merged = AgentTurnDependencyResolver.runtimeEnvironment(
+            environment,
+            addingTokenCounterFrom: countingProvider
+        )
+        #expect((merged.promptTokenCounter as AnyObject) === (countingProvider as AnyObject))
+
+        let preserved = AgentTurnDependencyResolver.runtimeEnvironment(
+            environment,
+            addingTokenCounterFrom: bare
+        )
+        #expect((preserved.promptTokenCounter as AnyObject) === (originalCounter as AnyObject))
+    }
+
+    // MARK: - Inference options (pure values; shell owns ResponseTracker)
+
+    @Test("Inference options strip previousResponseId without continuation capability")
+    func inferenceOptionsStripWithoutContinuationSupport() {
+        var configuration = AgentConfiguration.default
+        configuration.autoPreviousResponseId = true
+        configuration.previousResponseId = "stale-id"
+
+        let options = AgentTurnDependencyResolver.inferenceOptions(
+            configuration: configuration,
+            capabilities: [],
+            sessionID: "any",
+            latestResponseID: "tracked-1"
+        )
+        #expect(options.previousResponseId == nil)
+    }
+
+    @Test("Configured previous response id trims whitespace and beats a provided latestResponseID")
+    func inferenceOptionsExplicitIDWins() {
+        var configuration = AgentConfiguration.default
+        configuration.autoPreviousResponseId = true
+        configuration.previousResponseId = "  explicit-id  "
+
+        let options = AgentTurnDependencyResolver.inferenceOptions(
+            configuration: configuration,
+            capabilities: [.responseContinuation],
+            sessionID: "session-a",
+            latestResponseID: "tracked-1"
+        )
+        #expect(options.previousResponseId == "explicit-id")
+    }
+
+    @Test("Auto tracking uses a provided latestResponseID without awaiting")
+    func inferenceOptionsUseProvidedLatestResponseID() {
+        var configuration = AgentConfiguration.default
+        configuration.autoPreviousResponseId = true
+
+        let options = AgentTurnDependencyResolver.inferenceOptions(
+            configuration: configuration,
+            capabilities: [.responseContinuation],
+            sessionID: "session-b",
+            latestResponseID: "tracked-1"
+        )
+        #expect(options.previousResponseId == "tracked-1")
+
+        let unknownSession = AgentTurnDependencyResolver.inferenceOptions(
+            configuration: configuration,
+            capabilities: [.responseContinuation],
+            sessionID: "unknown-session",
+            latestResponseID: nil
+        )
+        #expect(unknownSession.previousResponseId == nil)
+    }
+
+    @Test("Auto tracking requires a session and stays inert when disabled")
+    func inferenceOptionsAutoRequiresSessionAndFlag() {
+        var autoEnabled = AgentConfiguration.default
+        autoEnabled.autoPreviousResponseId = true
+        autoEnabled.previousResponseId = nil
+
+        let noSession = AgentTurnDependencyResolver.inferenceOptions(
+            configuration: autoEnabled,
+            capabilities: [.responseContinuation],
+            sessionID: nil,
+            latestResponseID: "tracked-2"
+        )
+        #expect(noSession.previousResponseId == nil)
+
+        var flagOff = autoEnabled
+        flagOff.autoPreviousResponseId = false
+        let flagOffResult = AgentTurnDependencyResolver.inferenceOptions(
+            configuration: flagOff,
+            capabilities: [.responseContinuation],
+            sessionID: "session-c",
+            latestResponseID: "tracked-2"
+        )
+        #expect(flagOffResult.previousResponseId == nil)
     }
 
     // MARK: - Helpers
@@ -395,5 +566,20 @@ private struct StubTurnDependencyTool: AnyJSONTool {
 
     func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
         .string("ok")
+    }
+}
+
+/// Provider without a native token counter so runtime-environment merge can preserve the original.
+private struct BareTurnDependencyInferenceProvider: InferenceProvider {
+    func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String {
+        "bare"
+    }
+}
+
+/// Reference-identity counter. ``EstimatedPromptTokenCounter`` is a struct, so
+/// `ObjectIdentifier(counter as AnyObject)` boxes a new value on each call.
+private final class IdentityTurnDependencyTokenCounter: PromptTokenCounter, Sendable {
+    func countTokens(in text: String) async throws -> Int {
+        max(1, text.count)
     }
 }

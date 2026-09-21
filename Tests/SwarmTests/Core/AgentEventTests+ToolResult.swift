@@ -575,6 +575,25 @@ struct ToolResultTests {
         #expect(failureObject["outcome"] == nil)
     }
 
+    @Test("AgentEvent.Tool.completed factory yields completed(call:result:)")
+    func completedFactoryFromInvocation() {
+        let call = ToolCall(toolName: "calculator", arguments: ["x": .int(2)])
+        let invocation = ToolInvocation(
+            call: call,
+            duration: .milliseconds(5),
+            outcome: .success(.string("4"))
+        )
+
+        let event = AgentEvent.Tool.completed(invocation)
+        guard case let .completed(call: completedCall, result: result) = event else {
+            Issue.record("expected completed(call:result:)")
+            return
+        }
+        #expect(completedCall == call)
+        #expect(result == invocation.result)
+        #expect(result.callId == call.id)
+    }
+
     @Test("EventStreamObserver treats ToolResult failure as a tool error")
     func eventStreamTreatsFailureAsToolError() async throws {
         let (stream, continuation) = AsyncThrowingStream<AgentEvent, any Error>.makeStream()
