@@ -1,0 +1,132 @@
+// MemoryPromptAssemblyTests.swift
+// SwarmTests
+//
+// Item budgets for default memory prompts. A chunk stays one item even when
+// its text contains role or frame header lines.
+
+import Foundation
+@testable import Swarm
+import Testing
+
+private func countCharacters(_ text: String) async -> Int {
+    text.count
+}
+
+struct MemoryPromptAssemblyTests {
+    @Test("An embedded role header stays inside the single capped item")
+    func embeddedRoleHeaderStaysInsideCappedItem() async {
+        let items = [
+            MemoryPromptItem(text: "[user]: alpha\n[assistant]: inside"),
+            MemoryPromptItem(text: "[assistant]: beta"),
+        ]
+
+        let kept = await MemoryPromptAssembly.limit(
+            items,
+            maxItems: 1,
+            maxItemTokens: 500,
+            tokenLimit: 500,
+            estimate: countCharacters
+        )
+
+        #expect(kept == [MemoryPromptItem(text: "[user]: alpha\n[assistant]: inside")])
+    }
+
+    @Test("maxItems keeps the first of three short items")
+    func maxItemsKeepsTheFirstShortItem() async {
+        let items = [
+            MemoryPromptItem(text: "one"),
+            MemoryPromptItem(text: "two"),
+            MemoryPromptItem(text: "three"),
+        ]
+
+        let kept = await MemoryPromptAssembly.limit(
+            items,
+            maxItems: 1,
+            maxItemTokens: 100,
+            tokenLimit: 100,
+            estimate: countCharacters
+        )
+
+        #expect(kept.count == 1)
+        #expect(kept == [MemoryPromptItem(text: "one")])
+    }
+
+    @Test("A per-item token cap drops the character suffix past maxItemTokens")
+    func perItemTokenCapDropsCutSuffix() async throws {
+        let kept = await MemoryPromptAssembly.limit(
+            [MemoryPromptItem(text: "KEEP-this-prefix SUFFIX-cut-away")],
+            maxItems: 1,
+            maxItemTokens: 16,
+            tokenLimit: 500,
+            estimate: countCharacters
+        )
+
+        let keptText = try #require(kept.first).text
+        #expect(kept.count == 1)
+        #expect(keptText == "KEEP-this-prefix")
+        #expect(keptText.contains("SUFFIX-cut-away") == false)
+    }
+
+    @Test("The newline join counts against the running token budget")
+    func newlineJoinCountsAgainstTokenBudget() async {
+        let kept = await MemoryPromptAssembly.limit(
+            [
+                MemoryPromptItem(text: "aaaa"),
+                MemoryPromptItem(text: "bbbb"),
+            ],
+            maxItems: 2,
+            maxItemTokens: 100,
+            tokenLimit: 9,
+            estimate: countCharacters
+        )
+
+        #expect(kept == [MemoryPromptItem(text: "aaaa")])
+    }
+
+    @Test("Non-positive budgets and empty input keep nothing")
+    func nonPositiveBudgetsKeepNothing() async {
+        let item = [MemoryPromptItem(text: "kept")]
+
+        let noItems = await MemoryPromptAssembly.limit(
+            [],
+            maxItems: 3,
+            maxItemTokens: 10,
+            tokenLimit: 10,
+            estimate: countCharacters
+        )
+        let noItemCap = await MemoryPromptAssembly.limit(
+            item,
+            maxItems: 0,
+            maxItemTokens: 10,
+            tokenLimit: 10,
+            estimate: countCharacters
+        )
+        let noTokenBudget = await MemoryPromptAssembly.limit(
+            item,
+            maxItems: 1,
+            maxItemTokens: 10,
+            tokenLimit: 0,
+            estimate: countCharacters
+        )
+
+        #expect(noItems.isEmpty)
+        #expect(noItemCap.isEmpty)
+        #expect(noTokenBudget.isEmpty)
+    }
+
+    @Test("A whitespace-only trim is skipped so the next item can be kept")
+    func whitespaceOnlyTrimIsSkipped() async {
+        let kept = await MemoryPromptAssembly.limit(
+            [
+                MemoryPromptItem(text: "   "),
+                MemoryPromptItem(text: "kept"),
+            ],
+            maxItems: 2,
+            maxItemTokens: 10,
+            tokenLimit: 10,
+            estimate: countCharacters
+        )
+
+        #expect(kept == [MemoryPromptItem(text: "kept")])
+    }
+}

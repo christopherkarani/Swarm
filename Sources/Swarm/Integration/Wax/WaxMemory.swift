@@ -126,6 +126,18 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, 
         }
     }
 
+    func promptItems(for query: MemoryQuery) async -> [MemoryPromptItem] {
+        do {
+            let rag = try await store.search(query.text)
+            return rag.items.map { item in
+                MemoryPromptItem(text: formatRAGItem(item))
+            }
+        } catch {
+            Log.memory.error("WaxMemory: Failed to recall context: \(error.localizedDescription)")
+            return []
+        }
+    }
+
     public func allMessages() async -> [MemoryMessage] {
         persistedMessages
     }
