@@ -274,6 +274,20 @@ public struct AgentConfiguration: Sendable, Equatable {
         didSet { maxIterations = Self.coercedMaxIterations(maxIterations) }
     }
 
+    /// Consecutive identical tool-call batches before the run stops.
+    /// Default: 3
+    ///
+    /// When the model produces this many identical batches in a row, the
+    /// run throws ``AgentError/toolCallLoopDetected(toolNames:repetitions:)``
+    /// instead of burning the remaining iteration budget.
+    ///
+    /// Post-initialization writes are coerced like the initializer: values
+    /// below 2 self-correct to 2 (with a `Log.agents` warning), since a
+    /// single batch can never constitute a loop.
+    public var maxConsecutiveToolRepeats: Int {
+        didSet { maxConsecutiveToolRepeats = Self.coercedMaxConsecutiveToolRepeats(maxConsecutiveToolRepeats) }
+    }
+
     /// Maximum time allowed for the entire execution.
     /// Default: 60 seconds
     ///
@@ -717,6 +731,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     public init(
         name: String = "Agent",
         maxIterations: Int = 10,
+        maxConsecutiveToolRepeats: Int = 3,
         timeout: Duration = .seconds(60),
         temperature: Double = 1.0,
         maxTokens: Int? = nil,
@@ -740,6 +755,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ) {
         self.name = name
         self.maxIterations = Self.coercedMaxIterations(maxIterations)
+        self.maxConsecutiveToolRepeats = Self.coercedMaxConsecutiveToolRepeats(maxConsecutiveToolRepeats)
         self.timeout = Self.coercedTimeout(timeout)
         self.temperature = Self.coercedTemperature(temperature)
         self.maxTokens = maxTokens
@@ -774,6 +790,12 @@ private extension AgentConfiguration {
         guard value < 1 else { return value }
         Log.agents.warning("AgentConfiguration: maxIterations \(value) must be >= 1; using 1")
         return max(1, value)
+    }
+
+    static func coercedMaxConsecutiveToolRepeats(_ value: Int) -> Int {
+        guard value < 2 else { return value }
+        Log.agents.warning("AgentConfiguration: maxConsecutiveToolRepeats \(value) must be >= 2; using 2")
+        return max(2, value)
     }
 
     /// Falls back to the 60-second default for non-positive timeouts, matching
@@ -853,6 +875,15 @@ extension AgentConfiguration {
     @discardableResult public func maxIterations(_ value: Int) -> AgentConfiguration {
         var copy = self
         copy.maxIterations = value
+        return copy
+    }
+
+    /// Sets the consecutive identical tool-call batches allowed before the run stops.
+    ///
+    /// Values below 2 coerce to 2.
+    @discardableResult public func maxConsecutiveToolRepeats(_ value: Int) -> AgentConfiguration {
+        var copy = self
+        copy.maxConsecutiveToolRepeats = value
         return copy
     }
 

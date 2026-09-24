@@ -62,6 +62,7 @@ import Foundation
 /// ### Execution Errors
 /// - ``cancelled``
 /// - ``maxIterationsExceeded(iterations:)``
+/// - ``toolCallLoopDetected(toolNames:repetitions:)``
 /// - ``timeout(duration:)``
 /// - ``invalidLoop(reason:)``
 ///
@@ -178,6 +179,37 @@ public enum AgentError: Error, Sendable, Equatable {
     /// - Parameter iterations: The number of iterations that were performed
     ///                         before the limit was exceeded
     case maxIterationsExceeded(iterations: Int)
+
+    /// The model repeated the same tool call batch consecutively.
+    ///
+    /// This error is thrown when the model produces
+    /// ``AgentConfiguration/maxConsecutiveToolRepeats`` identical
+    /// tool-call batches in a row. It typically indicates:
+    /// - The tool result does not contain what the model needs
+    /// - The model is retrying a failing call instead of adapting
+    /// - The task needs rephrasing or different tools
+    ///
+    /// The run stops **before** executing the repeated batch again, so
+    /// this error surfaces earlier and more precisely than
+    /// ``maxIterationsExceeded(iterations:)``.
+    ///
+    /// ## Recovery
+    ///
+    /// Inspect the latest tool result and rephrase the task, or allow
+    /// more repetitions:
+    ///
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .maxConsecutiveToolRepeats(5)
+    /// ```
+    ///
+    /// ## Note
+    /// This error is non-retryable. Re-running the same turn repeats the loop.
+    ///
+    /// - Parameters:
+    ///   - toolNames: Tool names in the repeated batch, in call order.
+    ///   - repetitions: How many consecutive identical batches were observed.
+    case toolCallLoopDetected(toolNames: [String], repetitions: Int)
 
     /// The agent execution timed out.
     ///
@@ -722,6 +754,8 @@ public enum AgentError: Error, Sendable, Equatable {
             true
         case let (.maxIterationsExceeded(a), .maxIterationsExceeded(b)):
             a == b
+        case let (.toolCallLoopDetected(n1, r1), .toolCallLoopDetected(n2, r2)):
+            n1 == n2 && r1 == r2
         case let (.timeout(a), .timeout(b)):
             a == b
         case let (.invalidLoop(a), .invalidLoop(b)):
@@ -813,6 +847,8 @@ extension AgentError: LocalizedError {
             "Agent execution was cancelled"
         case let .maxIterationsExceeded(iterations):
             "Agent exceeded maximum iterations (\(iterations))"
+        case let .toolCallLoopDetected(toolNames, repetitions):
+            "Tool call loop detected: \(toolNames.joined(separator: ", ")) repeated \(repetitions) times"
         case let .timeout(duration):
             "Agent execution timed out after \(duration)"
         case let .invalidLoop(reason):
@@ -897,6 +933,8 @@ extension AgentError: LocalizedError {
             "Check that '\(model)' is a valid model name and your API key has access to it."
         case .maxIterationsExceeded:
             "Increase the maxIterations configuration or break the task into smaller subtasks."
+        case .toolCallLoopDetected:
+            "Inspect the latest tool result and rephrase the task, or raise maxConsecutiveToolRepeats."
         case .timeout:
             "Increase the timeout duration or optimize the task to complete faster."
         case .invalidToolArguments(let toolName, _):
@@ -929,6 +967,8 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.cancelled"
         case let .maxIterationsExceeded(iterations):
             "AgentError.maxIterationsExceeded(iterations: \(iterations))"
+        case let .toolCallLoopDetected(toolNames, repetitions):
+            "AgentError.toolCallLoopDetected(toolNames: \(toolNames), repetitions: \(repetitions))"
         case let .timeout(duration):
             "AgentError.timeout(duration: \(duration))"
         case let .invalidLoop(reason):
@@ -999,6 +1039,7 @@ extension AgentError {
              .invalidInput,
              .invalidLoop,
              .maxIterationsExceeded,
+             .toolCallLoopDetected,
              .guardrailViolation,
              .contentFiltered,
              .invalidToolArguments,

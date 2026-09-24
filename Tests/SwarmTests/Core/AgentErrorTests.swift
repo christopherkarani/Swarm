@@ -61,3 +61,33 @@ struct AuthenticationFailedErrorTests {
         #expect(InferenceRetryability.isRetryable(error) == false)
     }
 }
+
+@Suite("AgentError — toolCallLoopDetected")
+struct ToolCallLoopDetectedErrorTests {
+    @Test("toolCallLoopDetected has correct error description")
+    func errorDescription() {
+        let error = AgentError.toolCallLoopDetected(toolNames: ["a", "b"], repetitions: 3)
+        #expect(error.errorDescription?.contains("Tool call loop detected") == true)
+        #expect(error.errorDescription?.contains("a, b") == true)
+        #expect(error.errorDescription?.contains("3 times") == true)
+    }
+
+    @Test("toolCallLoopDetected has recovery suggestion")
+    func recoverySuggestion() {
+        let error = AgentError.toolCallLoopDetected(toolNames: ["a"], repetitions: 3)
+        #expect(error.recoverySuggestion?.contains("maxConsecutiveToolRepeats") == true)
+    }
+
+    @Test("toolCallLoopDetected has debug description")
+    func debugDescription() {
+        let error = AgentError.toolCallLoopDetected(toolNames: ["a"], repetitions: 3)
+        #expect(error.debugDescription.contains("toolCallLoopDetected"))
+    }
+
+    @Test("toolCallLoopDetected is not retryable")
+    func notRetryable() {
+        let error = AgentError.toolCallLoopDetected(toolNames: ["a"], repetitions: 3)
+        #expect(error.isRetryable == false)
+        #expect(InferenceRetryability.isRetryable(error) == false)
+    }
+}
