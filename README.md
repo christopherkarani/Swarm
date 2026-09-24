@@ -193,7 +193,8 @@ swift run OnDeviceChat --demo
 
 | Capability | What it does |
 |---|---|
-| Conversation and memory | Preserve multi-turn state with `Conversation`; choose conversation, sliding-window, vector, summary, or hybrid memory. |
+| Conversation and memory | Preserve multi-turn state with `Conversation`; choose conversation, sliding-window, vector, summary, or hybrid memory. Sessions snapshot to portable JSON or `FileSession` files. |
+| Resilience | Retry with backoff and `Retry-After`, circuit breakers, rate limits, `FailoverProvider` chains, and tool-loop detection. |
 | Guardrails | Validate inputs, outputs, and tool arguments before they reach your application. |
 | Streaming | Observe lifecycle, tool, thinking, and output events through `AsyncThrowingStream`. |
 | Durable execution | Checkpoint workflow progress and resume after a process restart when the `Integrations` trait is enabled. |

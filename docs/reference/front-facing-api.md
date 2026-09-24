@@ -245,7 +245,13 @@ let config = AgentConfiguration.default
     ))
 ```
 
-Retryability is ``InferenceRetryability/isRetryable(_:)`` **and** the policy's `shouldRetry` (default: always). Permanent failures in that table are never retried. ``FallbackChain`` is not wired into `Agent` in this release.
+Retryability is ``InferenceRetryability/isRetryable(_:)`` **and** the policy's `shouldRetry` (default: always). Permanent failures in that table are never retried. A server `Retry-After` hint carried by ``AgentError/rateLimitExceeded(retryAfter:)`` extends the policy backoff (never shortens it).
+
+For provider fallback, compose ``FailoverProvider`` and pass it as the agent's inference provider — it advances across `primary` + `fallbacks` on retryable failures only, rethrows the last error when exhausted, and stays out of `Agent`'s own retry wrapper. ``FallbackChain`` remains the escape hatch for custom operations.
+
+### Loop safety
+
+The tool loop fingerprints every tool-call batch (tool names plus canonical arguments) and stops the run with ``AgentError/toolCallLoopDetected(toolNames:repetitions:)`` after ``AgentConfiguration/maxConsecutiveToolRepeats`` (default: 3) consecutive identical batches, before executing the repeat again. Tune with `.maxConsecutiveToolRepeats(_:)` (floor: 2).
 
 ### Runtime wrappers (on AgentRuntime)
 
@@ -878,6 +884,7 @@ public struct InferenceMessage: Sendable, Equatable {
         public let id: String?
         public let name: String
         public let arguments: [String: SendableValue]
+        public let thoughtSignature: String?
     }
 
     public let body: Body
@@ -979,6 +986,22 @@ See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
 (wrapped as ``FoundationModelsNativeTool``).
+
+### Failover composition
+
+``FailoverProvider`` wraps an ordered `primary` + `fallbacks` chain behind
+the ``InferenceProvider`` protocol. Capabilities come from `primary`;
+prompt, streaming, and prompt-structured calls inherit failover through
+the protocol defaults.
+
+```swift
+let provider = FailoverProvider(
+    primary: .openAICompatible(.openAI(apiKey: key, model: "gpt-4o")),
+    fallbacks: [.openAICompatible(.ollama(model: "llama3.2"))],
+    onFailover: { index, error in print("provider \(index) failed: \(error)") }
+)
+let agent = try Agent("Be concise.", inferenceProvider: provider)
+```
 
 ## 12) Events and results
 
