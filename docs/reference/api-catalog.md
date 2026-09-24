@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 238 (245 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2347
+- Source files scanned: 240 (247 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2351
 
 ## 1. Swarm (entry point)
 
@@ -3183,6 +3183,7 @@ own the microphone and speaker.
 |------|------|--------|------|-----------|
 | 9 | enum | public | VoicePhase | `public enum VoicePhase: String, Sendable, Equatable` |
 | 23 | enum | public | VoiceEvent | `public enum VoiceEvent: Sendable, Equatable` |
+| 44 | case | public | VoiceEvent.audioChunk(utterance:data:) | `case audioChunk(utterance: String, data: Data)` |
 
 ### Voice/SpeechTranscript.swift
 
@@ -3220,6 +3221,13 @@ own the microphone and speaker.
 | 9 | protocol | public | TextToSpeech | `public protocol TextToSpeech: Sendable` |
 | 11 | func | public | TextToSpeech.speak(_:) | `func speak(_ text: String) async throws` |
 | 14 | func | public | TextToSpeech.stop() | `func stop() async` |
+
+### Voice/StreamingTextToSpeech.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 19 | protocol | public | StreamingTextToSpeech | `public protocol StreamingTextToSpeech: TextToSpeech` |
+| 27 | func | public | StreamingTextToSpeech.streamAudio(_:) | `nonisolated func streamAudio(_ text: String) -> AsyncThrowingStream<Data, Error>` |
 
 ### Voice/VoiceSession.swift
 
@@ -3272,7 +3280,8 @@ own the microphone and speaker.
 |------|------|--------|------|-----------|
 | 12 | struct | public | ElevenLabsVoiceSettings | `public struct ElevenLabsVoiceSettings: Sendable, Equatable` |
 | 26 | struct | public | ElevenLabsSpeechSynthesisConfiguration | `public struct ElevenLabsSpeechSynthesisConfiguration: Sendable` |
-| 82 | actor | public | ElevenLabsTextToSpeech | `public actor ElevenLabsTextToSpeech: TextToSpeech` |
+| 94 | actor | public | ElevenLabsTextToSpeech | `public actor ElevenLabsTextToSpeech: StreamingTextToSpeech` |
+| 140 | func | public | ElevenLabsTextToSpeech.streamAudio(_:) | `public nonisolated func streamAudio(_ text: String) -> AsyncThrowingStream<Data, Error>` |
 
 ### Voice/AppleSpeechToText.swift
 

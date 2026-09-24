@@ -95,8 +95,23 @@ let tts = ElevenLabsTextToSpeech(configuration: .init(voiceId: voiceId, apiKey: 
 
 Optional tuning: `ElevenLabsSpeechConfiguration(modelId:languageCode:)` for
 Scribe (`scribe_v2` by default) and
-`ElevenLabsSpeechSynthesisConfiguration(voiceId:modelId:outputFormat:voiceSettings:)`
+`ElevenLabsSpeechSynthesisConfiguration(voiceId:modelId:outputFormat:voiceSettings:optimizeStreamingLatency:)`
 for synthesis (`eleven_multilingual_v2` by default).
+
+## Streaming synthesis
+
+`ElevenLabsTextToSpeech` conforms to `StreamingTextToSpeech`: `streamAudio`
+yields MP3 chunks while synthesis is still running (chunked transfer with
+`optimize_streaming_latency`, no websockets). `VoiceSession` prefers this
+path automatically and emits one `VoiceEvent.audioChunk(utterance:data:)`
+per chunk, bracketed by the usual `speaking` / `speakingFinished` events —
+play chunks incrementally and stop waiting for full utterances. Chunks
+concatenate byte-for-byte into `lastAudio`.
+
+Adapters without streaming keep the whole-utterance `speak(_:)` path with
+identical session behavior and no chunk events. `stop()` cancels in-flight
+HTTP synthesis and transcription on all four network adapters, so barge-in
+interrupts cloud round-trips too.
 
 ```bash
 export ELEVENLABS_API_KEY=...
