@@ -44,9 +44,9 @@ struct FoundationModelsAppleProfileBridgeTests {
         #expect(plan.canRehydrateTranscript)
         #expect(plan.entries.contains { if case .toolOutput = $0 { true } else { false } } == false)
         #expect(plan.entries.contains(.instructions("Be precise.")))
-        #expect(plan.entries.contains(.prompt("look it up")))
+        #expect(plan.entries.contains(.prompt(text: "look it up", images: [])))
         #expect(plan.entries.contains(.response("thinking")))
-        #expect(plan.entries.contains(.prompt("thanks")))
+        #expect(plan.entries.contains(.prompt(text: "thanks", images: [])))
         #expect(plan.entries.contains(.response("final")))
     }
 
@@ -79,7 +79,7 @@ struct FoundationModelsAppleProfileBridgeTests {
         #expect(seed.pendingPrompt == "u2")
         #expect(seed.seedEntries == [
             .instructions("Be precise."),
-            .prompt("u1"),
+            .prompt(text: "u1", images: []),
             .response("a1"),
         ])
     }

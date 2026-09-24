@@ -39,6 +39,10 @@ public struct InferenceProviderCapabilities: OptionSet, Sendable, Hashable {
     /// set this bit must implement the `toolExecutor` method; the protocol
     /// default throws ``AgentError/providerOwnedToolLoopRequiresExecutor``.
     public static let providerOwnedToolLoop = Self(rawValue: 1 << 6)
+
+    /// Provider can consume ``InferenceMessage/Attachment`` image sidecars.
+    /// Providers without this bit must ignore attachments.
+    public static let multimodalImages = Self(rawValue: 1 << 7)
 }
 
 public extension InferenceProviderCapabilities {
@@ -87,44 +91,93 @@ public struct InferenceMessage: Sendable, Equatable {
         }
     }
 
+    /// Optional multimodal sidecar. ``InferenceMessage/content`` stays text.
+    ///
+    /// Persist ``id`` and ``mimeType`` only — never raw bytes. Providers
+    /// without ``InferenceProviderCapabilities/multimodalImages`` must ignore
+    /// image attachments.
+    public struct Attachment: Sendable, Equatable {
+        /// Attachment family.
+        public enum Kind: String, Sendable, Equatable {
+            case audio
+            case image
+        }
+
+        /// Host-stable identifier. Safe to store.
+        public let id: String
+        /// Audio or image.
+        public let kind: Kind
+        /// MIME type such as `image/png`. Safe to store.
+        public let mimeType: String
+        /// In-memory bytes. Do not log.
+        public let data: Data?
+        /// Optional file URL. Do not log contents.
+        public let fileURL: URL?
+
+        /// Creates an attachment.
+        public init(
+            id: String,
+            kind: Kind,
+            mimeType: String,
+            data: Data? = nil,
+            fileURL: URL? = nil
+        ) {
+            self.id = id
+            self.kind = kind
+            self.mimeType = mimeType
+            self.data = data
+            self.fileURL = fileURL
+        }
+    }
+
     public let role: Role
     public let content: String
     public let name: String?
     public let toolCallID: String?
     public let toolCalls: [ToolCall]
 
+    /// Optional audio or image sidecars. Default empty.
+    public let attachments: [Attachment]
+
     public init(
         role: Role,
         content: String,
         name: String? = nil,
         toolCallID: String? = nil,
-        toolCalls: [ToolCall] = []
+        toolCalls: [ToolCall] = [],
+        attachments: [Attachment] = []
     ) {
         self.role = role
         self.content = content
         self.name = name
         self.toolCallID = toolCallID
         self.toolCalls = toolCalls
+        self.attachments = attachments
     }
 
-    public static func system(_ content: String) -> InferenceMessage {
-        InferenceMessage(role: .system, content: content)
+    public static func system(_ content: String, attachments: [Attachment] = []) -> InferenceMessage {
+        InferenceMessage(role: .system, content: content, attachments: attachments)
     }
 
-    public static func user(_ content: String) -> InferenceMessage {
-        InferenceMessage(role: .user, content: content)
+    public static func user(_ content: String, attachments: [Attachment] = []) -> InferenceMessage {
+        InferenceMessage(role: .user, content: content, attachments: attachments)
     }
 
-    public static func assistant(_ content: String, toolCalls: [ToolCall] = []) -> InferenceMessage {
-        InferenceMessage(role: .assistant, content: content, toolCalls: toolCalls)
+    public static func assistant(
+        _ content: String,
+        toolCalls: [ToolCall] = [],
+        attachments: [Attachment] = []
+    ) -> InferenceMessage {
+        InferenceMessage(role: .assistant, content: content, toolCalls: toolCalls, attachments: attachments)
     }
 
     public static func tool(
         name: String,
         content: String,
-        toolCallID: String? = nil
+        toolCallID: String? = nil,
+        attachments: [Attachment] = []
     ) -> InferenceMessage {
-        InferenceMessage(role: .tool, content: content, name: name, toolCallID: toolCallID)
+        InferenceMessage(role: .tool, content: content, name: name, toolCallID: toolCallID, attachments: attachments)
     }
 }
 

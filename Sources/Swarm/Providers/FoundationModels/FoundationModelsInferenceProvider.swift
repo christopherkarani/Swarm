@@ -103,8 +103,9 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// generation overrides, and history policy on every capture turn. That type
 /// is **not** Apple's `LanguageModelSession.DynamicProfile` (OS 27). The
 /// names overlap; the modules do not. Capture still uses the Swarm model.
-/// A later revision can bridge to `LanguageModelSession(profile:)` on OS 27
-/// owned-loop without changing `.foundationModels(profile:)` call sites.
+/// Owned-loop renders the resolved Swarm profile onto a native Apple
+/// `LanguageModelSession(profile:)` on OS 27 without changing
+/// `.foundationModels(profile:)` call sites.
 ///
 /// ```swift
 /// let mode = ProfileMode(Phase.brainstorm)
@@ -189,6 +190,37 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         )
     }
 
+    /// Whether Private Cloud Compute can serve requests right now.
+    ///
+    /// True when the model's `availability` is `.available` and its daily
+    /// quota is not exhausted (`quotaUsage.isLimitReached` is false).
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    public static func isPrivateCloudComputeAvailable(
+        _ model: PrivateCloudComputeLanguageModel = .init()
+    ) -> Bool {
+        model.availability == .available && !model.quotaUsage.isLimitReached
+    }
+
+    /// Creates a Private Cloud Compute provider when quota allows; otherwise `nil`.
+    ///
+    /// Returns nil when PCC is unavailable or its daily quota is exhausted.
+    /// Does not fall back to ``SystemLanguageModel/default``.
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    public static func privateCloudComputeIfAvailable(
+        configuration: FoundationModelsProviderConfiguration = .default,
+        profile: (any DynamicProfile)? = nil,
+        ownsToolLoop: Bool = false,
+        model: PrivateCloudComputeLanguageModel = .init()
+    ) -> FoundationModelsInferenceProvider? {
+        guard isPrivateCloudComputeAvailable(model) else { return nil }
+        return FoundationModelsInferenceProvider(
+            model: model,
+            configuration: configuration,
+            profile: profile,
+            ownsToolLoop: ownsToolLoop
+        )
+    }
+
     /// Creates a Foundation Models provider.
     ///
     /// - Parameters:
@@ -248,10 +280,15 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             .conversationMessages,
             .nativeToolCalling,
             .structuredOutputs,
-            .privateInference,
         ]
+        if sessionModel.runsOnDevice {
+            capabilities.insert(.privateInference)
+        }
         if ownsToolLoop {
             capabilities.insert(.providerOwnedToolLoop)
+        }
+        if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *) {
+            capabilities.insert(.multimodalImages)
         }
         return capabilities
     }
@@ -273,7 +310,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                 messages: resolved.messages,
                 profile: envelopeProfile
             )
-            let (session, promptText) = makeCaptureTurn(
+            let (session, promptText, promptImages) = makeCaptureTurn(
                 tools: [],
                 messages: fitted,
                 flattenTools: [],
@@ -282,7 +319,13 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             )
             do {
                 var previous = ""
-                for try await snapshot in session.streamResponse(to: promptText, options: generationOptions) {
+                let promptStream = captureStream(
+                    session: session,
+                    text: promptText,
+                    images: promptImages,
+                    options: generationOptions
+                )
+                for try await snapshot in promptStream {
                     let current = snapshot.content
                     let delta: String
                     if current.hasPrefix(previous) {
@@ -408,7 +451,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
             messages: resolved.messages,
             profile: envelopeProfile
         )
-        let (session, prompt) = makeCaptureTurn(
+        let (session, prompt, promptImages) = makeCaptureTurn(
             tools: fmTools,
             messages: fitted,
             flattenTools: effectiveTools,
@@ -419,7 +462,12 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         let startCount = session.transcript.count
 
         do {
-            let response = try await session.respond(to: prompt, options: generationOptions)
+            let response = try await respondToTurn(
+                session: session,
+                text: prompt,
+                images: promptImages,
+                options: generationOptions
+            )
             let turnEntries = Array(session.transcript.dropFirst(startCount))
             if let captured = await FoundationModelsToolBridge.inferenceResponse(
                 store: store,
@@ -448,7 +496,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                     messages: PromptEnvelope.compactForRetry(fitted),
                     profile: envelopeProfile
                 )
-                let (retrySession, retryPrompt) = makeCaptureTurn(
+                let (retrySession, retryPrompt, retryImages) = makeCaptureTurn(
                     tools: fmTools,
                     messages: retryMessages,
                     flattenTools: effectiveTools,
@@ -456,7 +504,12 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                     options: resolved.options
                 )
                 do {
-                    let response = try await retrySession.respond(to: retryPrompt, options: generationOptions)
+                    let response = try await respondToTurn(
+                        session: retrySession,
+                        text: retryPrompt,
+                        images: retryImages,
+                        options: generationOptions
+                    )
                     let retryEntries = Array(retrySession.transcript.dropFirst(0))
                     if let captured = await FoundationModelsToolBridge.inferenceResponse(
                         store: store,
@@ -629,14 +682,19 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         options: InferenceOptions,
         generationOptions: GenerationOptions
     ) async throws -> (content: String, usage: TokenUsage?) {
-        let (session, prompt) = makeCaptureTurn(
+        let (session, prompt, images) = makeCaptureTurn(
             tools: tools,
             messages: messages,
             flattenTools: flattenTools,
             instructions: instructions,
             options: options
         )
-        let response = try await session.respond(to: prompt, options: generationOptions)
+        let response = try await respondToTurn(
+            session: session,
+            text: prompt,
+            images: images,
+            options: generationOptions
+        )
         return (
             applyStopSequences(response.content, options: options),
             FoundationModelsUsageMapping.tokenUsage(from: response)
@@ -645,13 +703,16 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
 
     /// Capture turn: rehydrate `Transcript` when history is representable,
     /// otherwise flatten into a `Prompt`.
+    ///
+    /// `images` carries the pending turn's image sidecars; callers send them
+    /// via ``multimodalPrompt(text:images:)`` on OS 27.
     func makeCaptureTurn(
         tools: [any FoundationModels.Tool],
         messages: [InferenceMessage],
         flattenTools: [ToolSchema],
         instructions: String?,
         options: InferenceOptions
-    ) -> (session: LanguageModelSession, prompt: String) {
+    ) -> (session: LanguageModelSession, prompt: String, images: [PendingImage]) {
         let seed = FoundationModelsCaptureTranscript.seed(
             messages: messages,
             instructions: instructions
@@ -663,14 +724,53 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                 options: options
             )
             if let transcript = FoundationModelsCaptureTranscript.makeTranscript(from: seed.seedEntries) {
-                return (makeSession(tools: tools, transcript: transcript), prompt)
+                return (makeSession(tools: tools, transcript: transcript), prompt, seed.pendingImages)
             }
-            return (makeSession(tools: tools, instructions: instructions), prompt)
+            return (makeSession(tools: tools, instructions: instructions), prompt, seed.pendingImages)
         }
         return (
             makeSession(tools: tools, instructions: instructions),
-            flattenPrompt(messages: messages, tools: flattenTools, options: options)
+            flattenPrompt(messages: messages, tools: flattenTools, options: options),
+            seed.pendingImages
         )
+    }
+
+    /// Multimodal `Prompt` for a pending turn, or nil for the text path.
+    ///
+    /// Nil when there are no images or the OS predates image attachments
+    /// (OS 27). Callers fall back to the plain-text prompt string.
+    func multimodalPrompt(text: String, images: [PendingImage]) -> Prompt? {
+        guard !images.isEmpty else { return nil }
+        if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *) {
+            return FoundationModelsImageAttachments.prompt(text: text, images: images)
+        }
+        return nil
+    }
+
+    /// One capture `respond`, multimodal when the pending turn has images.
+    func respondToTurn(
+        session: LanguageModelSession,
+        text: String,
+        images: [PendingImage],
+        options: GenerationOptions
+    ) async throws -> LanguageModelSession.Response<String> {
+        if let multimodal = multimodalPrompt(text: text, images: images) {
+            return try await session.respond(to: multimodal, options: options)
+        }
+        return try await session.respond(to: text, options: options)
+    }
+
+    /// Capture `streamResponse`, multimodal when the pending turn has images.
+    func captureStream(
+        session: LanguageModelSession,
+        text: String,
+        images: [PendingImage],
+        options: GenerationOptions
+    ) -> LanguageModelSession.ResponseStream<String> {
+        if let multimodal = multimodalPrompt(text: text, images: images) {
+            return session.streamResponse(to: multimodal, options: options)
+        }
+        return session.streamResponse(to: text, options: options)
     }
 
     func makeSession(
@@ -695,6 +795,26 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         transcript: Transcript
     ) -> LanguageModelSession {
         let session = sessionModel.makeSession(tools: tools, transcript: transcript)
+        if configuration.prewarmOnInit {
+            session.prewarm(promptPrefix: nil)
+        }
+        return session
+    }
+
+    /// Owned-loop session from a resolved turn snapshot.
+    ///
+    /// OS 27 builds `LanguageModelSession(profile:history:)`; older systems
+    /// use the legacy construction. Honors `prewarmOnInit` like `makeSession`.
+    func makeProfileSession(
+        tools: [any FoundationModels.Tool],
+        snapshot: FoundationModelsOwnedLoopSnapshot,
+        history: Transcript?
+    ) -> LanguageModelSession {
+        let session = sessionModel.makeProfileSession(
+            tools: tools,
+            snapshot: snapshot,
+            history: history
+        )
         if configuration.prewarmOnInit {
             session.prewarm(promptPrefix: nil)
         }
@@ -878,6 +998,41 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
             configuration: configuration,
             profile: profile,
             ownsToolLoop: true
+        )
+    }
+
+    /// Creates a Private Cloud Compute provider (OS 27+).
+    ///
+    /// Longer context and reasoning levels, still Apple-hosted. Prefer
+    /// ``FoundationModelsInferenceProvider/privateCloudComputeIfAvailable(configuration:profile:ownsToolLoop:model:)``
+    /// when the call site must handle exhausted daily quota.
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    static func privateCloudCompute(
+        configuration: FoundationModelsProviderConfiguration = .default,
+        profile: (any DynamicProfile)? = nil,
+        ownsToolLoop: Bool = false
+    ) -> FoundationModelsInferenceProvider {
+        FoundationModelsInferenceProvider(
+            model: PrivateCloudComputeLanguageModel(),
+            configuration: configuration,
+            profile: profile,
+            ownsToolLoop: ownsToolLoop
+        )
+    }
+
+    /// Creates a Private Cloud Compute provider when quota allows (OS 27+).
+    ///
+    /// Nil when PCC is unavailable or its daily quota is exhausted.
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    static func privateCloudComputeIfAvailable(
+        configuration: FoundationModelsProviderConfiguration = .default,
+        profile: (any DynamicProfile)? = nil,
+        ownsToolLoop: Bool = false
+    ) -> FoundationModelsInferenceProvider? {
+        FoundationModelsInferenceProvider.privateCloudComputeIfAvailable(
+            configuration: configuration,
+            profile: profile,
+            ownsToolLoop: ownsToolLoop
         )
     }
 }

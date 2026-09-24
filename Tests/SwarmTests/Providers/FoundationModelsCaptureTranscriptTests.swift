@@ -18,7 +18,7 @@ struct FoundationModelsCaptureTranscriptTests {
         )
         #expect(mapped.canRehydrate == false)
         #expect(mapped.entries == [
-            .prompt("what is the weather?"),
+            .prompt(text: "what is the weather?", images: []),
             .response("I'll check."),
             .toolOutput(name: "weather", content: "72F", toolCallID: "call-1"),
             .response("It is 72F."),
@@ -41,7 +41,7 @@ struct FoundationModelsCaptureTranscriptTests {
         #expect(seed.pendingPrompt == "u2")
         #expect(seed.seedEntries == [
             .instructions("Be brief."),
-            .prompt("u1"),
+            .prompt(text: "u1", images: []),
             .response("a1"),
         ])
         #expect(
