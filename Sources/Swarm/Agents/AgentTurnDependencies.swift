@@ -209,7 +209,7 @@ enum AgentTurnDependencyResolver {
     private static func resolveTracer(_ query: AgentTurnDependencyQuery) -> (any Tracer)? {
         let configured = query.explicitTracer ?? query.environment.tracer
         let fallback = query.configuration.defaultTracingEnabled
-            ? SwiftLogTracer(minimumLevel: .debug)
+            ? SwiftLogTracer(minimumLevel: .info)
             : nil
         let base = configured ?? fallback
 

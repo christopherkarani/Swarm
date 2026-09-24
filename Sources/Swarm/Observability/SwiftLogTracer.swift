@@ -40,10 +40,10 @@ public actor SwiftLogTracer: Tracer {
     ///
     /// - Parameters:
     ///   - label: The logger label (default: "com.swarm.tracer")
-    ///   - minimumLevel: The minimum event level to log (default: .debug)
+    ///   - minimumLevel: The minimum event level to log (default: .info)
     public init(
         label: String = "com.swarm.tracer",
-        minimumLevel: EventLevel = .debug
+        minimumLevel: EventLevel = .info
     ) {
         logger = Logger(label: label)
         self.minimumLevel = minimumLevel
