@@ -185,6 +185,10 @@ private actor ShowcaseTextToSpeech: TextToSpeech {
     private(set) var spoken: [String] = []
 
     func speak(_ text: String) async throws {
+        // Yield the barge-in window: the VAD watcher task needs scheduling
+        // time to observe speech and commit before an instant utterance
+        // completes, otherwise the scenario flakes under load.
+        try? await Task.sleep(for: .milliseconds(200))
         spoken.append(text)
     }
 
