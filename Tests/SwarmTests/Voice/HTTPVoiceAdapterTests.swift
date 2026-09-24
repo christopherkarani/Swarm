@@ -73,6 +73,59 @@ struct VoiceHTTPAdapterTests {
             for try await _ in stt.start() {}
         }
     }
+
+    @Test("HTTP speak honours stop")
+    func httpSpeakHonoursStop() async throws {
+        VoiceHTTPURLProtocol.reset()
+        defer { VoiceHTTPURLProtocol.reset() }
+        VoiceHTTPURLProtocol.responseDelay = 2
+        VoiceHTTPURLProtocol.handler = { _, _ in
+            .data(Data("audio".utf8), contentType: "audio/mpeg")
+        }
+
+        let tts = HTTPTextToSpeech(
+            configuration: HTTPSpeechSynthesisConfiguration(
+                endpoint: URL(string: "https://example.test/v1/audio/speech")!,
+                session: VoiceHTTPURLProtocol.makeSession()
+            )
+        )
+        let task = Task { try await tts.speak("Hello.") }
+        while VoiceHTTPURLProtocol.requests.isEmpty {
+            await Task.yield()
+        }
+        await tts.stop()
+        await #expect(throws: VoiceError.cancelled) {
+            try await task.value
+        }
+    }
+
+    @Test("HTTP speech-to-text honours stop")
+    func httpSpeechToTextHonoursStop() async throws {
+        VoiceHTTPURLProtocol.reset()
+        defer { VoiceHTTPURLProtocol.reset() }
+        VoiceHTTPURLProtocol.responseDelay = 2
+        VoiceHTTPURLProtocol.handler = { _, _ in
+            .json(#"{"text":"too slow"}"#)
+        }
+
+        let stt = HTTPSpeechToText(
+            configuration: HTTPSpeechConfiguration(
+                endpoint: URL(string: "https://example.test/v1/audio/transcriptions")!,
+                session: VoiceHTTPURLProtocol.makeSession()
+            )
+        )
+        await stt.submitAudio(Data("wav".utf8))
+        let task = Task {
+            for try await _ in stt.start() {}
+        }
+        while VoiceHTTPURLProtocol.requests.isEmpty {
+            await Task.yield()
+        }
+        await stt.stop()
+        await #expect(throws: VoiceError.cancelled) {
+            try await task.value
+        }
+    }
 }
 
 private final class VoiceHTTPURLProtocol: URLProtocol {
@@ -114,10 +167,17 @@ private final class VoiceHTTPURLProtocol: URLProtocol {
         state.withLock(\.requests)
     }
 
+    /// Seconds to wait before delivering a response.
+    static var responseDelay: TimeInterval {
+        get { state.withLock(\.responseDelay) }
+        set { state.withLock { $0.responseDelay = newValue } }
+    }
+
     static func reset() {
         state.withLock {
             $0.handler = nil
             $0.requests = []
+            $0.responseDelay = 0
         }
     }
 
@@ -139,10 +199,14 @@ private final class VoiceHTTPURLProtocol: URLProtocol {
             headers: request.allHTTPHeaderFields ?? [:],
             body: body
         )
-        let stub = Self.state.withLock { state -> Stub in
+        let (stub, delay) = Self.state.withLock { state -> (Stub, TimeInterval) in
             state.requests.append(recorded)
-            return state.handler?(self.request, body)
+            let stub = state.handler?(self.request, body)
                 ?? Stub(status: 500, headers: [:], body: Data())
+            return (stub, state.responseDelay)
+        }
+        if delay > 0 {
+            Thread.sleep(forTimeInterval: delay)
         }
         let response = HTTPURLResponse(
             url: recorded.url,
@@ -174,6 +238,7 @@ private final class VoiceHTTPURLProtocol: URLProtocol {
         struct State {
             var handler: (@Sendable (URLRequest, Data) -> Stub)?
             var requests: [RecordedRequest] = []
+            var responseDelay: TimeInterval = 0
         }
 
         private var state = State()

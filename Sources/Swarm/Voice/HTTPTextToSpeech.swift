@@ -38,6 +38,7 @@ public struct HTTPSpeechSynthesisConfiguration: Sendable {
 /// A 2xx response completes the utterance. Audio bytes are not played here.
 public actor HTTPTextToSpeech: TextToSpeech {
     private let configuration: HTTPSpeechSynthesisConfiguration
+    private nonisolated let interrupt = VoiceCancellable()
 
     /// Last successful audio payload. Tests may inspect it.
     public private(set) var lastAudio: Data = Data()
@@ -51,24 +52,39 @@ public actor HTTPTextToSpeech: TextToSpeech {
         guard text.contains(where: { !$0.isWhitespace }) else {
             throw VoiceError.synthesisFailed(reason: "Utterance is empty.")
         }
-        var request = URLRequest(url: configuration.endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let apiKey = configuration.apiKey, !apiKey.isEmpty {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        let configuration = configuration
+        let interrupt = interrupt
+        let task = Task<Data, Error> {
+            var request = URLRequest(url: configuration.endpoint)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let apiKey = configuration.apiKey, !apiKey.isEmpty {
+                request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            }
+            let payload: [String: Any] = [
+                "model": configuration.model,
+                "voice": configuration.voice,
+                "input": text,
+            ]
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let (data, response) = try await configuration.session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
+                throw VoiceError.synthesisFailed(reason: "HTTP speech failed.")
+            }
+            return data
         }
-        let payload: [String: Any] = [
-            "model": configuration.model,
-            "voice": configuration.voice,
-            "input": text,
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-        let (data, response) = try await configuration.session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
-            throw VoiceError.synthesisFailed(reason: "HTTP speech failed.")
+        interrupt.store { task.cancel() }
+        do {
+            lastAudio = try await task.value
+        } catch {
+            if let cancelled = VoiceCancellation.error(for: error) {
+                throw cancelled
+            }
+            throw error
         }
-        lastAudio = data
     }
 
-    public func stop() async {}
+    public func stop() async {
+        interrupt.cancel()
+    }
 }

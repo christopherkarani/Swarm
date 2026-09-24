@@ -400,7 +400,11 @@ public actor VoiceSession {
         emit(.phase(.speaking))
         emit(.speaking(sentence))
         do {
-            try await textToSpeech.speak(sentence)
+            if let streaming = textToSpeech as? any StreamingTextToSpeech {
+                try await speakStreaming(streaming, sentence: sentence)
+            } else {
+                try await textToSpeech.speak(sentence)
+            }
         } catch let error as VoiceError {
             throw error
         } catch is CancellationError {
@@ -428,6 +432,17 @@ public actor VoiceSession {
             speakFailure = .cancelled
         } else {
             speakFailure = .synthesisFailed(reason: String(describing: error))
+        }
+    }
+
+    /// Speaks one sentence through a streaming adapter, emitting audio chunks.
+    ///
+    /// Whole-utterance adapters keep the `speak(_:)` path above; behavior is
+    /// identical except no `audioChunk` events are emitted.
+    private func speakStreaming(_ textToSpeech: any StreamingTextToSpeech, sentence: String) async throws {
+        for try await chunk in textToSpeech.streamAudio(sentence) {
+            guard !chunk.isEmpty else { continue }
+            emit(.audioChunk(utterance: sentence, data: chunk))
         }
     }
 

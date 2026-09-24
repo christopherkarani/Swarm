@@ -38,6 +38,7 @@ public struct HTTPSpeechConfiguration: Sendable {
 /// Call ``submitAudio(_:mimeType:)`` before ``start()``. No microphone.
 public actor HTTPSpeechToText: SpeechToText {
     private let configuration: HTTPSpeechConfiguration
+    private nonisolated let interrupt = VoiceCancellable()
     private var pending: (Data, String)?
 
     /// Creates an HTTP speech-to-text adapter.
@@ -52,19 +53,26 @@ public actor HTTPSpeechToText: SpeechToText {
 
     public nonisolated func start() -> AsyncThrowingStream<SpeechTranscript, Error> {
         StreamHelper.makeTrackedStream { continuation in
+            let task = Task<String, Error> { try await self.transcribePending() }
+            self.interrupt.store { task.cancel() }
             do {
-                let text = try await self.transcribePending()
+                let text = try await task.value
                 continuation.yield(SpeechTranscript(text: text, isFinal: true))
                 continuation.finish()
-            } catch let error as VoiceError {
-                continuation.finish(throwing: error)
             } catch {
-                continuation.finish(throwing: VoiceError.speechFailed(reason: String(describing: error)))
+                if let cancelled = VoiceCancellation.error(for: error) {
+                    continuation.finish(throwing: cancelled)
+                } else if let voiceError = error as? VoiceError {
+                    continuation.finish(throwing: voiceError)
+                } else {
+                    continuation.finish(throwing: VoiceError.speechFailed(reason: String(describing: error)))
+                }
             }
         }
     }
 
     public func stop() async {
+        interrupt.cancel()
         pending = nil
     }
 

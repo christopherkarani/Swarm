@@ -83,7 +83,7 @@ struct ElevenLabsVoiceAdapterTests {
         ElevenLabsURLProtocol.reset()
         defer { ElevenLabsURLProtocol.reset() }
         ElevenLabsURLProtocol.handler = { _, _ in
-            ElevenLabsURLProtocol.Stub(status: 401, headers: [:], body: Data())
+            ElevenLabsURLProtocol.Stub(status: 401, headers: [:], body: Data(), parts: [])
         }
 
         let stt = ElevenLabsSpeechToText(
@@ -215,7 +215,7 @@ struct ElevenLabsVoiceAdapterTests {
         ElevenLabsURLProtocol.reset()
         defer { ElevenLabsURLProtocol.reset() }
         ElevenLabsURLProtocol.handler = { _, _ in
-            ElevenLabsURLProtocol.Stub(status: 401, headers: [:], body: Data())
+            ElevenLabsURLProtocol.Stub(status: 401, headers: [:], body: Data(), parts: [])
         }
 
         let tts = ElevenLabsTextToSpeech(
@@ -227,6 +227,227 @@ struct ElevenLabsVoiceAdapterTests {
         )
         await #expect(throws: VoiceError.synthesisFailed(reason: "ElevenLabs speech failed (HTTP 401).")) {
             try await tts.speak("Hello.")
+        }
+    }
+
+    @Test("ElevenLabs text-to-speech streams audio chunks in order")
+    func elevenLabsTextToSpeechStreamsChunks() async throws {
+        ElevenLabsURLProtocol.reset()
+        defer { ElevenLabsURLProtocol.reset() }
+        let parts = [Data("chunk-one-".utf8), Data("chunk-two-".utf8), Data("chunk-three".utf8)]
+        ElevenLabsURLProtocol.handler = { _, _ in
+            .chunked(parts, contentType: "audio/mpeg")
+        }
+
+        let tts = ElevenLabsTextToSpeech(
+            configuration: ElevenLabsSpeechSynthesisConfiguration(
+                voiceId: "voice-123",
+                session: ElevenLabsURLProtocol.makeSession()
+            )
+        )
+        var chunks: [Data] = []
+        for try await chunk in tts.streamAudio("Hello there.") {
+            chunks.append(chunk)
+        }
+
+        let expected = parts.reduce(Data(), +)
+        #expect(chunks.reduce(Data(), +) == expected)
+        #expect(await tts.lastAudio == expected)
+    }
+
+    @Test("ElevenLabs text-to-speech yields the first chunk before the body completes")
+    func elevenLabsTextToSpeechStreamsIncrementally() async throws {
+        ElevenLabsURLProtocol.reset()
+        defer { ElevenLabsURLProtocol.reset() }
+        ElevenLabsURLProtocol.responseDelay = 0.4
+        ElevenLabsURLProtocol.handler = { _, _ in
+            .chunked([Data("one".utf8), Data("two".utf8)], contentType: "audio/mpeg")
+        }
+
+        let tts = ElevenLabsTextToSpeech(
+            configuration: ElevenLabsSpeechSynthesisConfiguration(
+                voiceId: "voice-123",
+                session: ElevenLabsURLProtocol.makeSession()
+            )
+        )
+        let clock = ContinuousClock()
+        let start = clock.now
+        var firstChunkAt: Duration?
+        for try await _ in tts.streamAudio("Hello.") {
+            if firstChunkAt == nil {
+                firstChunkAt = start.duration(to: clock.now)
+            }
+        }
+        let total = start.duration(to: clock.now)
+        let first = try #require(firstChunkAt)
+        #expect(first < total - .milliseconds(300))
+    }
+
+    @Test("ElevenLabs streaming sends latency and format queries")
+    func elevenLabsStreamingSendsQueries() async throws {
+        ElevenLabsURLProtocol.reset()
+        defer { ElevenLabsURLProtocol.reset() }
+        ElevenLabsURLProtocol.handler = { _, _ in
+            .data(Data("audio".utf8), contentType: "audio/mpeg")
+        }
+
+        let tts = ElevenLabsTextToSpeech(
+            configuration: ElevenLabsSpeechSynthesisConfiguration(
+                voiceId: "voice-123",
+                outputFormat: "mp3_44100_128",
+                optimizeStreamingLatency: 4,
+                session: ElevenLabsURLProtocol.makeSession()
+            )
+        )
+        for try await _ in tts.streamAudio("Hi.") {}
+
+        let request = try #require(ElevenLabsURLProtocol.requests.first)
+        let url = request.url.absoluteString
+        #expect(url.contains("output_format=mp3_44100_128"))
+        #expect(url.contains("optimize_streaming_latency=4"))
+    }
+
+    @Test("ElevenLabs streaming without latency tuning omits the query")
+    func elevenLabsStreamingOmitsLatencyQueryByDefault() async throws {
+        ElevenLabsURLProtocol.reset()
+        defer { ElevenLabsURLProtocol.reset() }
+        ElevenLabsURLProtocol.handler = { _, _ in
+            .data(Data("audio".utf8), contentType: "audio/mpeg")
+        }
+
+        let tts = ElevenLabsTextToSpeech(
+            configuration: ElevenLabsSpeechSynthesisConfiguration(
+                voiceId: "voice-123",
+                session: ElevenLabsURLProtocol.makeSession()
+            )
+        )
+        for try await _ in tts.streamAudio("Hi.") {}
+
+        let request = try #require(ElevenLabsURLProtocol.requests.first)
+        #expect(request.url.absoluteString.contains("optimize_streaming_latency") == false)
+    }
+
+    @Test("ElevenLabs streaming rejects empty utterances without a request")
+    func elevenLabsStreamingRejectsEmpty() async throws {
+        ElevenLabsURLProtocol.reset()
+        defer { ElevenLabsURLProtocol.reset() }
+
+        let tts = ElevenLabsTextToSpeech(
+            configuration: ElevenLabsSpeechSynthesisConfiguration(
+                voiceId: "voice-123",
+                session: ElevenLabsURLProtocol.makeSession()
+            )
+        )
+        await #expect(throws: VoiceError.synthesisFailed(reason: "Utterance is empty.")) {
+            for try await _ in tts.streamAudio("   ") {}
+        }
+        #expect(ElevenLabsURLProtocol.requests.isEmpty)
+    }
+
+    @Test("ElevenLabs streaming surfaces HTTP errors without chunks")
+    func elevenLabsStreamingSurfacesErrors() async throws {
+        ElevenLabsURLProtocol.reset()
+        defer { ElevenLabsURLProtocol.reset() }
+        ElevenLabsURLProtocol.handler = { _, _ in
+            ElevenLabsURLProtocol.Stub(
+                status: 402,
+                headers: ["Content-Type": "application/json"],
+                body: Data(#"{"Detail": "Paid plan required."}"#.utf8),
+                parts: []
+            )
+        }
+
+        let tts = ElevenLabsTextToSpeech(
+            configuration: ElevenLabsSpeechSynthesisConfiguration(
+                voiceId: "voice-123",
+                session: ElevenLabsURLProtocol.makeSession()
+            )
+        )
+        var chunks: [Data] = []
+        await #expect(throws: VoiceError.synthesisFailed(reason: "Paid plan required. (HTTP 402).")) {
+            for try await chunk in tts.streamAudio("Hello.") {
+                chunks.append(chunk)
+            }
+        }
+        #expect(chunks.isEmpty)
+    }
+
+    @Test("ElevenLabs speak honours stop")
+    func elevenLabsSpeakHonoursStop() async throws {
+        ElevenLabsURLProtocol.reset()
+        defer { ElevenLabsURLProtocol.reset() }
+        ElevenLabsURLProtocol.responseDelay = 2
+        ElevenLabsURLProtocol.handler = { _, _ in
+            .data(Data("audio".utf8), contentType: "audio/mpeg")
+        }
+
+        let tts = ElevenLabsTextToSpeech(
+            configuration: ElevenLabsSpeechSynthesisConfiguration(
+                voiceId: "voice-123",
+                session: ElevenLabsURLProtocol.makeSession()
+            )
+        )
+        let task = Task { try await tts.speak("Hello.") }
+        while ElevenLabsURLProtocol.requests.isEmpty {
+            await Task.yield()
+        }
+        await tts.stop()
+        await #expect(throws: VoiceError.cancelled) {
+            try await task.value
+        }
+    }
+
+    @Test("ElevenLabs streaming honours stop")
+    func elevenLabsStreamingHonoursStop() async throws {
+        ElevenLabsURLProtocol.reset()
+        defer { ElevenLabsURLProtocol.reset() }
+        ElevenLabsURLProtocol.responseDelay = 2
+        ElevenLabsURLProtocol.handler = { _, _ in
+            .data(Data("audio".utf8), contentType: "audio/mpeg")
+        }
+
+        let tts = ElevenLabsTextToSpeech(
+            configuration: ElevenLabsSpeechSynthesisConfiguration(
+                voiceId: "voice-123",
+                session: ElevenLabsURLProtocol.makeSession()
+            )
+        )
+        let task = Task {
+            for try await _ in tts.streamAudio("Hello.") {}
+        }
+        while ElevenLabsURLProtocol.requests.isEmpty {
+            await Task.yield()
+        }
+        await tts.stop()
+        await #expect(throws: VoiceError.cancelled) {
+            try await task.value
+        }
+    }
+
+    @Test("ElevenLabs speech-to-text honours stop")
+    func elevenLabsSpeechToTextHonoursStop() async throws {
+        ElevenLabsURLProtocol.reset()
+        defer { ElevenLabsURLProtocol.reset() }
+        ElevenLabsURLProtocol.responseDelay = 2
+        ElevenLabsURLProtocol.handler = { _, _ in
+            .json(#"{"text":"too slow"}"#)
+        }
+
+        let stt = ElevenLabsSpeechToText(
+            configuration: ElevenLabsSpeechConfiguration(
+                session: ElevenLabsURLProtocol.makeSession()
+            )
+        )
+        await stt.submitAudio(Data("wav".utf8))
+        let task = Task {
+            for try await _ in stt.start() {}
+        }
+        while ElevenLabsURLProtocol.requests.isEmpty {
+            await Task.yield()
+        }
+        await stt.stop()
+        await #expect(throws: VoiceError.cancelled) {
+            try await task.value
         }
     }
 }
@@ -242,12 +463,21 @@ private final class ElevenLabsURLProtocol: URLProtocol {
         let status: Int
         let headers: [String: String]
         let body: Data
+        let parts: [Data]
+
+        init(status: Int, headers: [String: String], body: Data, parts: [Data] = []) {
+            self.status = status
+            self.headers = headers
+            self.body = body
+            self.parts = parts
+        }
 
         static func json(_ text: String) -> Stub {
             Stub(
                 status: 200,
                 headers: ["Content-Type": "application/json"],
-                body: Data(text.utf8)
+                body: Data(text.utf8),
+                parts: []
             )
         }
 
@@ -255,7 +485,18 @@ private final class ElevenLabsURLProtocol: URLProtocol {
             Stub(
                 status: 200,
                 headers: ["Content-Type": contentType],
-                body: body
+                body: body,
+                parts: []
+            )
+        }
+
+        /// Response delivered as one `didLoad` per part, in order.
+        static func chunked(_ parts: [Data], contentType: String) -> Stub {
+            Stub(
+                status: 200,
+                headers: ["Content-Type": contentType],
+                body: parts.reduce(Data(), +),
+                parts: parts
             )
         }
     }
@@ -270,10 +511,17 @@ private final class ElevenLabsURLProtocol: URLProtocol {
         state.withLock(\.requests)
     }
 
+    /// Seconds to wait before delivering a response and between parts.
+    static var responseDelay: TimeInterval {
+        get { state.withLock(\.responseDelay) }
+        set { state.withLock { $0.responseDelay = newValue } }
+    }
+
     static func reset() {
         state.withLock {
             $0.handler = nil
             $0.requests = []
+            $0.responseDelay = 0
         }
     }
 
@@ -295,10 +543,14 @@ private final class ElevenLabsURLProtocol: URLProtocol {
             headers: request.allHTTPHeaderFields ?? [:],
             body: body
         )
-        let stub = Self.state.withLock { state -> Stub in
+        let (stub, delay) = Self.state.withLock { state -> (Stub, TimeInterval) in
             state.requests.append(recorded)
-            return state.handler?(self.request, body)
-                ?? Stub(status: 500, headers: [:], body: Data())
+            let stub = state.handler?(self.request, body)
+                ?? Stub(status: 500, headers: [:], body: Data(), parts: [])
+            return (stub, state.responseDelay)
+        }
+        if delay > 0 {
+            Thread.sleep(forTimeInterval: delay)
         }
         let response = HTTPURLResponse(
             url: recorded.url,
@@ -307,7 +559,16 @@ private final class ElevenLabsURLProtocol: URLProtocol {
             headerFields: stub.headers
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: stub.body)
+        if stub.parts.isEmpty {
+            client?.urlProtocol(self, didLoad: stub.body)
+        } else {
+            for part in stub.parts {
+                client?.urlProtocol(self, didLoad: part)
+                if delay > 0 {
+                    Thread.sleep(forTimeInterval: delay)
+                }
+            }
+        }
         client?.urlProtocolDidFinishLoading(self)
     }
 
@@ -330,6 +591,7 @@ private final class ElevenLabsURLProtocol: URLProtocol {
         struct State {
             var handler: (@Sendable (URLRequest, Data) -> Stub)?
             var requests: [RecordedRequest] = []
+            var responseDelay: TimeInterval = 0
         }
 
         private var state = State()
