@@ -33,7 +33,14 @@ struct AgentTurnTranscript: Sendable, Equatable {
             case let .system(content): return .system(content)
             case let .user(content): return .user(content)
             case let .assistant(content, toolCalls):
-                return .assistant(content, toolCalls: toolCalls.map(InferenceMessage.ToolCall.init))
+                return .assistant(content, toolCalls: toolCalls.map {
+                    InferenceMessage.ToolCall(
+                        id: $0.id,
+                        name: $0.name,
+                        arguments: $0.arguments,
+                        thoughtSignature: $0.thoughtSignature
+                    )
+                })
             case let .toolResult(toolName, result, toolCallID):
                 return .tool(name: toolName, content: result, toolCallID: toolCallID)
             }
@@ -49,7 +56,12 @@ struct AgentTurnTranscript: Sendable, Equatable {
                 self = .assistant(
                     content,
                     toolCalls: toolCalls.map {
-                        InferenceResponse.ParsedToolCall(id: $0.id, name: $0.name, arguments: $0.arguments)
+                        InferenceResponse.ParsedToolCall(
+                            id: $0.id,
+                            name: $0.name,
+                            arguments: $0.arguments,
+                            thoughtSignature: $0.thoughtSignature
+                        )
                     }
                 )
             case let .tool(name, content, toolCallID):

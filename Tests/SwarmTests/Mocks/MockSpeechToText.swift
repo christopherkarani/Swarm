@@ -9,7 +9,9 @@ import Foundation
 /// Yields configured transcripts then finishes, or hangs until ``stop()``.
 public actor MockSpeechToText: SpeechToText {
     private let transcripts: [SpeechTranscript]
+    private let subsequentStarts: [[SpeechTranscript]]
     private let hangUntilStopped: Bool
+    private var startCount = 0
     private var stopWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// Number of times ``stop()`` has been called.
@@ -17,16 +19,22 @@ public actor MockSpeechToText: SpeechToText {
 
     /// Creates a scripted recognizer.
     /// - Parameters:
-    ///   - transcripts: Fragments yielded in order from ``start()``.
+    ///   - transcripts: Fragments yielded in order from the first ``start()``.
+    ///   - subsequentStarts: Batches yielded from later ``start()`` calls.
     ///   - hangUntilStopped: When `true`, the stream waits for ``stop()``.
-    public init(transcripts: [SpeechTranscript] = [], hangUntilStopped: Bool = false) {
+    public init(
+        transcripts: [SpeechTranscript] = [],
+        subsequentStarts: [[SpeechTranscript]] = [],
+        hangUntilStopped: Bool = false
+    ) {
         self.transcripts = transcripts
+        self.subsequentStarts = subsequentStarts
         self.hangUntilStopped = hangUntilStopped
     }
 
     public nonisolated func start() -> AsyncThrowingStream<SpeechTranscript, Error> {
         StreamHelper.makeTrackedStream { continuation in
-            let scripted = await self.transcripts
+            let scripted = await self.nextBatch()
             let shouldHang = await self.hangUntilStopped
             for transcript in scripted {
                 continuation.yield(transcript)
@@ -36,6 +44,19 @@ public actor MockSpeechToText: SpeechToText {
             }
             continuation.finish()
         }
+    }
+
+    private func nextBatch() -> [SpeechTranscript] {
+        let index = startCount
+        startCount += 1
+        if index == 0 {
+            return transcripts
+        }
+        let subsequentIndex = index - 1
+        guard subsequentStarts.indices.contains(subsequentIndex) else {
+            return []
+        }
+        return subsequentStarts[subsequentIndex]
     }
 
     public func stop() async {

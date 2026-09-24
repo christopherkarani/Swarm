@@ -600,16 +600,18 @@ struct DocumentationFreshnessTests {
         throw DocumentationFreshnessError.missingLine(needle)
     }
 
-    @Test("voice guide states Swarm does not accept audio")
-    func voiceGuideStatesSwarmDoesNotAcceptAudio() throws {
+    @Test("voice guide states attachments are capability-gated")
+    func voiceGuideStatesAttachmentsAreCapabilityGated() throws {
         let guide = try readRepoFile("docs/guide/voice.md")
-        #expect(guide.contains("Swarm does not accept audio"))
+        #expect(guide.contains("capability-gated"))
+        #expect(guide.contains("VoiceSession sends text to Agent.stream"))
+        #expect(guide.contains("Barge-in is opt-in via `bargeInEnabled`"))
         #expect(guide.contains("NSMicrophoneUsageDescription"))
         #expect(guide.contains("NSSpeechRecognitionUsageDescription"))
-        #expect(guide.contains("Barge-in is not in v1"))
         #expect(guide.contains("appleOnDevice"))
         #expect(guide.contains("installAssetsIfNeeded"))
         #expect(!guide.contains("struct VoiceAgent"))
+        #expect(!guide.contains("Barge-in is not in v1"))
         #expect(!guide.localizedCaseInsensitiveContains("realtime voice"))
     }
 

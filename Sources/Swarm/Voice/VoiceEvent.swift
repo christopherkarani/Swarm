@@ -38,4 +38,7 @@ public enum VoiceEvent: Sendable, Equatable {
 
     /// Speech synthesis of `text` finished or was interrupted.
     case speakingFinished(String)
+
+    /// Barge-in committed. `transcriptSoFar` is what had already been spoken.
+    case interrupted(transcriptSoFar: String)
 }

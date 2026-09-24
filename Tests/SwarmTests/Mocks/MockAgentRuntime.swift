@@ -14,14 +14,17 @@ public actor MockAgentRuntime: AgentRuntime {
 
     private let response: String?
     private let streamTokens: [String]
+    private let streamTokenRuns: [[String]]
     private let responseFactory: (@Sendable () -> String)?
     private let delay: Duration
     private let streamTokenDelay: Duration
     private var cancelled = false
+    private var streamInvocation = 0
 
     public init(
         response: String = "",
         streamTokens: [String] = [],
+        streamTokenRuns: [[String]] = [],
         responseFactory: (@Sendable () -> String)? = nil,
         delay: Duration = .zero,
         streamTokenDelay: Duration = .zero,
@@ -37,6 +40,7 @@ public actor MockAgentRuntime: AgentRuntime {
     ) {
         self.response = response
         self.streamTokens = streamTokens
+        self.streamTokenRuns = streamTokenRuns
         self.responseFactory = responseFactory
         self.delay = delay
         self.streamTokenDelay = streamTokenDelay
@@ -83,15 +87,17 @@ public actor MockAgentRuntime: AgentRuntime {
 
     public nonisolated func stream(_ input: String, session: (any Session)?, observer: (any AgentObserver)?) -> AsyncThrowingStream<AgentEvent, Error> {
         StreamHelper.makeTrackedStream { continuation in
+            await self.beginStream()
             continuation.yield(.lifecycle(.started(input: input)))
-            if self.streamTokens.isEmpty {
+            let tokens = await self.tokensForThisStream()
+            if tokens.isEmpty {
                 continuation.yield(.lifecycle(.completed(result: AgentResult(output: self.response ?? ""))))
                 continuation.finish()
                 return
             }
 
             var aggregate = ""
-            for token in self.streamTokens {
+            for token in tokens {
                 if self.streamTokenDelay > .zero {
                     try await Task.sleep(for: self.streamTokenDelay)
                 }
@@ -116,6 +122,19 @@ public actor MockAgentRuntime: AgentRuntime {
 
     public func cancel() async {
         cancelled = true
+    }
+
+    private func beginStream() {
+        cancelled = false
+    }
+
+    private func tokensForThisStream() -> [String] {
+        defer { streamInvocation += 1 }
+        if streamTokenRuns.isEmpty {
+            return streamTokens
+        }
+        let index = min(streamInvocation, streamTokenRuns.count - 1)
+        return streamTokenRuns[index]
     }
 
     public var isCancelled: Bool {

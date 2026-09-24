@@ -309,6 +309,20 @@ private extension CapabilityShowcase {
                 kind: .deterministic,
                 runHandler: runVoiceScenario
             ),
+            .init(
+                id: "voice-bargein",
+                name: "Voice Barge-In",
+                families: [.voice],
+                kind: .deterministic,
+                runHandler: runVoiceBargeInScenario
+            ),
+            .init(
+                id: "voice-workflow",
+                name: "Voice Workflow",
+                families: [.voice],
+                kind: .deterministic,
+                runHandler: runVoiceWorkflowScenario
+            ),
         ]
 
         #if SWARM_INTEGRATIONS

@@ -117,6 +117,25 @@ jobs:
       - name: Linux OpenAI-compatible provider proof
         run: swift test --no-parallel --filter OpenAICompatible
 
+  # Opt-in live microphone proof. Not a merge gate. Does not record samples.
+  voice-live:
+    name: Voice live microphone (opt-in)
+    if: ${{ vars.SWARM_VOICE_LIVE_MIC == '1' }}
+    runs-on: [self-hosted, macOS]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          clean: true
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Prepare Apple speech without capture
+        env:
+          SWARM_VOICE_LIVE_MIC: "1"
+        run: SWARM_OMIT_INTEGRATION_TARGETS=1 swift test --filter SwarmTests.VoiceLiveMic
+
   # Code Quality (macOS only - SwiftLint/SwiftFormat)
   code-quality:
     name: Code Quality
