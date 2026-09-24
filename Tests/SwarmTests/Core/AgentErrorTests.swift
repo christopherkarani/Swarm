@@ -32,3 +32,32 @@ struct ToolCallingErrorTests {
         #expect(error.recoverySuggestion == nil)
     }
 }
+
+@Suite("AgentError — authenticationFailed")
+struct AuthenticationFailedErrorTests {
+    @Test("authenticationFailed has correct error description")
+    func errorDescription() {
+        let error = AgentError.authenticationFailed(reason: "bad key")
+        #expect(error.errorDescription?.contains("Authentication failed") == true)
+        #expect(error.errorDescription?.contains("bad key") == true)
+    }
+
+    @Test("authenticationFailed has API-key recovery suggestion")
+    func recoverySuggestion() {
+        let error = AgentError.authenticationFailed(reason: "bad key")
+        #expect(error.recoverySuggestion?.localizedCaseInsensitiveContains("API key") == true)
+    }
+
+    @Test("authenticationFailed has debug description")
+    func debugDescription() {
+        let error = AgentError.authenticationFailed(reason: "bad key")
+        #expect(error.debugDescription.contains("authenticationFailed"))
+    }
+
+    @Test("authenticationFailed is not retryable")
+    func notRetryable() {
+        let error = AgentError.authenticationFailed(reason: "bad key")
+        #expect(error.isRetryable == false)
+        #expect(InferenceRetryability.isRetryable(error) == false)
+    }
+}

@@ -77,6 +77,7 @@ import Foundation
 ///
 /// ### Model Errors
 /// - ``inferenceProviderUnavailable(reason:)``
+/// - ``authenticationFailed(reason:)``
 /// - ``contextWindowExceeded(tokenCount:limit:)``
 /// - ``guardrailViolation(reason:)``
 /// - ``contentFiltered(reason:)``
@@ -408,6 +409,28 @@ public enum AgentError: Error, Sendable, Equatable {
     /// - Parameter reason: A description of why the provider is unavailable
     case inferenceProviderUnavailable(reason: String)
 
+    /// The provider rejected the request credentials.
+    ///
+    /// This error is thrown when:
+    /// - The API key is missing, invalid, or expired (HTTP 401)
+    /// - The credentials lack access to the requested model or organization (HTTP 403)
+    ///
+    /// ## Recovery
+    ///
+    /// Check the configured credentials and their access scope:
+    ///
+    /// ```swift
+    /// } catch AgentError.authenticationFailed(let reason) {
+    ///     print("Check your API key: \(reason)")
+    /// }
+    /// ```
+    ///
+    /// ## Note
+    /// This error is non-retryable. Retrying with the same credentials fails again.
+    ///
+    /// - Parameter reason: A description of why authentication failed
+    case authenticationFailed(reason: String)
+
     /// The model context window was exceeded.
     ///
     /// This error is thrown when the total token count (input + generated)
@@ -717,6 +740,8 @@ public enum AgentError: Error, Sendable, Equatable {
             a == b
         case let (.inferenceProviderUnavailable(a), .inferenceProviderUnavailable(b)):
             a == b
+        case let (.authenticationFailed(a), .authenticationFailed(b)):
+            a == b
         case let (.contextWindowExceeded(a1, a2), .contextWindowExceeded(b1, b2)):
             a1 == b1 && a2 == b2
         case let (.guardrailViolation(a), .guardrailViolation(b)):
@@ -806,6 +831,8 @@ extension AgentError: LocalizedError {
             "Handoff tool name collides with a registered tool: '\(name)'"
         case let .inferenceProviderUnavailable(reason):
             "Inference provider unavailable: \(reason)"
+        case let .authenticationFailed(reason):
+            "Authentication failed: \(reason)"
         case let .contextWindowExceeded(count, limit):
             "Context window exceeded: \(count) tokens (limit: \(limit))"
         case let .guardrailViolation(reason):
@@ -854,6 +881,8 @@ extension AgentError: LocalizedError {
             "Pass a ToolCallExecutor on generateWithToolCalls/streamWithToolCalls, implement that overload if this adapter advertises providerOwnedToolLoop, or construct a capture adapter (.foundationModels()) if Agent should own the loop."
         case .inferenceProviderUnavailable:
             "Configure an inference provider via `await Swarm.configure(provider:)` or use Apple Foundation Models on a supported device."
+        case .authenticationFailed:
+            "Check that your API key is set, valid, and has access to the requested model."
         case .rateLimitExceeded(let retryAfter):
             if let seconds = retryAfter {
                 "Wait \(Int(seconds)) seconds before retrying the request."
@@ -918,6 +947,8 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.handoffToolNameCollidesWithTool(name: \(name))"
         case let .inferenceProviderUnavailable(reason):
             "AgentError.inferenceProviderUnavailable(reason: \(reason))"
+        case let .authenticationFailed(reason):
+            "AgentError.authenticationFailed(reason: \(reason))"
         case let .contextWindowExceeded(tokenCount, limit):
             "AgentError.contextWindowExceeded(tokenCount: \(tokenCount), limit: \(limit))"
         case let .guardrailViolation(reason):
@@ -964,6 +995,7 @@ extension AgentError {
             true
         case .cancelled,
              .timeout,
+             .authenticationFailed,
              .invalidInput,
              .invalidLoop,
              .maxIterationsExceeded,
