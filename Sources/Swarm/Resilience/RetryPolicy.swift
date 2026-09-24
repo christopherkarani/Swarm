@@ -262,7 +262,9 @@ public struct RetryPolicy: Sendable {
     /// Canonical agent-inference retry seam: `maxAttempts` counts retries after
     /// the initial attempt, `CancellationError` rethrows immediately, exhaustion
     /// wraps `ResilienceError.retriesExhausted`, and backoff sleeps on the
-    /// injected `SwarmClock`. `ChatGraph.withRetry` keeps a local loop with
+    /// injected `SwarmClock`. A server `Retry-After` hint carried by
+    /// ``AgentError/rateLimitExceeded(retryAfter:)`` extends the computed
+    /// delay but never shortens it. `ChatGraph.withRetry` keeps a local loop with
     /// documented semantic divergence (total-attempt counting, verbatim rethrow,
     /// unconditional gating, different backoff math).
     /// - Parameter operation: The async operation to execute.
@@ -301,9 +303,12 @@ public struct RetryPolicy: Sendable {
                 await onRetry?(retryCount, error)
                 try Task.checkCancellation()
 
-                // Calculate and apply backoff delay
+                // Calculate and apply backoff delay. A server-provided
+                // Retry-After hint extends the policy delay but never
+                // shortens it; the run timeout still bounds the wait.
+                let policyDelay = backoff.delay(forAttempt: retryCount, random: randomSource)
                 let delay = sanitizeBackoffDelay(
-                    backoff.delay(forAttempt: retryCount, random: randomSource)
+                    max(policyDelay, Self.retryAfterHint(for: error) ?? 0)
                 )
                 if delay > 0 {
                     try await clock.sleep(nanoseconds: delay)
@@ -317,6 +322,22 @@ public struct RetryPolicy: Sendable {
             attempts: retryCount + 1,
             lastError: lastError?.localizedDescription ?? "Unknown error"
         )
+    }
+
+    /// Server-provided retry delay carried by the error, when any.
+    ///
+    /// Only ``AgentError/rateLimitExceeded(retryAfter:)`` carries a hint.
+    /// Non-positive and non-finite hints are ignored so a malformed
+    /// `Retry-After` value can never shorten or break the policy delay.
+    private static func retryAfterHint(for error: Error) -> TimeInterval? {
+        guard case let .rateLimitExceeded(retryAfter) = error as? AgentError,
+              let retryAfter,
+              retryAfter.isFinite,
+              retryAfter > 0
+        else {
+            return nil
+        }
+        return retryAfter
     }
 
     private func sanitizeBackoffDelay(_ delaySeconds: TimeInterval) -> UInt64 {
