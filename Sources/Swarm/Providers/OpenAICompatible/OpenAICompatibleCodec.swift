@@ -263,7 +263,8 @@ enum OpenAICompatibleCodec: Sendable {
         InferenceResponse.ParsedToolCall(
             id: delta.id,
             name: delta.name ?? "",
-            arguments: decodeArguments(delta.arguments)
+            arguments: decodeArguments(delta.arguments),
+            thoughtSignature: delta.thoughtSignature
         )
     }
 
@@ -399,7 +400,7 @@ enum OpenAICompatibleCodec: Sendable {
         let argumentsData = (try? JSONSerialization.data(withJSONObject: argumentsObject, options: [.sortedKeys]))
             ?? Data("{}".utf8)
         let arguments = String(data: argumentsData, encoding: .utf8) ?? "{}"
-        return [
+        var encoded: [String: Any] = [
             "id": synthesizedToolCallID(call.id, index: index),
             "type": "function",
             "function": [
@@ -407,6 +408,11 @@ enum OpenAICompatibleCodec: Sendable {
                 "arguments": arguments,
             ] as [String: Any],
         ]
+        // Gemini thinking models reject follow-ups without the echoed signature.
+        if let signature = call.thoughtSignature, !signature.isEmpty {
+            encoded["extra_content"] = ["google": ["thought_signature": signature]]
+        }
+        return encoded
     }
 
     private static func sanitizeSchemaName(_ name: String) -> String {
@@ -439,6 +445,9 @@ struct OpenAICompatibleStreamAccumulator: Sendable {
                 }
                 if let name = delta.name, !name.isEmpty {
                     accumulated.name = name
+                }
+                if let signature = delta.thoughtSignature, !signature.isEmpty {
+                    accumulated.thoughtSignature = signature
                 }
                 accumulated.arguments += delta.arguments
                 toolCalls[delta.index] = accumulated
@@ -479,7 +488,8 @@ struct OpenAICompatibleStreamAccumulator: Sendable {
             return InferenceResponse.ParsedToolCall(
                 id: call.id.isEmpty ? nil : call.id,
                 name: call.name,
-                arguments: OpenAICompatibleCodec.decodeArguments(call.arguments)
+                arguments: OpenAICompatibleCodec.decodeArguments(call.arguments),
+                thoughtSignature: call.thoughtSignature.isEmpty ? nil : call.thoughtSignature
             )
         }
         return parsed.isEmpty ? [] : [.toolCallsCompleted(parsed)]
@@ -491,4 +501,5 @@ private struct AccumulatedToolCall: Sendable {
     var id: String = ""
     var name: String = ""
     var arguments: String = ""
+    var thoughtSignature: String = ""
 }

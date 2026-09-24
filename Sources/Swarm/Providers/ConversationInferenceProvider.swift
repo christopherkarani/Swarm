@@ -99,11 +99,19 @@ public struct InferenceMessage: Sendable, Equatable {
         public let id: String?
         public let name: String
         public let arguments: [String: SendableValue]
+        /// Provider thought signature (Gemini thinking models). Echoed back verbatim.
+        public let thoughtSignature: String?
 
-        public init(id: String? = nil, name: String, arguments: [String: SendableValue]) {
+        public init(
+            id: String? = nil,
+            name: String,
+            arguments: [String: SendableValue],
+            thoughtSignature: String? = nil
+        ) {
             self.id = id
             self.name = name
             self.arguments = arguments
+            self.thoughtSignature = thoughtSignature
         }
     }
 
@@ -243,7 +251,12 @@ public protocol ToolCallStreamingConversationInferenceProvider: ConversationInfe
 
 extension InferenceMessage.ToolCall {
     init(_ parsed: InferenceResponse.ParsedToolCall) {
-        self.init(id: parsed.id, name: parsed.name, arguments: parsed.arguments)
+        self.init(
+            id: parsed.id,
+            name: parsed.name,
+            arguments: parsed.arguments,
+            thoughtSignature: parsed.thoughtSignature
+        )
     }
 }
 

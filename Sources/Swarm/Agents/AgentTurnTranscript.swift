@@ -49,7 +49,12 @@ struct AgentTurnTranscript: Sendable, Equatable {
                 self = .assistant(
                     content,
                     toolCalls: toolCalls.map {
-                        InferenceResponse.ParsedToolCall(id: $0.id, name: $0.name, arguments: $0.arguments)
+                        InferenceResponse.ParsedToolCall(
+                            id: $0.id,
+                            name: $0.name,
+                            arguments: $0.arguments,
+                            thoughtSignature: $0.thoughtSignature
+                        )
                     }
                 )
             case let .tool(name, content, toolCallID):

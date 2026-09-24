@@ -93,6 +93,7 @@ struct OpenAICompatibleChatChunk: Sendable, Equatable {
         var id: String?
         var name: String?
         var arguments: String
+        var thoughtSignature: String?
     }
 
     init(json: [String: Any]) {
@@ -149,11 +150,14 @@ struct OpenAICompatibleChatChunk: Sendable, Equatable {
         }
         return array.enumerated().map { offset, call in
             let function = call["function"] as? [String: Any] ?? [:]
+            let extra = call["extra_content"] as? [String: Any] ?? [:]
+            let google = extra["google"] as? [String: Any] ?? [:]
             return ToolCallDelta(
                 index: call["index"] as? Int ?? offset,
                 id: call["id"] as? String,
                 name: function["name"] as? String,
-                arguments: function["arguments"] as? String ?? ""
+                arguments: function["arguments"] as? String ?? "",
+                thoughtSignature: google["thought_signature"] as? String
             )
         }
     }
