@@ -1177,6 +1177,56 @@ Typed structured-output decode failures keep the original error through
 public case structuredOutputDecodingFailed(reason: String, underlying: (any Error)?)
 ```
 
+## 12b) Voice
+
+`VoiceSession` is a turn-based actor around `any AgentRuntime`. Swarm does not
+accept audio. Inject `SpeechToText` and `TextToSpeech`. Barge-in is not in v1.
+
+```swift
+public protocol SpeechToText: Sendable {
+    func start() -> AsyncThrowingStream<SpeechTranscript, Error>
+    func stop() async
+}
+
+public protocol TextToSpeech: Sendable {
+    func speak(_ text: String) async throws
+    func stop() async
+}
+
+public actor VoiceSession {
+    public init(
+        agent: any AgentRuntime,
+        speechToText: any SpeechToText,
+        textToSpeech: any TextToSpeech,
+        session: (any Session)? = nil,
+        configuration: VoiceSessionConfiguration = .default
+    )
+    public var events: AsyncStream<VoiceEvent> { get }
+    public func listenAndRespond() async throws -> VoiceTurnResult
+    public func respond(to transcript: String) async throws -> VoiceTurnResult
+    public func stop() async
+}
+
+#if canImport(Speech)
+@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+extension VoiceSession {
+    public static func appleOnDevice(
+        agent: any AgentRuntime,
+        session: (any Session)?,
+        locale: Locale,
+        configuration: VoiceSessionConfiguration,
+        installAssetsIfNeeded: Bool
+    ) async throws -> VoiceSession
+}
+#endif
+```
+
+`AppleSpeechToText` (`SpeechAnalyzer` + `SpeechTranscriber`) and
+`AppleTextToSpeech` (`AVSpeechSynthesizer`) are Apple-only. They are not
+available on Linux.
+
+See the [Voice guide](/guide/voice).
+
 ## 13) Public macros
 
 | Macro | Applied To | Effect |
@@ -1202,7 +1252,7 @@ The package exports four public library products:
 
 | Product | Source surface | Public entry points |
 |---------|----------------|---------------------|
-| `Swarm` | `Sources/Swarm` | Agents, tools, workflows, memory, guardrails, providers, MCP client/bridge, workspace, resilience, observability, macros |
+| `Swarm` | `Sources/Swarm` | Agents, tools, workflows, memory, guardrails, providers, MCP client/bridge, workspace, resilience, observability, macros, voice coordinator |
 | `SwarmOpenTelemetry` | `Sources/SwarmOpenTelemetry` | Requires `traits: ["OpenTelemetry"]`. `OpenTelemetryInferenceProvider`, `InferenceProvider.instrumentedWithOpenTelemetry(...)`, `AgentRuntime.instrumentedWithOpenTelemetry(...)`, `OTLPHTTPTraceExporter`, `OpenTelemetryTracing`, `OpenTelemetryTracePropagation`, and `SwarmRuntimeTracer` |
 | `SwarmMembrane` | `Sources/SwarmMembrane` | **Deprecated.** Hollow re-export (`@_exported import Swarm`). Import `Swarm` and use `MembraneEnvironment`, `MembraneFeatureConfiguration`, `MembraneAgentAdapter`, and `DefaultMembraneAgentAdapter` under `Sources/Swarm/Integration/Membrane/`. The product will be removed in 0.7.0. |
 | `SwarmMCP` | `Sources/SwarmMCP` | Requires `traits: ["MCP"]`. `SwarmMCPServerService`, `SwarmMCPToolCatalog`, `SwarmMCPToolExecutor`, `SwarmMCPToolExecutionError`, and `SwarmMCPToolRegistryAdapter`. Swarm's MCP *client* stays in the `Swarm` product and does not need this trait. |

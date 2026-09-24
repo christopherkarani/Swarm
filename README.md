@@ -226,6 +226,7 @@ await Swarm.configure(provider: myProvider)
 | [Why Swarm?](docs/guide/why-swarm.md) | Design choices and architecture |
 | [Remote Providers](docs/guide/remote-providers.md) | OpenAI, Azure, OpenRouter, Ollama, and LM Studio |
 | [Foundation Models](docs/guide/foundation-models.md) | Capture and native session modes |
+| [Voice](docs/guide/voice.md) | Turn-based `VoiceSession` around an existing Agent |
 | [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics |
 | [OpenTelemetry Tracing](docs/guide/opentelemetry-tracing.md) | Traces and propagation |
 | [Front-Facing API](docs/reference/front-facing-api.md) | Public API overview |

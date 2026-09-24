@@ -35,3 +35,15 @@ _Avoid_: prompt provider, string provider, PromptInferenceProvider
 **Text-only adapter**:
 The InferenceProvider adapter that flattens `[InferenceMessage]` into a string and forwards to a text-only backend. Agent never sees the backend directly; callers wrap via a factory.
 _Avoid_: prompt path, string provider
+
+**VoiceSession**:
+A turn-based actor that listens (or accepts an injected transcript), calls `AgentRuntime.stream` with text, and speaks output sentences. It is not an Agent.
+_Avoid_: VoiceAgent, realtime session, audio agent
+
+**SpeechToText**:
+A host-injected protocol that yields partial then final transcripts. It does not call Agent.
+_Avoid_: microphone agent, audio input on InferenceMessage
+
+**TextToSpeech**:
+A host-injected protocol that speaks one string and returns when that utterance finishes or is stopped.
+_Avoid_: audio output on AgentEvent
