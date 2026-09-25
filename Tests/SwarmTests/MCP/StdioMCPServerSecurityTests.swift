@@ -207,6 +207,10 @@ struct StdioMCPServerSecurityTests {
             }
         }
 
+        // Live stdio spawns hang on Linux CI runners (python3 never leaves
+        // stdin); MCPInteropTests carries the same gate. macOS still covers
+        // the sandboxed round-trip.
+#if !os(Linux)
         @Test("Sandboxed initialize still completes against the fixture")
         func sandboxedInitializeCompletes() async throws {
             let python = try MCPFixtureSupport.requirePython3()
@@ -231,5 +235,6 @@ struct StdioMCPServerSecurityTests {
             let tools = try await server.listTools()
             #expect(tools.map(\.name) == ["echo"])
         }
+#endif
     #endif
 }
