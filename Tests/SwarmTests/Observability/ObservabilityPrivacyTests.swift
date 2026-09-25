@@ -44,4 +44,49 @@ struct ObservabilityPrivacyTests {
         #expect(metadata["thought"] == .string("[redacted]"))
         #expect(error == "FetchError: [redacted]")
     }
+
+    @Test("public trace log sanitizer redacts credential-bearing metadata keys")
+    func publicTraceLogSanitizerRedactsCredentialKeys() {
+        let secret = "[REDACTED] credential value"
+        let event = TraceEvent(
+            traceId: UUID(),
+            spanId: UUID(),
+            kind: .toolCall,
+            level: .info,
+            message: "Tool call",
+            metadata: [
+                "api_key": .string(secret),
+                "apiKey": .string(secret),
+                "Authorization": .string("Bearer \(secret)"),
+                "token": .string(secret),
+                "mcp-session-id": .string(secret),
+                "cookie": .string(secret),
+                "client_secret": .string(secret),
+                "safe_count": .int(2),
+                "input_tokens": .int(11),
+                "output_tokens": .int(7),
+                "total_tokens": .int(18)
+            ],
+            agentName: "ResearchAgent",
+            toolName: "websearch",
+            error: nil
+        )
+
+        let metadata = TraceEventPublicLogSanitizer.metadata(for: event)
+
+        #expect(metadata.description.contains(secret) == false)
+        #expect(metadata["api_key"] == .string("[redacted]"))
+        #expect(metadata["apiKey"] == .string("[redacted]"))
+        #expect(metadata["Authorization"] == .string("[redacted]"))
+        #expect(metadata["token"] == .string("[redacted]"))
+        #expect(metadata["mcp-session-id"] == .string("[redacted]"))
+        #expect(metadata["cookie"] == .string("[redacted]"))
+        #expect(metadata["client_secret"] == .string("[redacted]"))
+        #expect(metadata["safe_count"] == .int(2))
+        #expect(metadata["total_tokens"] == .int(18))
+        // `input_tokens` / `output_tokens` match the long-standing
+        // `input` / `output` content tokens, so they stay redacted.
+        #expect(metadata["input_tokens"] == .string("[redacted]"))
+        #expect(metadata["output_tokens"] == .string("[redacted]"))
+    }
 }

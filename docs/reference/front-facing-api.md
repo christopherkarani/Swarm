@@ -1395,3 +1395,56 @@ restart after `stop()`.
 - Agent is a struct (value type). Execution state lives in `run()`.
 - `Workflow` is the last-answer chain. `Job` is the shared-notes job with per-helper briefs.
 - No legacy types: `AgentBuilder`, `AnyAgent`, `AnyTool`, `ClosureInputGuardrail`, `ClosureOutputGuardrail`, `AgentBlueprint`, `AgentLoop`.
+
+## 16) Deprecation sunset schedule
+
+Deprecated API keeps working until its removal boundary; nothing below is
+silently broken. Migrate at your pace, starting with the 0.7.0 group.
+
+| Deprecated API | Use instead | Removal |
+|---|---|---|
+| `Agent.Builder` compatibility shim | `Agent` initializers or `withTools(_:)` | 0.7.0 |
+| `SwarmMembrane` product | `import Swarm` | 0.7.0 |
+| `AgentContextProviding` protocol | `ContextKey<Value>` with `setTyped(_:value:)` / `getTyped(_:)` | 0.7.0 |
+| `AgentContext` `AgentContextProviding` overloads (`setTyped(_:)`, `typed(_:)`, `removeTyped(_:)`, `hasTyped(_:)`) | `ContextKey<Value>` overloads | 0.7.0 |
+| `RunHooks.onLLMStart` `[MemoryMessage]` overload | `[InferenceMessage]` overload | 0.7 |
+| No-backend `persistent()` factory overload | Explicit backend (`SwiftDataBackend.persistent()` on Apple, or `InMemoryBackend()`) | 0.7.0 |
+| `AgentContextKey` get/set | Typed `ContextKey` accessors such as `get(.originalInput)` | Later minor |
+| `HandoffReceiver` | Override `handleHandoff` on any `AgentRuntime` | Later minor |
+| `nestHandoffHistory:` boolean initializers | `history: HandoffHistory` | Later minor |
+| `ToolResult.init(callId:isSuccess:output:duration:errorMessage:)` | `ToolResult.success` / `.failure` | Documented breaking boundary (§12) |
+| `ToolCallRecord` compatibility initializer | `ToolCallRecord.success` / `.failure` | Documented breaking boundary (§12) |
+| `AgentError.toolExecutionFailed` | `toolFailure(toolName:message:cause:)` | Later minor |
+| `GuardrailResult` compatibility initializer | `passed` / `tripwire` | Later minor |
+| `AgentResponse` compatibility initializer | `ToolCallRecord.success` / `.failure` | Later minor |
+| `InferenceMessage` memberwise `init(role:content:name:toolCallID:toolCalls:)` | `init(body:)` or the role factories | Later minor |
+| `PromptTokenCountingInferenceProvider` | `promptTokenCounter` on `InferenceProvider` | Later minor |
+| `StructuredOutputInferenceProvider` | `InferenceProviderCapabilities.structuredOutputs` + `generateStructured` | Later minor |
+| `ToolCallStreamingInferenceProvider` | `streamingToolCalls` + `streamWithToolCalls` | Later minor |
+| `ConversationInferenceProvider` and its `Streaming` / `ToolCallStreaming` / `StructuredOutput` refinements | `InferenceProvider` | Later minor |
+| `CapabilityReportingInferenceProvider` | Capabilities declared on `InferenceProvider` | Later minor |
+| `InferenceProviderCapabilities.inferred(from:)` | `resolved(for:)` | Later minor |
+| `FoundationModelsExecutionMode` / `foundationModelsExecution` (ignored flag) | Provider-owned tool-loop adapters | Later minor |
+| `MemorySessionLifecycle` | `beginMemorySession()` / `endMemorySession()` on `Memory` | Later minor |
+| `MemorySessionReplayAware` | `importSessionHistory(_:)` on `Memory` | Later minor |
+| `MemoryRetrievalPolicyAware` | `context(for: MemoryQuery)` on `Memory` | Later minor |
+| `MemorySessionImportPolicy` | `allowsAutomaticSessionSeeding` on `Memory` | Later minor |
+| `MemoryPromptDescriptor` (and the `memoryPromptTitle` / `memoryPromptGuidance` / `memoryPriority` members) | `memoryPromptMetadata` on `Memory` | Later minor |
+| `WaxIntegration` | `IntegrationsTrait.isEnabled`, `WaxMemory`, or `WaxEmbeddingProviderAdapter` | Later minor |
+| `MCPServer` | `MCPServerConnection` | Later minor |
+| `Retry` | `RetryPolicy` | Later minor |
+| `Fallback` | `FallbackChain` | Later minor |
+| `Workflow` `checkpoint(id:)` / `checkpointing(_:)` builders | `configured(id:store:policy:)` | Later minor |
+| `Workflow` legacy `fallback(...)` builder | `Workflow.fallback(primary:to:retries:)` | Later minor |
+| `Workflow.run(_:resumeFrom:)` | `execute(_:resumeFrom:)` | Later minor |
+| Legacy `Workflow.execute(_:resumeFrom:)` | `DurableWorkflow.execute(_:)` or `resume(_:from:)` | Later minor |
+| `Workflow.first` | `firstCompleted` | Later minor |
+
+## 16b) Public-log redaction
+
+Public trace logs (`ConsoleTracer`, `SwiftLogTracer`) redact trace-event
+metadata whose key names credentials: API keys, bearer tokens, authorization
+headers, session identifiers, and cookies, plus the existing
+content-bearing keys. Unrelated counters such as `total_tokens` stay visible.
+`WebSearchTool.Configuration` descriptions likewise report only whether a key
+is configured, never the key value.

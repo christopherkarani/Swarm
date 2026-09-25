@@ -23,3 +23,4 @@ The current API reference covers the supported public surface for Swarm 0.6.2. P
 | [Secret storage](/guide/secret-storage) | Keychain-backed API keys, redaction, checkpoint file permissions |
 | [Foundation Models modes](/guide/foundation-models) | Capture vs provider-owned tool loop; OS 27 PCC via `.foundationModels(model:)` / `.privateCloudCompute()`; owned-loop `reasoningLevel` and native profile sessions; image attachments; Swarm profile / history → `Transcript`; capture `Transcript` rehydration; `.specific` tool-choice stays prompt-only |
 | [Voice](/guide/voice) | Turn-based `VoiceSession` coordinator; `SpeechToText` / `TextToSpeech` adapters |
+| [Deprecation sunset](/reference/front-facing-api) | Removal schedule for deprecated API; public-log redaction |

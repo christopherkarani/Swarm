@@ -1472,6 +1472,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | var | public | WebSearchTool.Configuration.apiKeyReference | `public var apiKeyReference: SecretReference?` |
 | — | func | public | WebSearchTool.Configuration.resolveAPIKey(using:) | `public func resolveAPIKey(using store: (any SecretStore)?) async throws -> String?` |
 | — | func | public | WebSearchTool.init(configuration:secretStore:) | `public init(configuration: WebSearchTool.Configuration, secretStore: any SecretStore)` |
+| 408 | var | public | WebSearchTool.Configuration.description | `public var description: String { get }` |
+| 413 | var | public | WebSearchTool.Configuration.debugDescription | `public var debugDescription: String { get }` |
 
 ### Tools/ZoniSearchTool.swift
 
@@ -3389,6 +3391,50 @@ Apple platforms only (`canImport(Security)`).
 | — | func | public | SecretRedaction.isSensitiveName(_:) | `public static func isSensitiveName(_ name: String) -> Bool` |
 | — | func | public | SecretRedaction.redactedSensitiveValues(_:) | `public static func redactedSensitiveValues(_ values: [String: String]) -> [String: String]` |
 | — | func | public | SecretRedaction.redactingKnownSecrets(in:secrets:) | `public static func redactingKnownSecrets(in text: String, secrets: [String?]) -> String` |
+
+## 14d. SPI: ColonyInternal
+
+System programming interface, importable as `@_spi(ColonyInternal) import Swarm`.
+Unlike the public API above, SPI carries no source-stability guarantee and may
+change in any minor release. The catalog home is `Core/SwarmColonySPI.swift`;
+two resilience initializers participate because they take a `SwarmClock`.
+
+### Core/SwarmColonySPI.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 24 | enum | spi | SwarmChatRole | `@_spi(ColonyInternal) public enum SwarmChatRole` |
+| 31 | struct | spi | SwarmToolDefinition | `@_spi(ColonyInternal) public struct SwarmToolDefinition` |
+| 43 | struct | spi | SwarmToolCall | `@_spi(ColonyInternal) public struct SwarmToolCall` |
+| 55 | enum | spi | SwarmChatMessageOp | `@_spi(ColonyInternal) public enum SwarmChatMessageOp` |
+| 60 | struct | spi | SwarmChatMessage | `@_spi(ColonyInternal) public struct SwarmChatMessage` |
+| 91 | struct | spi | SwarmChatRequest | `@_spi(ColonyInternal) public struct SwarmChatRequest` |
+| 107 | struct | spi | SwarmChatResponse | `@_spi(ColonyInternal) public struct SwarmChatResponse` |
+| 115 | enum | spi | SwarmChatStreamChunk | `@_spi(ColonyInternal) public enum SwarmChatStreamChunk` |
+| 120 | struct | spi | SwarmToolResult | `@_spi(ColonyInternal) public struct SwarmToolResult` |
+| 130 | protocol | spi | SwarmModelClient | `@_spi(ColonyInternal) public protocol SwarmModelClient` |
+| 135 | struct | spi | SwarmAnyModelClient | `@_spi(ColonyInternal) public struct SwarmAnyModelClient` |
+| 157 | func | spi | SwarmModelClient.streamFinal(_:) | `@_spi(ColonyInternal) public func streamFinal(_ request: SwarmChatRequest) async throws -> SwarmChatResponse` |
+| 173 | protocol | spi | SwarmModelRouter | `@_spi(ColonyInternal) public protocol SwarmModelRouter` |
+| 177 | protocol | spi | SwarmToolRegistry | `@_spi(ColonyInternal) public protocol SwarmToolRegistry` |
+| 182 | struct | spi | SwarmAnyToolRegistry | `@_spi(ColonyInternal) public struct SwarmAnyToolRegistry` |
+| 204 | protocol | spi | SwarmClock | `@_spi(ColonyInternal) public protocol SwarmClock` |
+| 209 | protocol | spi | SwarmLogger | `@_spi(ColonyInternal) public protocol SwarmLogger` |
+| 215 | struct | spi | SwarmInferenceHints | `@_spi(ColonyInternal) public struct SwarmInferenceHints` |
+| 253 | enum | spi | SwarmRuntimeError | `@_spi(ColonyInternal) public enum SwarmRuntimeError` |
+
+### Resilience/CircuitBreaker.swift (SPI initializer)
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 105 | func | spi | CircuitBreaker.init(name:failureThreshold:successThreshold:resetTimeout:halfOpenMaxRequests:clock:) | `@_spi(ColonyInternal) public init(name:failureThreshold:successThreshold:resetTimeout:halfOpenMaxRequests:clock:)` |
+
+### Resilience/RateLimiter.swift (SPI initializers)
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 69 | func | spi | RateLimiter.init(maxRequestsPerMinute:clock:) | `@_spi(ColonyInternal) public init(maxRequestsPerMinute:clock:)` |
+| 92 | func | spi | RateLimiter.init(maxTokens:refillRatePerSecond:clock:) | `@_spi(ColonyInternal) public init(maxTokens:refillRatePerSecond:clock:)` |
 
 ## 15. Companion Products
 
