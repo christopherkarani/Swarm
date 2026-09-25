@@ -7,8 +7,10 @@ import Foundation
 
 /// Accumulates streamed text and emits speakable sentences.
 ///
-/// A terminator emits only when the pending sentence is at least
-/// `minSpeakCharacters` long. `flush()` emits leftover non-whitespace.
+/// A terminator emits the buffered span up to and including it once that span
+/// is at least `minSpeakCharacters` long. Short prefixes do not head-of-line
+/// block later terminators: they accumulate into the following sentence until
+/// the combined span is speakable. `flush()` emits leftover non-whitespace.
 struct VoiceSentenceBuffer: Sendable {
     private var pending = ""
     private let minSpeakCharacters: Int
@@ -26,14 +28,19 @@ struct VoiceSentenceBuffer: Sendable {
     mutating func append(_ fragment: String) -> [String] {
         pending += fragment
         var emitted: [String] = []
-        while let terminatorIndex = pending.firstIndex(where: { sentenceTerminators.contains($0) }) {
+        var searchStart = pending.startIndex
+        while searchStart < pending.endIndex,
+              let terminatorIndex = pending[searchStart...].firstIndex(where: { sentenceTerminators.contains($0) }) {
             let sentence = String(pending[...terminatorIndex])
             let remainderStart = pending.index(after: terminatorIndex)
             if sentence.count >= minSpeakCharacters {
                 emitted.append(sentence)
                 pending = String(pending[remainderStart...])
+                searchStart = pending.startIndex
             } else {
-                break
+                // Short prefix: scan past it so a later terminator can complete
+                // a speakable sentence instead of head-of-line blocking on this one.
+                searchStart = remainderStart
             }
         }
         return emitted
