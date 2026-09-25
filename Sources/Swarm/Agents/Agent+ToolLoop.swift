@@ -80,6 +80,9 @@ extension Agent {
             iteration: 0,
             maxIterations: configuration.maxIterations
         )
+        var loopDetector = ToolCallLoopDetector(
+            maxConsecutiveRepeats: configuration.maxConsecutiveToolRepeats
+        )
         var pendingTurnAction = AgentTurnKernel.TurnAction.startNextIteration
 
         while true {
@@ -323,6 +326,12 @@ extension Agent {
 
                 case .executeTools(let toolsState):
                     turnState = toolsState
+                    if let loop = loopDetector.observe(response.toolCalls) {
+                        throw AgentError.toolCallLoopDetected(
+                            toolNames: loop.toolNames,
+                            repetitions: loop.repetitions
+                        )
+                    }
                     let handoffResult = try await processToolCallsWithHandoffs(
                         response: response,
                         toolRegistry: toolRegistry,

@@ -34,8 +34,8 @@ import FoundationNetworking
 /// |---|---|
 /// | `CancellationError`, ``AgentError/cancelled`` | Caller aborted the run |
 /// | ``AgentError/timeout(duration:)`` | The **run** deadline expired; retries must not outlive it |
-/// | ``AgentError/invalidInput(reason:)``, ``AgentError/invalidLoop(reason:)`` | Caller / configuration error |
-/// | ``AgentError/maxIterationsExceeded(iterations:)`` | Loop bound, not a transient blip |
+/// | ``AgentError/invalidInput(reason:)``, ``AgentError/invalidLoop(reason:)``, ``AgentError/authenticationFailed(reason:)`` | Caller / configuration error |
+/// | ``AgentError/maxIterationsExceeded(iterations:)``, ``AgentError/toolCallLoopDetected(toolNames:repetitions:)`` | Loop bound, not a transient blip |
 /// | ``AgentError/guardrailViolation(reason:)``, ``GuardrailError`` | Safety rejection |
 /// | ``AgentError/contentFiltered(reason:)`` | Provider safety filter |
 /// | ``AgentError/invalidToolArguments(toolName:reason:)`` | Schema / parse failure |

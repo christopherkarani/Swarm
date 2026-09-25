@@ -58,12 +58,12 @@
         /// - Parameters:
         ///   - subsystem: The subsystem identifier (e.g., "com.example.app").
         ///   - category: The category within the subsystem (e.g., "agent", "tools").
-        ///   - minimumLevel: Minimum event level to log. Default: `.debug`.
+        ///   - minimumLevel: Minimum event level to log. Default: `.info`.
         ///   - emitSignposts: Whether to emit signpost intervals. Default: `true`.
         public init(
             subsystem: String,
             category: String,
-            minimumLevel: EventLevel = .debug,
+            minimumLevel: EventLevel = .info,
             emitSignposts: Bool = true
         ) {
             self.subsystem = subsystem
@@ -296,7 +296,7 @@
             public init(subsystem: String) {
                 self.subsystem = subsystem
                 category = "agent"
-                minimumLevel = .debug
+                minimumLevel = .info
                 emitSignposts = true
             }
 

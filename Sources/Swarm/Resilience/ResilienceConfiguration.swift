@@ -123,8 +123,9 @@ public struct RateLimitSettings: Sendable, Equatable {
 /// Foundation Models native-session generation). Tool execution is never
 /// retried — tools can have side effects.
 ///
-/// Provider fallback (``FallbackChain``) is **not** wired here. Compose
-/// providers yourself, or wait for a dedicated fallback API.
+/// Provider fallback is **not** wired here. Compose providers with
+/// ``FailoverProvider`` (or ``FallbackChain`` for custom operations)
+/// and pass the result as the agent's inference provider.
 ///
 /// ## Timeout interaction
 ///

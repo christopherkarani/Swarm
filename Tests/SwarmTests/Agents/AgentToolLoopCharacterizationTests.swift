@@ -97,6 +97,44 @@ struct AgentToolLoopCharacterizationTests {
         #expect(await provider.recordedInferenceCallCount == 2)
     }
 
+    @Test("Identical tool batches stop early with toolCallLoopDetected")
+    func identicalBatchesStopEarlyWithLoopDetected() async throws {
+        let tool = SpyTool(name: "noop", result: .string("ok"))
+        let provider = await MockInferenceProvider()
+        let loopingToolCall = InferenceResponse(
+            content: nil,
+            toolCalls: [
+                InferenceResponse.ParsedToolCall(id: "call_loop", name: "noop", arguments: [:]),
+            ],
+            finishReason: .toolCall,
+            usage: nil
+        )
+        await provider.setToolCallResponses(
+            [loopingToolCall, loopingToolCall, loopingToolCall, loopingToolCall]
+        )
+        let agent = try Agent(
+            tools: [tool],
+            configuration: Self.loopConfiguration.maxIterations(10),
+            inferenceProvider: provider
+        )
+
+        do {
+            _ = try await agent.run("loop forever")
+            Issue.record("Expected AgentError.toolCallLoopDetected")
+        } catch let error as AgentError {
+            guard case let .toolCallLoopDetected(toolNames, repetitions) = error else {
+                Issue.record("Unexpected error: \(error)")
+                return
+            }
+            #expect(toolNames == ["noop"])
+            #expect(repetitions == 3)
+        }
+
+        // The third batch is detected before executing: 2 executions, 3 inferences.
+        #expect(await tool.callCount == 2)
+        #expect(await provider.recordedInferenceCallCount == 3)
+    }
+
     @Test("Provider-owned loop executes tools inside inference and finishes in one turn")
     func providerOwnedLoopFinishesInSingleInferenceCall() async throws {
         let tool = SpyTool(name: "ping", result: .string("pong"))
