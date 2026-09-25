@@ -1011,6 +1011,36 @@ let provider = FailoverProvider(
 let agent = try Agent("Be concise.", inferenceProvider: provider)
 ```
 
+## 11b) Secret storage
+
+``SecretReference`` points at an API key held in a ``SecretStore`` so
+persisted configuration never embeds the raw key. ``KeychainSecretStore``
+(Apple platforms), ``EnvironmentSecretStore`` (Linux, CI), and
+``InMemorySecretStore`` (tests) implement the protocol. The inline key wins
+when non-empty; otherwise the reference resolves at request time:
+
+```swift
+let reference = SecretReference(service: "com.example.app", account: "openai-api-key")
+let configuration = OpenAICompatibleProviderConfiguration(
+    baseURL: URL(string: "https://api.openai.com/v1")!,
+    apiKeyReference: reference,
+    model: "gpt-4o"
+)
+let provider: OpenAICompatibleProvider = .openAICompatible(configuration, secretStore: store)
+```
+
+The same `apiKeyReference` + store shape wires into
+``WebSearchTool/Configuration`` (via
+`WebSearchTool(configuration:secretStore:)`) and ``HTTPMCPServer`` (via
+`init(url:name:apiKeyReference:secretStore:)`). Configuration debug
+descriptions render keys as `[redacted]`; ``SecretRedaction`` scrubs custom
+payloads. File-system checkpoints, ContextCore checkpoints, Wax memory
+stores, and the web memory plane are written owner-only (`0600` files;
+store-created directories are `0700`, pre-existing directories keep their
+permissions); migrate a pre-existing checkpoint directory with
+``WorkflowCheckpointing/hardenFilePermissions(in:)``. See the
+[Secret Storage guide](/guide/secret-storage).
+
 ## 12) Events and results
 
 ```swift

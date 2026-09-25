@@ -3,6 +3,7 @@
 // SwarmOpenTelemetry
 
 import Foundation
+import Swarm
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -142,6 +143,13 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
         var copy = self
         copy.retryBackoff = value >= .zero ? value : .milliseconds(200)
         return copy
+    }
+}
+
+extension OTLPHTTPExporterConfiguration: CustomDebugStringConvertible {
+    /// Debug description with sensitive header values (collector auth) redacted.
+    public var debugDescription: String {
+        "OTLPHTTPExporterConfiguration(endpoint: \(endpoint), headers: \(SecretRedaction.redactedSensitiveValues(headers)), resourceAttributes: \(resourceAttributes), maxBatchSize: \(maxBatchSize))"
     }
 }
 #endif

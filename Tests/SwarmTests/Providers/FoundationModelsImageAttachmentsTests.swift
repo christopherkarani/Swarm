@@ -57,7 +57,7 @@ struct FoundationModelsImageAttachmentsTests {
     @Test("capture mapEntries carries user images")
     func captureMapEntriesCarriesImages() {
         let attachment = imageAttachment()
-        let mapped = FoundationModelsCaptureTranscript.mapEntries(
+        let mapped = FoundationModelsTranscriptSeed.mapEntries(
             messages: [.user("look", attachments: [attachment])],
             instructions: nil
         )
@@ -72,7 +72,7 @@ struct FoundationModelsImageAttachmentsTests {
 
     @Test("image-only user message still maps")
     func imageOnlyUserMessageMaps() {
-        let mapped = FoundationModelsCaptureTranscript.mapEntries(
+        let mapped = FoundationModelsTranscriptSeed.mapEntries(
             messages: [.user("", attachments: [imageAttachment()])],
             instructions: nil
         )
@@ -82,7 +82,7 @@ struct FoundationModelsImageAttachmentsTests {
     @Test("capture seed pops pending images with the pending prompt")
     func captureSeedPopsPendingImages() {
         let attachment = imageAttachment()
-        let seed = FoundationModelsCaptureTranscript.seed(
+        let seed = FoundationModelsTranscriptSeed.seed(
             messages: [
                 .user("u1"),
                 .user("u2", attachments: [attachment]),
@@ -95,9 +95,9 @@ struct FoundationModelsImageAttachmentsTests {
         #expect(seed.seedEntries == [.prompt(text: "u1", images: [])])
     }
 
-    @Test("bridge seed pops pending images with the pending prompt")
-    func bridgeSeedPopsPendingImages() {
-        let seed = FoundationModelsAppleProfileBridge.seed(
+    @Test("single-message seed pops pending images with the pending prompt")
+    func singleMessageSeedPopsPendingImages() {
+        let seed = FoundationModelsTranscriptSeed.seed(
             messages: [.user("u1", attachments: [imageAttachment(id: "b")])],
             instructions: nil
         )

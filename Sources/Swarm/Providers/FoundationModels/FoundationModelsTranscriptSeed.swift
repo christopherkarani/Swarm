@@ -4,13 +4,15 @@ import Foundation
 import FoundationModels
 #endif
 
-/// Maps capture-mode ``InferenceMessage`` history onto transcript-shaped
-/// entries so Apple can see roles natively.
+/// Maps ``InferenceMessage`` history onto transcript-shaped entries so Apple
+/// sees roles natively.
 ///
-/// Flattening remains the fallback when a message cannot be represented
-/// (assistant tool-call metadata, extra system text). This is not Apple's
-/// `LanguageModelSession.DynamicProfile`.
-enum FoundationModelsCaptureTranscript: Sendable {
+/// Both the capture turn (``FoundationModelsInferenceProvider/makeCaptureTurn(tools:messages:flattenTools:instructions:options:)``)
+/// and the owned-loop session (`makeOwnedLoopSession`) seed from this one
+/// module. Flattening remains the fallback when a message cannot be
+/// represented (assistant tool-call metadata, extra system text). This is not
+/// Apple's `LanguageModelSession.DynamicProfile`.
+enum FoundationModelsTranscriptSeed: Sendable {
     enum Entry: Sendable, Equatable {
         case instructions(String)
         case prompt(text: String, images: [PendingImage])
@@ -72,6 +74,7 @@ enum FoundationModelsCaptureTranscript: Sendable {
                 if text == instructions {
                     continue
                 }
+                // Extra system text has no Instructions/Prompt split we trust.
                 canRehydrate = false
             case .user:
                 let images = FoundationModelsImageAttachments.pendingImages(in: message)
@@ -123,7 +126,7 @@ enum FoundationModelsCaptureTranscript: Sendable {
 @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
-extension FoundationModelsCaptureTranscript {
+extension FoundationModelsTranscriptSeed {
     static func makeTranscript(from entries: [Entry]) -> Transcript? {
         guard !entries.isEmpty else { return nil }
         return Transcript(entries: entries.map(appleEntry(from:)))

@@ -468,6 +468,49 @@ struct WorkflowDurablePhaseTests {
         #expect(WorkflowDurableEngine.hiveThreadID(for: id).rawValue == id.rawValue)
     }
 
+    // MARK: - Router read-failure handling
+
+    @Test("router ends completed phases and continues running phases")
+    func routerHandlesPhaseValues() {
+        let completed = WorkflowDurableRouting.route(for: .success(
+            .completed(WorkflowResultSnapshot(AgentResult(output: "done")))
+        ))
+        #expect(completed == .end)
+
+        let running = WorkflowDurableRouting.route(for: .success(
+            .running(stepCursor: 1, iterationCursor: 0, lastResult: nil)
+        ))
+        #expect(running == .to([HiveNodeID("workflow.execute")]))
+    }
+
+    @Test("router restarts from step zero only when the phase value is missing")
+    func routerRestartsOnlyWhenPhaseValueMissing() {
+        let route = WorkflowDurableRouting.route(for: .failure(
+            HiveRuntimeError.storeValueMissing(channelID: WorkflowDurableSchema.phaseKey.id)
+        ))
+        #expect(route == .to([HiveNodeID("workflow.execute")]))
+    }
+
+    @Test("router surfaces store errors instead of restarting from step zero")
+    func routerSurfacesStoreErrors() {
+        let mismatched = WorkflowDurableRouting.route(for: .failure(
+            HiveRuntimeError.channelTypeMismatch(
+                channelID: WorkflowDurableSchema.phaseKey.id,
+                expectedValueTypeID: "WorkflowDurablePhase",
+                actualValueTypeID: "String"
+            )
+        ))
+        // Routing to `.end` lets result extraction re-read the phase channel
+        // on its throwing path, so the corruption surfaces instead of being
+        // masked as a fresh run that silently re-executes steps.
+        #expect(mismatched == .end)
+
+        let unknown = WorkflowDurableRouting.route(for: .failure(
+            HiveRuntimeError.unknownChannelID(WorkflowDurableSchema.phaseKey.id)
+        ))
+        #expect(unknown == .end)
+    }
+
     // MARK: - Helpers
 
     private func makeDirectory() throws -> URL {

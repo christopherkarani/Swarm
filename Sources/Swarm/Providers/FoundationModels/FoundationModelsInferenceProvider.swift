@@ -713,7 +713,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         instructions: String?,
         options: InferenceOptions
     ) -> (session: LanguageModelSession, prompt: String, images: [PendingImage]) {
-        let seed = FoundationModelsCaptureTranscript.seed(
+        let seed = FoundationModelsTranscriptSeed.seed(
             messages: messages,
             instructions: instructions
         )
@@ -723,7 +723,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
                 tools: flattenTools,
                 options: options
             )
-            if let transcript = FoundationModelsCaptureTranscript.makeTranscript(from: seed.seedEntries) {
+            if let transcript = FoundationModelsTranscriptSeed.makeTranscript(from: seed.seedEntries) {
                 return (makeSession(tools: tools, transcript: transcript), prompt, seed.pendingImages)
             }
             return (makeSession(tools: tools, instructions: instructions), prompt, seed.pendingImages)
@@ -832,7 +832,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
 
     /// Serializes structured history into a single `Prompt` string.
     ///
-    /// Fallback when ``FoundationModelsCaptureTranscript`` cannot represent a
+    /// Fallback when ``FoundationModelsTranscriptSeed`` cannot represent a
     /// message (assistant tool-call metadata or extra system text).
     func flattenPrompt(
         messages: [InferenceMessage],
