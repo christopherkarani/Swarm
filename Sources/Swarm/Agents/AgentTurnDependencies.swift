@@ -5,6 +5,23 @@
 
 import Foundation
 
+/// Names which resolution channel won for one collaborator.
+enum ResolutionSource: String, Sendable, Equatable {
+    /// An explicit value passed to the `Agent` initializer.
+    case explicit
+    /// A value from the `AgentEnvironment` snapshot.
+    case environment
+    /// A package-global value (`Swarm.configure` / run environment).
+    case global
+    /// The on-device Foundation Models provider resolved by the gather step.
+    case foundationModels
+    /// A built-in fallback: the agent's default memory, the default tracer,
+    /// or the auto-attached metrics collector standing alone.
+    case fallbackDefault
+    /// No collaborator resolved (stateless memory, absent tracer).
+    case none
+}
+
 /// The collaborators chosen for one agent turn.
 ///
 /// ``Agent`` resolves this value exactly once at the start of every run, and
@@ -16,8 +33,14 @@ struct AgentTurnDependencies: Sendable {
     /// Inference provider that won resolution for this turn.
     let provider: any InferenceProvider
 
+    /// Which channel won provider resolution.
+    let providerSource: ResolutionSource
+
     /// Memory for this turn. `nil` remains legal (stateless turn).
     let memory: (any Memory)?
+
+    /// Which channel won memory resolution (`.none` when stateless).
+    let memorySource: ResolutionSource
 
     /// Optional memory behavior derived from ``memory``.
     let memoryHooks: MemoryHooks
@@ -35,6 +58,10 @@ struct AgentTurnDependencies: Sendable {
     /// falling back to the configured default, composed with the auto-attached
     /// metrics collector when enabled.
     let tracer: (any Tracer)?
+
+    /// Which channel won tracer resolution (`.none` when no tracer resolved).
+    /// Composition with the auto-attached collector keeps the base channel.
+    let tracerSource: ResolutionSource
 
     /// Tool registry for this turn, including any ambient web-search tool.
     let toolRegistry: ToolRegistry
@@ -54,10 +81,11 @@ struct AgentTurnDependencies: Sendable {
 
 /// Direct inputs to collaborator resolution for one agent turn.
 ///
-/// Async channel reads (`Swarm.defaultProvider`, `Swarm.webConfiguration`,
-/// the agent's base tools) are gathered by the caller before resolution.
-/// Resolution itself is synchronous, so winner precedence can be asserted from
-/// direct inputs without TaskLocal choreography.
+/// Pure data: async channel reads (`Swarm.defaultProvider`,
+/// `Swarm.webConfiguration`, the agent's base tools) and the resolved
+/// Foundation Models provider value are gathered by the caller before
+/// resolution. Resolution itself is synchronous, so winner precedence can be
+/// asserted from direct inputs without TaskLocal choreography.
 struct AgentTurnDependencyQuery {
     var configuration: AgentConfiguration
     var explicitProvider: (any InferenceProvider)?
@@ -69,7 +97,7 @@ struct AgentTurnDependencyQuery {
     var environment: AgentEnvironment
     var globalProvider: (any InferenceProvider)?
     var globalWebSearch: WebSearchTool.Configuration?
-    var foundationModelsProvider: @Sendable () -> (any InferenceProvider)?
+    var foundationModelsProvider: (any InferenceProvider)?
 
     init(
         configuration: AgentConfiguration,
@@ -82,7 +110,7 @@ struct AgentTurnDependencyQuery {
         environment: AgentEnvironment = AgentEnvironment(),
         globalProvider: (any InferenceProvider)? = nil,
         globalWebSearch: WebSearchTool.Configuration? = nil,
-        foundationModelsProvider: @escaping @Sendable () -> (any InferenceProvider)? = { DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() }
+        foundationModelsProvider: (any InferenceProvider)? = nil
     ) {
         self.configuration = configuration
         self.explicitProvider = explicitProvider
@@ -113,21 +141,26 @@ struct AgentTurnDependencyQuery {
 /// assembled here as well. Tracker I/O stays in the ``Agent`` shell.
 enum AgentTurnDependencyResolver {
     static func resolve(_ query: AgentTurnDependencyQuery) throws -> AgentTurnDependencies {
-        let memory = resolveMemory(query)
+        let (provider, providerSource) = try resolveProvider(query)
+        let (memory, memorySource) = resolveMemory(query)
         let shouldPersistNoSessionTurn = memory.map { memory in
             guard let defaultMemory = query.defaultMemory else { return false }
             return memoriesAreSameInstance(memory, defaultMemory)
         } ?? false
+        let (tracer, tracerSource) = resolveTracer(query)
 
         return AgentTurnDependencies(
-            provider: try resolveProvider(query),
+            provider: provider,
+            providerSource: providerSource,
             memory: memory,
+            memorySource: memorySource,
             memoryHooks: memory.map { MemoryHooks.resolved(from: $0) } ?? .empty,
             trackedSessionMemory: memory.flatMap {
                 resolvedTrackedSessionMemory(from: $0, defaultMemory: query.defaultMemory)
             },
             shouldPersistNoSessionTurnToDefaultMemory: shouldPersistNoSessionTurn,
-            tracer: resolveTracer(query),
+            tracer: tracer,
+            tracerSource: tracerSource,
             toolRegistry: try resolveToolRegistry(query),
             membraneAdapter: resolveMembraneAdapter(query),
             membraneEnvironment: query.environment.membrane,
@@ -135,21 +168,23 @@ enum AgentTurnDependencyResolver {
         )
     }
 
-    private static func resolveProvider(_ query: AgentTurnDependencyQuery) throws -> any InferenceProvider {
+    private static func resolveProvider(
+        _ query: AgentTurnDependencyQuery
+    ) throws -> (any InferenceProvider, ResolutionSource) {
         if query.configuration.inferencePolicy?.privacyRequired == true {
-            if let foundationModelsProvider = query.foundationModelsProvider() {
-                return transformed(foundationModelsProvider, query)
+            if let foundationModelsProvider = query.foundationModelsProvider {
+                return (transformed(foundationModelsProvider, query), .foundationModels)
             }
 
-            let ambientProviders = [
-                query.explicitProvider,
-                query.environment.inferenceProvider,
-                query.globalProvider,
+            let ambientProviders: [((any InferenceProvider)?, ResolutionSource)] = [
+                (query.explicitProvider, .explicit),
+                (query.environment.inferenceProvider, .environment),
+                (query.globalProvider, .global),
             ]
-            for candidate in ambientProviders {
+            for (candidate, source) in ambientProviders {
                 guard let candidate else { continue }
                 if isPrivateInference(candidate) {
-                    return transformed(candidate, query)
+                    return (transformed(candidate, query), source)
                 }
             }
 
@@ -163,19 +198,19 @@ enum AgentTurnDependencyResolver {
             )
         }
 
-        let candidates = [
-            query.explicitProvider,
-            query.environment.inferenceProvider,
-            query.globalProvider,
+        let candidates: [((any InferenceProvider)?, ResolutionSource)] = [
+            (query.explicitProvider, .explicit),
+            (query.environment.inferenceProvider, .environment),
+            (query.globalProvider, .global),
         ]
-        for candidate in candidates {
+        for (candidate, source) in candidates {
             if let candidate {
-                return transformed(candidate, query)
+                return (transformed(candidate, query), source)
             }
         }
 
-        if let foundationModelsProvider = query.foundationModelsProvider() {
-            return transformed(foundationModelsProvider, query)
+        if let foundationModelsProvider = query.foundationModelsProvider {
+            return (transformed(foundationModelsProvider, query), .foundationModels)
         }
 
         throw AgentError.inferenceProviderUnavailable(
@@ -202,28 +237,47 @@ enum AgentTurnDependencyResolver {
         return transform(provider)
     }
 
-    private static func resolveMemory(_ query: AgentTurnDependencyQuery) -> (any Memory)? {
-        query.explicitMemory ?? query.environment.memory ?? query.defaultMemory
+    private static func resolveMemory(
+        _ query: AgentTurnDependencyQuery
+    ) -> ((any Memory)?, ResolutionSource) {
+        if let explicit = query.explicitMemory {
+            return (explicit, .explicit)
+        }
+        if let environment = query.environment.memory {
+            return (environment, .environment)
+        }
+        if let fallback = query.defaultMemory {
+            return (fallback, .fallbackDefault)
+        }
+        return (nil, .none)
     }
 
-    private static func resolveTracer(_ query: AgentTurnDependencyQuery) -> (any Tracer)? {
-        let configured = query.explicitTracer ?? query.environment.tracer
-        let fallback = query.configuration.defaultTracingEnabled
-            ? SwiftLogTracer(minimumLevel: .info)
-            : nil
-        let base = configured ?? fallback
+    private static func resolveTracer(
+        _ query: AgentTurnDependencyQuery
+    ) -> ((any Tracer)?, ResolutionSource) {
+        let base: (any Tracer)?
+        let baseSource: ResolutionSource
+        if let explicit = query.explicitTracer {
+            (base, baseSource) = (explicit, .explicit)
+        } else if let environment = query.environment.tracer {
+            (base, baseSource) = (environment, .environment)
+        } else if query.configuration.defaultTracingEnabled {
+            (base, baseSource) = (SwiftLogTracer(minimumLevel: .info), .fallbackDefault)
+        } else {
+            (base, baseSource) = (nil, .none)
+        }
 
         guard query.configuration.autoAttachMetricsCollector, let collector = query.metricsCollector else {
-            return base
+            return (base, baseSource)
         }
 
         if let base {
             if let existing = base as? MetricsCollector, existing === collector {
-                return collector
+                return (collector, baseSource)
             }
-            return CompositeTracer(tracers: [base, collector])
+            return (CompositeTracer(tracers: [base, collector]), baseSource)
         }
-        return collector
+        return (collector, .fallbackDefault)
     }
 
     private static func resolveToolRegistry(_ query: AgentTurnDependencyQuery) throws -> ToolRegistry {

@@ -492,7 +492,7 @@ struct AgentTurnDependenciesTests {
             environment: resolvedEnvironment,
             globalProvider: globalProvider,
             globalWebSearch: globalWebSearch,
-            foundationModelsProvider: { foundationModels }
+            foundationModelsProvider: foundationModels
         )
     }
 
