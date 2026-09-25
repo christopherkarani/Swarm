@@ -314,10 +314,13 @@ public struct OpenAICompatibleProvider: InferenceProvider,
                 model: configuration.model
             )
         }
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        let chunk: OpenAICompatibleChatChunk
+        do {
+            chunk = try OpenAICompatibleChatChunk(decoding: data)
+        } catch {
             throw AgentError.generationFailed(reason: "OpenAI-compatible response is not a JSON object")
         }
-        return try OpenAICompatibleCodec.inferenceResponse(from: OpenAICompatibleChatChunk(json: object))
+        return try OpenAICompatibleCodec.inferenceResponse(from: chunk)
     }
 
     private func streamCompletions(
