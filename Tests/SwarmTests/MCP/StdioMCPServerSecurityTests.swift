@@ -115,6 +115,34 @@ struct StdioMCPServerSecurityTests {
         }
     }
 
+    @Test("Sibling-prefix workdir escapes are rejected, boundary roots accepted")
+    func workdirSiblingPrefixBoundary() throws {
+        // /a/foobar shares a string prefix with /a/foo but is not inside it.
+        #expect(throws: MCPError.self) {
+            _ = try StdioMCPServer(
+                command: "/usr/bin/true",
+                workingDirectory: URL(fileURLWithPath: "/a/foobar"),
+                allowedWorkingDirectoryRoot: URL(fileURLWithPath: "/a/foo"),
+                name: "sibling-prefix"
+            )
+        }
+        // A trailing-slash root still contains its children, and the root
+        // itself is an exact-match workdir. Neither path needs to exist for
+        // the init-time lexical check.
+        _ = try StdioMCPServer(
+            command: "/usr/bin/true",
+            workingDirectory: URL(fileURLWithPath: "/a/foo/bar"),
+            allowedWorkingDirectoryRoot: URL(fileURLWithPath: "/a/foo/"),
+            name: "trailing-slash-root"
+        )
+        _ = try StdioMCPServer(
+            command: "/usr/bin/true",
+            workingDirectory: URL(fileURLWithPath: "/a/foo"),
+            allowedWorkingDirectoryRoot: URL(fileURLWithPath: "/a/foo"),
+            name: "exact-root"
+        )
+    }
+
     @Test("Sandbox root defaults the working directory")
     func sandboxRootDefaultsWorkingDirectory() async throws {
         let root = FileManager.default.temporaryDirectory
@@ -146,6 +174,36 @@ struct StdioMCPServerSecurityTests {
                 Issue.record("Expected initialize() to throw for a missing working directory.")
             } catch let error as MCPError {
                 #expect(error.code == MCPError.invalidParamsCode)
+                #expect(error.message.contains("workingDirectory"))
+            }
+        }
+
+        @Test("Symlinked workdir escaping the root is rejected at initialize")
+        func symlinkedWorkdirEscapeRejectedAtLaunch() async throws {
+            let base = FileManager.default.temporaryDirectory
+                .appendingPathComponent("swarm-stdio-symlink-\(UUID().uuidString)")
+            let root = base.appendingPathComponent("root")
+            let outside = base.appendingPathComponent("outside")
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: base) }
+            let link = root.appendingPathComponent("link")
+            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+
+            // Passes the init-time lexical check (link is lexically under root).
+            let server = try StdioMCPServer(
+                command: "/usr/bin/true",
+                workingDirectory: link,
+                allowedWorkingDirectoryRoot: root,
+                name: "symlink-escape"
+            )
+            defer { Task { try? await server.close() } }
+            do {
+                _ = try await server.initialize()
+                Issue.record("Expected initialize() to throw for a symlinked workdir escaping the root.")
+            } catch let error as MCPError {
+                #expect(error.code == MCPError.invalidParamsCode)
+                #expect(error.message.contains("escapes"))
             }
         }
 

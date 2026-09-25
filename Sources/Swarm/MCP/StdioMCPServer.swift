@@ -48,9 +48,10 @@ import Foundation
 ///   (``defaultSandboxPATH``), explicitly inherited keys, and the
 ///   `environment` overlay (which wins). Pass secrets only via `environment`.
 /// - **Working-directory limits.** `workingDirectory` must be an absolute
-///   file URL pointing at an existing directory. When
+///   file URL; ``initialize()`` verifies it is an existing directory. When
 ///   `allowedWorkingDirectoryRoot` is set, the working directory must stay
-///   inside it (and defaults to it when omitted).
+///   inside it (checked lexically at `init`, re-checked with symlinks
+///   resolved at launch) and defaults to it when omitted.
 ///
 /// ## Thread Safety
 ///
@@ -112,8 +113,9 @@ public actor StdioMCPServer: MCPServerConnection {
     ///   - inheritedEnvironmentKeys: Additional parent environment keys to
     ///     pass through beyond ``defaultEnvironmentAllowlist``.
     ///   - workingDirectory: Optional working directory for the child. Must
-    ///     be an absolute file URL for an existing directory, and must stay
-    ///     inside `allowedWorkingDirectoryRoot` when one is set.
+    ///     be an absolute file URL (existence as a directory is verified when
+    ///     `initialize()` launches the child), and must stay inside
+    ///     `allowedWorkingDirectoryRoot` when one is set.
     ///   - allowedWorkingDirectoryRoot: Optional sandbox root for the
     ///     working directory. When set and `workingDirectory` is `nil`, the
     ///     child runs with this root as its working directory.
@@ -319,11 +321,24 @@ public actor StdioMCPServer: MCPServerConnection {
 
     private static func validateWorkdirContainment(
         workingDirectory: URL?,
-        sandboxRoot: URL?
+        sandboxRoot: URL?,
+        resolveSymlinks: Bool = false
     ) throws {
         guard let workingDirectory, let sandboxRoot else { return }
-        let workdir = workingDirectory.standardizedFileURL.path
-        let root = sandboxRoot.standardizedFileURL.path
+        let workdir: String
+        let root: String
+        if resolveSymlinks {
+            // Launch-time check: resolve symlinks so a workdir that lexically
+            // sits under the root cannot escape through a link (or a symlinked
+            // ancestor such as /tmp on macOS).
+            workdir = workingDirectory.resolvingSymlinksInPath().standardizedFileURL.path
+            root = sandboxRoot.resolvingSymlinksInPath().standardizedFileURL.path
+        } else {
+            // Init-time fast fail: lexical check only, since the paths may
+            // not exist yet and have nothing to resolve against.
+            workdir = workingDirectory.standardizedFileURL.path
+            root = sandboxRoot.standardizedFileURL.path
+        }
         guard workdir == root || workdir.hasPrefix(root.hasSuffix("/") ? root : root + "/") else {
             throw MCPError.invalidParams(
                 "StdioMCPServer workingDirectory '\(workdir)' escapes allowedWorkingDirectoryRoot '\(root)'."
@@ -354,7 +369,8 @@ public actor StdioMCPServer: MCPServerConnection {
             }
             try Self.validateWorkdirContainment(
                 workingDirectory: resolvedWorkdir,
-                sandboxRoot: allowedWorkingDirectoryRoot
+                sandboxRoot: allowedWorkingDirectoryRoot,
+                resolveSymlinks: true
             )
         }
 

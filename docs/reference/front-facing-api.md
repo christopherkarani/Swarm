@@ -1299,8 +1299,9 @@ let bridgedTools = try await bridge.bridgeTools()
 The launch is sandboxed: `command` must be an absolute path (`PATH` lookup is
 disabled), the child inherits only a minimal environment allowlist (plus an
 explicit `environment` overlay and `inheritedEnvironmentKeys`), and
-`workingDirectory` must be an existing directory inside the optional
-`allowedWorkingDirectoryRoot` sandbox.
+`workingDirectory` must be an absolute file URL (existence as a directory
+is enforced when `initialize()` launches the child), and must stay inside
+`allowedWorkingDirectoryRoot` when that sandbox root is set.
 `callTool` unwraps MCP content blocks; `callToolRaw` returns the envelope.
 Swarm does not implement prompts or sampling — those capability flags stay
 `false` on connections. `MCPClient` aggregates multiple connections and
