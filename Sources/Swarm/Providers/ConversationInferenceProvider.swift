@@ -39,6 +39,10 @@ public struct InferenceProviderCapabilities: OptionSet, Sendable, Hashable {
     /// set this bit must implement the `toolExecutor` method; the protocol
     /// default throws ``AgentError/providerOwnedToolLoopRequiresExecutor``.
     public static let providerOwnedToolLoop = Self(rawValue: 1 << 6)
+
+    /// Provider can consume ``InferenceMessage/Attachment`` image sidecars.
+    /// Providers without this bit must ignore attachments.
+    public static let multimodalImages = Self(rawValue: 1 << 7)
 }
 
 public extension InferenceProviderCapabilities {
@@ -70,7 +74,8 @@ public protocol CapabilityReportingInferenceProvider: InferenceProvider {}
 /// The payload is a closed ``Body``: system text, user text, assistant text with
 /// optional tool calls, or a named tool result. Historical ``role``, ``content``,
 /// ``name``, ``toolCallID``, and ``toolCalls`` remain as computed projections of
-/// ``body``.
+/// ``body``. Optional ``Attachment`` image or audio sidecars ride
+/// ``attachments``; ``content`` stays text.
 public struct InferenceMessage: Sendable, Equatable {
     public enum Role: String, Sendable, Codable {
         case system
@@ -99,16 +104,66 @@ public struct InferenceMessage: Sendable, Equatable {
         public let id: String?
         public let name: String
         public let arguments: [String: SendableValue]
+        /// Provider thought signature (Gemini thinking models). Echoed back verbatim.
+        public let thoughtSignature: String?
 
-        public init(id: String? = nil, name: String, arguments: [String: SendableValue]) {
+        public init(
+            id: String? = nil,
+            name: String,
+            arguments: [String: SendableValue],
+            thoughtSignature: String? = nil
+        ) {
             self.id = id
             self.name = name
             self.arguments = arguments
+            self.thoughtSignature = thoughtSignature
+        }
+    }
+
+    /// Optional multimodal sidecar. ``InferenceMessage/content`` stays text.
+    ///
+    /// Persist ``id`` and ``mimeType`` only — never raw bytes. Providers
+    /// without ``InferenceProviderCapabilities/multimodalImages`` must ignore
+    /// image attachments.
+    public struct Attachment: Sendable, Equatable {
+        /// Attachment family.
+        public enum Kind: String, Sendable, Equatable {
+            case audio
+            case image
+        }
+
+        /// Host-stable identifier. Safe to store.
+        public let id: String
+        /// Audio or image.
+        public let kind: Kind
+        /// MIME type such as `image/png`. Safe to store.
+        public let mimeType: String
+        /// In-memory bytes. Do not log.
+        public let data: Data?
+        /// Optional file URL. Do not log contents.
+        public let fileURL: URL?
+
+        /// Creates an attachment.
+        public init(
+            id: String,
+            kind: Kind,
+            mimeType: String,
+            data: Data? = nil,
+            fileURL: URL? = nil
+        ) {
+            self.id = id
+            self.kind = kind
+            self.mimeType = mimeType
+            self.data = data
+            self.fileURL = fileURL
         }
     }
 
     /// System, user, assistant, or tool payload.
     public let body: Body
+
+    /// Optional audio or image sidecars. Default empty.
+    public let attachments: [Attachment]
 
     /// Role projected from ``body``.
     public var role: Role {
@@ -168,9 +223,12 @@ public struct InferenceMessage: Sendable, Equatable {
 
     /// Creates a message from a closed body.
     ///
-    /// - Parameter body: System, user, assistant, or tool payload.
-    public init(body: Body) {
+    /// - Parameters:
+    ///   - body: System, user, assistant, or tool payload.
+    ///   - attachments: Optional audio or image sidecars.
+    public init(body: Body, attachments: [Attachment] = []) {
         self.body = body
+        self.attachments = attachments
     }
 
     /// Creates a message from independent role and payload fields.
@@ -188,13 +246,15 @@ public struct InferenceMessage: Sendable, Equatable {
     ///   - name: Tool name. Used only for ``Role/tool``; absent values become `"tool"`.
     ///   - toolCallID: Provider call id. Used only for ``Role/tool``.
     ///   - toolCalls: Native tool calls. Used only for ``Role/assistant``.
+    ///   - attachments: Optional audio or image sidecars. Stored as-is.
     @available(*, deprecated, message: "Use init(body:) or the role factories.")
     public init(
         role: Role,
         content: String,
         name: String? = nil,
         toolCallID: String? = nil,
-        toolCalls: [ToolCall] = []
+        toolCalls: [ToolCall] = [],
+        attachments: [Attachment] = []
     ) {
         switch role {
         case .system:
@@ -206,26 +266,32 @@ public struct InferenceMessage: Sendable, Equatable {
         case .tool:
             body = .tool(name: name ?? "tool", content: content, toolCallID: toolCallID)
         }
+        self.attachments = attachments
     }
 
-    public static func system(_ content: String) -> InferenceMessage {
-        InferenceMessage(body: .system(content))
+    public static func system(_ content: String, attachments: [Attachment] = []) -> InferenceMessage {
+        InferenceMessage(body: .system(content), attachments: attachments)
     }
 
-    public static func user(_ content: String) -> InferenceMessage {
-        InferenceMessage(body: .user(content))
+    public static func user(_ content: String, attachments: [Attachment] = []) -> InferenceMessage {
+        InferenceMessage(body: .user(content), attachments: attachments)
     }
 
-    public static func assistant(_ content: String, toolCalls: [ToolCall] = []) -> InferenceMessage {
-        InferenceMessage(body: .assistant(content, toolCalls: toolCalls))
+    public static func assistant(
+        _ content: String,
+        toolCalls: [ToolCall] = [],
+        attachments: [Attachment] = []
+    ) -> InferenceMessage {
+        InferenceMessage(body: .assistant(content, toolCalls: toolCalls), attachments: attachments)
     }
 
     public static func tool(
         name: String,
         content: String,
-        toolCallID: String? = nil
+        toolCallID: String? = nil,
+        attachments: [Attachment] = []
     ) -> InferenceMessage {
-        InferenceMessage(body: .tool(name: name, content: content, toolCallID: toolCallID))
+        InferenceMessage(body: .tool(name: name, content: content, toolCallID: toolCallID), attachments: attachments)
     }
 }
 
@@ -243,7 +309,12 @@ public protocol ToolCallStreamingConversationInferenceProvider: ConversationInfe
 
 extension InferenceMessage.ToolCall {
     init(_ parsed: InferenceResponse.ParsedToolCall) {
-        self.init(id: parsed.id, name: parsed.name, arguments: parsed.arguments)
+        self.init(
+            id: parsed.id,
+            name: parsed.name,
+            arguments: parsed.arguments,
+            thoughtSignature: parsed.thoughtSignature
+        )
     }
 }
 

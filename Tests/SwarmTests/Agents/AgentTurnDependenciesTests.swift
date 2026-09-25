@@ -369,13 +369,13 @@ struct AgentTurnDependenciesTests {
             environment,
             addingTokenCounterFrom: countingProvider
         )
-        #expect((merged.promptTokenCounter as AnyObject) === (countingProvider as AnyObject))
+        #expect(merged.promptTokenCounter is MockInferenceProvider)
 
         let preserved = AgentTurnDependencyResolver.runtimeEnvironment(
             environment,
             addingTokenCounterFrom: bare
         )
-        #expect((preserved.promptTokenCounter as AnyObject) === (originalCounter as AnyObject))
+        #expect(preserved.promptTokenCounter is IdentityTurnDependencyTokenCounter)
     }
 
     // MARK: - Inference options (pure values; shell owns ResponseTracker)

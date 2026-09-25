@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 231 (238 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2347
+- Source files scanned: 239 (246 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2409
 
 ## 1. Swarm (entry point)
 
@@ -59,6 +59,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 108 | func | public | AgentConfiguration.includeToolCallDetails(_:) | `public @discardableResult func includeToolCallDetails(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.inferencePolicy(_:) | `public @discardableResult func inferencePolicy(_ value: InferencePolicy?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.maxIterations(_:) | `public @discardableResult func maxIterations(_ value: Int) -> AgentConfiguration` |
+| 884 | func | public | AgentConfiguration.maxConsecutiveToolRepeats(_:) | `public @discardableResult func maxConsecutiveToolRepeats(_ value: Int) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.maxTokens(_:) | `public @discardableResult func maxTokens(_ value: Int?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.modelSettings(_:) | `public @discardableResult func modelSettings(_ value: ModelSettings?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.name(_:) | `public @discardableResult func name(_ value: String) -> AgentConfiguration` |
@@ -73,6 +74,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 113 | var | public | AgentConfiguration.default | `public static let `default`: AgentConfiguration` |
 | 119 | var | public | AgentConfiguration.name | `public var name: String` |
 | 125 | var | public | AgentConfiguration.maxIterations | `public var maxIterations: Int` |
+| 287 | var | public | AgentConfiguration.maxConsecutiveToolRepeats | `public var maxConsecutiveToolRepeats: Int` |
 | 129 | var | public | AgentConfiguration.timeout | `public var timeout: Duration` |
 | 135 | var | public | AgentConfiguration.temperature | `public var temperature: Double` |
 | 139 | var | public | AgentConfiguration.maxTokens | `public var maxTokens: Int?` |
@@ -96,7 +98,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 139 | case | public | FoundationModelsExecutionMode.nativeSession | `public case nativeSession` |
 | 604 | var | public | AgentConfiguration.foundationModelsExecution | `public var foundationModelsExecution: FoundationModelsExecutionMode` |
 | 608 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
-| 630 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
+| 630 | func | public | AgentConfiguration.init(name:maxIterations:maxConsecutiveToolRepeats:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, maxConsecutiveToolRepeats: Int = 3, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
 | 108 | func | public | AgentConfiguration.resilience(_:) | `public @discardableResult func resilience(_ value: ResilienceConfiguration) -> AgentConfiguration` |
 | 345 | var | public | AgentConfiguration.description | `public var description: String { get }` |
 
@@ -143,6 +145,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 366 | case | public | AgentError.duplicateHandoffToolName(name:) | `public case duplicateHandoffToolName(name: String)` |
 | 380 | case | public | AgentError.handoffToolNameCollidesWithTool(name:) | `public case handoffToolNameCollidesWithTool(name: String)` |
 | 565 | case | public | AgentError.structuredOutputDecodingFailed(reason:underlying:) | `public case structuredOutputDecodingFailed(reason: String, underlying: (any Error)?)` |
+| 212 | case | public | AgentError.toolCallLoopDetected(toolNames:repetitions:) | `public case toolCallLoopDetected(toolNames: [String], repetitions: Int)` |
+| 464 | case | public | AgentError.authenticationFailed(reason:) | `public case authenticationFailed(reason: String)` |
 | 672 | func | public | AgentError.==(_:_:) | `public static func == (lhs: AgentError, rhs: AgentError) -> Bool` |
 | 90 | var | public | AgentError.errorDescription | `public var errorDescription: String? { get }` |
 | 139 | var | public | AgentError.recoverySuggestion | `public var recoverySuggestion: String? { get }` |
@@ -392,7 +396,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 456 | var | public | InferenceResponse.ParsedToolCall.id | `public let id: String?` |
 | 459 | var | public | InferenceResponse.ParsedToolCall.name | `public let name: String` |
 | 462 | var | public | InferenceResponse.ParsedToolCall.arguments | `public let arguments: [String : SendableValue]` |
-| 469 | func | public | InferenceResponse.ParsedToolCall.init(id:name:arguments:) | `public init(id: String? = nil, name: String, arguments: [String : SendableValue])` |
+| 725 | var | public | InferenceResponse.ParsedToolCall.thoughtSignature | `public let thoughtSignature: String?` |
+| 733 | func | public | InferenceResponse.ParsedToolCall.init(id:name:arguments:thoughtSignature:) | `public init(id: String? = nil, name: String, arguments: [String : SendableValue], thoughtSignature: String? = nil)` |
 | 477 | var | public | InferenceResponse.content | `public let content: String?` |
 | 480 | var | public | InferenceResponse.toolCalls | `public let toolCalls: [InferenceResponse.ParsedToolCall]` |
 | 483 | var | public | InferenceResponse.finishReason | `public let finishReason: InferenceResponse.FinishReason` |
@@ -1125,6 +1130,20 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 ## 3. Agents
 
+### Core/ToolCallLoopDetector.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 9 | struct | public | ToolCallLoop | `public struct ToolCallLoop` |
+| 11 | var | public | ToolCallLoop.toolNames | `public let toolNames: [String]` |
+| 14 | var | public | ToolCallLoop.repetitions | `public let repetitions: Int` |
+| 17 | func | public | ToolCallLoop.init(toolNames:repetitions:) | `public init(toolNames: [String], repetitions: Int)` |
+| 47 | struct | public | ToolCallLoopDetector | `public struct ToolCallLoopDetector` |
+| 52 | var | public | ToolCallLoopDetector.maxConsecutiveRepeats | `public var maxConsecutiveRepeats: Int` |
+| 57 | func | public | ToolCallLoopDetector.init(maxConsecutiveRepeats:) | `public init(maxConsecutiveRepeats: Int = 3)` |
+| 67 | func | public | ToolCallLoopDetector.observe(_:) | `public mutating func observe(_ calls: [InferenceResponse.ParsedToolCall]) -> ToolCallLoop?` |
+| 86 | func | public | ToolCallLoopDetector.reset() | `public mutating func reset()` |
+
 ### Agents/Agent.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -1591,6 +1610,22 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | var | public | ContextCoreMemoryConfiguration.downloadsEmbeddingModelAutomatically | Default `false`; failed auto-download does not block session start |
 | — | var | public | ContextCoreMemoryConfiguration.embeddingModelDelivery | Delivery config used when auto-download is on |
 
+### Memory/FileSession.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 34 | class | public | FileSession | `public actor FileSession` |
+| 38 | var | public | FileSession.sessionId | `public nonisolated let sessionId: String` |
+| 41 | var | public | FileSession.directory | `public nonisolated let directory: URL` |
+| 48 | var | public | FileSession.itemCount | `public var itemCount: Int { get }` |
+| 61 | var | public | FileSession.isEmpty | `public var isEmpty: Bool { get }` |
+| 77 | func | public | FileSession.init(sessionId:directory:) | `public init(sessionId: String = UUID().uuidString, directory: URL)` |
+| 83 | func | public | FileSession.getItemCount() | `public func getItemCount() async throws -> Int` |
+| 91 | func | public | FileSession.getItems(limit:) | `public func getItems(limit: Int?) async throws -> [MemoryMessage]` |
+| 104 | func | public | FileSession.addItems(_:) | `public func addItems(_ newItems: [MemoryMessage]) async throws` |
+| 111 | func | public | FileSession.popItem() | `public func popItem() async throws -> MemoryMessage?` |
+| 122 | func | public | FileSession.clearSession() | `public func clearSession() async throws` |
+
 ### Memory/HybridMemory.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -1802,6 +1837,24 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 191 | func | public | Session.addItem(_:) | `public func addItem(_ item: MemoryMessage) async throws` |
 | 201 | func | public | Session.getAllItems() | `public func getAllItems() async throws -> [MemoryMessage]` |
 | 208 | func | public | Session.getItemCount() | `public func getItemCount() async throws -> Int` |
+
+### Memory/SessionSnapshot.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 22 | struct | public | SessionSnapshot | `public struct SessionSnapshot` |
+| 24 | var | public | SessionSnapshot.currentSchemaVersion | `public static let currentSchemaVersion: Int` |
+| 27 | var | public | SessionSnapshot.schemaVersion | `public let schemaVersion: Int` |
+| 30 | var | public | SessionSnapshot.sessionId | `public let sessionId: String` |
+| 33 | var | public | SessionSnapshot.exportedAt | `public let exportedAt: Date` |
+| 36 | var | public | SessionSnapshot.items | `public let items: [MemoryMessage]` |
+| 45 | func | public | SessionSnapshot.init(sessionId:items:exportedAt:schemaVersion:) | `public init(sessionId: String, items: [MemoryMessage], exportedAt: Date = Date(), schemaVersion: Int = SessionSnapshot.currentSchemaVersion)` |
+| 58 | func | public | SessionSnapshot.encoded() | `public func encoded() throws -> Data` |
+| 70 | func | public | SessionSnapshot.init(encoded:) | `public init(encoded data: Data) throws` |
+| 87 | func | public | Session.snapshot() | `public func snapshot() async throws -> SessionSnapshot` |
+| 92 | func | public | Session.snapshotData() | `public func snapshotData() async throws -> Data` |
+| 101 | func | public | Session.restore(from:) | `public func restore(from snapshot: SessionSnapshot) async throws` |
+| 116 | func | public | Session.restore(from:) | `public func restore(from data: Data) async throws` |
 
 ### Memory/SlidingWindowMemory.swift
 
@@ -2376,6 +2429,22 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 506 | var | public | TraceEvent.description | `public var description: String { get }` |
 | 533 | var | public | EventLevel.description | `public var description: String { get }` |
 
+### Observability/TraceRedactor.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 25 | struct | public | TraceRedactor | `public struct TraceRedactor` |
+| 27 | struct | public | TraceRedactor.Rule | `public struct Rule` |
+| 29 | var | public | TraceRedactor.Rule.name | `public let name: String` |
+| 32 | var | public | TraceRedactor.Rule.pattern | `public let pattern: String` |
+| 35 | var | public | TraceRedactor.Rule.replacement | `public let replacement: String` |
+| 38 | func | public | TraceRedactor.Rule.init(name:pattern:replacement:) | `public init(name: String, pattern: String, replacement: String)` |
+| 50 | var | public | TraceRedactor.Rule.defaults | `public static var defaults: [Rule] { get }` |
+| 87 | var | public | TraceRedactor.none | `public static let none: TraceRedactor` |
+| 90 | var | public | TraceRedactor.rules | `public let rules: [Rule]` |
+| 95 | func | public | TraceRedactor.init(rules:) | `public init(rules: [Rule] = Rule.defaults)` |
+| 100 | func | public | TraceRedactor.redact(_:) | `public func redact(_ text: String) -> String` |
+
 ### Observability/TraceSpan.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -2870,7 +2939,8 @@ Provider-facing conversation message. The payload is a closed `Body`; `role`, `c
 | 99 | var | public | InferenceMessage.ToolCall.id | `public let id: String?` |
 | 100 | var | public | InferenceMessage.ToolCall.name | `public let name: String` |
 | 101 | var | public | InferenceMessage.ToolCall.arguments | `public let arguments: [String: SendableValue]` |
-| 103 | func | public | InferenceMessage.ToolCall.init(id:name:arguments:) | `public init(id: String? = nil, name: String, arguments: [String: SendableValue])` |
+| 103 | var | public | InferenceMessage.ToolCall.thoughtSignature | `public let thoughtSignature: String?` |
+| 105 | func | public | InferenceMessage.ToolCall.init(id:name:arguments:thoughtSignature:) | `public init(id: String? = nil, name: String, arguments: [String: SendableValue], thoughtSignature: String? = nil)` |
 | 111 | var | public | InferenceMessage.body | `public let body: InferenceMessage.Body` |
 | 114 | var | public | InferenceMessage.role | `public var role: InferenceMessage.Role { get }` |
 | 128 | var | public | InferenceMessage.content | `public var content: String { get }` |
@@ -2915,14 +2985,20 @@ First-class Apple Foundation Models path (on-device `SystemLanguageModel`, plus 
 | 152 | func | public | FoundationModelsInferenceProvider.isAvailable(_:) | `public static func isAvailable(_ model: SystemLanguageModel) -> Bool` |
 | 157 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:ownsToolLoop:model:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider?` |
 | 177 | func | public | FoundationModelsInferenceProvider.ifAvailable(model:configuration:profile:ownsToolLoop:) | `public static func ifAvailable(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider?` |
-| 201 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:ownsToolLoop:model:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default)` |
-| 223 | func | public | FoundationModelsInferenceProvider.init(model:configuration:profile:ownsToolLoop:) | `public init(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false)` |
-| 740 | func | public | InferenceProvider.foundationModels(configuration:model:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
-| 751 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:model:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
-| 763 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
-| 793 | func | public | InferenceProvider.foundationModels(profile:configuration:model:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
-| 824 | func | public | InferenceProvider.foundationModels(model:configuration:profile:) | `public static func foundationModels(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
-| 838 | func | public | InferenceProvider.foundationModelsOwningToolLoop(model:configuration:profile:) | `public static func foundationModelsOwningToolLoop(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
+| 197 | func | public | FoundationModelsInferenceProvider.isPrivateCloudComputeAvailable(_:) | `public static func isPrivateCloudComputeAvailable(_ model: PrivateCloudComputeLanguageModel = .init()) -> Bool` |
+| 208 | func | public | FoundationModelsInferenceProvider.privateCloudComputeIfAvailable(configuration:profile:ownsToolLoop:model:) | `public static func privateCloudComputeIfAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: PrivateCloudComputeLanguageModel = .init()) -> FoundationModelsInferenceProvider?` |
+| 232 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:ownsToolLoop:model:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default)` |
+| 254 | func | public | FoundationModelsInferenceProvider.init(model:configuration:profile:ownsToolLoop:) | `public init(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false)` |
+| 892 | func | public | InferenceProvider.foundationModels(configuration:model:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 903 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:model:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 915 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
+| 928 | func | public | InferenceProvider.foundationModelsOwningToolLoop(instructions:prewarmOnInit:) | `public static func foundationModelsOwningToolLoop(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
+| 945 | func | public | InferenceProvider.foundationModels(profile:configuration:model:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 958 | func | public | InferenceProvider.foundationModelsOwningToolLoop(profile:configuration:model:) | `public static func foundationModelsOwningToolLoop(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 976 | func | public | InferenceProvider.foundationModels(model:configuration:profile:) | `public static func foundationModels(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
+| 990 | func | public | InferenceProvider.foundationModelsOwningToolLoop(model:configuration:profile:) | `public static func foundationModelsOwningToolLoop(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
+| 1009 | func | public | InferenceProvider.privateCloudCompute(configuration:profile:ownsToolLoop:) | `public static func privateCloudCompute(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider` |
+| 1026 | func | public | InferenceProvider.privateCloudComputeIfAvailable(configuration:profile:ownsToolLoop:) | `public static func privateCloudComputeIfAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider?` |
 
 ### Providers/FoundationModels/FoundationModelsReasoningLevel.swift
 
@@ -2972,6 +3048,23 @@ Swarm capture-path types. Owned-loop consumes ``Profile`` / ``ProfileHistoryPoli
 | 264 | struct | public | ClosureDynamicProfile | `public struct ClosureDynamicProfile` |
 | 291 | class | public | ProfileMode | `public final class ProfileMode<Mode>` |
 | 314 | struct | public | ModeSwitchingDynamicProfile | `public struct ModeSwitchingDynamicProfile<Mode>` |
+
+### Providers/FailoverProvider.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 39 | struct | public | FailoverProvider | `public struct FailoverProvider` |
+| 41 | var | public | FailoverProvider.primary | `public let primary: any InferenceProvider` |
+| 44 | var | public | FailoverProvider.fallbacks | `public let fallbacks: [any InferenceProvider]` |
+| 51 | var | public | FailoverProvider.shouldFailover | `public let shouldFailover: @Sendable (Error) -> Bool` |
+| 57 | var | public | FailoverProvider.onFailover | `public let onFailover: (@Sendable (Int, Error) async -> Void)?` |
+| 63 | var | public | FailoverProvider.capabilities | `public var capabilities: InferenceProviderCapabilities { get }` |
+| 68 | var | public | FailoverProvider.promptTokenCounter | `public var promptTokenCounter: (any PromptTokenCounter)? { get }` |
+| 79 | func | public | FailoverProvider.init(primary:fallbacks:shouldFailover:onFailover:) | `public init(primary: any InferenceProvider, fallbacks: [any InferenceProvider] = [], shouldFailover: @escaping @Sendable (Error) -> Bool = InferenceRetryability.isRetryable, onFailover: (@Sendable (Int, Error) async -> Void)? = nil)` |
+| 92 | func | public | FailoverProvider.generate(messages:options:) | `public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String` |
+| 99 | func | public | FailoverProvider.generateWithToolCalls(messages:tools:options:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
+| 110 | func | public | FailoverProvider.generateWithToolCalls(messages:tools:options:toolExecutor:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) async throws -> InferenceResponse` |
+| 130 | func | public | FailoverProvider.generateStructured(messages:request:options:) | `public func generateStructured(messages: [InferenceMessage], request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` |
 
 ### Providers/MultiProvider.swift
 

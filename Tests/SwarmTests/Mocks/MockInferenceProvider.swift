@@ -308,7 +308,11 @@ public actor MockInferenceProvider: InferenceProvider,
     /// - Parameter toolName: The name of the tool to call in each response.
     ///
     /// This simulates an agent that keeps calling tools and never produces a final answer,
-    /// which will trigger `maxIterationsExceeded` when the iteration limit is reached.
+    /// which triggers `maxIterationsExceeded` when the iteration limit is reached.
+    ///
+    /// - Note: Only one tool call is scripted; later turns fall back to a
+    ///   text answer. Script repeated copies via `setToolCallResponses` to
+    ///   exercise `toolCallLoopDetected`.
     public func configureInfiniteToolCalling(toolName: String = "noop") {
         let loopingToolCall = InferenceResponse(
             content: nil,

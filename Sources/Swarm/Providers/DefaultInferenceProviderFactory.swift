@@ -22,4 +22,17 @@ enum DefaultInferenceProviderFactory {
         #endif
         return nil
     }
+
+    /// Returns a Private Cloud Compute provider when quota allows.
+    ///
+    /// Nil on older systems or when PCC is unavailable or its daily quota is
+    /// exhausted. Does not fall back to on-device.
+    static func makePrivateCloudComputeProviderIfAvailable() -> (any InferenceProvider)? {
+        #if canImport(FoundationModels)
+        if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *) {
+            return FoundationModelsInferenceProvider.privateCloudComputeIfAvailable()
+        }
+        #endif
+        return nil
+    }
 }

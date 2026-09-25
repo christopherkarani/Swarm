@@ -15,7 +15,7 @@ import FoundationModels
 enum FoundationModelsTranscriptSeed: Sendable {
     enum Entry: Sendable, Equatable {
         case instructions(String)
-        case prompt(String)
+        case prompt(text: String, images: [PendingImage])
         case response(String)
         case toolOutput(name: String, content: String, toolCallID: String?)
     }
@@ -24,6 +24,7 @@ enum FoundationModelsTranscriptSeed: Sendable {
         var instructions: String?
         var seedEntries: [Entry]
         var pendingPrompt: String
+        var pendingImages: [PendingImage]
         var canRehydrate: Bool
     }
 
@@ -36,18 +37,21 @@ enum FoundationModelsTranscriptSeed: Sendable {
         let mapped = mapEntries(messages: messages, instructions: instructions)
         var entries = mapped.entries
         let pending: String
-        if case let .prompt(text) = entries.last, messages.last?.role == .user {
+        let pendingImages: [PendingImage]
+        if case let .prompt(text, images) = entries.last, messages.last?.role == .user {
             pending = text
+            pendingImages = images
             entries.removeLast()
         } else {
-            pending = messages.last(where: { $0.role == .user })?.content
-                ?? messages.last?.content
-                ?? ""
+            let fallback = messages.last(where: { $0.role == .user }) ?? messages.last
+            pending = fallback?.content ?? ""
+            pendingImages = fallback.map { FoundationModelsImageAttachments.pendingImages(in: $0) } ?? []
         }
         return Seed(
             instructions: instructions,
             seedEntries: entries,
             pendingPrompt: pending,
+            pendingImages: pendingImages,
             canRehydrate: mapped.canRehydrate && messages.last?.role == .user
         )
     }
@@ -73,8 +77,9 @@ enum FoundationModelsTranscriptSeed: Sendable {
                 // Extra system text has no Instructions/Prompt split we trust.
                 canRehydrate = false
             case .user:
-                guard !message.content.isEmpty else { continue }
-                entries.append(.prompt(message.content))
+                let images = FoundationModelsImageAttachments.pendingImages(in: message)
+                guard !message.content.isEmpty || !images.isEmpty else { continue }
+                entries.append(.prompt(text: message.content, images: images))
             case .assistant:
                 if !message.toolCalls.isEmpty {
                     canRehydrate = false
@@ -106,7 +111,7 @@ enum FoundationModelsTranscriptSeed: Sendable {
             switch entry {
             case .instructions:
                 return nil
-            case let .prompt(text):
+            case let .prompt(text, _):
                 return .user(text)
             case let .response(text):
                 return .assistant(text)
@@ -137,11 +142,11 @@ extension FoundationModelsTranscriptSeed {
                     toolDefinitions: []
                 )
             )
-        case let .prompt(text):
+        case let .prompt(text, images):
             return .prompt(
                 Transcript.Prompt(
                     id: UUID().uuidString,
-                    segments: [textSegment(text)],
+                    segments: promptSegments(text: text, images: images),
                     options: GenerationOptions()
                 )
             )
@@ -166,6 +171,15 @@ extension FoundationModelsTranscriptSeed {
 
     private static func textSegment(_ content: String) -> Transcript.Segment {
         .text(Transcript.TextSegment(id: UUID().uuidString, content: content))
+    }
+
+    /// Text plus one attachment segment per image on OS 27. Older systems
+    /// keep the text-only segment; image sidecars need OS 27.
+    private static func promptSegments(text: String, images: [PendingImage]) -> [Transcript.Segment] {
+        if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *), !images.isEmpty {
+            return FoundationModelsImageAttachments.transcriptSegments(text: text, images: images)
+        }
+        return [textSegment(text)]
     }
 }
 #endif

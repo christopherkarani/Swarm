@@ -15,8 +15,9 @@
 // 3. Composes reusable instruction + tool bundles via ``DynamicInstructions``.
 // 4. Plugs into ``FoundationModelsInferenceProvider``.
 //
-// Apple's native `LanguageModelSession(profile:)` is a later owned-loop bridge,
-// not a rename of these types.
+// Apple's native `LanguageModelSession(profile:)` is the owned-loop bridge
+// for these types (see `FoundationModelsNativeDynamicProfile`), not a rename
+// of them.
 
 import Foundation
 
