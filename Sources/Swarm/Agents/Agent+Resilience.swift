@@ -48,7 +48,7 @@ extension Agent {
     ) async throws -> T {
         if inferenceRateLimiter == nil,
            inferenceCircuitBreaker == nil,
-           retryPolicy.maxAttempts == 0 {
+           retryPolicy.maxAttempts == 1 {
             return try await operation()
         }
 
@@ -81,8 +81,20 @@ extension Agent {
         tracing: TracingHelper?,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        guard policy.maxAttempts > 0 else {
-            return try await operation()
+        // `maxAttempts` counts total attempts including the initial attempt:
+        // 1 means no retries. Invalid budgets (< 1) fall through to
+        // `RetryPolicy.execute`, which throws `invalidMaxAttempts`.
+        guard policy.maxAttempts > 1 else {
+            if policy.maxAttempts == 1 {
+                return try await operation()
+            }
+            let invalidPolicy = RetryPolicy(
+                maxAttempts: policy.maxAttempts,
+                backoff: policy.backoff,
+                shouldRetry: policy.shouldRetry,
+                onRetry: policy.onRetry
+            )
+            return try await invalidPolicy.execute(operation)
         }
 
         let retryPolicy = RetryPolicy(

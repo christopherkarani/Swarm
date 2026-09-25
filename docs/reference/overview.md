@@ -15,7 +15,7 @@ The current API reference covers the supported public surface for Swarm 0.6.2. P
 | [Memory](/reference/front-facing-api) | Conversation, Vector, Summary, SwiftData backends; file sessions and snapshots |
 | [Streaming](/reference/front-facing-api) | `AgentEvent` streaming and text output |
 | [Guardrails](/reference/front-facing-api) | Input/output validation, tripwires |
-| [Resilience](/reference/api-catalog) | Retry, circuit breakers, fallback, timeouts |
+| [Resilience](/reference/api-catalog) | Retry (`maxAttempts` counts total attempts, minimum 1), circuit breakers, fallback, timeouts |
 | [Observability](/guide/opentelemetry-tracing) | Tracing, OpenTelemetry, `OSLogTracer`, `SwiftLogTracer`, metrics |
 | [MCP](/reference/api-catalog) | Model Context Protocol client and server |
 | [Providers](/reference/front-facing-api) | Foundation Models (on-device plus OS 27 `LanguageModel` / PCC), OpenAI-compatible remote, `InferenceProvider`, text-only backend wrap, `MultiProvider` routing, `FailoverProvider` chains |

@@ -45,6 +45,7 @@ import FoundationNetworking
 /// | ``AgentError/agentNotFound(name:)``, ``AgentError/internalError(reason:)``, ``AgentError/toolCallingUnsupported`` | Non-transient |
 /// | ``ResilienceError/circuitBreakerOpen(serviceName:)`` | Breaker already short-circuited |
 /// | ``ResilienceError/retriesExhausted(attempts:lastError:)`` | Budget already spent |
+/// | ``ResilienceError/invalidMaxAttempts(_:)`` | Configuration error, not a transient failure |
 /// | Unknown `Error` types | Fail closed — do not retry unclassified failures |
 ///
 /// Provider timeouts surface as ``AgentError/generationFailed(reason:)`` or
@@ -66,7 +67,7 @@ public enum InferenceRetryability: Sendable {
 
         if let resilienceError = error as? ResilienceError {
             switch resilienceError {
-            case .circuitBreakerOpen, .retriesExhausted, .allFallbacksFailed:
+            case .circuitBreakerOpen, .retriesExhausted, .allFallbacksFailed, .invalidMaxAttempts:
                 return false
             }
         }

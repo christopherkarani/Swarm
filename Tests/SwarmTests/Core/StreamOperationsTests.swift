@@ -44,6 +44,44 @@ struct StreamOperationsTests {
         #expect(await factory.callCount == 1)
     }
 
+    @Test("retry rejects maxAttempts below 1 without invoking the factory")
+    func retryRejectsInvalidMaxAttempts() async throws {
+        for invalid in [0, -1, -5] {
+            let factory = RetryFactory()
+            let stream = AsyncThrowingStream<AgentEvent, Error>.retry(maxAttempts: invalid) {
+                await factory.makeFailingStream()
+            }
+            await #expect(throws: ResilienceError.invalidMaxAttempts(invalid)) {
+                for try await _ in stream {}
+            }
+            #expect(await factory.callCount == 0)
+        }
+    }
+
+    @Test("retry counts total attempts including the initial attempt")
+    func retryCountsTotalAttempts() async throws {
+        let factory = RetryFactory()
+        let stream = AsyncThrowingStream<AgentEvent, Error>.retry(maxAttempts: 2) {
+            await factory.makeFailingStream()
+        }
+        await #expect(throws: TestStreamError.failure) {
+            for try await _ in stream {}
+        }
+        #expect(await factory.callCount == 2)
+    }
+
+    @Test("retry with maxAttempts 1 runs the factory once")
+    func retryWithSingleAttemptRunsOnce() async throws {
+        let factory = RetryFactory()
+        let stream = AsyncThrowingStream<AgentEvent, Error>.retry(maxAttempts: 1) {
+            await factory.makeFailingStream()
+        }
+        await #expect(throws: TestStreamError.failure) {
+            for try await _ in stream {}
+        }
+        #expect(await factory.callCount == 1)
+    }
+
     @Test("timeout cancels upstream consumption when it fires")
     func timeoutCancelsUpstream() async throws {
         // Regression for the bug where `.timeout(after:)` finished the consumer-facing
@@ -138,6 +176,6 @@ private actor RetryFactory {
     }
 }
 
-private enum TestStreamError: Error {
+private enum TestStreamError: Error, Equatable {
     case failure
 }

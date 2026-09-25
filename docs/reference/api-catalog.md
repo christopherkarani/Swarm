@@ -2617,29 +2617,30 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 13 | case | public | ResilienceError.retriesExhausted(attempts:lastError:) | `public case retriesExhausted(attempts: Int, lastError: String)` |
 | 16 | case | public | ResilienceError.circuitBreakerOpen(serviceName:) | `public case circuitBreakerOpen(serviceName: String)` |
 | 19 | case | public | ResilienceError.allFallbacksFailed(errors:) | `public case allFallbacksFailed(errors: [String])` |
-| 25 | var | public | ResilienceError.errorDescription | `public var errorDescription: String? { get }` |
-| 40 | var | public | ResilienceError.debugDescription | `public var debugDescription: String { get }` |
-| 55 | enum | public | BackoffStrategy | `public enum BackoffStrategy` |
-| 61 | func | public | BackoffStrategy.delay(forAttempt:) | `public func delay(forAttempt attempt: Int) -> TimeInterval` |
-| 97 | case | public | BackoffStrategy.fixed(delay:) | `public case fixed(delay: TimeInterval)` |
-| 100 | case | public | BackoffStrategy.linear(initial:increment:maxDelay:) | `public case linear(initial: TimeInterval, increment: TimeInterval, maxDelay: TimeInterval)` |
-| 103 | case | public | BackoffStrategy.exponential(base:multiplier:maxDelay:) | `public case exponential(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
-| 106 | case | public | BackoffStrategy.exponentialWithJitter(base:multiplier:maxDelay:) | `public case exponentialWithJitter(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
-| 109 | case | public | BackoffStrategy.decorrelatedJitter(base:maxDelay:) | `public case decorrelatedJitter(base: TimeInterval, maxDelay: TimeInterval)` |
-| 112 | case | public | BackoffStrategy.immediate | `public case immediate` |
-| 120 | case | public | BackoffStrategy.custom(_:) | `public case custom((Int) -> TimeInterval)` |
-| 126 | func | public | BackoffStrategy.==(_:_:) | `public static func == (lhs: BackoffStrategy, rhs: BackoffStrategy) -> Bool` |
-| 152 | struct | public | RetryPolicy | `public struct RetryPolicy` |
-| 160 | var | public | RetryPolicy.noRetry | `public static let noRetry: RetryPolicy` |
-| 163 | var | public | RetryPolicy.standard | `public static let standard: RetryPolicy` |
-| 169 | var | public | RetryPolicy.aggressive | `public static let aggressive: RetryPolicy` |
-| 175 | var | public | RetryPolicy.maxAttempts | `public let maxAttempts: Int` |
-| 178 | var | public | RetryPolicy.backoff | `public let backoff: BackoffStrategy` |
-| 181 | var | public | RetryPolicy.shouldRetry | `public let shouldRetry: (any Error) -> Bool` |
-| 184 | var | public | RetryPolicy.onRetry | `public let onRetry: ((Int, any Error) async -> Void)?` |
-| 194 | func | public | RetryPolicy.init(maxAttempts:backoff:shouldRetry:onRetry:) | `public init(maxAttempts: Int = 3, backoff: BackoffStrategy = .exponential(base: 1.0, multiplier: 2.0, maxDelay: 60.0), shouldRetry: @escaping (any Error) -> Bool = { _ in true }, onRetry: ((Int, any Error) async -> Void)? = nil)` |
-| 213 | func | public | RetryPolicy.execute(_:) | `public func execute<T>(_ operation: () async throws -> T) async throws -> T where T : Sendable` |
-| 271 | func | public | RetryPolicy.==(_:_:) | `public static func == (lhs: RetryPolicy, rhs: RetryPolicy) -> Bool` |
+| 26 | case | public | ResilienceError.invalidMaxAttempts(_:) | `public case invalidMaxAttempts(Int)` |
+| 32 | var | public | ResilienceError.errorDescription | `public var errorDescription: String? { get }` |
+| 49 | var | public | ResilienceError.debugDescription | `public var debugDescription: String { get }` |
+| 66 | enum | public | BackoffStrategy | `public enum BackoffStrategy` |
+| 72 | func | public | BackoffStrategy.delay(forAttempt:) | `public func delay(forAttempt attempt: Int) -> TimeInterval` |
+| 123 | case | public | BackoffStrategy.fixed(delay:) | `public case fixed(delay: TimeInterval)` |
+| 126 | case | public | BackoffStrategy.linear(initial:increment:maxDelay:) | `public case linear(initial: TimeInterval, increment: TimeInterval, maxDelay: TimeInterval)` |
+| 129 | case | public | BackoffStrategy.exponential(base:multiplier:maxDelay:) | `public case exponential(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
+| 132 | case | public | BackoffStrategy.exponentialWithJitter(base:multiplier:maxDelay:) | `public case exponentialWithJitter(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
+| 135 | case | public | BackoffStrategy.decorrelatedJitter(base:maxDelay:) | `public case decorrelatedJitter(base: TimeInterval, maxDelay: TimeInterval)` |
+| 138 | case | public | BackoffStrategy.immediate | `public case immediate` |
+| 146 | case | public | BackoffStrategy.custom(_:) | `public case custom((Int) -> TimeInterval)` |
+| 152 | func | public | BackoffStrategy.==(_:_:) | `public static func == (lhs: BackoffStrategy, rhs: BackoffStrategy) -> Bool` |
+| 187 | struct | public | RetryPolicy | `public struct RetryPolicy` |
+| 195 | var | public | RetryPolicy.noRetry | `public static let noRetry: RetryPolicy` |
+| 198 | var | public | RetryPolicy.standard | `public static let standard: RetryPolicy` |
+| 204 | var | public | RetryPolicy.aggressive | `public static let aggressive: RetryPolicy` |
+| 214 | var | public | RetryPolicy.maxAttempts | `public let maxAttempts: Int` |
+| 217 | var | public | RetryPolicy.backoff | `public let backoff: BackoffStrategy` |
+| 220 | var | public | RetryPolicy.shouldRetry | `public let shouldRetry: (any Error) -> Bool` |
+| 223 | var | public | RetryPolicy.onRetry | `public let onRetry: ((Int, any Error) async -> Void)?` |
+| 246 | func | public | RetryPolicy.init(maxAttempts:backoff:shouldRetry:onRetry:) | `public init(maxAttempts: Int = 3, backoff: BackoffStrategy = .exponential(base: 1.0, multiplier: 2.0, maxDelay: 60.0), shouldRetry: @escaping (any Error) -> Bool = { _ in true }, onRetry: ((Int, any Error) async -> Void)? = nil)` |
+| 301 | func | public | RetryPolicy.execute(_:) | `public func execute<T>(_ operation: () async throws -> T) async throws -> T where T : Sendable` |
+| 381 | func | public | RetryPolicy.==(_:_:) | `public static func == (lhs: RetryPolicy, rhs: RetryPolicy) -> Bool` |
 
 ## 9. Workflow
 

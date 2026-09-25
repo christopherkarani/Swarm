@@ -197,6 +197,7 @@ swift run OnDeviceChat --demo
 | Resilience | Retry with backoff and `Retry-After`, circuit breakers, rate limits, `FailoverProvider` chains, and tool-loop detection. |
 | Guardrails | Validate inputs, outputs, and tool arguments before they reach your application. |
 | Streaming | Observe lifecycle, tool, thinking, and output events through `AsyncThrowingStream`. |
+| Resilience | Retry provider inference (`maxAttempts` counts total attempts, minimum 1), circuit breakers, rate limits, fallback chains. |
 | Durable execution | Checkpoint workflow progress and resume after a process restart when the `Integrations` trait is enabled. |
 | MCP | Discover and bridge Model Context Protocol tools. |
 | Observability | Export agent and inference traces with OpenTelemetry or Swift logging. |
