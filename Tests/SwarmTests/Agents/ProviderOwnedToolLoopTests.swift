@@ -106,7 +106,7 @@ struct ProviderOwnedToolLoopTests {
                 .enableStreaming(false)
                 .timeout(.seconds(15))
                 .resilience(ResilienceConfiguration(
-                    retryPolicy: RetryPolicy(maxAttempts: 3, backoff: .immediate)
+                    retryPolicy: RetryPolicy(maxAttempts: 4, backoff: .immediate)
                 ))
                 .defaultTracingEnabled(false),
             inferenceProvider: provider
@@ -125,7 +125,7 @@ struct ProviderOwnedToolLoopTests {
             Issue.record("Expected ResilienceError.retriesExhausted, got \(error)")
         }
 
-        // maxAttempts counts retries after the first try: 1 + 3 = 4 calls.
+        // maxAttempts counts total attempts including the first try: 4 calls.
         #expect(await provider.recordedInferenceCallCount == 4)
     }
 

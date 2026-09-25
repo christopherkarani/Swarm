@@ -943,20 +943,19 @@ extension ChatGraph {
     ///
     /// - Note: Deliberate divergence from the canonical agent-inference retry
     ///   seam (`RetryPolicy.execute` in `Sources/Swarm/Resilience/RetryPolicy.swift`).
-    ///   A classifier closure alone cannot reconcile these, so this local loop is kept:
-    ///   1. Attempt accounting — here `maxAttempts` counts **total** attempts
-    ///      (`for attempt in 0 ..< maxAttempts`); the agent path treats
-    ///      `maxAttempts` as retries *after* the initial attempt
-    ///      (`retryCount < maxAttempts` guard).
-    ///   2. Exhaustion surface — the last operation error is rethrown verbatim
+    ///   Both sides share one attempt accounting (`maxAttempts` counts **total**
+    ///   attempts including the initial attempt, minimum 1). A classifier
+    ///   closure alone cannot reconcile the remaining differences, so this
+    ///   local loop is kept:
+    ///   1. Exhaustion surface — the last operation error is rethrown verbatim
     ///      so graph-runtime errors reach `HiveRunResult` unchanged; the agent
     ///      path wraps exhaustion in
     ///      `ResilienceError.retriesExhausted(attempts:lastError:)`.
-    ///   3. Retry gating — every caught error is retried unconditionally,
+    ///   2. Retry gating — every caught error is retried unconditionally,
     ///      including `CancellationError`; the agent path hard-gates on
     ///      `InferenceRetryability.isRetryable` + user `shouldRetry` and never
     ///      retries cancellation.
-    ///   4. Backoff math — saturating `delay * factor` growth where the cap is
+    ///   3. Backoff math — saturating `delay * factor` growth where the cap is
     ///      applied per-sleep (`min(delay, maxNs)`); the agent path evaluates
     ///      `BackoffStrategy.delay(forAttempt:)` (including jitter strategies)
     ///      sanitized to a fixed one-hour ceiling before sleeping.

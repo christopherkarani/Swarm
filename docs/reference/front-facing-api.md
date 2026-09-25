@@ -253,6 +253,8 @@ For provider fallback, compose ``FailoverProvider`` and pass it as the agent's i
 
 The tool loop fingerprints every tool-call batch (tool names plus canonical arguments) and stops the run with ``AgentError/toolCallLoopDetected(toolNames:repetitions:)`` after ``AgentConfiguration/maxConsecutiveToolRepeats`` (default: 3) consecutive identical batches, before executing the repeat again. Tune with `.maxConsecutiveToolRepeats(_:)` (floor: 2).
 
+`RetryPolicy.maxAttempts` counts total attempts including the initial attempt and must be at least 1 (`noRetry` is 1; `standard` is 3 total; `aggressive` is 5 total). The same budget is shared by `AsyncThrowingStream.retry(maxAttempts:delay:factory:)` and `HiveRetryPolicy`. Values below 1 throw `ResilienceError.invalidMaxAttempts` from `RetryPolicy.execute` (or fail the stream) without invoking the operation.
+
 ### Runtime wrappers (on AgentRuntime)
 
 Core runtime wrappers are provided by `AgentRuntime` extensions:
