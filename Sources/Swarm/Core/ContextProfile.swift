@@ -24,7 +24,7 @@ public struct ContextProfile: Sendable, Equatable {
 
     /// Template values for strict 4k context enforcement.
     public struct Strict4kTemplate: Sendable, Equatable {
-        public static let `default` = Strict4kTemplate()
+        public static let `default` = Strict4kTemplate(unchecked: ())
 
         public var maxTotalContextTokens: Int
         public var systemTokens: Int
@@ -40,10 +40,27 @@ public struct ContextProfile: Sendable, Equatable {
         public var summaryCadenceTurns: Int
         public var summaryTriggerUtilization: Double
 
+        /// Input budget after reserves, saturating instead of trapping.
+        ///
+        /// Bucket properties are mutable, so reserve values set after
+        /// initialization could otherwise overflow plain `-` arithmetic.
         public var maxInputTokens: Int {
-            maxTotalContextTokens - outputReserveTokens - protocolOverheadReserveTokens - safetyMarginTokens
+            Self.saturatingSubtract(
+                maxTotalContextTokens,
+                outputReserveTokens,
+                protocolOverheadReserveTokens,
+                safetyMarginTokens
+            )
         }
 
+        /// Creates a strict 4k template, validating every budget.
+        ///
+        /// All token arithmetic uses overflow-checked operations: inputs that
+        /// would have trapped with plain `+`/`-` throw instead of crashing.
+        ///
+        /// - Throws: ``AgentError/invalidInput(reason:)`` when any value is
+        ///   out of range, the derived input budget is not positive, bucket
+        ///   allocations exceed the input budget, or token arithmetic overflows.
         public init(
             maxTotalContextTokens: Int = 4096,
             systemTokens: Int = 512,
@@ -58,26 +75,65 @@ public struct ContextProfile: Sendable, Equatable {
             maxRetrievedItemTokens: Int = 300,
             summaryCadenceTurns: Int = 2,
             summaryTriggerUtilization: Double = 0.65
-        ) {
-            precondition(maxTotalContextTokens > 0, "maxTotalContextTokens must be positive")
-            precondition(systemTokens >= 0, "systemTokens cannot be negative")
-            precondition(historyTokens >= 0, "historyTokens cannot be negative")
-            precondition(memoryTokens >= 0, "memoryTokens cannot be negative")
-            precondition(toolIOTokens >= 0, "toolIOTokens cannot be negative")
-            precondition(outputReserveTokens >= 0, "outputReserveTokens cannot be negative")
-            precondition(protocolOverheadReserveTokens >= 0, "protocolOverheadReserveTokens cannot be negative")
-            precondition(safetyMarginTokens >= 0, "safetyMarginTokens cannot be negative")
-            precondition(maxToolOutputTokens > 0, "maxToolOutputTokens must be positive")
-            precondition(maxRetrievedItems > 0, "maxRetrievedItems must be positive")
-            precondition(maxRetrievedItemTokens > 0, "maxRetrievedItemTokens must be positive")
-            precondition(summaryCadenceTurns > 0, "summaryCadenceTurns must be positive")
-            precondition((0.0 ... 1.0).contains(summaryTriggerUtilization), "summaryTriggerUtilization must be 0.0-1.0")
+        ) throws {
+            guard maxTotalContextTokens > 0 else {
+                throw AgentError.invalidInput(reason: "maxTotalContextTokens must be positive")
+            }
+            guard systemTokens >= 0 else {
+                throw AgentError.invalidInput(reason: "systemTokens cannot be negative")
+            }
+            guard historyTokens >= 0 else {
+                throw AgentError.invalidInput(reason: "historyTokens cannot be negative")
+            }
+            guard memoryTokens >= 0 else {
+                throw AgentError.invalidInput(reason: "memoryTokens cannot be negative")
+            }
+            guard toolIOTokens >= 0 else {
+                throw AgentError.invalidInput(reason: "toolIOTokens cannot be negative")
+            }
+            guard outputReserveTokens >= 0 else {
+                throw AgentError.invalidInput(reason: "outputReserveTokens cannot be negative")
+            }
+            guard protocolOverheadReserveTokens >= 0 else {
+                throw AgentError.invalidInput(reason: "protocolOverheadReserveTokens cannot be negative")
+            }
+            guard safetyMarginTokens >= 0 else {
+                throw AgentError.invalidInput(reason: "safetyMarginTokens cannot be negative")
+            }
+            guard maxToolOutputTokens > 0 else {
+                throw AgentError.invalidInput(reason: "maxToolOutputTokens must be positive")
+            }
+            guard maxRetrievedItems > 0 else {
+                throw AgentError.invalidInput(reason: "maxRetrievedItems must be positive")
+            }
+            guard maxRetrievedItemTokens > 0 else {
+                throw AgentError.invalidInput(reason: "maxRetrievedItemTokens must be positive")
+            }
+            guard summaryCadenceTurns > 0 else {
+                throw AgentError.invalidInput(reason: "summaryCadenceTurns must be positive")
+            }
+            guard (0.0 ... 1.0).contains(summaryTriggerUtilization) else {
+                throw AgentError.invalidInput(reason: "summaryTriggerUtilization must be 0.0-1.0")
+            }
 
-            let maxInput = maxTotalContextTokens - outputReserveTokens - protocolOverheadReserveTokens - safetyMarginTokens
-            precondition(maxInput > 0, "Strict4k maxInputTokens must be positive")
+            guard let maxInput = Self.checkedSubtract(
+                maxTotalContextTokens,
+                outputReserveTokens,
+                protocolOverheadReserveTokens,
+                safetyMarginTokens
+            ) else {
+                throw AgentError.invalidInput(reason: "Strict4k reserve arithmetic overflows Int")
+            }
+            guard maxInput > 0 else {
+                throw AgentError.invalidInput(reason: "Strict4k maxInputTokens must be positive")
+            }
 
-            let allocated = systemTokens + historyTokens + memoryTokens + toolIOTokens
-            precondition(allocated <= maxInput, "Strict4k buckets exceed maxInputTokens")
+            guard let allocated = Self.checkedAdd(systemTokens, historyTokens, memoryTokens, toolIOTokens) else {
+                throw AgentError.invalidInput(reason: "Strict4k bucket allocation overflows Int")
+            }
+            guard allocated <= maxInput else {
+                throw AgentError.invalidInput(reason: "Strict4k buckets exceed maxInputTokens")
+            }
 
             self.maxTotalContextTokens = maxTotalContextTokens
             self.systemTokens = systemTokens
@@ -92,6 +148,75 @@ public struct ContextProfile: Sendable, Equatable {
             self.maxRetrievedItemTokens = maxRetrievedItemTokens
             self.summaryCadenceTurns = summaryCadenceTurns
             self.summaryTriggerUtilization = summaryTriggerUtilization
+        }
+
+        /// Known-valid default values without re-running throwing validation.
+        private init(unchecked: Void) {
+            self.maxTotalContextTokens = 4096
+            self.systemTokens = 512
+            self.historyTokens = 1400
+            self.memoryTokens = 900
+            self.toolIOTokens = 600
+            self.outputReserveTokens = 500
+            self.protocolOverheadReserveTokens = 120
+            self.safetyMarginTokens = 64
+            self.maxToolOutputTokens = 600
+            self.maxRetrievedItems = 3
+            self.maxRetrievedItemTokens = 300
+            self.summaryCadenceTurns = 2
+            self.summaryTriggerUtilization = 0.65
+        }
+
+        /// Sums values, returning `nil` on overflow.
+        static func checkedAdd(_ values: Int...) -> Int? {
+            var total = 0
+            for value in values {
+                let (partial, overflow) = total.addingReportingOverflow(value)
+                if overflow {
+                    return nil
+                }
+                total = partial
+            }
+            return total
+        }
+
+        /// Subtracts reserves from a total, returning `nil` on overflow.
+        static func checkedSubtract(_ total: Int, _ values: Int...) -> Int? {
+            var result = total
+            for value in values {
+                let (partial, overflow) = result.subtractingReportingOverflow(value)
+                if overflow {
+                    return nil
+                }
+                result = partial
+            }
+            return result
+        }
+
+        /// Subtracts reserves, saturating at `Int` bounds instead of trapping.
+        static func saturatingSubtract(_ total: Int, _ values: Int...) -> Int {
+            var result = total
+            for value in values {
+                let (partial, overflow) = result.subtractingReportingOverflow(value)
+                if overflow {
+                    return value >= 0 ? Int.min : Int.max
+                }
+                result = partial
+            }
+            return result
+        }
+
+        /// Sums values, saturating at `Int` bounds instead of trapping.
+        static func saturatingAdd(_ values: Int...) -> Int {
+            var total = 0
+            for value in values {
+                let (partial, overflow) = total.addingReportingOverflow(value)
+                if overflow {
+                    return value >= 0 ? Int.max : Int.min
+                }
+                total = partial
+            }
+            return total
         }
     }
 
@@ -192,10 +317,14 @@ public struct ContextProfile: Sendable, Equatable {
     }
 
     /// Creates a strict 4k profile from an override template.
+    ///
+    /// Template buckets are mutable, so derived token math saturates at
+    /// `Int` bounds instead of trapping on extreme post-init values.
     public static func strict4k(template: Strict4kTemplate = .default) -> ContextProfile {
         let maxInput = template.maxInputTokens
-        let minimumWorkingTokens = template.systemTokens + template.historyTokens
-        let workingTokens = max(maxInput - template.memoryTokens - template.toolIOTokens, minimumWorkingTokens)
+        let minimumWorkingTokens = Strict4kTemplate.saturatingAdd(template.systemTokens, template.historyTokens)
+        let remainingWorkingTokens = Strict4kTemplate.saturatingSubtract(maxInput, template.memoryTokens, template.toolIOTokens)
+        let workingTokens = max(remainingWorkingTokens, minimumWorkingTokens)
 
         let workingRatio = Double(workingTokens) / Double(maxInput)
         let memoryRatio = Double(template.memoryTokens) / Double(maxInput)
@@ -218,10 +347,10 @@ public struct ContextProfile: Sendable, Equatable {
             protocolOverheadReserveTokens: template.protocolOverheadReserveTokens,
             safetyMarginTokens: template.safetyMarginTokens,
             bucketCaps: ContextBucketCaps(
-                system: template.systemTokens,
-                history: template.historyTokens,
-                memory: template.memoryTokens,
-                toolIO: template.toolIOTokens
+                system: max(0, template.systemTokens),
+                history: max(0, template.historyTokens),
+                memory: max(0, template.memoryTokens),
+                toolIO: max(0, template.toolIOTokens)
             )
         )
     }
@@ -346,9 +475,14 @@ public struct ContextProfile: Sendable, Equatable {
         let safeOutputReserveTokens = max(0, outputReserveTokens)
         let safeProtocolOverheadTokens = max(0, protocolOverheadReserveTokens)
         let safeSafetyMarginTokens = max(0, safetyMarginTokens)
-        let reserved = safeOutputReserveTokens + safeProtocolOverheadTokens + safeSafetyMarginTokens
-        let resolvedMaxTotal = maxTotalContextTokens ?? (max(1, maxContextTokens) + reserved)
-        self.maxTotalContextTokens = max(resolvedMaxTotal, max(1, maxContextTokens) + reserved)
+        let reserved = Strict4kTemplate.saturatingAdd(
+            safeOutputReserveTokens,
+            safeProtocolOverheadTokens,
+            safeSafetyMarginTokens
+        )
+        let floorTotal = Strict4kTemplate.saturatingAdd(max(1, maxContextTokens), reserved)
+        let resolvedMaxTotal = maxTotalContextTokens ?? floorTotal
+        self.maxTotalContextTokens = max(resolvedMaxTotal, floorTotal)
         self.workingTokenRatio = normalizedRatios.working
         self.memoryTokenRatio = normalizedRatios.memory
         self.toolIOTokenRatio = normalizedRatios.toolIO
@@ -376,9 +510,11 @@ public struct ContextProfile: Sendable, Equatable {
             memoryTokens = bucketCaps.memory
             toolIOTokens = bucketCaps.toolIO
 
-            let strictWorkingTokens = maxContextTokens - memoryTokens - toolIOTokens
-            precondition(strictWorkingTokens >= 0, "strict4k bucket caps cannot exceed maxContextTokens")
-            workingTokens = strictWorkingTokens
+            // Saturate and floor at zero: bucket caps can exceed the input
+            // budget when a template is mutated after validation, and a
+            // computed budget must never trap or crash on such profiles.
+            let strictWorkingTokens = Strict4kTemplate.saturatingSubtract(maxContextTokens, memoryTokens, toolIOTokens)
+            workingTokens = max(0, strictWorkingTokens)
         } else {
             workingTokens = Int(Double(maxContextTokens) * workingTokenRatio)
             memoryTokens = Int(Double(maxContextTokens) * memoryTokenRatio)

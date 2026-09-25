@@ -399,6 +399,36 @@ struct MCPResourceTests {
             _ = try MCPResourceContent(uri: "file:///broken")
         }
     }
+
+    @Test("resource content debugDescription renders short text")
+    func resourceContentDebugDescriptionText() throws {
+        let content = try MCPResourceContent(
+            uri: "file:///readme.md",
+            mimeType: "text/markdown",
+            text: "# Hello"
+        )
+
+        #expect(content.debugDescription == "MCPResourceContent(uri: \"file:///readme.md\", mimeType: \"text/markdown\", text: \"# Hello\")")
+    }
+
+    @Test("resource content debugDescription truncates long text at 50 chars")
+    func resourceContentDebugDescriptionLongText() throws {
+        let long = String(repeating: "a", count: 60)
+        let content = try MCPResourceContent(uri: "file:///long.txt", text: long)
+
+        #expect(content.debugDescription == "MCPResourceContent(uri: \"file:///long.txt\", text: \"\(String(repeating: "a", count: 50))...\")")
+    }
+
+    @Test("resource content debugDescription renders blob size")
+    func resourceContentDebugDescriptionBlob() throws {
+        let content = try MCPResourceContent(
+            uri: "file:///image.png",
+            mimeType: "image/png",
+            blob: "iVBORw0KGgoAAAANSUhEUg=="
+        )
+
+        #expect(content.debugDescription == "MCPResourceContent(uri: \"file:///image.png\", mimeType: \"image/png\", blob: <24 chars>)")
+    }
 }
 
 @Suite("MCPWireCodec Tests")
