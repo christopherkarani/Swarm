@@ -1,3 +1,5 @@
+// P2-1 grandfather: split pending; new files are gated at 1000 lines.
+// swiftlint:disable file_length
 import Foundation
 import Swarm
 
