@@ -697,7 +697,7 @@ private struct RetryPolicyDeterminismTests {
     func retryAfterHintExtendsBackoff() async throws {
         let clock = VirtualClock()
         let counter = TestCounter()
-        let policy = RetryPolicy(maxAttempts: 1, backoff: .fixed(delay: 1.0), clock: clock)
+        let policy = RetryPolicy(maxAttempts: 2, backoff: .fixed(delay: 1.0), clock: clock)
 
         let result = try await policy.execute {
             if await counter.increment() == 1 {
@@ -714,7 +714,7 @@ private struct RetryPolicyDeterminismTests {
     func backoffWinsOverShortRetryAfter() async throws {
         let clock = VirtualClock()
         let counter = TestCounter()
-        let policy = RetryPolicy(maxAttempts: 1, backoff: .fixed(delay: 5.0), clock: clock)
+        let policy = RetryPolicy(maxAttempts: 2, backoff: .fixed(delay: 5.0), clock: clock)
 
         _ = try await policy.execute {
             if await counter.increment() == 1 {
@@ -730,7 +730,7 @@ private struct RetryPolicyDeterminismTests {
     func missingRetryAfterKeepsBackoff() async throws {
         let clock = VirtualClock()
         let counter = TestCounter()
-        let policy = RetryPolicy(maxAttempts: 1, backoff: .fixed(delay: 2.0), clock: clock)
+        let policy = RetryPolicy(maxAttempts: 2, backoff: .fixed(delay: 2.0), clock: clock)
 
         _ = try await policy.execute {
             if await counter.increment() == 1 {
@@ -746,7 +746,7 @@ private struct RetryPolicyDeterminismTests {
     func retryAfterIgnoredForOtherErrors() async throws {
         let clock = VirtualClock()
         let counter = TestCounter()
-        let policy = RetryPolicy(maxAttempts: 1, backoff: .fixed(delay: 2.0), clock: clock)
+        let policy = RetryPolicy(maxAttempts: 2, backoff: .fixed(delay: 2.0), clock: clock)
 
         _ = try await policy.execute {
             if await counter.increment() == 1 {
