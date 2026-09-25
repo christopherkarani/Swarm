@@ -947,6 +947,7 @@ available for source compatibility: `PromptTokenCountingInferenceProvider`,
 .foundationModels(model: .default)  // Apple SystemLanguageModel (not Swarm Profile)
 .foundationModels(profile: profile) // Swarm DynamicProfile re-resolved each turn
 .foundationModels(model: pcc)       // OS 27 Apple LanguageModel / PCC
+.privateCloudCompute()              // OS 27 PCC convenience (quota-aware IfAvailable variant)
 .openAICompatible(.ollama(model: "llama3.2"))
 .openAICompatible(.openAI(apiKey: "sk-...", model: "gpt-4o"))
 .textOnly(stringBackend)            // TextOnlyBackend → flatten adapter
@@ -959,6 +960,7 @@ available for source compatibility: `PromptTokenCountingInferenceProvider`,
 | `.foundationModelsOwningToolLoop()` | `FoundationModelsInferenceProvider` | Same type; advertises a provider-owned tool loop |
 | `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Capture adapter driven by Swarm ``DynamicProfile`` (not Apple's OS 27 `LanguageModelSession.DynamicProfile`) |
 | `.foundationModels(model:)` | `FoundationModelsInferenceProvider` | OS 27+ Apple `LanguageModel`, including `PrivateCloudComputeLanguageModel`. `ifAvailable(model:)` does not fall back to on-device. |
+| `.privateCloudCompute()` | `FoundationModelsInferenceProvider` | OS 27+ PCC convenience. `.privateCloudComputeIfAvailable()` returns nil when PCC is unavailable or its daily quota is exhausted; neither falls back to on-device. PCC-backed providers do not advertise `.privateInference`. |
 | `.openAICompatible(_:)` | `OpenAICompatibleProvider` | OpenAI / Azure / OpenRouter / Ollama / LM Studio over Chat Completions; Linux-first |
 | `.textOnly(_:)` | `TextOnlyConversationInferenceProviderAdapter` | Wraps a ``TextOnlyBackend``; only flatten site |
 | Custom `InferenceProvider` | your type | Implement the protocol for other backends |
@@ -978,10 +980,16 @@ OS 27 owned-loop can set ``FoundationModelsProviderConfiguration/reasoningLevel`
 stays a prompt sentence.
 Owned-loop applies Swarm ``ProfileHistoryPolicy`` before seeding a text-only
 Apple `Transcript`. It does not rename Swarm ``DynamicProfile`` to Apple's
-`LanguageModelSession.DynamicProfile`.
+`LanguageModelSession.DynamicProfile`. It does build the Apple session from
+a native `LanguageModelSession(profile:history:)` on OS 27, so the resolved
+instructions, tools, and knobs flow through one Apple session.
 Capture rehydrates a `Transcript` from user/assistant/tool messages when it
 can; flattening is the fallback for assistant tool-call metadata or extra
 system text.
+On OS 27, ``InferenceMessage`` image ``InferenceMessage/Attachment`` sidecars
+ride `Transcript` attachment segments (history) and multimodal `Prompt`
+attachments (pending turn). The provider advertises
+``InferenceProviderCapabilities/multimodalImages`` only on OS 27.
 See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`

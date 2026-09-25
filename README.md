@@ -157,7 +157,7 @@ a provider on every agent.
 
 | Provider | Use it when |
 |---|---|
-| Apple Foundation Models | You want on-device inference, OS 27 PCC via `.foundationModels(model:)`, owned-loop `reasoningLevel`, Swarm profile history seeded onto `Transcript`, or capture `Transcript` rehydration |
+| Apple Foundation Models | You want on-device inference, OS 27 PCC via `.privateCloudCompute()`, image attachments, native profile sessions, owned-loop `reasoningLevel`, Swarm profile history seeded onto `Transcript`, or capture `Transcript` rehydration |
 | Ollama or LM Studio | You want a local HTTP model for development or private deployments |
 | OpenAI, Azure, or OpenRouter | You want a cloud model through an OpenAI-compatible API |
 | Custom provider | You need another model backend or an internal service |
