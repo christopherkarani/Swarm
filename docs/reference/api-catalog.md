@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 239 (246 including `Internal/GraphRuntime/`)
+- Source files scanned: 244 (251 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2409
 
 ## 1. Swarm (entry point)
@@ -1469,6 +1469,9 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 22 | struct | public | WebSearchTool | `public struct WebSearchTool` |
 | 57 | func | public | WebSearchTool.init(apiKey:) | `public init(apiKey: String)` |
 | 68 | func | public | WebSearchTool.execute() | `public func execute() async throws -> String` |
+| — | var | public | WebSearchTool.Configuration.apiKeyReference | `public var apiKeyReference: SecretReference?` |
+| — | func | public | WebSearchTool.Configuration.resolveAPIKey(using:) | `public func resolveAPIKey(using store: (any SecretStore)?) async throws -> String?` |
+| — | func | public | WebSearchTool.init(configuration:secretStore:) | `public init(configuration: WebSearchTool.Configuration, secretStore: any SecretStore)` |
 
 ### Tools/ZoniSearchTool.swift
 
@@ -2700,6 +2703,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 27 | struct | public | WorkflowCheckpointing | `public struct WorkflowCheckpointing` |
 | 49 | func | public | WorkflowCheckpointing.inMemory() | `public static func inMemory() -> WorkflowCheckpointing` |
 | 70 | func | public | WorkflowCheckpointing.fileSystem(directory:retention:) | `public static func fileSystem(directory: URL, retention: WorkflowCheckpointRetention = .default) -> WorkflowCheckpointing` |
+| — | func | public | WorkflowCheckpointing.hardenFilePermissions(in:) | `public static func hardenFilePermissions(in directory: URL) throws -> Int` |
 
 ## 9b. Job
 
@@ -2764,6 +2768,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 56 | var | public | HTTPMCPServer.name | `public let name: String` |
 | 62 | var | public | HTTPMCPServer.capabilities | `public var capabilities: MCPCapabilities { get }` |
 | 77 | func | public | HTTPMCPServer.init(url:name:apiKey:timeout:maxRetries:session:) | `public init(url: URL, name: String, apiKey: String? = nil, timeout: TimeInterval = 30.0, maxRetries: Int = 3, session: URLSession = .shared) throws` |
+| — | func | public | HTTPMCPServer.init(url:name:apiKeyReference:secretStore:timeout:maxRetries:session:) | `public init(url: URL, name: String, apiKeyReference: SecretReference, secretStore: any SecretStore, timeout: TimeInterval = 30.0, maxRetries: Int = 3, session: URLSession = .shared) throws` |
 | 70 | var | public | HTTPMCPServer.negotiatedProtocolVersion | `public var negotiatedProtocolVersion: String? { get }` |
 | 76 | var | public | HTTPMCPServer.sessionID | `public var sessionID: String? { get }` |
 | 113 | func | public | HTTPMCPServer.initialize() | `public func initialize() async throws -> MCPCapabilities` |
@@ -2968,7 +2973,11 @@ OpenAI-compatible Chat Completions provider (`URLSession` only). Covers OpenAI, 
 | func | public | OpenAICompatibleProviderConfiguration.ollama(model:baseURL:) | `public static func ollama(model: String, baseURL: URL = URL(string: "http://127.0.0.1:11434/v1")!) -> OpenAICompatibleProviderConfiguration` |
 | func | public | OpenAICompatibleProviderConfiguration.lmStudio(model:baseURL:apiKey:) | `public static func lmStudio(model: String, baseURL: URL = URL(string: "http://127.0.0.1:1234/v1")!, apiKey: String? = nil) -> OpenAICompatibleProviderConfiguration` |
 | struct | public | OpenAICompatibleProvider | `public struct OpenAICompatibleProvider` |
+| var | public | OpenAICompatibleProviderConfiguration.apiKeyReference | `public var apiKeyReference: SecretReference?` |
+| func | public | OpenAICompatibleProviderConfiguration.resolveAPIKey(using:reference:) | `public func resolveAPIKey(using store: (any SecretStore)?, reference: SecretReference? = nil) async throws -> String?` |
+| func | public | OpenAICompatibleProvider.init(configuration:secretStore:session:) | `public init(configuration: OpenAICompatibleProviderConfiguration, secretStore: any SecretStore, session: URLSession = .shared)` |
 | func | public | InferenceProvider.openAICompatible(_:) | `public static func openAICompatible(_ configuration: OpenAICompatibleProviderConfiguration, session: URLSession = .shared) -> OpenAICompatibleProvider` |
+| func | public | InferenceProvider.openAICompatible(_:secretStore:session:) | `public static func openAICompatible(_ configuration: OpenAICompatibleProviderConfiguration, secretStore: any SecretStore, session: URLSession = .shared) -> OpenAICompatibleProvider` |
 
 ### Providers/FoundationModels/FoundationModelsInferenceProvider.swift
 
@@ -3339,6 +3348,46 @@ Apple-only (`#if canImport(AVFoundation)`).
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 18 | func | public | VoiceSession.appleOnDevice(agent:session:locale:configuration:installAssetsIfNeeded:) | `public static func appleOnDevice(agent: any AgentRuntime, session: (any Session)? = nil, locale: Locale = .current, configuration: VoiceSessionConfiguration = .default, installAssetsIfNeeded: Bool = false) async throws -> VoiceSession` |
+
+## 14c. Security
+
+### Security/SecretReference.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | struct | public | SecretReference | `public struct SecretReference` |
+| — | var | public | SecretReference.service | `public var service: String` |
+| — | var | public | SecretReference.account | `public var account: String` |
+| — | func | public | SecretReference.init(service:account:) | `public init(service: String, account: String)` |
+
+### Security/SecretStore.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | enum | public | SecretStoreError | `public enum SecretStoreError` |
+| — | protocol | public | SecretStore | `public protocol SecretStore` |
+| — | actor | public | InMemorySecretStore | `public actor InMemorySecretStore` |
+| — | struct | public | EnvironmentSecretStore | `public struct EnvironmentSecretStore` |
+
+### Security/KeychainSecretStore.swift
+
+Apple platforms only (`canImport(Security)`).
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | enum | public | KeychainAccessible | `public enum KeychainAccessible` |
+| — | actor | public | KeychainSecretStore | `public actor KeychainSecretStore` |
+| — | func | public | KeychainSecretStore.init(accessible:) | `public init(accessible: KeychainAccessible = .whenUnlockedThisDeviceOnly)` |
+
+### Security/SecretRedaction.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | enum | public | SecretRedaction | `public enum SecretRedaction` |
+| — | var | public | SecretRedaction.placeholder | `public static let placeholder: String` |
+| — | func | public | SecretRedaction.isSensitiveName(_:) | `public static func isSensitiveName(_ name: String) -> Bool` |
+| — | func | public | SecretRedaction.redactedSensitiveValues(_:) | `public static func redactedSensitiveValues(_ values: [String: String]) -> [String: String]` |
+| — | func | public | SecretRedaction.redactingKnownSecrets(in:secrets:) | `public static func redactingKnownSecrets(in text: String, secrets: [String?]) -> String` |
 
 ## 15. Companion Products
 

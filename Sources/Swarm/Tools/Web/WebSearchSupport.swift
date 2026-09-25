@@ -342,10 +342,11 @@ internal actor WebToolRuntime {
 
     func execute(
         request: WebToolRequest,
-        configuration: WebSearchTool.Configuration
+        configuration: WebSearchTool.Configuration,
+        secretStore: (any SecretStore)? = nil
     ) async throws -> WebSearchEnvelope {
         let store = try await store(for: configuration)
-        let engine = WebExecutionEngine(configuration: configuration, store: store)
+        let engine = WebExecutionEngine(configuration: configuration, store: store, secretStore: secretStore)
         return try await engine.execute(request: request)
     }
 
@@ -364,6 +365,7 @@ internal actor WebToolRuntime {
 internal struct WebExecutionEngine: Sendable {
     let configuration: WebSearchTool.Configuration
     let store: WaxWebArtifactStore
+    let secretStore: (any SecretStore)?
 
     func execute(request: WebToolRequest) async throws -> WebSearchEnvelope {
         switch request.mode {
@@ -590,7 +592,7 @@ internal struct WebExecutionEngine: Sendable {
             return []
         }
         Log.agents.info("[WebSearchTool] liveSearch: query='\(query)', maxResults=\(request.maxResults), domains=\(request.domains), recencyDays=\(request.recencyDays ?? -1)")
-        let hits = try await TavilySearchBackend(configuration: configuration).search(
+        let hits = try await TavilySearchBackend(configuration: configuration, secretStore: secretStore).search(
             query: query,
             maxResults: request.maxResults,
             domains: request.domains,
@@ -855,9 +857,9 @@ internal actor WaxWebArtifactStore {
         bundlesURL = rootURL.appendingPathComponent("bundles", isDirectory: true)
         indexURL = rootURL.appendingPathComponent("web-index.wax")
 
-        try FileManager.default.createDirectory(at: manifestsURL, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: rawURL, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: bundlesURL, withIntermediateDirectories: true)
+        try SecureFileIO.createDirectory(at: manifestsURL)
+        try SecureFileIO.createDirectory(at: rawURL)
+        try SecureFileIO.createDirectory(at: bundlesURL)
 
         var waxConfig = Wax.Memory.Config.default
         waxConfig.enableVectorSearch = false
@@ -873,7 +875,7 @@ internal actor WaxWebArtifactStore {
         let manifestURL = manifestsURL.appendingPathComponent("\(artifact.artifact.artifactID).json")
         let rawURL = URL(fileURLWithPath: artifact.artifact.rawArtifactRef)
         let data = try encoder.encode(artifact)
-        try data.write(to: manifestURL, options: .atomic)
+        try SecureFileIO.write(data, to: manifestURL)
         try await rebuildIndex()
 
         if !FileManager.default.fileExists(atPath: rawURL.path) {
@@ -987,7 +989,7 @@ internal actor WaxWebArtifactStore {
             updatedAt: now
         )
         let url = bundlesURL.appendingPathComponent("\(bundle.bundleID).json")
-        try encoder.encode(bundle).write(to: url, options: .atomic)
+        try SecureFileIO.write(encoder.encode(bundle), to: url)
         return bundle
     }
 
@@ -999,7 +1001,7 @@ internal actor WaxWebArtifactStore {
 
     private func saveLocally(_ artifact: StoredWebArtifact) throws -> StoredWebArtifact {
         let manifestURL = manifestsURL.appendingPathComponent("\(artifact.artifact.artifactID).json")
-        try encoder.encode(artifact).write(to: manifestURL, options: .atomic)
+        try SecureFileIO.write(encoder.encode(artifact), to: manifestURL)
         return artifact
     }
 
@@ -1186,6 +1188,7 @@ internal struct SectionSearchMatch: Sendable {
 
 internal struct TavilySearchBackend: Sendable {
     let configuration: WebSearchTool.Configuration
+    let secretStore: (any SecretStore)?
 
     private struct Response: Decodable {
         let results: [Result]
@@ -1204,7 +1207,8 @@ internal struct TavilySearchBackend: Sendable {
         domains: [String],
         recencyDays: Int?
     ) async throws -> [WebSearchHit] {
-        guard let apiKey = configuration.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !apiKey.isEmpty else {
+        let resolved = try await configuration.resolveAPIKey(using: secretStore)
+        guard let apiKey = resolved?.trimmingCharacters(in: .whitespacesAndNewlines), !apiKey.isEmpty else {
             Log.agents.warning("[TavilySearchBackend] API key is empty — returning 0 hits")
             return []
         }
@@ -1838,7 +1842,7 @@ internal struct WebContentExtractor: Sendable {
             rawFileURL(rootURL: $0, artifactID: artifactID, contentType: payload.contentType)
         }
         if let rawArtifactURL {
-            try payload.data.write(to: rawArtifactURL, options: .atomic)
+            try SecureFileIO.write(payload.data, to: rawArtifactURL)
         }
 
         let normalizedSections = sections.enumerated().map { index, section in
@@ -2305,7 +2309,7 @@ internal func hostTrustProfile(for url: URL) -> WebHostTrustProfile {
 
 internal func rawFileURL(rootURL: URL, artifactID: String, contentType: String) -> URL {
     let root = rootURL
-    try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    try? SecureFileIO.createDirectory(at: root)
     let ext: String = if contentType.contains("html") {
         "html"
     } else if contentType.contains("pdf") {

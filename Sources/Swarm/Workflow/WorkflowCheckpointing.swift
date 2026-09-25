@@ -58,11 +58,29 @@ public struct WorkflowCheckpointing: Sendable {
         #endif
     }
 
+    /// Migrates a file-system checkpoint directory to owner-only permissions.
+    ///
+    /// Checkpoints written before owner-only hardening shipped keep their
+    /// original permissions. Call this once per pre-existing directory (or
+    /// delete and re-run); new checkpoint files are written `0600`, and
+    /// directories created by the store are `0700`. Items that cannot be
+    /// hardened are skipped.
+    ///
+    /// - Parameter directory: Checkpoint directory previously passed to
+    ///   ``fileSystem(directory:retention:)``.
+    /// - Returns: Number of items hardened, including the directory itself.
+    /// - Throws: `CocoaError.fileNoSuchFile` when `directory` does not exist.
+    @discardableResult
+    public static func hardenFilePermissions(in directory: URL) throws -> Int {
+        try SecureFileIO.hardenTree(at: directory)
+    }
+
     /// File-system checkpoint persistence rooted at `directory`.
     ///
     /// Checkpoints are pruned to ``WorkflowCheckpointRetention/maxCheckpointsPerRun``
     /// per durable run. Loads consult a directory manifest instead of decoding
-    /// every file.
+    /// every file. Checkpoint files are written with owner-only (`0600`)
+    /// permissions because they may contain prompt and tool-result content.
     ///
     /// - Parameters:
     ///   - directory: Directory that stores checkpoint JSON files and the manifest.
