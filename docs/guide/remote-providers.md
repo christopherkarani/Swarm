@@ -116,9 +116,15 @@ let configuration = OpenAICompatibleProviderConfiguration(
     apiKeyReference: reference,
     model: "gpt-4o"
 )
+let store: any SecretStore
+#if canImport(Security)
+store = KeychainSecretStore()
+#else
+store = EnvironmentSecretStore()
+#endif
 let provider: any InferenceProvider = .openAICompatible(
     configuration,
-    secretStore: KeychainSecretStore()
+    secretStore: store
 )
 ```
 

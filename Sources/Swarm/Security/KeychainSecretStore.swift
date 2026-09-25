@@ -80,8 +80,12 @@ public actor KeychainSecretStore: SecretStore {
     }
 
     /// Saves `secret` under `reference`, replacing any existing item.
+    ///
+    /// Trims leading/trailing whitespace and throws
+    /// ``SecretStoreError/saveFailed(_:)`` when nothing remains.
     public func save(_ secret: String, for reference: SecretReference) throws {
-        guard let data = secret.data(using: .utf8) else {
+        let normalized = try SecretInputValidation.normalizedSecret(secret)
+        guard let data = normalized.data(using: .utf8) else {
             throw SecretStoreError.saveFailed("Secret is not UTF-8 encodable")
         }
 

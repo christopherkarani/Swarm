@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// Owner-only file writes for ContextCore checkpoints.
 ///
@@ -12,9 +17,54 @@ enum ContextCoreSecureFileIO {
     /// POSIX permissions applied to created directories (`0700`).
     static let directoryPermissions = 0o700
 
-    /// Atomically writes `data` to `url`, then restricts it to `0600`.
+    /// Atomically writes `data` to `url` as an owner-only (`0600`) file.
+    ///
+    /// The bytes land in a same-directory temporary file created with
+    /// `O_CREAT`/`0600`, so they are never readable by group/other — not
+    /// even between creation and the atomic rename over `url`.
     static func write(_ data: Data, to url: URL) throws {
-        try data.write(to: url, options: .atomic)
+        let tempURL = url.deletingLastPathComponent().appendingPathComponent(
+            ".\(url.lastPathComponent).\(UUID().uuidString).tmp"
+        )
+        let tempPath = tempURL.path
+        let fd = tempPath.withCString { cPath in
+            open(cPath, O_WRONLY | O_CREAT | O_EXCL, mode_t(filePermissions))
+        }
+        guard fd >= 0 else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: tempPath])
+        }
+        do {
+            try data.withUnsafeBytes { buffer in
+                var offset = 0
+                while offset < buffer.count {
+                    guard let baseAddress = buffer.baseAddress else { break }
+                    let written = posixWrite(fd, baseAddress.advanced(by: offset), buffer.count - offset)
+                    guard written > 0 else {
+                        throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: tempPath])
+                    }
+                    offset += written
+                }
+            }
+        } catch {
+            close(fd)
+            try? FileManager.default.removeItem(at: tempURL)
+            throw error
+        }
+        guard close(fd) == 0 else {
+            try? FileManager.default.removeItem(at: tempURL)
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: tempPath])
+        }
+        let renamed = tempPath.withCString { tempCPath in
+            url.path.withCString { destinationCPath in
+                rename(tempCPath, destinationCPath)
+            }
+        }
+        guard renamed == 0 else {
+            try? FileManager.default.removeItem(at: tempURL)
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        // The renamed file already carries the temp file's `0600` mode;
+        // re-apply defensively (and for Data Protection) like before.
         try hardenFile(at: url)
     }
 
@@ -55,6 +105,18 @@ enum ContextCoreSecureFileIO {
             [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
             ofItemAtPath: url.path
         )
+        #endif
+    }
+
+    /// POSIX `write(2)`. Kept behind a helper because the enum's own
+    /// `write(_:to:)` shadows the global `write` symbol.
+    private static func posixWrite(_ fd: Int32, _ buffer: UnsafeRawPointer, _ count: Int) -> Int {
+        #if canImport(Darwin)
+        Darwin.write(fd, buffer, count)
+        #elseif canImport(Glibc)
+        Glibc.write(fd, buffer, count)
+        #else
+        #error("ContextCoreSecureFileIO.write requires Darwin or Glibc")
         #endif
     }
 }

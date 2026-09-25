@@ -119,8 +119,8 @@ public actor HTTPMCPServer: MCPServerConnection {
 
     /// Creates an HTTP MCP server client that resolves its API key from a ``SecretStore``.
     ///
-    /// The reference is resolved lazily on the first request and cached for
-    /// the server's lifetime. Use ``KeychainSecretStore`` on Apple platforms
+    /// The reference is resolved lazily on the first request and cached
+    /// until ``close()``. Use ``KeychainSecretStore`` on Apple platforms
     /// so the raw key never sits in persisted configuration.
     ///
     /// - Parameters:
@@ -310,12 +310,15 @@ public actor HTTPMCPServer: MCPServerConnection {
 
     /// Closes the connection to the MCP server.
     ///
-    /// Clears cached capabilities, the negotiated version, and the session
-    /// id. It is safe to call multiple times.
+    /// Clears cached capabilities, the negotiated version, the session id,
+    /// and the resolved API key (the reference re-resolves on the next
+    /// request). It is safe to call multiple times.
     public func close() async throws {
         cachedCapabilities = nil
         cachedProtocolVersion = nil
         cachedSessionID = nil
+        resolvedAPIKey = nil
+        didResolveAPIKey = false
     }
 
     // MARK: Private
@@ -534,10 +537,18 @@ public actor HTTPMCPServer: MCPServerConnection {
 
     private func makeStreamableRequest(body: Data) async throws -> URLRequest {
         if apiKey == nil, let apiKeyReference, !didResolveAPIKey {
-            didResolveAPIKey = true
             if let secretStore {
-                resolvedAPIKey = try await secretStore.secret(for: apiKeyReference)
+                do {
+                    resolvedAPIKey = try await secretStore.secret(for: apiKeyReference)
+                } catch {
+                    // Leave the reference unresolved so a transient store
+                    // failure retries on the next request instead of
+                    // permanently de-authing this server.
+                    didResolveAPIKey = false
+                    throw error
+                }
             }
+            didResolveAPIKey = true
         }
 
         var urlRequest = URLRequest(url: baseURL)

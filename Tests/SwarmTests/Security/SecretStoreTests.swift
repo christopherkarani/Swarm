@@ -2,6 +2,11 @@ import Foundation
 import Testing
 @testable import Swarm
 
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 #if canImport(Security)
 import Security
 #endif
@@ -47,6 +52,38 @@ struct SecretStoreTests {
         #expect(try await store.secret(for: missing) == nil)
         let blank = SecretReference(service: "ignored", account: "SWARM_TEST_BLANK")
         #expect(try await store.secret(for: blank) == nil)
+    }
+
+    @Test("Saving trims whitespace and rejects empty secrets")
+    func saveTrimsAndRejectsEmpty() async throws {
+        let store = InMemorySecretStore()
+        try await store.save("  padded-value\n", for: Self.reference)
+        #expect(try await store.secret(for: Self.reference) == "padded-value")
+
+        do {
+            try await store.save("  \n ", for: Self.reference)
+            Issue.record("expected SecretStoreError.saveFailed for an empty secret")
+        } catch {
+            guard case .saveFailed = error as? SecretStoreError else {
+                Issue.record("expected saveFailed, got \(error)")
+                return
+            }
+        }
+        // The rejected save leaves the previous value untouched.
+        #expect(try await store.secret(for: Self.reference) == "padded-value")
+    }
+
+    @Test("EnvironmentSecretStore reads the live process environment at request time")
+    func environmentReadsLiveProcessEnvironment() async throws {
+        let name = "SWARM_TEST_LIVE_\(UUID().uuidString.replacingOccurrences(of: "-", with: "_"))"
+        let store = EnvironmentSecretStore()
+        let reference = SecretReference(service: "ignored", account: name)
+        // Absent when the store is created...
+        #expect(try await store.secret(for: reference) == nil)
+        // ...visible once exported, without recreating the store.
+        setenv(name, "live-value", 1)
+        defer { unsetenv(name) }
+        #expect(try await store.secret(for: reference) == "live-value")
     }
 
     @Test("EnvironmentSecretStore is read-only")

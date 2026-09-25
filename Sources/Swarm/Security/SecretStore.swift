@@ -41,6 +41,9 @@ public protocol SecretStore: Sendable {
 
     /// Saves `secret` under `reference`, replacing any existing value.
     ///
+    /// Backends trim leading/trailing whitespace and reject values that are
+    /// empty after trimming with ``SecretStoreError/saveFailed(_:)``.
+    ///
     /// - Parameters:
     ///   - secret: The secret value. Must not be empty.
     ///   - reference: Pointer the secret is stored under.
@@ -78,8 +81,11 @@ public actor InMemorySecretStore: SecretStore {
     }
 
     /// Saves `secret` under `reference`.
-    public func save(_ secret: String, for reference: SecretReference) {
-        secrets[reference] = secret
+    ///
+    /// Trims leading/trailing whitespace and throws
+    /// ``SecretStoreError/saveFailed(_:)`` when nothing remains.
+    public func save(_ secret: String, for reference: SecretReference) throws {
+        secrets[reference] = try SecretInputValidation.normalizedSecret(secret)
     }
 
     /// Deletes any secret stored under `reference`.
@@ -99,20 +105,43 @@ public actor InMemorySecretStore: SecretStore {
 /// let reference = SecretReference(service: "com.example.app", account: "OPENAI_API_KEY")
 /// let key = try await EnvironmentSecretStore().secret(for: reference)
 /// ```
+/// Shared save-input normalization for ``SecretStore`` backends.
+enum SecretInputValidation {
+    /// Trims leading/trailing whitespace (a stray pasted newline breaks
+    /// Bearer auth) and rejects values left empty.
+    ///
+    /// - Parameter secret: Raw value passed to `save`.
+    /// - Returns: The trimmed value.
+    /// - Throws: ``SecretStoreError/saveFailed(_:)`` when `secret` is empty
+    ///   after trimming.
+    static func normalizedSecret(_ secret: String) throws -> String {
+        let trimmed = secret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw SecretStoreError.saveFailed("Cannot save an empty secret")
+        }
+        return trimmed
+    }
+}
+
 public struct EnvironmentSecretStore: SecretStore, Sendable {
-    private let environment: [String: String]
+    /// Explicit mapping for tests. `nil` reads the live process environment
+    /// at request time.
+    private let environment: [String: String]?
 
     /// Creates a store reading `environment`.
     ///
-    /// - Parameter environment: Variable mapping. Defaults to the live
-    ///   process environment. Inject a dictionary in tests.
+    /// - Parameter environment: Variable mapping. When `nil` (the default)
+    ///   the live process environment is read at request time, so variables
+    ///   exported after `init` are still visible. Inject a dictionary in
+    ///   tests.
     public init(environment: [String: String]? = nil) {
-        self.environment = environment ?? ProcessInfo.processInfo.environment
+        self.environment = environment
     }
 
     /// Reads the variable named by `reference.account`.
     public func secret(for reference: SecretReference) -> String? {
-        let value = environment[reference.account]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let source = environment ?? ProcessInfo.processInfo.environment
+        let value = source[reference.account]?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let value, !value.isEmpty else { return nil }
         return value
     }

@@ -15,6 +15,37 @@ struct SecureFileIOTests {
         #expect(try permissions(of: url) == 0o600)
     }
 
+    @Test("Secure writes replace existing files, stay owner-only, and leak no temps")
+    func secureWriteReplacesExistingFile() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("swarm-secure-overwrite-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try SecureFileIO.write(Data("first".utf8), to: url)
+        try SecureFileIO.write(Data("second".utf8), to: url)
+        #expect(try Data(contentsOf: url) == Data("second".utf8))
+        #expect(try permissions(of: url) == 0o600)
+
+        let siblings = try FileManager.default.contentsOfDirectory(
+            at: url.deletingLastPathComponent(),
+            includingPropertiesForKeys: nil
+        )
+        // Compare names only: directory listings resolve the /var -> /private/var symlink.
+        let matches = siblings.filter { $0.lastPathComponent.contains(url.lastPathComponent) }
+        #expect(matches.map(\.lastPathComponent) == [url.lastPathComponent])
+    }
+
+    @Test("Secure writes handle empty data")
+    func secureWriteHandlesEmptyData() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("swarm-secure-empty-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try SecureFileIO.write(Data(), to: url)
+        #expect(try Data(contentsOf: url) == Data())
+        #expect(try permissions(of: url) == 0o600)
+    }
+
     @Test("Secure directory creation restricts the leaf to owner-only")
     func secureCreateDirectoryRestrictsPermissions() throws {
         let url = FileManager.default.temporaryDirectory
@@ -59,6 +90,29 @@ struct SecureFileIOTests {
         #expect(try permissions(of: file) == 0o600)
         #expect(try permissions(of: nested) == 0o700)
         #expect(try permissions(of: root) == 0o700)
+    }
+
+    @Test("hardenTree skips symlinks instead of following them")
+    func hardenTreeSkipsSymlinks() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("swarm-harden-link-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let root = base.appendingPathComponent("root", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let outside = base.appendingPathComponent("outside.txt")
+        try Data("outside".utf8).write(to: outside)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: outside.path)
+        let link = root.appendingPathComponent("link.txt")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+
+        let hardened = try SecureFileIO.hardenTree(at: root)
+        #expect(hardened == 1)
+        #expect(try permissions(of: root) == 0o700)
+        #expect(try permissions(of: outside) == 0o644)
+
+        // A symlinked root hardens nothing.
+        #expect(try SecureFileIO.hardenTree(at: link) == 0)
+        #expect(try permissions(of: outside) == 0o644)
     }
 
     @Test("hardenTree throws for a missing path")
