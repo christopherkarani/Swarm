@@ -190,12 +190,7 @@ struct WorkflowDurableEngine: Sendable {
         var builder = HiveGraphBuilder<WorkflowDurableSchema>(start: [WorkflowNodeID.execute])
         builder.addNode(WorkflowNodeID.execute, workflowNode)
         builder.addRouter(from: WorkflowNodeID.execute) { store in
-            let phase = (try? store.get(WorkflowDurableSchema.phaseKey))
-                ?? .running(stepCursor: 0, iterationCursor: 0, lastResult: nil)
-            if case .completed = phase {
-                return .end
-            }
-            return .to([WorkflowNodeID.execute])
+            WorkflowDurableRouting.route(for: Result { try store.get(WorkflowDurableSchema.phaseKey) })
         }
         return try builder.compile()
     }
@@ -279,6 +274,32 @@ struct WorkflowDurableEngine: Sendable {
                 }
                 return AgentResult(output: currentInput)
             }
+        }
+    }
+}
+
+/// Non-throwing router decision for the durable execute node.
+///
+/// Routers cannot throw, so the phase-channel read arrives as a `Result`. Only
+/// a genuinely missing value means "no checkpoint state yet" and restarts from
+/// step 0. Any other store error (type mismatch, unknown channel, scope
+/// mismatch) signals corruption: routing to `.end` lets result extraction
+/// re-read the phase channel on its throwing path and surface the underlying
+/// error instead of silently re-running steps from the start.
+enum WorkflowDurableRouting: Sendable {
+    static func route(for phaseResult: Result<WorkflowDurablePhase, Error>) -> Route {
+        switch phaseResult {
+        case .success(let phase):
+            if case .completed = phase {
+                return .end
+            }
+            return .to([WorkflowNodeID.execute])
+        case .failure(let error):
+            if let runtimeError = error as? HiveRuntimeError,
+               case .storeValueMissing = runtimeError {
+                return .to([WorkflowNodeID.execute])
+            }
+            return .end
         }
     }
 }
