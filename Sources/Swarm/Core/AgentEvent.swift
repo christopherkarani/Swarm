@@ -86,6 +86,14 @@ public enum AgentEvent: Sendable {
 
         /// A tool call failed.
         case failed(call: ToolCall, error: AgentError)
+
+        /// Builds ``completed(call:result:)`` from a paired invocation.
+        ///
+        /// The enum associated values stay `call` and `result`. Use this when
+        /// the observer already holds a ``ToolInvocation``.
+        public static func completed(_ invocation: ToolInvocation) -> Self {
+            .completed(call: invocation.call, result: invocation.result)
+        }
     }
 
     /// Token and thought output events.

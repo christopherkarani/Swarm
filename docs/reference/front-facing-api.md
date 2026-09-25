@@ -245,7 +245,13 @@ let config = AgentConfiguration.default
     ))
 ```
 
-Retryability is ``InferenceRetryability/isRetryable(_:)`` **and** the policy's `shouldRetry` (default: always). Permanent failures in that table are never retried. ``FallbackChain`` is not wired into `Agent` in this release.
+Retryability is ``InferenceRetryability/isRetryable(_:)`` **and** the policy's `shouldRetry` (default: always). Permanent failures in that table are never retried. A server `Retry-After` hint carried by ``AgentError/rateLimitExceeded(retryAfter:)`` extends the policy backoff (never shortens it).
+
+For provider fallback, compose ``FailoverProvider`` and pass it as the agent's inference provider — it advances across `primary` + `fallbacks` on retryable failures only, rethrows the last error when exhausted, and stays out of `Agent`'s own retry wrapper. ``FallbackChain`` remains the escape hatch for custom operations.
+
+### Loop safety
+
+The tool loop fingerprints every tool-call batch (tool names plus canonical arguments) and stops the run with ``AgentError/toolCallLoopDetected(toolNames:repetitions:)`` after ``AgentConfiguration/maxConsecutiveToolRepeats`` (default: 3) consecutive identical batches, before executing the repeat again. Tune with `.maxConsecutiveToolRepeats(_:)` (floor: 2).
 
 ### Runtime wrappers (on AgentRuntime)
 
@@ -854,6 +860,62 @@ public protocol InferenceProvider: Sendable {
 }
 ```
 
+### InferenceMessage
+
+```swift
+public struct InferenceMessage: Sendable, Equatable {
+    public enum Role: String, Sendable, Codable {
+        case system
+        case user
+        case assistant
+        case tool
+    }
+
+    public enum Body: Sendable, Equatable {
+        case system(String)
+        case user(String)
+        case assistant(String, toolCalls: [ToolCall] = [])
+        case tool(name: String, content: String, toolCallID: String?)
+    }
+
+    /// Provider-native tool call on an assistant body. Not the host `ToolCall`
+    /// (`id: UUID`, `toolName`) used by `AgentEvent.Tool` and `ToolInvocation`.
+    public struct ToolCall: Sendable, Equatable {
+        public let id: String?
+        public let name: String
+        public let arguments: [String: SendableValue]
+        public let thoughtSignature: String?
+    }
+
+    public let body: Body
+    public var role: Role { get }
+    public var content: String { get }
+    public var name: String? { get }
+    public var toolCallID: String? { get }
+    public var toolCalls: [ToolCall] { get }
+
+    public init(body: Body)
+
+    @available(*, deprecated, message: "Use init(body:) or the role factories.")
+    public init(
+        role: Role,
+        content: String,
+        name: String? = nil,
+        toolCallID: String? = nil,
+        toolCalls: [ToolCall] = []
+    )
+
+    public static func system(_ content: String) -> InferenceMessage
+    public static func user(_ content: String) -> InferenceMessage
+    public static func assistant(_ content: String, toolCalls: [ToolCall] = []) -> InferenceMessage
+    public static func tool(name: String, content: String, toolCallID: String? = nil) -> InferenceMessage
+}
+```
+
+Prefer `InferenceMessage(body:)` or the role factories (`system`, `user`, `assistant`, `tool`). The payload is a closed `Body`: a user or system message cannot store tool calls, and a tool result always has a name. Historical `role`, `content`, `name`, `toolCallID`, and `toolCalls` remain as computed projections of `body`. Assistant `toolCalls` are `InferenceMessage.ToolCall` values, not host `ToolCall` records.
+
+The deprecated memberwise `init(role:content:name:toolCallID:toolCalls:)` maps `.system` → `.system(content)`, `.user` → `.user(content)`, `.assistant` → `.assistant(content, toolCalls:)`, and `.tool` → `.tool(name: name ?? "tool", content: content, toolCallID:)`. Extra fields for that role are dropped.
+
 Agent reads ``InferenceProviderCapabilities`` and ``InferenceProvider/promptTokenCounter``
 directly from ``InferenceProvider``. Deprecated marker protocols remain available
 for source compatibility, but capability bits and the structured-message methods
@@ -933,6 +995,22 @@ See the [Foundation Models guide](/guide/foundation-models).
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
 (wrapped as ``FoundationModelsNativeTool``).
 
+### Failover composition
+
+``FailoverProvider`` wraps an ordered `primary` + `fallbacks` chain behind
+the ``InferenceProvider`` protocol. Capabilities come from `primary`;
+prompt, streaming, and prompt-structured calls inherit failover through
+the protocol defaults.
+
+```swift
+let provider = FailoverProvider(
+    primary: .openAICompatible(.openAI(apiKey: key, model: "gpt-4o")),
+    fallbacks: [.openAICompatible(.ollama(model: "llama3.2"))],
+    onFailover: { index, error in print("provider \(index) failed: \(error)") }
+)
+let agent = try Agent("Be concise.", inferenceProvider: provider)
+```
+
 ## 12) Events and results
 
 ```swift
@@ -958,6 +1036,8 @@ public enum AgentEvent: Sendable {
         case partial(update: PartialToolCallUpdate)
         case completed(call: ToolCall, result: ToolResult)
         case failed(call: ToolCall, error: AgentError)
+
+        public static func completed(_ invocation: ToolInvocation) -> Self
     }
 
     public enum Output: Sendable {
@@ -991,6 +1071,12 @@ public enum AgentEvent: Sendable {
 public struct ToolInvocation: Sendable, Equatable {
     public let call: ToolCall
     public let result: ToolResult
+}
+
+public protocol AgentObserver: Sendable {
+    func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async
+    func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async
+    // ... other requirements ...
 }
 
 public struct AgentResult: Sendable {
@@ -1065,6 +1151,10 @@ public struct ToolCallRecord: Sendable {
 
 Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The deprecated `ToolResult.init(callId:isSuccess:output:duration:errorMessage:)` and `ToolCallRecord` compatibility initializer remain available until the documented breaking boundary. They map independently supplied fields to the closed outcome using the historical rules: success ignores `errorMessage`, failure ignores `output`, and a nil failure message becomes `"Tool execution failed"`. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
 
+`AgentEvent.Tool.completed(_ invocation:)` yields `.completed(call:result:)` from a paired `ToolInvocation`. The enum associated values stay `call` and `result`.
+
+Production writers call `onToolEnd(context:agent:invocation:)` so observers can name the tool without a side store. The protocol-extension default forwards `invocation.result` to the result-only `onToolEnd(context:agent:result:)` so existing conformers keep compiling.
+
 ### Tool failure errors
 
 Tool failures surface as `AgentError.toolFailure(toolName:message:cause:)`, which keeps the
@@ -1095,6 +1185,56 @@ Typed structured-output decode failures keep the original error through
 public case structuredOutputDecodingFailed(reason: String, underlying: (any Error)?)
 ```
 
+## 12b) Voice
+
+`VoiceSession` is a turn-based actor around `any AgentRuntime`. Swarm does not
+accept audio. Inject `SpeechToText` and `TextToSpeech`. Barge-in is not in v1.
+
+```swift
+public protocol SpeechToText: Sendable {
+    func start() -> AsyncThrowingStream<SpeechTranscript, Error>
+    func stop() async
+}
+
+public protocol TextToSpeech: Sendable {
+    func speak(_ text: String) async throws
+    func stop() async
+}
+
+public actor VoiceSession {
+    public init(
+        agent: any AgentRuntime,
+        speechToText: any SpeechToText,
+        textToSpeech: any TextToSpeech,
+        session: (any Session)? = nil,
+        configuration: VoiceSessionConfiguration = .default
+    )
+    public var events: AsyncStream<VoiceEvent> { get }
+    public func listenAndRespond() async throws -> VoiceTurnResult
+    public func respond(to transcript: String) async throws -> VoiceTurnResult
+    public func stop() async
+}
+
+#if canImport(Speech)
+@available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+extension VoiceSession {
+    public static func appleOnDevice(
+        agent: any AgentRuntime,
+        session: (any Session)?,
+        locale: Locale,
+        configuration: VoiceSessionConfiguration,
+        installAssetsIfNeeded: Bool
+    ) async throws -> VoiceSession
+}
+#endif
+```
+
+`AppleSpeechToText` (`SpeechAnalyzer` + `SpeechTranscriber`) and
+`AppleTextToSpeech` (`AVSpeechSynthesizer`) are Apple-only. They are not
+available on Linux.
+
+See the [Voice guide](/guide/voice).
+
 ## 13) Public macros
 
 | Macro | Applied To | Effect |
@@ -1120,7 +1260,7 @@ The package exports four public library products:
 
 | Product | Source surface | Public entry points |
 |---------|----------------|---------------------|
-| `Swarm` | `Sources/Swarm` | Agents, tools, workflows, memory, guardrails, providers, MCP client/bridge, workspace, resilience, observability, macros |
+| `Swarm` | `Sources/Swarm` | Agents, tools, workflows, memory, guardrails, providers, MCP client/bridge, workspace, resilience, observability, macros, voice coordinator |
 | `SwarmOpenTelemetry` | `Sources/SwarmOpenTelemetry` | Requires `traits: ["OpenTelemetry"]`. `OpenTelemetryInferenceProvider`, `InferenceProvider.instrumentedWithOpenTelemetry(...)`, `AgentRuntime.instrumentedWithOpenTelemetry(...)`, `OTLPHTTPTraceExporter`, `OpenTelemetryTracing`, `OpenTelemetryTracePropagation`, and `SwarmRuntimeTracer` |
 | `SwarmMembrane` | `Sources/SwarmMembrane` | **Deprecated.** Hollow re-export (`@_exported import Swarm`). Import `Swarm` and use `MembraneEnvironment`, `MembraneFeatureConfiguration`, `MembraneAgentAdapter`, and `DefaultMembraneAgentAdapter` under `Sources/Swarm/Integration/Membrane/`. The product will be removed in 0.7.0. |
 | `SwarmMCP` | `Sources/SwarmMCP` | Requires `traits: ["MCP"]`. `SwarmMCPServerService`, `SwarmMCPToolCatalog`, `SwarmMCPToolExecutor`, `SwarmMCPToolExecutionError`, and `SwarmMCPToolRegistryAdapter`. Swarm's MCP *client* stays in the `Swarm` product and does not need this trait. |

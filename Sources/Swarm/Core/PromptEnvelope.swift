@@ -352,13 +352,16 @@ enum ContextWindow {
     }
 
     private static func replacingContent(of message: InferenceMessage, with content: String) -> InferenceMessage {
-        InferenceMessage(
-            role: message.role,
-            content: content,
-            name: message.name,
-            toolCallID: message.toolCallID,
-            toolCalls: message.toolCalls
-        )
+        switch message.body {
+        case .system:
+            .system(content)
+        case .user:
+            .user(content)
+        case let .assistant(_, toolCalls):
+            .assistant(content, toolCalls: toolCalls)
+        case let .tool(name, _, toolCallID):
+            .tool(name: name, content: content, toolCallID: toolCallID)
+        }
     }
 }
 
@@ -414,16 +417,10 @@ enum PromptEnvelope {
         }
         let kept = Set(toolIndices.suffix(keepLast))
         return messages.enumerated().map { index, message in
-            guard message.role == .tool, kept.contains(index) == false else {
+            guard case let .tool(name, _, toolCallID) = message.body, kept.contains(index) == false else {
                 return message
             }
-            return InferenceMessage(
-                role: message.role,
-                content: omittedToolResult,
-                name: message.name,
-                toolCallID: message.toolCallID,
-                toolCalls: message.toolCalls
-            )
+            return .tool(name: name, content: omittedToolResult, toolCallID: toolCallID)
         }
     }
 

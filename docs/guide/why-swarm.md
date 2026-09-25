@@ -80,6 +80,12 @@ let sections = try await Job().run("Write an essay about rivers") { session in
 `JobStore` holds records. `JobSession.window` does the search and truncation.
 
 
+## Voice Is a Coordinator, Not an Agent
+
+`VoiceSession` owns the microphone turn and the speak queue. Agent stays a
+value that takes a `String`. Hosts inject `SpeechToText` and `TextToSpeech`.
+See [Voice](./voice.md).
+
 ## On-Device and Cloud — Same API
 
 Apple Foundation Models built in. Custom backends implement `InferenceProvider` and drop in without changing the agent loop.

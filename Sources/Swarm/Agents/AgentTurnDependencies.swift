@@ -108,6 +108,9 @@ struct AgentTurnDependencyQuery {
 /// Foundation Models → private explicit → private environment → private global
 /// → throw. Non-private providers are filtered out; Foundation Models is
 /// accepted as on-device private inference.
+///
+/// Inference options, provider capabilities, and runtime environment are
+/// assembled here as well. Tracker I/O stays in the ``Agent`` shell.
 enum AgentTurnDependencyResolver {
     static func resolve(_ query: AgentTurnDependencyQuery) throws -> AgentTurnDependencies {
         let memory = resolveMemory(query)
@@ -206,7 +209,7 @@ enum AgentTurnDependencyResolver {
     private static func resolveTracer(_ query: AgentTurnDependencyQuery) -> (any Tracer)? {
         let configured = query.explicitTracer ?? query.environment.tracer
         let fallback = query.configuration.defaultTracingEnabled
-            ? SwiftLogTracer(minimumLevel: .debug)
+            ? SwiftLogTracer(minimumLevel: .info)
             : nil
         let base = configured ?? fallback
 
@@ -242,5 +245,58 @@ enum AgentTurnDependencyResolver {
             return nil
         }
         return membrane.adapter ?? DefaultMembraneAgentAdapter(configuration: membrane.configuration)
+    }
+
+    /// Effective capability set advertised by a provider.
+    static func providerCapabilities(for provider: any InferenceProvider) -> InferenceProviderCapabilities {
+        InferenceProviderCapabilities.resolved(for: provider)
+    }
+
+    /// Merges the provider's prompt token counter into the run environment.
+    static func runtimeEnvironment(
+        _ environment: AgentEnvironment,
+        addingTokenCounterFrom provider: any InferenceProvider
+    ) -> AgentEnvironment {
+        var environment = environment
+        if let tokenCounter = provider.promptTokenCounter {
+            environment.promptTokenCounter = tokenCounter
+        }
+        return environment
+    }
+
+    /// Assembles per-run inference options from configuration and an already-read response id.
+    ///
+    /// Previous-response continuation applies only to providers advertising
+    /// `.responseContinuation`; an explicit configured ID wins over
+    /// `latestResponseID`. The shell awaits ``ResponseTracker``; this function
+    /// does not.
+    static func inferenceOptions(
+        configuration: AgentConfiguration,
+        capabilities: InferenceProviderCapabilities,
+        sessionID: String?,
+        latestResponseID: String?
+    ) -> InferenceOptions {
+        var options = configuration.inferenceOptions
+
+        guard capabilities.contains(.responseContinuation) else {
+            options.previousResponseId = nil
+            return options
+        }
+
+        if let explicit = configuration.previousResponseId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !explicit.isEmpty {
+            options.previousResponseId = explicit
+            return options
+        }
+
+        guard configuration.autoPreviousResponseId, sessionID != nil else {
+            return options
+        }
+
+        if let latestResponseID {
+            options.previousResponseId = latestResponseID
+        }
+
+        return options
     }
 }

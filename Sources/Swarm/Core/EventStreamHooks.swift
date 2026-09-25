@@ -50,15 +50,13 @@ internal struct EventStreamObserver: AgentObserver {
     func onToolEnd(context _: AgentContext?, agent _: any AgentRuntime, result: ToolResult) async {
         let call = await toolCallStore.take(id: result.callId)
             ?? ToolCall(id: result.callId, toolName: "unknown", arguments: [:])
-        continuation.yield(.tool(.completed(call: call, result: result)))
+        emitToolCompletion(call: call, result: result)
+    }
 
-        if !result.isSuccess {
-            let errorMessage = result.errorMessage ?? "Unknown error"
-            continuation.yield(.tool(.failed(
-                call: call,
-                error: .toolFailure(toolName: call.toolName, message: errorMessage, cause: nil)
-            )))
-        }
+    func onToolEnd(context _: AgentContext?, agent _: any AgentRuntime, invocation: ToolInvocation) async {
+        _ = await toolCallStore.take(id: invocation.result.callId)
+        continuation.yield(.tool(.completed(invocation)))
+        emitFailedIfNeeded(call: invocation.call, result: invocation.result)
     }
 
     func onThinking(context _: AgentContext?, agent _: any AgentRuntime, thought: String) async {
@@ -109,6 +107,22 @@ internal struct EventStreamObserver: AgentObserver {
         continuation.yield(.observation(.inferenceRetry(
             attempt: attempt,
             message: error.localizedDescription
+        )))
+    }
+
+    private func emitToolCompletion(call: ToolCall, result: ToolResult) {
+        continuation.yield(.tool(.completed(call: call, result: result)))
+        emitFailedIfNeeded(call: call, result: result)
+    }
+
+    private func emitFailedIfNeeded(call: ToolCall, result: ToolResult) {
+        guard !result.isSuccess else {
+            return
+        }
+        let errorMessage = result.errorMessage ?? "Unknown error"
+        continuation.yield(.tool(.failed(
+            call: call,
+            error: .toolFailure(toolName: call.toolName, message: errorMessage, cause: nil)
         )))
     }
 }

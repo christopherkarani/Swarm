@@ -392,7 +392,7 @@ public actor AnyTracer: Tracer {
 extension Tracer where Self == ConsoleTracer {
     /// Creates a console tracer that prints events to stdout.
     public static func console(
-        minimumLevel: EventLevel = .trace,
+        minimumLevel: EventLevel = .info,
         colorized: Bool = true,
         includeTimestamp: Bool = true
     ) -> ConsoleTracer {

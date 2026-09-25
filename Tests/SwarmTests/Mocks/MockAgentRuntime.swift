@@ -16,6 +16,7 @@ public actor MockAgentRuntime: AgentRuntime {
     private let streamTokens: [String]
     private let responseFactory: (@Sendable () -> String)?
     private let delay: Duration
+    private let streamTokenDelay: Duration
     private var cancelled = false
 
     public init(
@@ -23,6 +24,7 @@ public actor MockAgentRuntime: AgentRuntime {
         streamTokens: [String] = [],
         responseFactory: (@Sendable () -> String)? = nil,
         delay: Duration = .zero,
+        streamTokenDelay: Duration = .zero,
         tools: [any AnyJSONTool] = [],
         instructions: String = "Mock agent",
         configuration: AgentConfiguration = .default,
@@ -37,6 +39,7 @@ public actor MockAgentRuntime: AgentRuntime {
         self.streamTokens = streamTokens
         self.responseFactory = responseFactory
         self.delay = delay
+        self.streamTokenDelay = streamTokenDelay
         self.tools = tools
         self.instructions = instructions
         self.configuration = configuration
@@ -89,6 +92,19 @@ public actor MockAgentRuntime: AgentRuntime {
 
             var aggregate = ""
             for token in self.streamTokens {
+                if self.streamTokenDelay > .zero {
+                    try await Task.sleep(for: self.streamTokenDelay)
+                }
+                if Task.isCancelled {
+                    continuation.yield(.lifecycle(.cancelled))
+                    continuation.finish()
+                    return
+                }
+                if await self.isCancelled {
+                    continuation.yield(.lifecycle(.cancelled))
+                    continuation.finish()
+                    return
+                }
                 aggregate += token
                 continuation.yield(.output(.token(token)))
             }

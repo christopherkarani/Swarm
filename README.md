@@ -193,7 +193,8 @@ swift run OnDeviceChat --demo
 
 | Capability | What it does |
 |---|---|
-| Conversation and memory | Preserve multi-turn state with `Conversation`; choose conversation, sliding-window, vector, summary, or hybrid memory. |
+| Conversation and memory | Preserve multi-turn state with `Conversation`; choose conversation, sliding-window, vector, summary, or hybrid memory. Sessions snapshot to portable JSON or `FileSession` files. |
+| Resilience | Retry with backoff and `Retry-After`, circuit breakers, rate limits, `FailoverProvider` chains, and tool-loop detection. |
 | Guardrails | Validate inputs, outputs, and tool arguments before they reach your application. |
 | Streaming | Observe lifecycle, tool, thinking, and output events through `AsyncThrowingStream`. |
 | Durable execution | Checkpoint workflow progress and resume after a process restart when the `Integrations` trait is enabled. |
@@ -225,6 +226,7 @@ await Swarm.configure(provider: myProvider)
 | [Why Swarm?](docs/guide/why-swarm.md) | Design choices and architecture |
 | [Remote Providers](docs/guide/remote-providers.md) | OpenAI, Azure, OpenRouter, Ollama, and LM Studio |
 | [Foundation Models](docs/guide/foundation-models.md) | Capture and native session modes |
+| [Voice](docs/guide/voice.md) | Turn-based `VoiceSession` around an existing Agent |
 | [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics |
 | [OpenTelemetry Tracing](docs/guide/opentelemetry-tracing.md) | Traces and propagation |
 | [Front-Facing API](docs/reference/front-facing-api.md) | Public API overview |

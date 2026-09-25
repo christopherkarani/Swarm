@@ -275,13 +275,18 @@ actor HandoffCoordinator {
                 }
             }
 
-            // Use potentially modified input from filter
-            effectiveInput = inputData.input
-
-            // Merge filter metadata into context
-            for (key, value) in inputData.metadata {
-                effectiveContext[key] = value
-            }
+            let prepared = HandoffPreparation.prepare(
+                sourceAgentName: request.sourceAgentName,
+                targetAgentName: request.targetAgentName,
+                lastUserText: request.input,
+                reason: request.reason ?? "",
+                transformed: inputData,
+                history: config.history,
+                conversation: [],
+                skippingToolCallID: nil
+            )
+            effectiveInput = prepared.request.input
+            effectiveContext = prepared.request.context
         }
 
         // Invoke AgentObserver.onHandoff if observer provided

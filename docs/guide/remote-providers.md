@@ -121,7 +121,26 @@ The provider implements the conversation seams the agent loop prefers:
 - Token usage from `usage.prompt_tokens` / `usage.completion_tokens`
 - W3C `traceparent` / `tracestate` via ``TraceContextHeaders``
 - HTTP errors classified for ``InferenceRetryability`` (429 / 5xx / network
-  retryable; 400 / 401 / 403 not)
+  retryable; 400 / 402 / quota-exhausted not). 401 / 403 surface as
+  ``AgentError/authenticationFailed``; 402 and `insufficient_quota` are
+  non-retryable billing errors. `Retry-After` headers (delay-seconds and
+  HTTP-date forms) feed ``RetryPolicy`` backoff.
+- Gemini thought signatures (`extra_content.google.thought_signature`)
+  round-trip on tool calls so thinking-model follow-ups are accepted.
+
+## Failover
+
+Wrap providers in ``FailoverProvider`` to try a backup when the primary
+fails retryably (rate limits, 5xx, network). Permanent failures —
+including ``AgentError/authenticationFailed`` — rethrow immediately.
+
+```swift
+let provider = FailoverProvider(
+    primary: .openAICompatible(.openAI(apiKey: key, model: "gpt-4o")),
+    fallbacks: [.openAICompatible(.ollama(model: "llama3.2"))]
+)
+let agent = try Agent("Be concise.", inferenceProvider: provider)
+```
 
 ## Live Ollama tests
 
