@@ -136,7 +136,7 @@ enum AgentTurnKernel: Sendable {
 
     /// Facts the shell reports to the kernel after executing an effect.
     ///
-    /// `Agent.executeToolCallingLoop` feeds every action:
+    /// `AgentTurnRunner` feeds every action:
     /// - ``TurnAction/startNextIteration`` admits the first iteration
     /// - ``TurnAction/inferenceCompleted(_:)`` interprets the provider response
     /// - ``TurnAction/toolsCompleted`` continues after host tools without a

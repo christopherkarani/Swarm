@@ -2,7 +2,7 @@
 // SwarmTests
 //
 // Characterization tests for the Agent tool-calling loop (spec T1 AC-001).
-// They pin public `executeToolCallingLoop` behavior: one admission per inference
+// They pin the tool-calling turn behavior: one admission per inference
 // attempt, including after host tools without a handoff.
 
 import Foundation
