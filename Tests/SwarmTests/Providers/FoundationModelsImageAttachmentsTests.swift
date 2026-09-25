@@ -144,6 +144,26 @@ struct FoundationModelsImageAttachmentsTests {
         #expect(FoundationModelsImageAttachments.cgImage(from: image) != nil)
     }
 
+    @Test("remote URLs without bytes render text-only segments")
+    @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+    func remoteURLsWithoutBytesRenderTextOnly() {
+        let segments = FoundationModelsImageAttachments.transcriptSegments(
+            text: "look",
+            images: [
+                PendingImage(
+                    label: "remote",
+                    data: nil,
+                    fileURL: URL(string: "https://example.com/a.png")
+                ),
+            ]
+        )
+        #expect(segments.count == 1)
+        guard case .text = segments[0] else {
+            Issue.record("expected a single text segment")
+            return
+        }
+    }
+
     /// 1x1 PNG.
     private static let tinyPNG =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="

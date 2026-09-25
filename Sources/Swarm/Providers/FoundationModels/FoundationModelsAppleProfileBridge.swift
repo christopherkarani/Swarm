@@ -12,7 +12,8 @@ import FoundationModels
 /// history policy. Capture still goes through ``DynamicProfileResolution``.
 enum FoundationModelsAppleProfileBridge: Sendable {
     /// Linux-safe transcript-shaped entry. Apple `Transcript` is built only
-    /// when every message is text-only.
+    /// when history rehydrates (no tool traffic); prompt entries may carry
+    /// image sidecars, rendered as attachment segments on OS 27.
     enum Entry: Sendable, Equatable {
         case instructions(String)
         case prompt(text: String, images: [PendingImage])
@@ -145,7 +146,8 @@ enum FoundationModelsAppleProfileBridge: Sendable {
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
 extension FoundationModelsAppleProfileBridge {
-    /// Builds an Apple `Transcript` from text-only bridged entries.
+    /// Builds an Apple `Transcript` from bridged entries. Prompt images
+    /// render as attachment segments on OS 27; older systems keep text only.
     ///
     /// Returns `nil` when `entries` is empty so the caller can fall back to
     /// `LanguageModelSession(model:tools:instructions:)`.

@@ -50,13 +50,13 @@ struct FoundationModelsPrivateCloudComputeTests {
         )
     }
 
-    @Test("PCC session model uses the fallback context budget")
+    @Test("PCC session model uses the documented PCC context budget")
     @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
-    func pccSessionModelUsesFallbackContextBudget() {
+    func pccSessionModelUsesPCCContextBudget() {
         let size = FoundationModelsSessionModel.contextSize(
             for: PrivateCloudComputeLanguageModel()
         )
-        #expect(size == FoundationModelsContextBudget.fallbackContextSize)
+        #expect(size == FoundationModelsContextBudget.privateCloudComputeContextSize)
     }
     #endif
 }

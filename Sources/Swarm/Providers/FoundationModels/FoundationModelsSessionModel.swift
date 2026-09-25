@@ -155,7 +155,7 @@ struct FoundationModelsSessionModel: Sendable {
         }
         if model is PrivateCloudComputeLanguageModel {
             // Current SDKs expose PCC `contextSize` as async/throws; this factory stays sync.
-            return FoundationModelsContextBudget.fallbackContextSize
+            return FoundationModelsContextBudget.privateCloudComputeContextSize
         }
         return FoundationModelsContextBudget.fallbackContextSize
     }
