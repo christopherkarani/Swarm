@@ -12,8 +12,8 @@ import FoundationModels
 /// history policy. Capture still goes through ``DynamicProfileResolution``.
 enum FoundationModelsAppleProfileBridge: Sendable {
     /// Linux-safe transcript-shaped entry. Apple `Transcript` is built only
-    /// when history rehydrates (no tool traffic); prompt entries may carry
-    /// image sidecars, rendered as attachment segments on OS 27.
+    /// when history rehydrates (no tool traffic or extra system text); prompt
+    /// entries may carry image sidecars, rendered as attachment segments on OS 27.
     enum Entry: Sendable, Equatable {
         case instructions(String)
         case prompt(text: String, images: [PendingImage])
