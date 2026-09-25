@@ -110,9 +110,54 @@ or ``FoundationModelsInferenceProvider/ifAvailable(model:)``.
 is offline or over quota. Swarm ``DynamicProfile`` is still the `profile:`
 argument, not `model:`.
 
+The ``InferenceProvider/privateCloudCompute()`` convenience skips the
+explicit model argument, and
+``FoundationModelsInferenceProvider/privateCloudComputeIfAvailable()``
+returns `nil` when PCC is unavailable **or its daily quota is exhausted**
+(`quotaUsage.isLimitReached`). PCC-backed providers do not advertise
+`.privateInference`: prompt content leaves the device for Apple-hosted
+inference.
+
 PCC uses a 32K context window and a daily quota.
 `PrivateCloudComputeLanguageModel.Error.quotaLimitReached` maps to
 ``AgentError/rateLimitExceeded(retryAfter:)``.
+
+## Image attachments (OS 27)
+
+Attach images to any ``InferenceMessage`` via the `attachments` sidecar:
+
+```swift
+let message = InferenceMessage.user(
+    "What is in this screenshot?",
+    attachments: [
+        InferenceMessage.Attachment(
+            id: "screenshot-1",
+            kind: .image,
+            mimeType: "image/png",
+            data: pngData
+        ),
+    ]
+)
+```
+
+On OS 27 the provider sends pending-turn images as multimodal `Prompt`
+attachments and rehydrates history images as `Transcript` attachment
+segments. Older systems ignore image sidecars (text still flows), and the
+provider advertises ``InferenceProviderCapabilities/multimodalImages`` only
+on OS 27. Attachments may carry in-memory `data` or a local `fileURL`;
+remote URLs without bytes are never fetched. Audio attachments are ignored
+today.
+
+## Native profile sessions (OS 27)
+
+The owned loop builds its Apple session from a native
+`LanguageModelSession(profile:history:)` on OS 27: the resolved Swarm
+``Profile`` (instructions, bound tools, temperature, token limit, reasoning
+level, tool-calling mode) renders onto one Apple `Profile`, so session
+replacement keeps the transcript while the resolved turn inputs stay current.
+Swarm ``DynamicProfile`` keeps its name and module — only the Apple session
+construction changed. Older systems use the same legacy
+`LanguageModelSession(model:tools:)` construction as before.
 
 Live on-device tests:
 

@@ -12,10 +12,11 @@ import FoundationModels
 /// history policy. Capture still goes through ``DynamicProfileResolution``.
 enum FoundationModelsAppleProfileBridge: Sendable {
     /// Linux-safe transcript-shaped entry. Apple `Transcript` is built only
-    /// when every message is text-only.
+    /// when history rehydrates (no tool traffic or extra system text); prompt
+    /// entries may carry image sidecars, rendered as attachment segments on OS 27.
     enum Entry: Sendable, Equatable {
         case instructions(String)
-        case prompt(String)
+        case prompt(text: String, images: [PendingImage])
         case response(String)
         case toolOutput(name: String, content: String, toolCallID: String?)
     }
@@ -35,6 +36,7 @@ enum FoundationModelsAppleProfileBridge: Sendable {
         var instructions: String?
         var seedEntries: [Entry]
         var pendingPrompt: String
+        var pendingImages: [PendingImage]
         var canRehydrateTranscript: Bool
     }
 
@@ -74,18 +76,21 @@ enum FoundationModelsAppleProfileBridge: Sendable {
         let mapped = mapEntries(messages: messages, instructions: instructions)
         var entries = mapped.entries
         let pending: String
-        if case let .prompt(text) = entries.last, messages.last?.role == .user {
+        let pendingImages: [PendingImage]
+        if case let .prompt(text, images) = entries.last, messages.last?.role == .user {
             pending = text
+            pendingImages = images
             entries.removeLast()
         } else {
-            pending = messages.last(where: { $0.role == .user })?.content
-                ?? messages.last?.content
-                ?? ""
+            let fallback = messages.last(where: { $0.role == .user }) ?? messages.last
+            pending = fallback?.content ?? ""
+            pendingImages = fallback.map { FoundationModelsImageAttachments.pendingImages(in: $0) } ?? []
         }
         return Seed(
             instructions: instructions,
             seedEntries: entries,
             pendingPrompt: pending,
+            pendingImages: pendingImages,
             canRehydrateTranscript: mapped.canRehydrate && messages.last?.role == .user
         )
     }
@@ -111,8 +116,9 @@ enum FoundationModelsAppleProfileBridge: Sendable {
                 // Extra system text has no Instructions/Prompt split we trust.
                 canRehydrate = false
             case .user:
-                guard !message.content.isEmpty else { continue }
-                entries.append(.prompt(message.content))
+                let images = FoundationModelsImageAttachments.pendingImages(in: message)
+                guard !message.content.isEmpty || !images.isEmpty else { continue }
+                entries.append(.prompt(text: message.content, images: images))
             case .assistant:
                 if !message.toolCalls.isEmpty {
                     canRehydrate = false
@@ -140,7 +146,8 @@ enum FoundationModelsAppleProfileBridge: Sendable {
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
 extension FoundationModelsAppleProfileBridge {
-    /// Builds an Apple `Transcript` from text-only bridged entries.
+    /// Builds an Apple `Transcript` from bridged entries. Prompt images
+    /// render as attachment segments on OS 27; older systems keep text only.
     ///
     /// Returns `nil` when `entries` is empty so the caller can fall back to
     /// `LanguageModelSession(model:tools:instructions:)`.
@@ -159,11 +166,11 @@ extension FoundationModelsAppleProfileBridge {
                     toolDefinitions: []
                 )
             )
-        case let .prompt(text):
+        case let .prompt(text, images):
             return .prompt(
                 Transcript.Prompt(
                     id: UUID().uuidString,
-                    segments: [textSegment(text)],
+                    segments: promptSegments(text: text, images: images),
                     options: GenerationOptions()
                 )
             )
@@ -188,6 +195,15 @@ extension FoundationModelsAppleProfileBridge {
 
     private static func textSegment(_ content: String) -> Transcript.Segment {
         .text(Transcript.TextSegment(id: UUID().uuidString, content: content))
+    }
+
+    /// Text plus one attachment segment per image on OS 27. Older systems
+    /// keep the text-only segment; image sidecars need OS 27.
+    private static func promptSegments(text: String, images: [PendingImage]) -> [Transcript.Segment] {
+        if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *), !images.isEmpty {
+            return FoundationModelsImageAttachments.transcriptSegments(text: text, images: images)
+        }
+        return [textSegment(text)]
     }
 }
 #endif
