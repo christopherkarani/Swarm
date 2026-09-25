@@ -1,13 +1,18 @@
 # Swarm CI Workflow
-# Lean default + Integrations trait lanes on macOS and Linux
+# Fast lane on PRs (lean build/test + trait compile checks); deep suite
+# (full trait tests, showcase matrix, provider proofs) only on main
+# pushes, tags, releases, or manual dispatch.
 
 name: Swift CI
 
 on:
   push:
     branches: [ "main", "fix/ci-code-quality" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
+  release:
+    types: [ published ]
   workflow_dispatch:
 
 concurrency:
@@ -22,6 +27,8 @@ jobs:
     # payment auth refuse to queue GitHub-hosted macOS jobs. Self-hosted
     # still runs the same steps and produces hosted job records.
     runs-on: [self-hosted, macOS]
+    # Fail fast instead of burning hours when a test hangs.
+    timeout-minutes: 150
 
     steps:
       - name: Checkout repository
@@ -59,12 +66,16 @@ jobs:
           swift build --traits Integrations
 
       - name: Run tests with Integrations trait
+        if: github.event_name != 'pull_request'
+        timeout-minutes: 90
         run: swift test --no-parallel --traits Integrations,MCP,OpenTelemetry
 
       - name: Run capability showcase matrix
+        if: github.event_name != 'pull_request'
         run: swift run --traits Integrations SwarmCapabilityShowcase matrix
 
       - name: Test CodeReviewer example
+        if: github.event_name != 'pull_request'
         run: SWARM_CORE_ONLY=1 swift test
         working-directory: Examples/CodeReviewer
 
@@ -72,6 +83,8 @@ jobs:
   build-linux:
     name: Build (Linux Core)
     runs-on: ubuntu-latest
+    # Fail fast instead of burning hours when a test hangs.
+    timeout-minutes: 150
 
     steps:
       - name: Checkout repository
@@ -112,15 +125,38 @@ jobs:
         run: swift build --build-tests --traits Integrations,MCP,OpenTelemetry
 
       - name: Run tests with Integrations trait
+        if: github.event_name != 'pull_request'
+        timeout-minutes: 90
         run: swift test --no-parallel --traits Integrations,MCP,OpenTelemetry
 
       - name: Linux OpenAI-compatible provider proof
+        if: github.event_name != 'pull_request'
         run: swift test --no-parallel --filter OpenAICompatible
+
+  # Opt-in live microphone proof. Not a merge gate. Does not record samples.
+  voice-live:
+    name: Voice live microphone (opt-in)
+    if: ${{ vars.SWARM_VOICE_LIVE_MIC == '1' }}
+    runs-on: [self-hosted, macOS]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          clean: true
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Prepare Apple speech without capture
+        env:
+          SWARM_VOICE_LIVE_MIC: "1"
+        run: SWARM_OMIT_INTEGRATION_TARGETS=1 swift test --filter SwarmTests.VoiceLiveMic
 
   # Code Quality (macOS only - SwiftLint/SwiftFormat)
   code-quality:
     name: Code Quality
     runs-on: [self-hosted, macOS]
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository

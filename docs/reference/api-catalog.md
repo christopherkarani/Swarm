@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 231 (238 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2347
+- Source files scanned: 240 (247 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2351
 
 ## 1. Swarm (entry point)
 
@@ -2871,16 +2871,21 @@ Provider-facing conversation message. The payload is a closed `Body`; `role`, `c
 | 100 | var | public | InferenceMessage.ToolCall.name | `public let name: String` |
 | 101 | var | public | InferenceMessage.ToolCall.arguments | `public let arguments: [String: SendableValue]` |
 | 103 | func | public | InferenceMessage.ToolCall.init(id:name:arguments:) | `public init(id: String? = nil, name: String, arguments: [String: SendableValue])` |
+| 9 | struct | public | InferenceProviderCapabilities | `public struct InferenceProviderCapabilities: OptionSet, Sendable, Hashable` |
+| 41 | var | public | InferenceProviderCapabilities.multimodalAudio | `public static let multimodalAudio: InferenceProviderCapabilities` |
+| 45 | var | public | InferenceProviderCapabilities.multimodalImage | `public static let multimodalImage: InferenceProviderCapabilities` |
 | 111 | var | public | InferenceMessage.body | `public let body: InferenceMessage.Body` |
+| 114 | var | public | InferenceMessage.attachments | `public let attachments: [InferenceMessage.Attachment]` |
 | 114 | var | public | InferenceMessage.role | `public var role: InferenceMessage.Role { get }` |
 | 128 | var | public | InferenceMessage.content | `public var content: String { get }` |
 | 140 | var | public | InferenceMessage.name | `public var name: String? { get }` |
 | 150 | var | public | InferenceMessage.toolCallID | `public var toolCallID: String? { get }` |
 | 160 | var | public | InferenceMessage.toolCalls | `public var toolCalls: [InferenceMessage.ToolCall] { get }` |
-| 172 | func | public | InferenceMessage.init(body:) | `public init(body: InferenceMessage.Body)` |
+| 114 | struct | public | InferenceMessage.Attachment | `public struct Attachment: Sendable, Equatable` |
+| 172 | func | public | InferenceMessage.init(body:attachments:) | `public init(body: InferenceMessage.Body, attachments: [InferenceMessage.Attachment] = [])` |
 | 192 | func | public | InferenceMessage.init(role:content:name:toolCallID:toolCalls:) | `@available(*, deprecated, message: "Use init(body:) or the role factories.") public init(role: InferenceMessage.Role, content: String, name: String? = nil, toolCallID: String? = nil, toolCalls: [InferenceMessage.ToolCall] = [])` |
 | 211 | func | public | InferenceMessage.system(_:) | `public static func system(_ content: String) -> InferenceMessage` |
-| 215 | func | public | InferenceMessage.user(_:) | `public static func user(_ content: String) -> InferenceMessage` |
+| 215 | func | public | InferenceMessage.user(_:attachments:) | `public static func user(_ content: String, attachments: [InferenceMessage.Attachment] = []) -> InferenceMessage` |
 | 219 | func | public | InferenceMessage.assistant(_:toolCalls:) | `public static func assistant(_ content: String, toolCalls: [InferenceMessage.ToolCall] = []) -> InferenceMessage` |
 | 223 | func | public | InferenceMessage.tool(name:content:toolCallID:) | `public static func tool(name: String, content: String, toolCallID: String? = nil) -> InferenceMessage` |
 
@@ -3153,8 +3158,9 @@ Swarm capture-path types. Owned-loop consumes ``Profile`` / ``ProfileHistoryPoli
 
 ## 14b. Voice
 
-Turn-based coordinator. Swarm does not accept audio; `VoiceSession` wraps
-`Agent.stream` with host-injected speech adapters.
+Turn-based coordinator. VoiceSession sends text to `Agent.stream`; audio
+attachments are opt-in and capability-gated. Host-injected speech adapters
+own the microphone and speaker.
 
 ### Voice/VoiceError.swift
 
@@ -3177,6 +3183,7 @@ Turn-based coordinator. Swarm does not accept audio; `VoiceSession` wraps
 |------|------|--------|------|-----------|
 | 9 | enum | public | VoicePhase | `public enum VoicePhase: String, Sendable, Equatable` |
 | 23 | enum | public | VoiceEvent | `public enum VoiceEvent: Sendable, Equatable` |
+| 44 | case | public | VoiceEvent.audioChunk(utterance:data:) | `case audioChunk(utterance: String, data: Data)` |
 
 ### Voice/SpeechTranscript.swift
 
@@ -3191,6 +3198,7 @@ Turn-based coordinator. Swarm does not accept audio; `VoiceSession` wraps
 |------|------|--------|------|-----------|
 | 9 | struct | public | VoiceSessionConfiguration | `public struct VoiceSessionConfiguration: Sendable, Equatable` |
 | 36 | var | public | VoiceSessionConfiguration.default | `public static let \`default\`: VoiceSessionConfiguration` |
+| 37 | var | public | VoiceSessionConfiguration.bargeInEnabled | `public var bargeInEnabled: Bool` |
 
 ### Voice/VoiceTurnResult.swift
 
@@ -3214,15 +3222,66 @@ Turn-based coordinator. Swarm does not accept audio; `VoiceSession` wraps
 | 11 | func | public | TextToSpeech.speak(_:) | `func speak(_ text: String) async throws` |
 | 14 | func | public | TextToSpeech.stop() | `func stop() async` |
 
+### Voice/StreamingTextToSpeech.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 19 | protocol | public | StreamingTextToSpeech | `public protocol StreamingTextToSpeech: TextToSpeech` |
+| 27 | func | public | StreamingTextToSpeech.streamAudio(_:) | `nonisolated func streamAudio(_ text: String) -> AsyncThrowingStream<Data, Error>` |
+
 ### Voice/VoiceSession.swift
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 16 | actor | public | VoiceSession | `public actor VoiceSession` |
-| 41 | func | public | VoiceSession.init(agent:speechToText:textToSpeech:session:configuration:) | `public init(agent: any AgentRuntime, speechToText: any SpeechToText, textToSpeech: any TextToSpeech, session: (any Session)? = nil, configuration: VoiceSessionConfiguration = .default)` |
-| 64 | func | public | VoiceSession.listenAndRespond() | `public func listenAndRespond() async throws -> VoiceTurnResult` |
-| 77 | func | public | VoiceSession.respond(to:) | `public func respond(to transcript: String) async throws -> VoiceTurnResult` |
-| 88 | func | public | VoiceSession.stop() | `public func stop() async` |
+| 46 | func | public | VoiceSession.init(agent:speechToText:textToSpeech:session:voiceActivityDetector:configuration:) | `public init(agent: any AgentRuntime, speechToText: any SpeechToText, textToSpeech: any TextToSpeech, session: (any Session)? = nil, voiceActivityDetector: (any VoiceActivityDetector)? = nil, configuration: VoiceSessionConfiguration = .default)` |
+| 70 | func | public | VoiceSession.listenAndRespond() | `public func listenAndRespond() async throws -> VoiceTurnResult` |
+| 81 | func | public | VoiceSession.respond(to:attachments:) | `public func respond(to transcript: String, attachments: [InferenceMessage.Attachment] = []) async throws -> VoiceTurnResult` |
+| 94 | func | public | VoiceSession.stop() | `public func stop() async` |
+
+### Voice/VoiceActivityDetector.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 9 | enum | public | VoiceActivityEvent | `public enum VoiceActivityEvent: Sendable, Equatable` |
+| 19 | protocol | public | VoiceActivityDetector | `public protocol VoiceActivityDetector: Sendable` |
+
+### Voice/VoiceTurnRuntime.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 13 | struct | public | VoiceTurnRuntime | `public struct VoiceTurnRuntime: AgentRuntime` |
+| 23 | func | public | VoiceTurnRuntime.init(voice:presenting:) | `public init(voice: VoiceSession, presenting presented: any AgentRuntime)` |
+
+### Voice/HTTPSpeechToText.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 12 | struct | public | HTTPSpeechConfiguration | `public struct HTTPSpeechConfiguration: Sendable` |
+| 39 | actor | public | HTTPSpeechToText | `public actor HTTPSpeechToText: SpeechToText` |
+
+### Voice/HTTPTextToSpeech.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 12 | struct | public | HTTPSpeechSynthesisConfiguration | `public struct HTTPSpeechSynthesisConfiguration: Sendable` |
+| 39 | actor | public | HTTPTextToSpeech | `public actor HTTPTextToSpeech: TextToSpeech` |
+
+### Voice/ElevenLabsSpeechToText.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 12 | struct | public | ElevenLabsSpeechConfiguration | `public struct ElevenLabsSpeechConfiguration: Sendable` |
+| 51 | actor | public | ElevenLabsSpeechToText | `public actor ElevenLabsSpeechToText: SpeechToText` |
+
+### Voice/ElevenLabsTextToSpeech.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 12 | struct | public | ElevenLabsVoiceSettings | `public struct ElevenLabsVoiceSettings: Sendable, Equatable` |
+| 26 | struct | public | ElevenLabsSpeechSynthesisConfiguration | `public struct ElevenLabsSpeechSynthesisConfiguration: Sendable` |
+| 94 | actor | public | ElevenLabsTextToSpeech | `public actor ElevenLabsTextToSpeech: StreamingTextToSpeech` |
+| 140 | func | public | ElevenLabsTextToSpeech.streamAudio(_:) | `public nonisolated func streamAudio(_ text: String) -> AsyncThrowingStream<Data, Error>` |
 
 ### Voice/AppleSpeechToText.swift
 
@@ -3246,6 +3305,14 @@ Apple-only (`#if canImport(AVFoundation)`).
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 18 | func | public | VoiceSession.appleOnDevice(agent:session:locale:configuration:installAssetsIfNeeded:) | `public static func appleOnDevice(agent: any AgentRuntime, session: (any Session)? = nil, locale: Locale = .current, configuration: VoiceSessionConfiguration = .default, installAssetsIfNeeded: Bool = false) async throws -> VoiceSession` |
+
+### Voice/AppleVoiceActivityDetector.swift
+
+Apple-only (`#if canImport(Speech)`). `SpeechDetector` while speaking.
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 17 | actor | public | AppleVoiceActivityDetector | `public actor AppleVoiceActivityDetector: VoiceActivityDetector` |
 
 ## 15. Companion Products
 

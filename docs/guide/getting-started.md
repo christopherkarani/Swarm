@@ -368,8 +368,8 @@ for message in await conversation.messages {
 ### Voice (`VoiceSession`)
 
 `VoiceSession` wraps an existing agent for one spoken (or injected) turn.
-Swarm does not accept audio — the coordinator calls `agent.stream` with text
-and speaks output sentences through a `TextToSpeech` adapter.
+VoiceSession sends text to `agent.stream`; audio attachments are opt-in and
+capability-gated. Output sentences go through a `TextToSpeech` adapter.
 
 ```swift
 let voice = VoiceSession(

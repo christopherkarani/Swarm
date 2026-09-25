@@ -172,4 +172,64 @@ struct OpenAICompatibleSSEParserTests {
         }
         #expect(chunk.choices.first?.delta?.content == "ab")
     }
+
+    @Test("Preserves Gemini thought signatures through parse and encode")
+    func preservesThoughtSignatures() {
+        var parser = OpenAICompatibleSSEParser()
+        var accumulator = OpenAICompatibleStreamAccumulator()
+        var updates: [InferenceStreamUpdate] = []
+
+        let lines = [
+            #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"echo","arguments":"{}"},"extra_content":{"google":{"thought_signature":"sig-abc"}}}]}}]}"#,
+            "",
+            #"data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"#,
+            "",
+            "data: [DONE]",
+            "",
+        ]
+        for line in lines {
+            for event in parser.consume(line: line) {
+                switch event {
+                case let .chunk(chunk):
+                    updates += accumulator.consume(chunk)
+                case .done:
+                    updates += accumulator.finish()
+                case .malformed:
+                    Issue.record("unexpected malformed event")
+                }
+            }
+        }
+
+        let completed = updates.compactMap { update -> [InferenceResponse.ParsedToolCall]? in
+            if case let .toolCallsCompleted(calls) = update { return calls }
+            return nil
+        }.flatMap(\.self)
+        #expect(completed.count == 1)
+        #expect(completed.first?.thoughtSignature == "sig-abc")
+
+        // And back out: encoded history echoes extra_content for the follow-up.
+        let message = InferenceMessage.assistant("", toolCalls: [
+            InferenceMessage.ToolCall(
+                id: "call_1",
+                name: "echo",
+                arguments: [:],
+                thoughtSignature: "sig-abc"
+            ),
+        ])
+        let encoded = OpenAICompatibleCodec.encodeMessages([message])
+        let calls = (encoded.first?["tool_calls"] as? [[String: Any]]) ?? []
+        let extra = calls.first?["extra_content"] as? [String: Any]
+        let google = extra?["google"] as? [String: Any]
+        #expect(google?["thought_signature"] as? String == "sig-abc")
+    }
+
+    @Test("Omits extra_content when no signature was provided")
+    func omitsExtraContentWithoutSignature() {
+        let message = InferenceMessage.assistant("", toolCalls: [
+            InferenceMessage.ToolCall(id: "call_1", name: "echo", arguments: [:]),
+        ])
+        let encoded = OpenAICompatibleCodec.encodeMessages([message])
+        let calls = (encoded.first?["tool_calls"] as? [[String: Any]]) ?? []
+        #expect(calls.first?["extra_content"] == nil)
+    }
 }

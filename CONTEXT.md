@@ -37,12 +37,12 @@ The InferenceProvider adapter that flattens `[InferenceMessage]` into a string a
 _Avoid_: prompt path, string provider
 
 **VoiceSession**:
-A turn-based actor that listens (or accepts an injected transcript), calls `AgentRuntime.stream` with text, and speaks output sentences. It is not an Agent.
+A turn-based actor that listens (or accepts an injected transcript), calls `AgentRuntime.stream` with text, and speaks output sentences. It is not an Agent. Audio attachments are opt-in and capability-gated. Barge-in is opt-in via `bargeInEnabled`.
 _Avoid_: VoiceAgent, realtime session, audio agent
 
 **SpeechToText**:
 A host-injected protocol that yields partial then final transcripts. It does not call Agent.
-_Avoid_: microphone agent, audio input on InferenceMessage
+_Avoid_: microphone agent
 
 **TextToSpeech**:
 A host-injected protocol that speaks one string and returns when that utterance finishes or is stopped.

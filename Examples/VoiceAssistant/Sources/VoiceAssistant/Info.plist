@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>VoiceAssistant</string>
+    <key>CFBundleIdentifier</key>
+    <string>dev.swarm.VoiceAssistant</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>VoiceAssistant listens so Swarm can transcribe one spoken turn.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>VoiceAssistant uses speech recognition to turn talk into text for the agent.</string>
+</dict>
+</plist>

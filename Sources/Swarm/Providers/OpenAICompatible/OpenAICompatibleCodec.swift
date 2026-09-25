@@ -45,7 +45,8 @@ enum OpenAICompatibleCodec: Sendable {
         tools: [ToolSchema],
         options: InferenceOptions,
         stream: Bool,
-        structuredOutput: StructuredOutputRequest?
+        structuredOutput: StructuredOutputRequest?,
+        capabilities: InferenceProviderCapabilities = []
     ) throws -> URLRequest {
         let url = try chatCompletionsURL(for: configuration)
         var request = URLRequest(url: url)
@@ -73,7 +74,8 @@ enum OpenAICompatibleCodec: Sendable {
             tools: tools,
             options: options,
             stream: stream,
-            structuredOutput: structuredOutput
+            structuredOutput: structuredOutput,
+            capabilities: capabilities
         )
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         return request
@@ -85,11 +87,12 @@ enum OpenAICompatibleCodec: Sendable {
         tools: [ToolSchema],
         options: InferenceOptions,
         stream: Bool,
-        structuredOutput: StructuredOutputRequest?
+        structuredOutput: StructuredOutputRequest?,
+        capabilities: InferenceProviderCapabilities = []
     ) throws -> [String: Any] {
         var body: [String: Any] = [
             "model": configuration.model,
-            "messages": encodeMessages(messages),
+            "messages": encodeMessages(messages, capabilities: capabilities),
             "temperature": options.temperature,
         ]
 
@@ -137,7 +140,10 @@ enum OpenAICompatibleCodec: Sendable {
         return body
     }
 
-    static func encodeMessages(_ messages: [InferenceMessage]) -> [[String: Any]] {
+    static func encodeMessages(
+        _ messages: [InferenceMessage],
+        capabilities: InferenceProviderCapabilities = []
+    ) -> [[String: Any]] {
         var pendingCallIDs: [String] = []
         var pendingCallNames: [String] = []
         var nextUnused = 0
@@ -163,14 +169,18 @@ enum OpenAICompatibleCodec: Sendable {
                 toolCallID = message.toolCallID
             }
 
-            return encodeMessage(message, toolCallID: toolCallID)
+            return encodeMessage(message, toolCallID: toolCallID, capabilities: capabilities)
         }
     }
 
-    static func encodeMessage(_ message: InferenceMessage, toolCallID: String? = nil) -> [String: Any] {
+    static func encodeMessage(
+        _ message: InferenceMessage,
+        toolCallID: String? = nil,
+        capabilities: InferenceProviderCapabilities = []
+    ) -> [String: Any] {
         var object: [String: Any] = [
             "role": message.role.rawValue,
-            "content": message.content,
+            "content": encodedContent(for: message, capabilities: capabilities),
         ]
         if let name = message.name, message.role != .tool {
             object["name"] = name
@@ -186,6 +196,75 @@ enum OpenAICompatibleCodec: Sendable {
             }
         }
         return object
+    }
+
+    /// Text-only unless the provider advertised the matching multimodal bit.
+    private static func encodedContent(
+        for message: InferenceMessage,
+        capabilities: InferenceProviderCapabilities
+    ) -> Any {
+        let parts = attachmentParts(for: message, capabilities: capabilities)
+        guard !parts.isEmpty else {
+            return message.content
+        }
+        var content: [[String: Any]] = []
+        if !message.content.isEmpty {
+            content.append(["type": "text", "text": message.content])
+        }
+        content.append(contentsOf: parts)
+        return content
+    }
+
+    private static func attachmentParts(
+        for message: InferenceMessage,
+        capabilities: InferenceProviderCapabilities
+    ) -> [[String: Any]] {
+        message.attachments.compactMap { attachment in
+            switch attachment.kind {
+            case .audio:
+                guard capabilities.contains(.multimodalAudio) else { return nil }
+                return audioPart(attachment)
+            case .image:
+                guard capabilities.contains(.multimodalImage) else { return nil }
+                return imagePart(attachment)
+            }
+        }
+    }
+
+    private static func audioPart(_ attachment: InferenceMessage.Attachment) -> [String: Any]? {
+        guard let data = attachment.data, !data.isEmpty else {
+            return nil
+        }
+        return [
+            "type": "input_audio",
+            "input_audio": [
+                "data": data.base64EncodedString(),
+                "format": audioFormat(from: attachment.mimeType),
+            ],
+        ]
+    }
+
+    private static func imagePart(_ attachment: InferenceMessage.Attachment) -> [String: Any]? {
+        guard let data = attachment.data, !data.isEmpty else {
+            return nil
+        }
+        return [
+            "type": "image_url",
+            "image_url": [
+                "url": "data:\(attachment.mimeType);base64,\(data.base64EncodedString())",
+            ],
+        ]
+    }
+
+    private static func audioFormat(from mimeType: String) -> String {
+        switch mimeType.lowercased() {
+        case "audio/mpeg", "audio/mp3":
+            "mp3"
+        case "audio/wav", "audio/x-wav", "audio/wave":
+            "wav"
+        default:
+            mimeType.split(separator: "/").last.map(String.init) ?? "wav"
+        }
     }
 
     static func encodeTool(_ schema: ToolSchema) -> [String: Any] {
@@ -263,7 +342,8 @@ enum OpenAICompatibleCodec: Sendable {
         InferenceResponse.ParsedToolCall(
             id: delta.id,
             name: delta.name ?? "",
-            arguments: decodeArguments(delta.arguments)
+            arguments: decodeArguments(delta.arguments),
+            thoughtSignature: delta.thoughtSignature
         )
     }
 
@@ -399,7 +479,7 @@ enum OpenAICompatibleCodec: Sendable {
         let argumentsData = (try? JSONSerialization.data(withJSONObject: argumentsObject, options: [.sortedKeys]))
             ?? Data("{}".utf8)
         let arguments = String(data: argumentsData, encoding: .utf8) ?? "{}"
-        return [
+        var encoded: [String: Any] = [
             "id": synthesizedToolCallID(call.id, index: index),
             "type": "function",
             "function": [
@@ -407,6 +487,11 @@ enum OpenAICompatibleCodec: Sendable {
                 "arguments": arguments,
             ] as [String: Any],
         ]
+        // Gemini thinking models reject follow-ups without the echoed signature.
+        if let signature = call.thoughtSignature, !signature.isEmpty {
+            encoded["extra_content"] = ["google": ["thought_signature": signature]]
+        }
+        return encoded
     }
 
     private static func sanitizeSchemaName(_ name: String) -> String {
@@ -439,6 +524,9 @@ struct OpenAICompatibleStreamAccumulator: Sendable {
                 }
                 if let name = delta.name, !name.isEmpty {
                     accumulated.name = name
+                }
+                if let signature = delta.thoughtSignature, !signature.isEmpty {
+                    accumulated.thoughtSignature = signature
                 }
                 accumulated.arguments += delta.arguments
                 toolCalls[delta.index] = accumulated
@@ -479,7 +567,8 @@ struct OpenAICompatibleStreamAccumulator: Sendable {
             return InferenceResponse.ParsedToolCall(
                 id: call.id.isEmpty ? nil : call.id,
                 name: call.name,
-                arguments: OpenAICompatibleCodec.decodeArguments(call.arguments)
+                arguments: OpenAICompatibleCodec.decodeArguments(call.arguments),
+                thoughtSignature: call.thoughtSignature.isEmpty ? nil : call.thoughtSignature
             )
         }
         return parsed.isEmpty ? [] : [.toolCallsCompleted(parsed)]
@@ -491,4 +580,5 @@ private struct AccumulatedToolCall: Sendable {
     var id: String = ""
     var name: String = ""
     var arguments: String = ""
+    var thoughtSignature: String = ""
 }

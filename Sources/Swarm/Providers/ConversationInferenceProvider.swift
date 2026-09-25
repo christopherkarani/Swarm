@@ -39,6 +39,15 @@ public struct InferenceProviderCapabilities: OptionSet, Sendable, Hashable {
     /// set this bit must implement the `toolExecutor` method; the protocol
     /// default throws ``AgentError/providerOwnedToolLoopRequiresExecutor``.
     public static let providerOwnedToolLoop = Self(rawValue: 1 << 6)
+
+    /// Provider accepts audio ``InferenceMessage/Attachment`` values.
+    ///
+    /// Providers without this bit must omit or reject audio attachments.
+    public static let multimodalAudio = Self(rawValue: 1 << 7)
+
+    /// Reserved for image attachments (Foundation Models vision). Unused in
+    /// the default VoiceSession text path.
+    public static let multimodalImage = Self(rawValue: 1 << 8)
 }
 
 public extension InferenceProviderCapabilities {
@@ -99,16 +108,66 @@ public struct InferenceMessage: Sendable, Equatable {
         public let id: String?
         public let name: String
         public let arguments: [String: SendableValue]
+        /// Provider thought signature (Gemini thinking models). Echoed back verbatim.
+        public let thoughtSignature: String?
 
-        public init(id: String? = nil, name: String, arguments: [String: SendableValue]) {
+        public init(
+            id: String? = nil,
+            name: String,
+            arguments: [String: SendableValue],
+            thoughtSignature: String? = nil
+        ) {
             self.id = id
             self.name = name
             self.arguments = arguments
+            self.thoughtSignature = thoughtSignature
+        }
+    }
+
+    /// Optional multimodal sidecar. ``content`` stays text.
+    ///
+    /// Persist ``id`` and ``mimeType`` only — never PCM. Providers without
+    /// ``InferenceProviderCapabilities/multimodalAudio`` must omit audio.
+    public struct Attachment: Sendable, Equatable {
+        /// Attachment family.
+        public enum Kind: String, Sendable, Equatable {
+            case audio
+            case image
+        }
+
+        /// Host-stable identifier. Safe to store.
+        public let id: String
+        /// Audio or image.
+        public let kind: Kind
+        /// MIME type such as `audio/wav`. Safe to store.
+        public let mimeType: String
+        /// In-memory bytes. Do not log.
+        public let data: Data?
+        /// Optional file URL. Do not log contents.
+        public let fileURL: URL?
+
+        /// Creates an attachment.
+        public init(
+            id: String,
+            kind: Kind,
+            mimeType: String,
+            data: Data? = nil,
+            fileURL: URL? = nil
+        ) {
+            self.id = id
+            self.kind = kind
+            self.mimeType = mimeType
+            self.data = data
+            self.fileURL = fileURL
         }
     }
 
     /// System, user, assistant, or tool payload.
     public let body: Body
+
+    /// Optional audio or image sidecars. Default empty. Token counting uses
+    /// ``content`` only.
+    public let attachments: [Attachment]
 
     /// Role projected from ``body``.
     public var role: Role {
@@ -168,9 +227,12 @@ public struct InferenceMessage: Sendable, Equatable {
 
     /// Creates a message from a closed body.
     ///
-    /// - Parameter body: System, user, assistant, or tool payload.
-    public init(body: Body) {
+    /// - Parameters:
+    ///   - body: System, user, assistant, or tool payload.
+    ///   - attachments: Optional multimodal sidecars. Default empty.
+    public init(body: Body, attachments: [Attachment] = []) {
         self.body = body
+        self.attachments = attachments
     }
 
     /// Creates a message from independent role and payload fields.
@@ -206,14 +268,18 @@ public struct InferenceMessage: Sendable, Equatable {
         case .tool:
             body = .tool(name: name ?? "tool", content: content, toolCallID: toolCallID)
         }
+        attachments = []
     }
 
     public static func system(_ content: String) -> InferenceMessage {
         InferenceMessage(body: .system(content))
     }
 
-    public static func user(_ content: String) -> InferenceMessage {
-        InferenceMessage(body: .user(content))
+    public static func user(
+        _ content: String,
+        attachments: [Attachment] = []
+    ) -> InferenceMessage {
+        InferenceMessage(body: .user(content), attachments: attachments)
     }
 
     public static func assistant(_ content: String, toolCalls: [ToolCall] = []) -> InferenceMessage {
