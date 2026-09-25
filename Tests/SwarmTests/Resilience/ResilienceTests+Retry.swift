@@ -387,8 +387,10 @@ struct RetryPolicyTests {
     @Test("Invalid backoff delay values do not crash and retries exhaust")
     func invalidBackoffDelayValuesAreIgnored() async throws {
         let counter = TestCounter()
+        // maxAttempts 3 keeps both invalid-delay branches reachable: the
+        // backoff runs for attempts 1 (-.infinity) and 2 (.nan).
         let policy = RetryPolicy(
-            maxAttempts: 2,
+            maxAttempts: 3,
             backoff: .custom { attempt in
                 switch attempt {
                 case 1: return -.infinity
@@ -406,13 +408,13 @@ struct RetryPolicyTests {
             Issue.record("Expected retriesExhausted")
         } catch let error as ResilienceError {
             if case let .retriesExhausted(attempts, _) = error {
-                #expect(attempts == 2)
+                #expect(attempts == 3)
             } else {
                 Issue.record("Expected retriesExhausted, got \(error)")
             }
         }
 
-        #expect(await counter.get() == 2)
+        #expect(await counter.get() == 3)
     }
 
     @Test("Infinite backoff delay is clamped to avoid overflow")
