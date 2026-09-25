@@ -136,6 +136,20 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, 
         }
     }
 
+    /// Ranked frame items for `query`. The caller applies
+    /// `MemoryPromptAssembly.limit`; budgets live with the caller.
+    func promptItems(for query: String) async -> [MemoryPromptItem] {
+        do {
+            let rag = try await store.search(query)
+            return rag.items.map { item in
+                MemoryPromptItem(text: formatRAGItem(item))
+            }
+        } catch {
+            Log.memory.error("WaxMemory: Failed to recall context: \(error.localizedDescription)")
+            return []
+        }
+    }
+
     public func allMessages() async -> [MemoryMessage] {
         persistedMessages
     }

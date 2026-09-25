@@ -128,6 +128,38 @@ public actor ContextCoreMemory: Memory {
         }
     }
 
+    func promptItems(
+        for query: String,
+        tokenLimit: Int,
+        maxItems: Int,
+        maxItemTokens: Int,
+        estimate: @Sendable (String) async -> Int
+    ) async -> [MemoryPromptItem] {
+        guard tokenLimit > 0 else {
+            return []
+        }
+
+        await ensureSessionReady()
+
+        do {
+            let window = try await context.buildWindow(
+                currentTask: query,
+                maxTokens: tokenLimit
+            )
+            return window.chunks.map { chunk in
+                MemoryPromptItem(text: "[\(chunk.role.rawValue)]: \(chunk.content)")
+            }
+        } catch {
+            return await MemoryPromptAssembly.limitedFallbackItems(
+                from: messages,
+                maxItems: maxItems,
+                maxItemTokens: maxItemTokens,
+                tokenLimit: tokenLimit,
+                estimate: estimate
+            )
+        }
+    }
+
     public func allMessages() async -> [MemoryMessage] {
         messages
     }
