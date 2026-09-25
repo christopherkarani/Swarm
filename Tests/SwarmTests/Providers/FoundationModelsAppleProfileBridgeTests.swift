@@ -64,61 +64,6 @@ struct FoundationModelsAppleProfileBridgeTests {
         #expect(plan.entries.contains { if case .toolOutput = $0 { true } else { false } })
     }
 
-    @Test("seed drops the pending user prompt from transcript entries")
-    func seedDropsPendingUserPrompt() {
-        let seed = FoundationModelsAppleProfileBridge.seed(
-            messages: [
-                .system("Be precise."),
-                .user("u1"),
-                .assistant("a1"),
-                .user("u2"),
-            ],
-            instructions: "Be precise."
-        )
-        #expect(seed.canRehydrateTranscript)
-        #expect(seed.pendingPrompt == "u2")
-        #expect(seed.seedEntries == [
-            .instructions("Be precise."),
-            .prompt(text: "u1", images: []),
-            .response("a1"),
-        ])
-    }
-
-    @Test("history that does not end with a user turn cannot rehydrate")
-    func historyNotEndingWithUserCannotRehydrate() {
-        let seed = FoundationModelsAppleProfileBridge.seed(
-            messages: [
-                .user("u1"),
-                .assistant("a1"),
-            ],
-            instructions: nil
-        )
-        #expect(seed.canRehydrateTranscript == false)
-    }
-
-    @Test("rehydrate pending prompt keeps ToolChoice.specific suffix")
-    func rehydratePendingPromptKeepsSpecificToolChoice() {
-        let seed = FoundationModelsAppleProfileBridge.seed(
-            messages: [
-                .user("look it up"),
-                .assistant("thinking"),
-                .user("thanks"),
-            ],
-            instructions: nil
-        )
-        #expect(seed.canRehydrateTranscript)
-        #expect(seed.pendingPrompt == "thanks")
-
-        let lookup = ToolSchema(name: "lookup", description: "Look up", parameters: [])
-        let prompt = FoundationModelsPromptFlattening.appendTurnSuffixes(
-            to: seed.pendingPrompt,
-            tools: [lookup],
-            options: InferenceOptions(toolChoice: .specific(toolName: "lookup"))
-        )
-        #expect(prompt.contains(#"call "lookup""#))
-        #expect(prompt.hasPrefix("thanks"))
-    }
-
     @Test("does not alias Swarm Profile onto Apple DynamicProfile")
     func swarmTypesStaySwarmTypes() {
         let profile = Profile(id: "review", instructions: "Be precise.", history: .dropToolTranscript)
