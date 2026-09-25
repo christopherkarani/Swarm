@@ -689,6 +689,73 @@ private struct RetryPolicyDeterminismTests {
 
         #expect(await counter.get() == 1)
     }
+
+    // MARK: Retry-After Tests
+
+    @Test("Server Retry-After hint extends the policy backoff")
+    func retryAfterHintExtendsBackoff() async throws {
+        let clock = VirtualClock()
+        let counter = TestCounter()
+        let policy = RetryPolicy(maxAttempts: 1, backoff: .fixed(delay: 1.0), clock: clock)
+
+        let result = try await policy.execute {
+            if await counter.increment() == 1 {
+                throw AgentError.rateLimitExceeded(retryAfter: 30)
+            }
+            return "recovered"
+        }
+
+        #expect(result == "recovered")
+        #expect(clock.recordedSleeps == [30_000_000_000])
+    }
+
+    @Test("Policy backoff wins when the Retry-After hint is shorter")
+    func backoffWinsOverShortRetryAfter() async throws {
+        let clock = VirtualClock()
+        let counter = TestCounter()
+        let policy = RetryPolicy(maxAttempts: 1, backoff: .fixed(delay: 5.0), clock: clock)
+
+        _ = try await policy.execute {
+            if await counter.increment() == 1 {
+                throw AgentError.rateLimitExceeded(retryAfter: 2)
+            }
+            return true
+        }
+
+        #expect(clock.recordedSleeps == [5_000_000_000])
+    }
+
+    @Test("Missing Retry-After hint keeps the policy backoff")
+    func missingRetryAfterKeepsBackoff() async throws {
+        let clock = VirtualClock()
+        let counter = TestCounter()
+        let policy = RetryPolicy(maxAttempts: 1, backoff: .fixed(delay: 2.0), clock: clock)
+
+        _ = try await policy.execute {
+            if await counter.increment() == 1 {
+                throw AgentError.rateLimitExceeded(retryAfter: nil)
+            }
+            return true
+        }
+
+        #expect(clock.recordedSleeps == [2_000_000_000])
+    }
+
+    @Test("Retry-After hint only applies to rate-limit errors")
+    func retryAfterIgnoredForOtherErrors() async throws {
+        let clock = VirtualClock()
+        let counter = TestCounter()
+        let policy = RetryPolicy(maxAttempts: 1, backoff: .fixed(delay: 2.0), clock: clock)
+
+        _ = try await policy.execute {
+            if await counter.increment() == 1 {
+                throw AgentError.generationFailed(reason: "boom")
+            }
+            return true
+        }
+
+        #expect(clock.recordedSleeps == [2_000_000_000])
+    }
 }
 
 // MARK: - CancellationIgnoringClock

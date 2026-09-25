@@ -62,6 +62,7 @@ import Foundation
 /// ### Execution Errors
 /// - ``cancelled``
 /// - ``maxIterationsExceeded(iterations:)``
+/// - ``toolCallLoopDetected(toolNames:repetitions:)``
 /// - ``timeout(duration:)``
 /// - ``invalidLoop(reason:)``
 ///
@@ -77,6 +78,7 @@ import Foundation
 ///
 /// ### Model Errors
 /// - ``inferenceProviderUnavailable(reason:)``
+/// - ``authenticationFailed(reason:)``
 /// - ``contextWindowExceeded(tokenCount:limit:)``
 /// - ``guardrailViolation(reason:)``
 /// - ``contentFiltered(reason:)``
@@ -177,6 +179,37 @@ public enum AgentError: Error, Sendable, Equatable {
     /// - Parameter iterations: The number of iterations that were performed
     ///                         before the limit was exceeded
     case maxIterationsExceeded(iterations: Int)
+
+    /// The model repeated the same tool call batch consecutively.
+    ///
+    /// This error is thrown when the model produces
+    /// ``AgentConfiguration/maxConsecutiveToolRepeats`` identical
+    /// tool-call batches in a row. It typically indicates:
+    /// - The tool result does not contain what the model needs
+    /// - The model is retrying a failing call instead of adapting
+    /// - The task needs rephrasing or different tools
+    ///
+    /// The run stops **before** executing the repeated batch again, so
+    /// this error surfaces earlier and more precisely than
+    /// ``maxIterationsExceeded(iterations:)``.
+    ///
+    /// ## Recovery
+    ///
+    /// Inspect the latest tool result and rephrase the task, or allow
+    /// more repetitions:
+    ///
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .maxConsecutiveToolRepeats(5)
+    /// ```
+    ///
+    /// ## Note
+    /// This error is non-retryable. Re-running the same turn repeats the loop.
+    ///
+    /// - Parameters:
+    ///   - toolNames: Tool names in the repeated batch, in call order.
+    ///   - repetitions: How many consecutive identical batches were observed.
+    case toolCallLoopDetected(toolNames: [String], repetitions: Int)
 
     /// The agent execution timed out.
     ///
@@ -407,6 +440,28 @@ public enum AgentError: Error, Sendable, Equatable {
     ///
     /// - Parameter reason: A description of why the provider is unavailable
     case inferenceProviderUnavailable(reason: String)
+
+    /// The provider rejected the request credentials.
+    ///
+    /// This error is thrown when:
+    /// - The API key is missing, invalid, or expired (HTTP 401)
+    /// - The credentials lack access to the requested model or organization (HTTP 403)
+    ///
+    /// ## Recovery
+    ///
+    /// Check the configured credentials and their access scope:
+    ///
+    /// ```swift
+    /// } catch AgentError.authenticationFailed(let reason) {
+    ///     print("Check your API key: \(reason)")
+    /// }
+    /// ```
+    ///
+    /// ## Note
+    /// This error is non-retryable. Retrying with the same credentials fails again.
+    ///
+    /// - Parameter reason: A description of why authentication failed
+    case authenticationFailed(reason: String)
 
     /// The model context window was exceeded.
     ///
@@ -699,6 +754,8 @@ public enum AgentError: Error, Sendable, Equatable {
             true
         case let (.maxIterationsExceeded(a), .maxIterationsExceeded(b)):
             a == b
+        case let (.toolCallLoopDetected(n1, r1), .toolCallLoopDetected(n2, r2)):
+            n1 == n2 && r1 == r2
         case let (.timeout(a), .timeout(b)):
             a == b
         case let (.invalidLoop(a), .invalidLoop(b)):
@@ -716,6 +773,8 @@ public enum AgentError: Error, Sendable, Equatable {
         case let (.handoffToolNameCollidesWithTool(a), .handoffToolNameCollidesWithTool(b)):
             a == b
         case let (.inferenceProviderUnavailable(a), .inferenceProviderUnavailable(b)):
+            a == b
+        case let (.authenticationFailed(a), .authenticationFailed(b)):
             a == b
         case let (.contextWindowExceeded(a1, a2), .contextWindowExceeded(b1, b2)):
             a1 == b1 && a2 == b2
@@ -788,6 +847,8 @@ extension AgentError: LocalizedError {
             "Agent execution was cancelled"
         case let .maxIterationsExceeded(iterations):
             "Agent exceeded maximum iterations (\(iterations))"
+        case let .toolCallLoopDetected(toolNames, repetitions):
+            "Tool call loop detected: \(toolNames.joined(separator: ", ")) repeated \(repetitions) times"
         case let .timeout(duration):
             "Agent execution timed out after \(duration)"
         case let .invalidLoop(reason):
@@ -806,6 +867,8 @@ extension AgentError: LocalizedError {
             "Handoff tool name collides with a registered tool: '\(name)'"
         case let .inferenceProviderUnavailable(reason):
             "Inference provider unavailable: \(reason)"
+        case let .authenticationFailed(reason):
+            "Authentication failed: \(reason)"
         case let .contextWindowExceeded(count, limit):
             "Context window exceeded: \(count) tokens (limit: \(limit))"
         case let .guardrailViolation(reason):
@@ -854,6 +917,8 @@ extension AgentError: LocalizedError {
             "Pass a ToolCallExecutor on generateWithToolCalls/streamWithToolCalls, implement that overload if this adapter advertises providerOwnedToolLoop, or construct a capture adapter (.foundationModels()) if Agent should own the loop."
         case .inferenceProviderUnavailable:
             "Configure an inference provider via `await Swarm.configure(provider:)` or use Apple Foundation Models on a supported device."
+        case .authenticationFailed:
+            "Check that your API key is set, valid, and has access to the requested model."
         case .rateLimitExceeded(let retryAfter):
             if let seconds = retryAfter {
                 "Wait \(Int(seconds)) seconds before retrying the request."
@@ -868,6 +933,8 @@ extension AgentError: LocalizedError {
             "Check that '\(model)' is a valid model name and your API key has access to it."
         case .maxIterationsExceeded:
             "Increase the maxIterations configuration or break the task into smaller subtasks."
+        case .toolCallLoopDetected:
+            "Inspect the latest tool result and rephrase the task, or raise maxConsecutiveToolRepeats."
         case .timeout:
             "Increase the timeout duration or optimize the task to complete faster."
         case .invalidToolArguments(let toolName, _):
@@ -900,6 +967,8 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.cancelled"
         case let .maxIterationsExceeded(iterations):
             "AgentError.maxIterationsExceeded(iterations: \(iterations))"
+        case let .toolCallLoopDetected(toolNames, repetitions):
+            "AgentError.toolCallLoopDetected(toolNames: \(toolNames), repetitions: \(repetitions))"
         case let .timeout(duration):
             "AgentError.timeout(duration: \(duration))"
         case let .invalidLoop(reason):
@@ -918,6 +987,8 @@ extension AgentError: CustomDebugStringConvertible {
             "AgentError.handoffToolNameCollidesWithTool(name: \(name))"
         case let .inferenceProviderUnavailable(reason):
             "AgentError.inferenceProviderUnavailable(reason: \(reason))"
+        case let .authenticationFailed(reason):
+            "AgentError.authenticationFailed(reason: \(reason))"
         case let .contextWindowExceeded(tokenCount, limit):
             "AgentError.contextWindowExceeded(tokenCount: \(tokenCount), limit: \(limit))"
         case let .guardrailViolation(reason):
@@ -964,9 +1035,11 @@ extension AgentError {
             true
         case .cancelled,
              .timeout,
+             .authenticationFailed,
              .invalidInput,
              .invalidLoop,
              .maxIterationsExceeded,
+             .toolCallLoopDetected,
              .guardrailViolation,
              .contentFiltered,
              .invalidToolArguments,

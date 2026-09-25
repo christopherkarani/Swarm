@@ -94,7 +94,7 @@ extension Agent {
             onRetry: { attempt, error in
                 await policy.onRetry?(attempt, error)
                 Log.agents.warning(
-                    "Inference retry attempt \(attempt): \(error.localizedDescription)"
+                    "Inference retry attempt \(attempt): \(TraceRedactor().redact(error.localizedDescription))"
                 )
                 await observer?.onInferenceRetry(
                     context: nil,

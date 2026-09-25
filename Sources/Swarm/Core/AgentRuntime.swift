@@ -721,15 +721,25 @@ public struct InferenceResponse: Sendable, Equatable {
         /// The arguments for the tool.
         public let arguments: [String: SendableValue]
 
+        /// Provider thought signature (Gemini thinking models). Echoed back verbatim.
+        public let thoughtSignature: String?
+
         /// Creates a parsed tool call.
         /// - Parameters:
         ///   - id: Unique identifier for the tool call. Default: nil
         ///   - name: The tool name.
         ///   - arguments: The tool arguments.
-        public init(id: String? = nil, name: String, arguments: [String: SendableValue]) {
+        ///   - thoughtSignature: Provider thought signature. Default: nil
+        public init(
+            id: String? = nil,
+            name: String,
+            arguments: [String: SendableValue],
+            thoughtSignature: String? = nil
+        ) {
             self.id = id
             self.name = name
             self.arguments = arguments
+            self.thoughtSignature = thoughtSignature
         }
     }
 

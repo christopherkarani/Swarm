@@ -48,12 +48,12 @@ public actor ConsoleTracer: Tracer {
     /// Creates a console tracer with the specified configuration.
     ///
     /// - Parameters:
-    ///   - minimumLevel: Minimum event level to display. Default: `.trace` (all events).
+    ///   - minimumLevel: Minimum event level to display. Default: `.info`.
     ///   - colorized: Whether to use ANSI color codes. Default: `true`.
     ///   - includeTimestamp: Whether to include timestamps. Default: `true`.
     ///   - includeSource: Whether to include source location. Default: `false`.
     public init(
-        minimumLevel: EventLevel = .trace,
+        minimumLevel: EventLevel = .info,
         colorized: Bool = true,
         includeTimestamp: Bool = true,
         includeSource: Bool = false
@@ -267,12 +267,12 @@ package actor PrettyConsoleTracer: Tracer {
     /// Creates a pretty console tracer with the specified configuration.
     ///
     /// - Parameters:
-    ///   - minimumLevel: Minimum event level to display. Default: `.trace` (all events).
+    ///   - minimumLevel: Minimum event level to display. Default: `.info`.
     ///   - colorized: Whether to use ANSI color codes. Default: `true`.
     ///   - includeTimestamp: Whether to include timestamps. Default: `true`.
     ///   - includeSource: Whether to include source location. Default: `false`.
     package init(
-        minimumLevel: EventLevel = .trace,
+        minimumLevel: EventLevel = .info,
         colorized: Bool = true,
         includeTimestamp: Bool = true,
         includeSource: Bool = false
