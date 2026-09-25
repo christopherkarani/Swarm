@@ -204,11 +204,11 @@ extension MCPResourceContent: CustomDebugStringConvertible {
         if let mimeType {
             desc += ", mimeType: \"\(mimeType)\""
         }
-        if isText {
-            let preview = text!.prefix(50)
-            desc += ", text: \"\(preview)\(text!.count > 50 ? "..." : "")\""
-        } else if isBinary {
-            desc += ", blob: <\(blob!.count) chars>"
+        if let text {
+            let preview = text.prefix(50)
+            desc += ", text: \"\(preview)\(text.count > 50 ? "..." : "")\""
+        } else if let blob {
+            desc += ", blob: <\(blob.count) chars>"
         }
         desc += ")"
         return desc
