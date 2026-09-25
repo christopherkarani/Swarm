@@ -468,6 +468,21 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
     #endif
 }
 
+extension WebSearchTool.Configuration: CustomStringConvertible, CustomDebugStringConvertible {
+    /// Renders the configuration without the API key value.
+    ///
+    /// Only key presence (already exposed by ``hasLiveSearchBackend``) is
+    /// shown, so logging or debugging a configuration cannot leak the key.
+    public var description: String {
+        "Configuration(apiKey: \(hasLiveSearchBackend ? "<configured>" : "<absent>"), contextProfile: \(contextProfile), summaryMode: \(summaryMode), enabled: \(enabled), storeURL: \(storeURL.path))"
+    }
+
+    /// Same redacted rendering as ``description``.
+    public var debugDescription: String {
+        description
+    }
+}
+
 private func nonEmpty(_ value: String) -> String? {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? nil : trimmed
