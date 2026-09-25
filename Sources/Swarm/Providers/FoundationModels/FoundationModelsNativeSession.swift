@@ -333,7 +333,7 @@ extension FoundationModelsInferenceProvider {
             toolNames: boundTools.map(\.name).sorted()
         )
         let instructions = resolved.instructions
-        let seed = FoundationModelsAppleProfileBridge.seed(
+        let seed = FoundationModelsTranscriptSeed.seed(
             messages: resolved.messages,
             instructions: instructions
         )
@@ -345,7 +345,7 @@ extension FoundationModelsInferenceProvider {
         }
 
         let prompt: String
-        if reused || seed.canRehydrateTranscript {
+        if reused || seed.canRehydrate {
             prompt = FoundationModelsPromptFlattening.appendTurnSuffixes(
                 to: seed.pendingPrompt,
                 tools: boundSchemas,
@@ -453,10 +453,10 @@ extension FoundationModelsInferenceProvider {
     /// resolved Swarm profile. Tool-bearing history still flattens.
     func makeOwnedLoopSession(
         tools: [any FoundationModels.Tool],
-        seed: FoundationModelsAppleProfileBridge.Seed
+        seed: FoundationModelsTranscriptSeed.Seed
     ) -> LanguageModelSession {
-        if seed.canRehydrateTranscript,
-           let transcript = FoundationModelsAppleProfileBridge.makeTranscript(from: seed.seedEntries)
+        if seed.canRehydrate,
+           let transcript = FoundationModelsTranscriptSeed.makeTranscript(from: seed.seedEntries)
         {
             return makeSession(tools: tools, transcript: transcript)
         }

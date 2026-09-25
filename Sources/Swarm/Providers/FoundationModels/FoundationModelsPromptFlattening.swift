@@ -2,7 +2,7 @@ import Foundation
 
 /// Serializes structured history into a single `Prompt` string.
 ///
-/// Capture prefers ``FoundationModelsCaptureTranscript`` so Apple sees roles
+/// Capture prefers ``FoundationModelsTranscriptSeed`` so Apple sees roles
 /// natively. This flatten path is the fallback when a message cannot be
 /// represented (assistant tool-call metadata or extra system text). On OS 27,
 /// ``ToolChoice/required`` is `GenerationOptions.toolCallingMode` instead of
