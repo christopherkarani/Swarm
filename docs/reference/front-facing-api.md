@@ -1341,8 +1341,8 @@ let http = try HTTPMCPServer(
     name: "example-server",
     apiKey: "sk-..."
 )
-let stdio = StdioMCPServer(
-    command: "npx",
+let stdio = try StdioMCPServer(
+    command: "/opt/homebrew/bin/npx",
     arguments: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
     name: "filesystem"
 )
@@ -1359,6 +1359,12 @@ let bridgedTools = try await bridge.bridgeTools()
 `HTTPMCPServer` speaks streamable HTTP (JSON or SSE responses, session id,
 `MCP-Protocol-Version`) and negotiates `2024-11-05` through `2025-11-25`.
 `StdioMCPServer` launches a child process and uses newline-delimited JSON-RPC.
+The launch is sandboxed: `command` must be an absolute path (`PATH` lookup is
+disabled), the child inherits only a minimal environment allowlist (plus an
+explicit `environment` overlay and `inheritedEnvironmentKeys`), and
+`workingDirectory` must be an absolute file URL (existence as a directory
+is enforced when `initialize()` launches the child), and must stay inside
+`allowedWorkingDirectoryRoot` when that sandbox root is set.
 `callTool` unwraps MCP content blocks; `callToolRaw` returns the envelope.
 Swarm does not implement prompts or sampling — those capability flags stay
 `false` on connections. `MCPClient` aggregates multiple connections and

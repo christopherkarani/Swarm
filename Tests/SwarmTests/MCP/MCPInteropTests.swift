@@ -22,7 +22,7 @@ struct MCPInteropTests {
         let script = MCPFixtureSupport.scriptURL
         #expect(FileManager.default.fileExists(atPath: script.path))
 
-        let server = StdioMCPServer(
+        let server = try StdioMCPServer(
             command: python,
             arguments: [script.path],
             name: "stdio-interop",
@@ -102,7 +102,7 @@ struct MCPInteropTests {
     @Test("Stdio empty tool name returns an error")
     func stdioEmptyToolName() async throws {
         let python = try MCPFixtureSupport.requirePython3()
-        let server = StdioMCPServer(
+        let server = try StdioMCPServer(
             command: python,
             arguments: [MCPFixtureSupport.scriptURL.path],
             name: "stdio-empty-name",

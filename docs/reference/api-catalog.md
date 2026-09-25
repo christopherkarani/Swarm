@@ -2787,7 +2787,9 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | — | class | public | StdioMCPServer | `public actor StdioMCPServer` |
-| — | func | public | StdioMCPServer.init(command:arguments:environment:workingDirectory:name:timeout:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, workingDirectory: URL? = nil, name: String, timeout: TimeInterval = 30.0)` |
+| — | var | public | StdioMCPServer.defaultEnvironmentAllowlist | `public static let defaultEnvironmentAllowlist: Set<String>` |
+| — | var | public | StdioMCPServer.defaultSandboxPATH | `public static let defaultSandboxPATH: String` |
+| — | func | public | StdioMCPServer.init(command:arguments:environment:inheritedEnvironmentKeys:workingDirectory:allowedWorkingDirectoryRoot:name:timeout:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, inheritedEnvironmentKeys: Set<String> = [], workingDirectory: URL? = nil, allowedWorkingDirectoryRoot: URL? = nil, name: String, timeout: TimeInterval = 30.0) throws` |
 | — | func | public | StdioMCPServer.callToolRaw(name:arguments:) | `public func callToolRaw(name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
 
 ### MCP/MCPCapabilities.swift

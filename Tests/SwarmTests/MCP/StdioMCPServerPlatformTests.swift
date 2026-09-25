@@ -4,8 +4,8 @@ import Testing
 
 struct StdioMCPServerPlatformTests {
     #if os(macOS) || os(Linux)
-    @Test func initializeMissingExecutableDoesNotClaimMobileUnavailability() async {
-        let server = StdioMCPServer(
+    @Test func initializeMissingExecutableDoesNotClaimMobileUnavailability() async throws {
+        let server = try StdioMCPServer(
             command: "/this/path/does/not/exist/swarm-mcp-fixture",
             name: "missing-stdio"
         )
@@ -26,7 +26,7 @@ struct StdioMCPServerPlatformTests {
 
     #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
         @Test func initializeThrowsOnAppleMobilePlatforms() async throws {
-            let server = StdioMCPServer(command: "/usr/bin/true", name: "ios-stdio")
+            let server = try StdioMCPServer(command: "/usr/bin/true", name: "ios-stdio")
             do {
                 _ = try await server.initialize()
                 Issue.record("Expected initialize() to throw on this platform.")
