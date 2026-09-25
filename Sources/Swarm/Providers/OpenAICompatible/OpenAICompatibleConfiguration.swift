@@ -59,6 +59,16 @@ public struct OpenAICompatibleProviderConfiguration: Sendable, Equatable {
     /// (Azure).
     public var apiKey: String?
 
+    /// Keychain (or other ``SecretStore``) pointer for the Bearer token
+    ///
+    /// Resolved at request time when ``apiKey`` is `nil` or empty. The
+    /// provider must be given a store via
+    /// `OpenAICompatibleProvider(configuration:secretStore:)`; without one
+    /// the reference cannot resolve and no `Authorization` header is sent.
+    /// Prefer this over embedding the raw key when the configuration is
+    /// persisted or logged.
+    public var apiKeyReference: SecretReference?
+
     /// Model or deployment identifier placed in the request `model` field.
     public var model: String
 
@@ -81,6 +91,8 @@ public struct OpenAICompatibleProviderConfiguration: Sendable, Equatable {
     /// - Parameters:
     ///   - baseURL: API root. `/chat/completions` is appended when missing.
     ///   - apiKey: Optional Bearer token. Default: `nil`.
+    ///   - apiKeyReference: Optional ``SecretStore`` pointer used when
+    ///     `apiKey` is `nil` or empty. Default: `nil`.
     ///   - model: Model or deployment identifier.
     ///   - httpHeaders: Extra headers. Default: `[:]`.
     ///   - queryItems: Extra query items. Default: `[:]`.
@@ -90,6 +102,7 @@ public struct OpenAICompatibleProviderConfiguration: Sendable, Equatable {
     public init(
         baseURL: URL,
         apiKey: String? = nil,
+        apiKeyReference: SecretReference? = nil,
         model: String,
         httpHeaders: [String: String] = [:],
         queryItems: [String: String] = [:],
@@ -98,11 +111,35 @@ public struct OpenAICompatibleProviderConfiguration: Sendable, Equatable {
     ) {
         self.baseURL = baseURL
         self.apiKey = apiKey
+        self.apiKeyReference = apiKeyReference
         self.model = model
         self.httpHeaders = httpHeaders
         self.queryItems = queryItems
         self.structuredOutputMode = structuredOutputMode
         self.providerName = providerName
+    }
+
+    /// Resolves the effective API key.
+    ///
+    /// The inline ``apiKey`` wins when non-empty; otherwise the reference is
+    /// loaded from `store`. Returns `nil` when neither is available — for
+    /// example a reference with no store, or a store with no matching secret.
+    ///
+    /// - Parameters:
+    ///   - store: Backend holding the referenced secret, if any.
+    ///   - reference: Pointer to resolve. Defaults to ``apiKeyReference``.
+    /// - Returns: The effective key, or `nil` when unavailable.
+    public func resolveAPIKey(
+        using store: (any SecretStore)?,
+        reference: SecretReference? = nil
+    ) async throws -> String? {
+        let inline = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let inline, !inline.isEmpty {
+            return inline
+        }
+        let pointer = reference ?? apiKeyReference
+        guard let pointer, let store else { return nil }
+        return try await store.secret(for: pointer)
     }
 
     /// OpenAI Chat Completions (`https://api.openai.com/v1`).
@@ -193,5 +230,16 @@ public struct OpenAICompatibleProviderConfiguration: Sendable, Equatable {
             structuredOutputMode: .promptFallback,
             providerName: "lmstudio"
         )
+    }
+}
+
+extension OpenAICompatibleProviderConfiguration: CustomDebugStringConvertible {
+    /// Debug description with the API key and sensitive headers redacted.
+    ///
+    /// The key renders as `"[redacted]"` when set so `print` and log SDKs
+    /// never capture it; use ``resolveAPIKey(using:reference:)`` to read it.
+    public var debugDescription: String {
+        let key = apiKey == nil ? "nil" : "\"\(SecretRedaction.placeholder)\""
+        return "OpenAICompatibleProviderConfiguration(baseURL: \(baseURL), apiKey: \(key), apiKeyReference: \(String(describing: apiKeyReference)), model: \"\(model)\", httpHeaders: \(SecretRedaction.redactedSensitiveValues(httpHeaders)), queryItems: \(SecretRedaction.redactedSensitiveValues(queryItems)), structuredOutputMode: \(structuredOutputMode), providerName: \"\(providerName)\")"
     }
 }

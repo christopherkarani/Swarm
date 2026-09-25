@@ -78,6 +78,16 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, 
             self.store = try await Wax.Memory(at: url, config: waxConfig)
         }
 
+        // Wax owns the store file lifecycle; restrict it to owner-only on a
+        // best-effort basis without failing memory creation.
+        if FileManager.default.fileExists(atPath: url.path) {
+            do {
+                try SecureFileIO.harden(url)
+            } catch {
+                Log.memory.warning("WaxMemory: Failed to restrict store permissions at \(url.path): \(error.localizedDescription)")
+            }
+        }
+
         self.persistedMessages = loadedMessages
         self.persistedMessageIDs = Set(loadedMessages.map(\.id))
     }
@@ -433,7 +443,7 @@ public extension WaxMemory {
             .appendingPathComponent("Swarm", isDirectory: true)
             .appendingPathComponent("AgentMemory", isDirectory: true)
 
-        try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        try? SecureFileIO.createDirectory(at: root)
         return root.appendingPathComponent("wax-memory.mv2s")
     }
 
@@ -448,7 +458,7 @@ public extension WaxMemory {
             .appendingPathComponent("Swarm", isDirectory: true)
             .appendingPathComponent("AgentMemoryTests", isDirectory: true)
 
-        try? fileManager.createDirectory(at: ephemeralRoot, withIntermediateDirectories: true)
+        try? SecureFileIO.createDirectory(at: ephemeralRoot)
         return ephemeralRoot.appendingPathComponent("wax-memory-\(UUID().uuidString).mv2s")
     }
 }

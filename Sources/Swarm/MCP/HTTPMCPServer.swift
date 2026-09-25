@@ -106,6 +106,52 @@ public actor HTTPMCPServer: MCPServerConnection {
         baseURL = url
         self.name = name
         self.apiKey = apiKey
+        apiKeyReference = nil
+        secretStore = nil
+        self.timeout = timeout
+        self.maxRetries = maxRetries
+        self.session = session
+        cachedCapabilities = nil
+
+        encoder = JSONEncoder()
+        decoder = JSONDecoder()
+    }
+
+    /// Creates an HTTP MCP server client that resolves its API key from a ``SecretStore``.
+    ///
+    /// The reference is resolved lazily on the first request and cached for
+    /// the server's lifetime. Use ``KeychainSecretStore`` on Apple platforms
+    /// so the raw key never sits in persisted configuration.
+    ///
+    /// - Parameters:
+    ///   - url: The base URL of the MCP server. Must use HTTPS.
+    ///   - name: A name for this server instance (used for identification and logging).
+    ///   - apiKeyReference: Pointer to the API key used for Bearer authentication.
+    ///   - secretStore: Backend holding the referenced secret.
+    ///   - timeout: The request timeout interval in seconds. Default: 30.0
+    ///   - maxRetries: The maximum number of retry attempts for failed requests. Default: 3
+    ///   - session: The URLSession to use for requests. Default: .shared
+    public init(
+        url: URL,
+        name: String,
+        apiKeyReference: SecretReference,
+        secretStore: any SecretStore,
+        timeout: TimeInterval = 30.0,
+        maxRetries: Int = 3,
+        session: URLSession = .shared
+    ) throws {
+        // Security: Enforce HTTPS when API keys are used to prevent credential exposure.
+        guard url.scheme?.lowercased() == "https" else {
+            throw MCPError.invalidParams(
+                "HTTPS is required when using API keys. URL scheme: \(url.scheme ?? "nil")"
+            )
+        }
+
+        baseURL = url
+        self.name = name
+        apiKey = nil
+        self.apiKeyReference = apiKeyReference
+        self.secretStore = secretStore
         self.timeout = timeout
         self.maxRetries = maxRetries
         self.session = session
@@ -285,6 +331,18 @@ public actor HTTPMCPServer: MCPServerConnection {
     /// The optional API key for authentication.
     private let apiKey: String?
 
+    /// Keychain (or other ``SecretStore``) pointer for the API key.
+    private let apiKeyReference: SecretReference?
+
+    /// Backend resolving `apiKeyReference`, if any.
+    private let secretStore: (any SecretStore)?
+
+    /// Cached key resolved from `apiKeyReference`.
+    private var resolvedAPIKey: String?
+
+    /// Whether `apiKeyReference` has been resolved (even to `nil`).
+    private var didResolveAPIKey = false
+
     /// The request timeout interval.
     private let timeout: TimeInterval
 
@@ -398,7 +456,7 @@ public actor HTTPMCPServer: MCPServerConnection {
     /// - Returns: The MCP response from the server.
     /// - Throws: `MCPError` if the request fails.
     private func performRequest(_ mcpRequest: MCPRequest) async throws -> MCPResponse {
-        let urlRequest = try makeStreamableRequest(body: encoder.encode(mcpRequest))
+        let urlRequest = try await makeStreamableRequest(body: encoder.encode(mcpRequest))
         let (data, response) = try await session.data(for: urlRequest)
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -427,7 +485,7 @@ public actor HTTPMCPServer: MCPServerConnection {
     /// - Parameter notification: The JSON-RPC notification to send.
     /// - Throws: `MCPError` if the request fails.
     private func performNotification(_ notification: MCPNotification) async throws {
-        let urlRequest = try makeStreamableRequest(body: encoder.encode(notification))
+        let urlRequest = try await makeStreamableRequest(body: encoder.encode(notification))
         let (data, response) = try await session.data(for: urlRequest)
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -474,7 +532,14 @@ public actor HTTPMCPServer: MCPServerConnection {
         return try MCPWireCodec.toolCallResult(result, toolName: name, style: style)
     }
 
-    private func makeStreamableRequest(body: Data) -> URLRequest {
+    private func makeStreamableRequest(body: Data) async throws -> URLRequest {
+        if apiKey == nil, let apiKeyReference, !didResolveAPIKey {
+            didResolveAPIKey = true
+            if let secretStore {
+                resolvedAPIKey = try await secretStore.secret(for: apiKeyReference)
+            }
+        }
+
         var urlRequest = URLRequest(url: baseURL)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -489,7 +554,7 @@ public actor HTTPMCPServer: MCPServerConnection {
             urlRequest.setValue(cachedSessionID, forHTTPHeaderField: "MCP-Session-Id")
         }
 
-        if let apiKey {
+        if let apiKey = apiKey ?? resolvedAPIKey {
             urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
 

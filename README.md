@@ -225,6 +225,7 @@ await Swarm.configure(provider: myProvider)
 | [Getting Started](docs/guide/getting-started.md) | Installation and first agent |
 | [Why Swarm?](docs/guide/why-swarm.md) | Design choices and architecture |
 | [Remote Providers](docs/guide/remote-providers.md) | OpenAI, Azure, OpenRouter, Ollama, and LM Studio |
+| [Secret Storage](docs/guide/secret-storage.md) | Keychain-backed API keys, redaction, checkpoint file permissions |
 | [Foundation Models](docs/guide/foundation-models.md) | Capture and native session modes |
 | [Voice](docs/guide/voice.md) | Turn-based `VoiceSession` around an existing Agent |
 | [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics |

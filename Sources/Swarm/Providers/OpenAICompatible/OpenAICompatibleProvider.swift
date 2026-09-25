@@ -51,6 +51,9 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     /// `Sendable`, so the session is stored in this box.
     private let sessionBox: SessionBox
 
+    /// Backend resolving `configuration.apiKeyReference`, if any.
+    private let secretStore: (any SecretStore)?
+
     /// Creates a provider.
     ///
     /// - Parameters:
@@ -62,6 +65,29 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         session: URLSession = .shared
     ) {
         self.configuration = configuration
+        self.secretStore = nil
+        self.sessionBox = SessionBox(session)
+    }
+
+    /// Creates a provider that resolves `configuration.apiKeyReference`.
+    ///
+    /// When the configuration carries an inline ``OpenAICompatibleProviderConfiguration/apiKey``
+    /// it is used as-is; otherwise the reference is loaded from `secretStore`
+    /// on every request. Use ``KeychainSecretStore`` on Apple platforms so the
+    /// raw key never sits in persisted configuration.
+    ///
+    /// - Parameters:
+    ///   - configuration: Endpoint, model, and auth.
+    ///   - secretStore: Backend holding the referenced secret.
+    ///   - session: Session used for POST requests. Inject a `URLProtocol`
+    ///     stub in tests. Default: `URLSession.shared`.
+    public init(
+        configuration: OpenAICompatibleProviderConfiguration,
+        secretStore: any SecretStore,
+        session: URLSession = .shared
+    ) {
+        self.configuration = configuration
+        self.secretStore = secretStore
         self.sessionBox = SessionBox(session)
     }
 
@@ -249,12 +275,21 @@ public struct OpenAICompatibleProvider: InferenceProvider,
 
     // MARK: - HTTP
 
+    private func effectiveConfiguration() async throws -> OpenAICompatibleProviderConfiguration {
+        var effective = configuration
+        if effective.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+            effective.apiKey = try await configuration.resolveAPIKey(using: secretStore)
+        }
+        return effective
+    }
+
     private func complete(
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions,
         structuredOutput: StructuredOutputRequest?
     ) async throws -> InferenceResponse {
+        let configuration = try await effectiveConfiguration()
         let request = try OpenAICompatibleCodec.makeRequest(
             configuration: configuration,
             messages: messages,
@@ -292,6 +327,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         structuredOutput: StructuredOutputRequest?,
         continuation: AsyncThrowingStream<InferenceStreamUpdate, Error>.Continuation
     ) async throws {
+        let configuration = try await effectiveConfiguration()
         let request = try OpenAICompatibleCodec.makeRequest(
             configuration: configuration,
             messages: messages,
@@ -429,6 +465,21 @@ public extension InferenceProvider where Self == OpenAICompatibleProvider {
         session: URLSession = .shared
     ) -> OpenAICompatibleProvider {
         OpenAICompatibleProvider(configuration: configuration, session: session)
+    }
+
+    /// Creates an OpenAI-compatible remote provider that resolves
+    /// `configuration.apiKeyReference` from `secretStore` on every request.
+    ///
+    /// - Parameters:
+    ///   - configuration: Endpoint, model, and auth.
+    ///   - secretStore: Backend holding the referenced secret.
+    ///   - session: Session used for POST requests. Default: `URLSession.shared`.
+    static func openAICompatible(
+        _ configuration: OpenAICompatibleProviderConfiguration,
+        secretStore: any SecretStore,
+        session: URLSession = .shared
+    ) -> OpenAICompatibleProvider {
+        OpenAICompatibleProvider(configuration: configuration, secretStore: secretStore, session: session)
     }
 
     /// Creates an OpenAI-compatible remote provider from raw fields.
