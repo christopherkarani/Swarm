@@ -1,24 +1,23 @@
 // Agent+ToolLoopHandoffs.swift
 // Swarm Framework
 //
-// Handoff tool-schema integration for the owned tool loop.
+// Handoff tool-schema integration for the tool-calling turn. The runner feeds
+// host tool calls here; handoff transfers execute the target agent and end the
+// turn, while regular and Membrane batches continue it.
 
 import Foundation
 
-extension Agent {
+extension AgentTurnRunner {
     // MARK: - Handoff Tool Schema Integration
 
     /// Builds tool schemas including handoff tool schemas.
     ///
     /// This merges regular tool schemas with handoff-generated schemas,
     /// allowing handoffs to appear as callable tools in the LLM prompt.
-    func buildToolSchemasWithHandoffs(
-        toolRegistry: ToolRegistry,
-        context: AgentContext
-    ) async -> [ToolSchema] {
-        var schemas = await toolRegistry.schemas
+    func buildToolSchemasWithHandoffs() async -> [ToolSchema] {
+        var schemas = await request.dependencies.toolRegistry.schemas
 
-        for handoff in await activeHandoffs(context: context) {
+        for handoff in await activeHandoffs() {
             let handoffSchema = ToolSchema(
                 name: handoff.effectiveToolName,
                 description: handoff.effectiveToolDescription,
@@ -37,11 +36,11 @@ extension Agent {
         return MembraneInternalTools.sortedSchemas(schemas)
     }
 
-    private func activeHandoffs(context: AgentContext) async -> [AnyHandoffConfiguration] {
+    private func activeHandoffs() async -> [AnyHandoffConfiguration] {
         var active: [AnyHandoffConfiguration] = []
 
-        for handoff in _handoffs {
-            if let when = handoff.when, await !when(context, handoff.targetAgent) {
+        for handoff in agent._handoffs {
+            if let when = handoff.when, await !when(request.executionContext, handoff.targetAgent) {
                 continue
             }
             active.append(handoff)
@@ -55,20 +54,11 @@ extension Agent {
     /// When a tool call matches a handoff's `effectiveToolName`, the target agent
     /// is executed with the original user input and its result is returned.
     /// Returns the handoff output if a handoff was executed, nil otherwise.
-    func processToolCallsWithHandoffs(
-        response: InferenceResponse,
-        toolRegistry: ToolRegistry,
-        memory: (any Memory)?,
-        turnTranscript: inout AgentTurnTranscript,
-        resultBuilder: AgentResult.Builder,
-        observer: (any AgentObserver)?,
-        tracing: TracingHelper?,
-        membraneAdapter: (any MembraneAgentAdapter)?,
-        context: AgentContext,
-        startTime: ContinuousClock.Instant
-    ) async throws -> FinalAssistantResponse? {
+    mutating func processToolCallsWithHandoffs(
+        _ response: InferenceResponse
+    ) async throws -> Agent.FinalAssistantResponse? {
         let handoffMap = Dictionary(
-            _handoffs.map { ($0.effectiveToolName, $0) },
+            agent._handoffs.map { ($0.effectiveToolName, $0) },
             uniquingKeysWith: { first, _ in first }
         )
 
@@ -78,6 +68,7 @@ extension Agent {
             toolCalls: response.toolCalls
         )
 
+        let membraneAdapter = request.dependencies.membraneAdapter
         let hostKind: (InferenceResponse.ParsedToolCall) -> AgentTurnKernel.HostToolCallKind = { parsedCall in
             AgentTurnKernel.hostToolCallKind(
                 isHandoffTool: handoffMap[parsedCall.name] != nil,
@@ -96,31 +87,23 @@ extension Agent {
                 guard let handoffConfig = handoffMap[parsedCall.name] else {
                     try await executeSingleToolCall(
                         parsedCall: parsedCall,
-                        toolRegistry: toolRegistry,
-                        memory: memory,
-                        turnTranscript: &turnTranscript,
-                        resultBuilder: resultBuilder,
-                        observer: observer,
-                        tracing: tracing,
-                        kind: .regular,
-                        membraneAdapter: membraneAdapter,
-                        startTime: startTime
+                        kind: .regular
                     )
                     callIndex += 1
                     continue
                 }
-                if let when = handoffConfig.when, await !when(context, handoffConfig.targetAgent) {
+                if let when = handoffConfig.when, await !when(request.executionContext, handoffConfig.targetAgent) {
                     let message = "Handoff is not enabled"
                     let handoffCall = ToolCall(
                         providerCallId: parsedCall.id,
                         toolName: parsedCall.name,
                         arguments: parsedCall.arguments
                     )
-                    _ = resultBuilder.addToolCall(handoffCall)
+                    _ = request.resultBuilder.addToolCall(handoffCall)
                     let result = ToolResult.failure(callId: handoffCall.id, error: message, duration: .zero)
-                    _ = resultBuilder.addToolResult(result)
+                    _ = request.resultBuilder.addToolResult(result)
 
-                    if configuration.stopOnToolError {
+                    if agent.configuration.stopOnToolError {
                         throw AgentError.toolFailure(toolName: parsedCall.name, message: message, cause: nil)
                     }
 
@@ -138,14 +121,14 @@ extension Agent {
                 let targetAgent = handoffConfig.targetAgent
 
                 let handoffStart = ContinuousClock.now
-                let spanId = await tracing?.traceToolCall(name: parsedCall.name, arguments: parsedCall.arguments)
+                let spanId = await request.tracing?.traceToolCall(name: parsedCall.name, arguments: parsedCall.arguments)
                 let handoffCall = ToolCall(
                     providerCallId: parsedCall.id,
                     toolName: parsedCall.name,
                     arguments: parsedCall.arguments
                 )
-                _ = resultBuilder.addToolCall(handoffCall)
-                await observer?.onHandoff(context: context, fromAgent: self, toAgent: targetAgent)
+                _ = request.resultBuilder.addToolCall(handoffCall)
+                await request.observer?.onHandoff(context: request.executionContext, fromAgent: agent, toAgent: targetAgent)
 
                 let lastUserText = HandoffPreparation.lastUserText(
                     from: turnTranscript.conversationMessages
@@ -156,16 +139,16 @@ extension Agent {
                 )
 
                 let initialHandoffData = HandoffInputData(
-                    sourceAgentName: name,
+                    sourceAgentName: agent.name,
                     targetAgentName: targetAgent.name,
                     input: handoffInput,
-                    context: await context.snapshot,
+                    context: await request.executionContext.snapshot,
                     metadata: reason.isEmpty ? [:] : ["reason": .string(reason)]
                 )
 
                 if let onTransfer = handoffConfig.onTransfer {
                     do {
-                        try await onTransfer(context, initialHandoffData)
+                        try await onTransfer(request.executionContext, initialHandoffData)
                     } catch {
                         Log.agents.warning("Handoff onTransfer callback failed for \(parsedCall.name): \(error)")
                     }
@@ -175,7 +158,7 @@ extension Agent {
                     sourceAgentName: initialHandoffData.sourceAgentName,
                     targetAgentName: initialHandoffData.targetAgentName,
                     input: initialHandoffData.input,
-                    context: await context.snapshot,
+                    context: await request.executionContext.snapshot,
                     metadata: initialHandoffData.metadata
                 )
                 let prepared = HandoffPreparation.prepare(
@@ -189,9 +172,9 @@ extension Agent {
                     skippingToolCallID: parsedCall.id
                 )
                 let allowedContext = prepared.allowedContext
-                let handoffContext = await context.copy(additionalValues: allowedContext)
+                let handoffContext = await request.executionContext.copy(additionalValues: allowedContext)
                 await applyContextValues(allowedContext, to: handoffContext)
-                await preserveExecutionPath(from: context, in: handoffContext)
+                await preserveExecutionPath(from: request.executionContext, in: handoffContext)
                 if prepared.nestsSession {
                     await addNestedHandoffHistory(
                         prepared.historyProjection.messages,
@@ -203,8 +186,11 @@ extension Agent {
 
                 let result: AgentResult
                 do {
-                    result = try await executeWithinRemainingTimeout(startTime: startTime) {
-                        let handoffSession = try await makeNestedHandoffSession(
+                    let startTime = startTime
+                    let agent = agent
+                    let observer = request.observer
+                    result = try await agent.executeWithinRemainingTimeout(startTime: startTime) {
+                        let handoffSession = try await Self.makeNestedHandoffSession(
                             from: handoffContext,
                             enabled: prepared.nestsSession
                         )
@@ -217,7 +203,7 @@ extension Agent {
                     }
                 } catch {
                     let handoffDuration = ContinuousClock.now - handoffStart
-                    _ = resultBuilder.addToolResult(
+                    _ = request.resultBuilder.addToolResult(
                         ToolResult.failure(
                             callId: handoffCall.id,
                             error: error.localizedDescription,
@@ -225,7 +211,7 @@ extension Agent {
                         )
                     )
                     if let spanId {
-                        await tracing?.traceToolError(spanId: spanId, name: parsedCall.name, error: error)
+                        await request.tracing?.traceToolError(spanId: spanId, name: parsedCall.name, error: error)
                     }
                     throw error
                 }
@@ -236,7 +222,7 @@ extension Agent {
                 )
 
                 let handoffDuration = ContinuousClock.now - handoffStart
-                _ = resultBuilder.addToolResult(
+                _ = request.resultBuilder.addToolResult(
                     ToolResult.success(
                         callId: handoffCall.id,
                         output: .string(result.output),
@@ -244,39 +230,31 @@ extension Agent {
                     )
                 )
                 if let spanId {
-                    await tracing?.traceToolResult(spanId: spanId, name: parsedCall.name, result: result.output, duration: handoffDuration)
+                    await request.tracing?.traceToolResult(spanId: spanId, name: parsedCall.name, result: result.output, duration: handoffDuration)
                 }
 
                 // Merge handoff tool calls, results, and combined token totals into
                 // this agent's AgentResult. Nested usage is traced on the child span.
                 for toolCall in result.toolCalls {
-                    _ = resultBuilder.addToolCall(toolCall)
+                    _ = request.resultBuilder.addToolCall(toolCall)
                 }
                 for toolResult in result.toolResults {
-                    _ = resultBuilder.addToolResult(toolResult)
+                    _ = request.resultBuilder.addToolResult(toolResult)
                 }
                 if let usage = result.tokenUsage {
-                    _ = resultBuilder.addNestedTokenUsage(usage)
+                    _ = request.resultBuilder.addNestedTokenUsage(usage)
                 }
                 for (key, value) in result.metadata {
-                    _ = resultBuilder.setMetadata(key, value)
+                    _ = request.resultBuilder.setMetadata(key, value)
                 }
 
                 // Return the handoff output to be used as the final result
-                return FinalAssistantResponse(content: result.output, structuredOutput: nil)
+                return Agent.FinalAssistantResponse(content: result.output, structuredOutput: nil)
 
             case .membraneInternal:
                 try await executeSingleToolCall(
                     parsedCall: parsedCall,
-                    toolRegistry: toolRegistry,
-                    memory: memory,
-                    turnTranscript: &turnTranscript,
-                    resultBuilder: resultBuilder,
-                    observer: observer,
-                    tracing: tracing,
-                    kind: kind,
-                    membraneAdapter: membraneAdapter,
-                    startTime: startTime
+                    kind: kind
                 )
                 callIndex += 1
 
@@ -287,15 +265,7 @@ extension Agent {
                     end += 1
                 }
                 try await executeRegularToolBatch(
-                    calls: Array(response.toolCalls[callIndex..<end]),
-                    toolRegistry: toolRegistry,
-                    memory: memory,
-                    turnTranscript: &turnTranscript,
-                    resultBuilder: resultBuilder,
-                    observer: observer,
-                    tracing: tracing,
-                    membraneAdapter: membraneAdapter,
-                    startTime: startTime
+                    calls: Array(response.toolCalls[callIndex..<end])
                 )
                 callIndex = end
             }
@@ -320,7 +290,7 @@ extension Agent {
         }
     }
 
-    private func makeNestedHandoffSession(
+    private static func makeNestedHandoffSession(
         from context: AgentContext,
         enabled: Bool
     ) async throws -> (any Session)? {
