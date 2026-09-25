@@ -23,8 +23,8 @@ import Foundation
 /// ## Example
 ///
 /// ```swift
-/// let server = StdioMCPServer(
-///     command: "npx",
+/// let server = try StdioMCPServer(
+///     command: "/opt/homebrew/bin/npx",
 ///     arguments: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
 ///     name: "filesystem"
 /// )
@@ -32,6 +32,25 @@ import Foundation
 /// let tools = try await server.listTools()
 /// try await server.close()
 /// ```
+///
+/// ## Security
+///
+/// Spawning a child process is privileged. `StdioMCPServer` hardens the
+/// launch in three ways:
+///
+/// - **Absolute binary path required.** `command` must start with `/`.
+///   `PATH` lookup (including the old `/usr/bin/env` fallback) is disabled,
+///   so a poisoned `PATH` cannot redirect the launch. The path must also
+///   exist and be executable when ``initialize()`` runs.
+/// - **Minimal environment.** The child never inherits the full parent
+///   environment. It receives only ``defaultEnvironmentAllowlist`` keys
+///   present in the parent, a restricted `PATH` fallback
+///   (``defaultSandboxPATH``), explicitly inherited keys, and the
+///   `environment` overlay (which wins). Pass secrets only via `environment`.
+/// - **Working-directory limits.** `workingDirectory` must be an absolute
+///   file URL pointing at an existing directory. When
+///   `allowedWorkingDirectoryRoot` is set, the working directory must stay
+///   inside it (and defaults to it when omitted).
 ///
 /// ## Thread Safety
 ///
@@ -65,29 +84,67 @@ public actor StdioMCPServer: MCPServerConnection {
         String(data: stderrBuffer, encoding: .utf8) ?? ""
     }
 
+    /// Parent environment keys passed through to the child by default.
+    ///
+    /// Everything else from the parent environment is dropped. Notably `PATH`
+    /// is not inherited: the child gets ``defaultSandboxPATH`` unless the
+    /// caller overrides it via `environment` or opts the host value back in
+    /// with `inheritedEnvironmentKeys`.
+    public static let defaultEnvironmentAllowlist: Set<String> = [
+        "HOME", "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME",
+        "USER", "SHELL", "TMPDIR", "TZ", "TERM",
+    ]
+
+    /// Restricted `PATH` given to the child when neither the parent
+    /// allowlist selection nor the `environment` overlay provides one.
+    public static let defaultSandboxPATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+
     /// Creates a stdio MCP client that will launch `command` on initialize.
     ///
     /// - Parameters:
-    ///   - command: The executable to launch. Looked up on `PATH` unless it
-    ///     contains a path separator.
+    ///   - command: Absolute path of the executable to launch. Bare names
+    ///     and relative paths are rejected (`PATH` lookup is disabled).
     ///   - arguments: Arguments passed to the executable.
-    ///   - environment: Optional environment overlay. When `nil`, the child
-    ///     inherits the current process environment.
-    ///   - workingDirectory: Optional working directory for the child.
+    ///   - environment: Optional environment overlay applied on top of the
+    ///     minimal inherited environment. Values here always win, including
+    ///     for `PATH`. This is the only way to give the child secrets —
+    ///     they are never inherited implicitly.
+    ///   - inheritedEnvironmentKeys: Additional parent environment keys to
+    ///     pass through beyond ``defaultEnvironmentAllowlist``.
+    ///   - workingDirectory: Optional working directory for the child. Must
+    ///     be an absolute file URL for an existing directory, and must stay
+    ///     inside `allowedWorkingDirectoryRoot` when one is set.
+    ///   - allowedWorkingDirectoryRoot: Optional sandbox root for the
+    ///     working directory. When set and `workingDirectory` is `nil`, the
+    ///     child runs with this root as its working directory.
     ///   - name: A name for this connection (used for identification).
     ///   - timeout: Per-request timeout in seconds. Default: 30.0
+    /// - Throws: `MCPError.invalidParams` when `command` is not absolute or
+    ///   the working-directory URLs are not absolute file URLs inside the
+    ///   sandbox root.
     public init(
         command: String,
         arguments: [String] = [],
         environment: [String: String]? = nil,
+        inheritedEnvironmentKeys: Set<String> = [],
         workingDirectory: URL? = nil,
+        allowedWorkingDirectoryRoot: URL? = nil,
         name: String,
         timeout: TimeInterval = 30.0
-    ) {
+    ) throws {
+        try Self.validateCommand(command)
+        try Self.validateDirectoryURL(workingDirectory, label: "workingDirectory")
+        try Self.validateDirectoryURL(allowedWorkingDirectoryRoot, label: "allowedWorkingDirectoryRoot")
+        try Self.validateWorkdirContainment(
+            workingDirectory: workingDirectory,
+            sandboxRoot: allowedWorkingDirectoryRoot
+        )
         self.command = command
         self.arguments = arguments
         self.environment = environment
+        self.inheritedEnvironmentKeys = inheritedEnvironmentKeys
         self.workingDirectory = workingDirectory
+        self.allowedWorkingDirectoryRoot = allowedWorkingDirectoryRoot
         self.name = name
         self.timeout = timeout
         encoder = JSONEncoder()
@@ -186,7 +243,9 @@ public actor StdioMCPServer: MCPServerConnection {
     private let command: String
     private let arguments: [String]
     private let environment: [String: String]?
+    private let inheritedEnvironmentKeys: Set<String>
     private let workingDirectory: URL?
+    private let allowedWorkingDirectoryRoot: URL?
     private let timeout: TimeInterval
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -207,29 +266,110 @@ public actor StdioMCPServer: MCPServerConnection {
     private var cachedCapabilities: MCPCapabilities?
     private var cachedProtocolVersion: String?
 
+    /// The working directory the child will run with: the explicit
+    /// `workingDirectory`, or the sandbox root when no explicit directory
+    /// was pinned. Exposed internally so tests can verify sandbox defaulting.
+    var resolvedWorkingDirectoryURL: URL? {
+        workingDirectory ?? allowedWorkingDirectoryRoot
+    }
+
+    /// Builds the child's environment from an explicit host snapshot.
+    ///
+    /// Keeps only ``defaultEnvironmentAllowlist`` plus
+    /// `additionalInheritedKeys`, fills a restricted `PATH` fallback, then
+    /// applies `overlay` last so caller-provided values always win.
+    static func resolvedChildEnvironment(
+        host: [String: String],
+        overlay: [String: String]?,
+        additionalInheritedKeys: Set<String>
+    ) -> [String: String] {
+        var child: [String: String] = [:]
+        for key in defaultEnvironmentAllowlist.union(additionalInheritedKeys) {
+            if let value = host[key] {
+                child[key] = value
+            }
+        }
+        if child["PATH"] == nil {
+            child["PATH"] = defaultSandboxPATH
+        }
+        if let overlay {
+            for (key, value) in overlay {
+                child[key] = value
+            }
+        }
+        return child
+    }
+
+    private static func validateCommand(_ command: String) throws {
+        guard command.hasPrefix("/") else {
+            throw MCPError.invalidParams(
+                "StdioMCPServer command must be an absolute path (got '\(command)'). PATH lookup is disabled; resolve the executable to an absolute path first."
+            )
+        }
+    }
+
+    private static func validateDirectoryURL(_ url: URL?, label: String) throws {
+        guard let url else { return }
+        guard url.isFileURL, url.path.hasPrefix("/") else {
+            throw MCPError.invalidParams(
+                "StdioMCPServer \(label) must be an absolute file URL (got '\(url.absoluteString)')."
+            )
+        }
+    }
+
+    private static func validateWorkdirContainment(
+        workingDirectory: URL?,
+        sandboxRoot: URL?
+    ) throws {
+        guard let workingDirectory, let sandboxRoot else { return }
+        let workdir = workingDirectory.standardizedFileURL.path
+        let root = sandboxRoot.standardizedFileURL.path
+        guard workdir == root || workdir.hasPrefix(root.hasSuffix("/") ? root : root + "/") else {
+            throw MCPError.invalidParams(
+                "StdioMCPServer workingDirectory '\(workdir)' escapes allowedWorkingDirectoryRoot '\(root)'."
+            )
+        }
+    }
+
     private func startProcessIfNeeded() throws {
         #if os(macOS) || os(Linux)
         if let process, process.isRunning {
             return
         }
 
-        let child = Process()
-        if command.contains("/") {
-            child.executableURL = URL(fileURLWithPath: command)
-            child.arguments = arguments
-        } else {
-            child.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            child.arguments = [command] + arguments
+        try Self.validateCommand(command)
+        guard FileManager.default.isExecutableFile(atPath: command) else {
+            throw MCPError.invalidParams(
+                "StdioMCPServer command '\(command)' does not exist or is not executable."
+            )
         }
-        if let environment {
-            var merged = ProcessInfo.processInfo.environment
-            for (key, value) in environment {
-                merged[key] = value
+        let resolvedWorkdir = resolvedWorkingDirectoryURL
+        if let resolvedWorkdir {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: resolvedWorkdir.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else {
+                throw MCPError.invalidParams(
+                    "StdioMCPServer workingDirectory '\(resolvedWorkdir.path)' does not exist or is not a directory."
+                )
             }
-            child.environment = merged
+            try Self.validateWorkdirContainment(
+                workingDirectory: resolvedWorkdir,
+                sandboxRoot: allowedWorkingDirectoryRoot
+            )
         }
-        if let workingDirectory {
-            child.currentDirectoryURL = workingDirectory
+
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: command)
+        child.arguments = arguments
+        // Never leave `environment` nil: a nil environment inherits the
+        // entire parent process environment. Always install the minimal set.
+        child.environment = Self.resolvedChildEnvironment(
+            host: ProcessInfo.processInfo.environment,
+            overlay: environment,
+            additionalInheritedKeys: inheritedEnvironmentKeys
+        )
+        if let resolvedWorkdir {
+            child.currentDirectoryURL = resolvedWorkdir
         }
 
         let stdin = Pipe()
