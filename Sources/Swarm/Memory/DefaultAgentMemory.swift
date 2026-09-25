@@ -133,9 +133,13 @@ public actor DefaultAgentMemory: Memory {
         let primaryBudget = max(1, Int(Double(query.tokenLimit) * 0.7))
         let secondaryBudget = query.tokenLimit
 
+        let primaryAllowance = query.maxItems == 1 ? 1 : max(1, query.maxItems - 1)
         async let primaryItemsTask = contextMemory.promptItems(
             for: query.text,
-            tokenLimit: primaryBudget
+            tokenLimit: primaryBudget,
+            maxItems: primaryAllowance,
+            maxItemTokens: query.maxItemTokens,
+            estimate: Self.estimatePromptTokens
         )
         let secondaryItems = await waxPromptItems(
             for: MemoryQuery(
@@ -147,7 +151,6 @@ public actor DefaultAgentMemory: Memory {
         )
         let primaryItems = await primaryItemsTask
 
-        let primaryAllowance = query.maxItems == 1 ? 1 : max(1, query.maxItems - 1)
         let primary = await MemoryPromptAssembly.limit(
             primaryItems,
             maxItems: primaryAllowance,
@@ -273,7 +276,7 @@ public actor DefaultAgentMemory: Memory {
 
         do {
             let wax = try await ensureWaxMemory()
-            return await wax.promptItems(for: query)
+            return await wax.promptItems(for: query.text)
         } catch {
             Log.memory.warning("DefaultAgentMemory: Failed to retrieve Wax context: \(error.localizedDescription)")
             return []

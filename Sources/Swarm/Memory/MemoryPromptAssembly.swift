@@ -55,15 +55,37 @@ enum MemoryPromptAssembly {
         return kept
     }
 
-    /// Window-build failure items, newest first.
+    /// Window-build failure items in selection order, newest first.
     ///
-    /// `limit` keeps a prefix. `MemoryMessage.formatContext` selects from the
-    /// newest message. Oldest-first input would make that prefix the oldest
-    /// messages.
+    /// `limit` keeps a prefix, so newest-first input selects recent messages
+    /// (like `MemoryMessage.formatContext`). Render order is chronological;
+    /// use ``limitedFallbackItems(from:maxItems:maxItemTokens:tokenLimit:estimate:)``
+    /// to select and then reverse for rendering.
     static func fallbackItems(from messages: [MemoryMessage]) -> [MemoryPromptItem] {
         messages.reversed().map { message in
             MemoryPromptItem(text: message.formattedContent)
         }
+    }
+
+    /// Window-build failure items, selected newest-first and rendered chronological.
+    ///
+    /// Matches `MemoryMessage.formatContext`: recent messages win selection,
+    /// kept items render oldest-first.
+    static func limitedFallbackItems(
+        from messages: [MemoryMessage],
+        maxItems: Int,
+        maxItemTokens: Int,
+        tokenLimit: Int,
+        estimate: @Sendable (String) async -> Int
+    ) async -> [MemoryPromptItem] {
+        let kept = await limit(
+            fallbackItems(from: messages),
+            maxItems: maxItems,
+            maxItemTokens: maxItemTokens,
+            tokenLimit: tokenLimit,
+            estimate: estimate
+        )
+        return Array(kept.reversed())
     }
 
     private static func trim(

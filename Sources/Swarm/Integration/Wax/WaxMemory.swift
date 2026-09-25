@@ -126,9 +126,11 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, 
         }
     }
 
-    func promptItems(for query: MemoryQuery) async -> [MemoryPromptItem] {
+    /// Ranked frame items for `query`. The caller applies
+    /// `MemoryPromptAssembly.limit`; budgets live with the caller.
+    func promptItems(for query: String) async -> [MemoryPromptItem] {
         do {
-            let rag = try await store.search(query.text)
+            let rag = try await store.search(query)
             return rag.items.map { item in
                 MemoryPromptItem(text: formatRAGItem(item))
             }

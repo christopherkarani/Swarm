@@ -156,4 +156,72 @@ struct MemoryPromptAssemblyTests {
 
         #expect(kept == [MemoryPromptItem(text: "[system]: newer")])
     }
+
+    @Test("An embedded frame header stays inside the single capped item")
+    func embeddedFrameHeaderStaysInsideCappedItem() async {
+        let items = [
+            MemoryPromptItem(text: "[user]: alpha\n[expanded frame: inside"),
+            MemoryPromptItem(text: "[assistant]: beta"),
+        ]
+
+        let kept = await MemoryPromptAssembly.limit(
+            items,
+            maxItems: 1,
+            maxItemTokens: 500,
+            tokenLimit: 500,
+            estimate: countCharacters
+        )
+
+        #expect(kept == [MemoryPromptItem(text: "[user]: alpha\n[expanded frame: inside")])
+    }
+
+    @Test("An exact-fit candidate fills the token budget")
+    func exactFitCandidateFillsBudget() async {
+        let kept = await MemoryPromptAssembly.limit(
+            [
+                MemoryPromptItem(text: "aaaa"),
+                MemoryPromptItem(text: "bb"),
+            ],
+            maxItems: 2,
+            maxItemTokens: 100,
+            tokenLimit: 8,
+            estimate: countCharacters
+        )
+
+        // "aaaa" (4) + "\n\n" (2) + "bb" (2) == tokenLimit.
+        #expect(kept.map(\.text) == ["aaaa", "bb"])
+    }
+
+    @Test("A zero per-item token cap keeps nothing")
+    func zeroPerItemTokenCapKeepsNothing() async {
+        let kept = await MemoryPromptAssembly.limit(
+            [MemoryPromptItem(text: "kept")],
+            maxItems: 1,
+            maxItemTokens: 0,
+            tokenLimit: 100,
+            estimate: countCharacters
+        )
+
+        #expect(kept.isEmpty)
+    }
+
+    @Test("Limited fallback items select newest but render chronological")
+    func limitedFallbackItemsRenderChronological() async {
+        let messages = [
+            MemoryMessage.user("older"),
+            MemoryMessage.assistant("middle"),
+            MemoryMessage.system("newer"),
+        ]
+
+        let kept = await MemoryPromptAssembly.limitedFallbackItems(
+            from: messages,
+            maxItems: 2,
+            maxItemTokens: 100,
+            tokenLimit: 100,
+            estimate: countCharacters
+        )
+
+        // Newest two win selection; render stays oldest-first like formatContext.
+        #expect(kept.map(\.text) == ["[assistant]: middle", "[system]: newer"])
+    }
 }
