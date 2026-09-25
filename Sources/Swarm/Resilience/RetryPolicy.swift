@@ -17,6 +17,13 @@ public enum ResilienceError: Error, Sendable, Equatable {
 
     /// All fallback strategies failed.
     case allFallbacksFailed(errors: [String])
+
+    /// A retry configuration requested an invalid attempt budget.
+    ///
+    /// `maxAttempts` counts total attempts including the initial attempt and
+    /// must be at least 1. Values below 1 are rejected instead of clamping or
+    /// silently succeeding with zero attempts.
+    case invalidMaxAttempts(Int)
 }
 
 // MARK: LocalizedError
@@ -30,6 +37,8 @@ extension ResilienceError: LocalizedError {
             "Circuit breaker is open for service: \(serviceName)"
         case let .allFallbacksFailed(errors):
             "All fallback strategies failed. Errors: \(errors.joined(separator: "; "))"
+        case let .invalidMaxAttempts(value):
+            "Invalid maxAttempts \(value): must be at least 1 total attempt including the initial attempt."
         }
     }
 }
@@ -45,6 +54,8 @@ extension ResilienceError: CustomDebugStringConvertible {
             "ResilienceError.circuitBreakerOpen(serviceName: \(serviceName))"
         case let .allFallbacksFailed(errors):
             "ResilienceError.allFallbacksFailed(errors: \(errors))"
+        case let .invalidMaxAttempts(value):
+            "ResilienceError.invalidMaxAttempts(\(value))"
         }
     }
 }
@@ -164,6 +175,15 @@ extension BackoffStrategy: Equatable {
 // MARK: - RetryPolicy
 
 /// Configurable retry policy with backoff strategies.
+///
+/// `maxAttempts` counts total attempts including the initial attempt and must
+/// be at least 1. This is the single unified retry semantic shared by
+/// ``RetryPolicy``, `AsyncThrowingStream.retry(maxAttempts:delay:factory:)`,
+/// and `HiveRetryPolicy`: `1` means run once with no retries, `3` means one
+/// initial attempt plus up to two retries. Values below 1 throw
+/// ``ResilienceError/invalidMaxAttempts(_:)`` from ``RetryPolicy/execute(_:)``
+/// (and fail the stream from `AsyncThrowingStream.retry`) instead of clamping
+/// or silently succeeding with zero attempts.
 public struct RetryPolicy: Sendable {
     // MARK: Private
 
@@ -171,22 +191,26 @@ public struct RetryPolicy: Sendable {
 
     // MARK: - Static Conveniences
 
-    /// No retry policy - fails immediately on first error.
-    public static let noRetry = RetryPolicy(maxAttempts: 0)
+    /// No retry policy - exactly one total attempt, fails immediately on first error.
+    public static let noRetry = RetryPolicy(maxAttempts: 1)
 
-    /// Standard retry policy with exponential backoff (3 retries, max 60s delay).
+    /// Standard retry policy with exponential backoff (3 total attempts, max 60s delay).
     public static let standard = RetryPolicy(
         maxAttempts: 3,
         backoff: .exponential(base: 1.0, multiplier: 2.0, maxDelay: 60.0)
     )
 
-    /// Aggressive retry policy with more attempts and jitter (5 retries, max 30s delay).
+    /// Aggressive retry policy with more attempts and jitter (5 total attempts, max 30s delay).
     public static let aggressive = RetryPolicy(
         maxAttempts: 5,
         backoff: .exponentialWithJitter(base: 0.5, multiplier: 2.0, maxDelay: 30.0)
     )
 
-    /// Maximum number of retry attempts (excluding the initial attempt).
+    /// Total attempts including the initial attempt. Must be at least 1.
+    ///
+    /// `1` runs the operation once with no retries. Values below 1 are
+    /// invalid and throw ``ResilienceError/invalidMaxAttempts(_:)`` from
+    /// ``RetryPolicy/execute(_:)``.
     public let maxAttempts: Int
 
     /// The backoff strategy to use between retries.
@@ -212,10 +236,13 @@ public struct RetryPolicy: Sendable {
 
     /// Creates a new retry policy.
     /// - Parameters:
-    ///   - maxAttempts: Maximum number of retry attempts (default: 3).
+    ///   - maxAttempts: Total attempts including the initial attempt (default: 3).
+    ///     Must be at least 1; values below 1 are stored as-is and throw
+    ///     ``ResilienceError/invalidMaxAttempts(_:)`` from ``RetryPolicy/execute(_:)``.
     ///   - backoff: The backoff strategy to use (default: exponential).
     ///   - shouldRetry: Closure to determine if retry should be attempted (default: always retry).
-    ///   - onRetry: Optional callback invoked before each retry.
+    ///   - onRetry: Optional callback invoked before each retry. Receives the
+    ///     1-indexed retry number (1 for the first retry).
     public init(
         maxAttempts: Int = 3,
         backoff: BackoffStrategy = .exponential(base: 1.0, multiplier: 2.0, maxDelay: 60.0),
@@ -247,7 +274,7 @@ public struct RetryPolicy: Sendable {
         clock: (any SwarmClock)? = nil,
         random: (@Sendable (ClosedRange<Double>) -> Double)? = nil
     ) {
-        self.maxAttempts = max(0, maxAttempts)
+        self.maxAttempts = maxAttempts
         self.backoff = backoff
         self.shouldRetry = shouldRetry
         self.onRetry = onRetry
@@ -259,22 +286,28 @@ public struct RetryPolicy: Sendable {
 
     /// Executes an operation with retry logic.
     ///
-    /// Canonical agent-inference retry seam: `maxAttempts` counts retries after
-    /// the initial attempt, `CancellationError` rethrows immediately, exhaustion
-    /// wraps `ResilienceError.retriesExhausted`, and backoff sleeps on the
-    /// injected `SwarmClock`. A server `Retry-After` hint carried by
+    /// Canonical agent-inference retry seam: `maxAttempts` counts total attempts
+    /// including the initial attempt, `CancellationError` rethrows immediately,
+    /// exhaustion wraps `ResilienceError.retriesExhausted`, and backoff sleeps
+    /// on the injected `SwarmClock`. A server `Retry-After` hint carried by
     /// ``AgentError/rateLimitExceeded(retryAfter:)`` extends the computed
-    /// delay but never shortens it. `ChatGraph.withRetry` keeps a local loop with
-    /// documented semantic divergence (total-attempt counting, verbatim rethrow,
-    /// unconditional gating, different backoff math).
+    /// delay but never shortens it. `ChatGraph.withRetry` shares the same
+    /// total-attempt counting and keeps a local loop only for its documented
+    /// differences (verbatim rethrow, unconditional gating, different backoff
+    /// math).
     /// - Parameter operation: The async operation to execute.
     /// - Returns: The result of the operation.
-    /// - Throws: `ResilienceError.retriesExhausted` if all attempts fail, or the original error if retries are
-    /// disabled.
+    /// - Throws: `ResilienceError.invalidMaxAttempts` when `maxAttempts` is
+    ///   below 1 (the operation is not invoked), `ResilienceError.retriesExhausted`
+    ///   if all attempts fail, or the original error when `shouldRetry` declines.
     public func execute<T: Sendable>(
         _ operation: @Sendable () async throws -> T
     ) async throws -> T {
-        var retryCount = 0
+        guard maxAttempts >= 1 else {
+            throw ResilienceError.invalidMaxAttempts(maxAttempts)
+        }
+
+        var attempt = 1
         var lastError: Error?
 
         while true {
@@ -288,8 +321,8 @@ public struct RetryPolicy: Sendable {
 
                 lastError = error
 
-                // Check if we should retry
-                guard retryCount < maxAttempts else {
+                // No budget left for another total attempt.
+                guard attempt < maxAttempts else {
                     break
                 }
 
@@ -297,16 +330,15 @@ public struct RetryPolicy: Sendable {
                     throw error
                 }
 
-                retryCount += 1
-
-                // Invoke retry callback
-                await onRetry?(retryCount, error)
+                // `attempt` is the 1-indexed number of the failed attempt, which
+                // equals the 1-indexed retry number for the upcoming retry.
+                await onRetry?(attempt, error)
                 try Task.checkCancellation()
 
                 // Calculate and apply backoff delay. A server-provided
                 // Retry-After hint extends the policy delay but never
                 // shortens it; the run timeout still bounds the wait.
-                let policyDelay = backoff.delay(forAttempt: retryCount, random: randomSource)
+                let policyDelay = backoff.delay(forAttempt: attempt, random: randomSource)
                 let delay = sanitizeBackoffDelay(
                     max(policyDelay, Self.retryAfterHint(for: error) ?? 0)
                 )
@@ -314,12 +346,14 @@ public struct RetryPolicy: Sendable {
                     try await clock.sleep(nanoseconds: delay)
                     try Task.checkCancellation()
                 }
+
+                attempt += 1
             }
         }
 
         // All retries exhausted
         throw ResilienceError.retriesExhausted(
-            attempts: retryCount + 1,
+            attempts: attempt,
             lastError: lastError?.localizedDescription ?? "Unknown error"
         )
     }

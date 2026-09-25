@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 245 (252 including `Internal/GraphRuntime/`)
+- Source files scanned: 250 (257 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2409
 
 ## 1. Swarm (entry point)
@@ -457,7 +457,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 40 | var | public | ContextProfile.Strict4kTemplate.summaryCadenceTurns | `public var summaryCadenceTurns: Int` |
 | 41 | var | public | ContextProfile.Strict4kTemplate.summaryTriggerUtilization | `public var summaryTriggerUtilization: Double` |
 | 43 | var | public | ContextProfile.Strict4kTemplate.maxInputTokens | `public var maxInputTokens: Int { get }` |
-| 47 | func | public | ContextProfile.Strict4kTemplate.init(maxTotalContextTokens:systemTokens:historyTokens:memoryTokens:toolIOTokens:outputReserveTokens:protocolOverheadReserveTokens:safetyMarginTokens:maxToolOutputTokens:maxRetrievedItems:maxRetrievedItemTokens:summaryCadenceTurns:summaryTriggerUtilization:) | `public init(maxTotalContextTokens: Int = 4096, systemTokens: Int = 512, historyTokens: Int = 1400, memoryTokens: Int = 900, toolIOTokens: Int = 600, outputReserveTokens: Int = 500, protocolOverheadReserveTokens: Int = 120, safetyMarginTokens: Int = 64, maxToolOutputTokens: Int = 600, maxRetrievedItems: Int = 3, maxRetrievedItemTokens: Int = 300, summaryCadenceTurns: Int = 2, summaryTriggerUtilization: Double = 0.65)` |
+| 47 | func | public | ContextProfile.Strict4kTemplate.init(maxTotalContextTokens:systemTokens:historyTokens:memoryTokens:toolIOTokens:outputReserveTokens:protocolOverheadReserveTokens:safetyMarginTokens:maxToolOutputTokens:maxRetrievedItems:maxRetrievedItemTokens:summaryCadenceTurns:summaryTriggerUtilization:) | `public init(maxTotalContextTokens: Int = 4096, systemTokens: Int = 512, historyTokens: Int = 1400, memoryTokens: Int = 900, toolIOTokens: Int = 600, outputReserveTokens: Int = 500, protocolOverheadReserveTokens: Int = 120, safetyMarginTokens: Int = 64, maxToolOutputTokens: Int = 600, maxRetrievedItems: Int = 3, maxRetrievedItemTokens: Int = 300, summaryCadenceTurns: Int = 2, summaryTriggerUtilization: Double = 0.65) throws` |
 | 99 | struct | public | ContextProfile.PlatformDefaults | `public struct PlatformDefaults` |
 | 101 | var | public | ContextProfile.PlatformDefaults.iOS | `public static let iOS: ContextProfile.PlatformDefaults` |
 | 103 | var | public | ContextProfile.PlatformDefaults.macOS | `public static let macOS: ContextProfile.PlatformDefaults` |
@@ -1472,6 +1472,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | var | public | WebSearchTool.Configuration.apiKeyReference | `public var apiKeyReference: SecretReference?` |
 | — | func | public | WebSearchTool.Configuration.resolveAPIKey(using:) | `public func resolveAPIKey(using store: (any SecretStore)?) async throws -> String?` |
 | — | func | public | WebSearchTool.init(configuration:secretStore:) | `public init(configuration: WebSearchTool.Configuration, secretStore: any SecretStore)` |
+| 408 | var | public | WebSearchTool.Configuration.description | `public var description: String { get }` |
+| 413 | var | public | WebSearchTool.Configuration.debugDescription | `public var debugDescription: String { get }` |
 
 ### Tools/ZoniSearchTool.swift
 
@@ -2617,29 +2619,30 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 13 | case | public | ResilienceError.retriesExhausted(attempts:lastError:) | `public case retriesExhausted(attempts: Int, lastError: String)` |
 | 16 | case | public | ResilienceError.circuitBreakerOpen(serviceName:) | `public case circuitBreakerOpen(serviceName: String)` |
 | 19 | case | public | ResilienceError.allFallbacksFailed(errors:) | `public case allFallbacksFailed(errors: [String])` |
-| 25 | var | public | ResilienceError.errorDescription | `public var errorDescription: String? { get }` |
-| 40 | var | public | ResilienceError.debugDescription | `public var debugDescription: String { get }` |
-| 55 | enum | public | BackoffStrategy | `public enum BackoffStrategy` |
-| 61 | func | public | BackoffStrategy.delay(forAttempt:) | `public func delay(forAttempt attempt: Int) -> TimeInterval` |
-| 97 | case | public | BackoffStrategy.fixed(delay:) | `public case fixed(delay: TimeInterval)` |
-| 100 | case | public | BackoffStrategy.linear(initial:increment:maxDelay:) | `public case linear(initial: TimeInterval, increment: TimeInterval, maxDelay: TimeInterval)` |
-| 103 | case | public | BackoffStrategy.exponential(base:multiplier:maxDelay:) | `public case exponential(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
-| 106 | case | public | BackoffStrategy.exponentialWithJitter(base:multiplier:maxDelay:) | `public case exponentialWithJitter(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
-| 109 | case | public | BackoffStrategy.decorrelatedJitter(base:maxDelay:) | `public case decorrelatedJitter(base: TimeInterval, maxDelay: TimeInterval)` |
-| 112 | case | public | BackoffStrategy.immediate | `public case immediate` |
-| 120 | case | public | BackoffStrategy.custom(_:) | `public case custom((Int) -> TimeInterval)` |
-| 126 | func | public | BackoffStrategy.==(_:_:) | `public static func == (lhs: BackoffStrategy, rhs: BackoffStrategy) -> Bool` |
-| 152 | struct | public | RetryPolicy | `public struct RetryPolicy` |
-| 160 | var | public | RetryPolicy.noRetry | `public static let noRetry: RetryPolicy` |
-| 163 | var | public | RetryPolicy.standard | `public static let standard: RetryPolicy` |
-| 169 | var | public | RetryPolicy.aggressive | `public static let aggressive: RetryPolicy` |
-| 175 | var | public | RetryPolicy.maxAttempts | `public let maxAttempts: Int` |
-| 178 | var | public | RetryPolicy.backoff | `public let backoff: BackoffStrategy` |
-| 181 | var | public | RetryPolicy.shouldRetry | `public let shouldRetry: (any Error) -> Bool` |
-| 184 | var | public | RetryPolicy.onRetry | `public let onRetry: ((Int, any Error) async -> Void)?` |
-| 194 | func | public | RetryPolicy.init(maxAttempts:backoff:shouldRetry:onRetry:) | `public init(maxAttempts: Int = 3, backoff: BackoffStrategy = .exponential(base: 1.0, multiplier: 2.0, maxDelay: 60.0), shouldRetry: @escaping (any Error) -> Bool = { _ in true }, onRetry: ((Int, any Error) async -> Void)? = nil)` |
-| 213 | func | public | RetryPolicy.execute(_:) | `public func execute<T>(_ operation: () async throws -> T) async throws -> T where T : Sendable` |
-| 271 | func | public | RetryPolicy.==(_:_:) | `public static func == (lhs: RetryPolicy, rhs: RetryPolicy) -> Bool` |
+| 26 | case | public | ResilienceError.invalidMaxAttempts(_:) | `public case invalidMaxAttempts(Int)` |
+| 32 | var | public | ResilienceError.errorDescription | `public var errorDescription: String? { get }` |
+| 49 | var | public | ResilienceError.debugDescription | `public var debugDescription: String { get }` |
+| 66 | enum | public | BackoffStrategy | `public enum BackoffStrategy` |
+| 72 | func | public | BackoffStrategy.delay(forAttempt:) | `public func delay(forAttempt attempt: Int) -> TimeInterval` |
+| 123 | case | public | BackoffStrategy.fixed(delay:) | `public case fixed(delay: TimeInterval)` |
+| 126 | case | public | BackoffStrategy.linear(initial:increment:maxDelay:) | `public case linear(initial: TimeInterval, increment: TimeInterval, maxDelay: TimeInterval)` |
+| 129 | case | public | BackoffStrategy.exponential(base:multiplier:maxDelay:) | `public case exponential(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
+| 132 | case | public | BackoffStrategy.exponentialWithJitter(base:multiplier:maxDelay:) | `public case exponentialWithJitter(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
+| 135 | case | public | BackoffStrategy.decorrelatedJitter(base:maxDelay:) | `public case decorrelatedJitter(base: TimeInterval, maxDelay: TimeInterval)` |
+| 138 | case | public | BackoffStrategy.immediate | `public case immediate` |
+| 146 | case | public | BackoffStrategy.custom(_:) | `public case custom((Int) -> TimeInterval)` |
+| 152 | func | public | BackoffStrategy.==(_:_:) | `public static func == (lhs: BackoffStrategy, rhs: BackoffStrategy) -> Bool` |
+| 187 | struct | public | RetryPolicy | `public struct RetryPolicy` |
+| 195 | var | public | RetryPolicy.noRetry | `public static let noRetry: RetryPolicy` |
+| 198 | var | public | RetryPolicy.standard | `public static let standard: RetryPolicy` |
+| 204 | var | public | RetryPolicy.aggressive | `public static let aggressive: RetryPolicy` |
+| 214 | var | public | RetryPolicy.maxAttempts | `public let maxAttempts: Int` |
+| 217 | var | public | RetryPolicy.backoff | `public let backoff: BackoffStrategy` |
+| 220 | var | public | RetryPolicy.shouldRetry | `public let shouldRetry: (any Error) -> Bool` |
+| 223 | var | public | RetryPolicy.onRetry | `public let onRetry: ((Int, any Error) async -> Void)?` |
+| 246 | func | public | RetryPolicy.init(maxAttempts:backoff:shouldRetry:onRetry:) | `public init(maxAttempts: Int = 3, backoff: BackoffStrategy = .exponential(base: 1.0, multiplier: 2.0, maxDelay: 60.0), shouldRetry: @escaping (any Error) -> Bool = { _ in true }, onRetry: ((Int, any Error) async -> Void)? = nil)` |
+| 301 | func | public | RetryPolicy.execute(_:) | `public func execute<T>(_ operation: () async throws -> T) async throws -> T where T : Sendable` |
+| 381 | func | public | RetryPolicy.==(_:_:) | `public static func == (lhs: RetryPolicy, rhs: RetryPolicy) -> Bool` |
 
 ## 9. Workflow
 
@@ -2784,7 +2787,9 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | — | class | public | StdioMCPServer | `public actor StdioMCPServer` |
-| — | func | public | StdioMCPServer.init(command:arguments:environment:workingDirectory:name:timeout:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, workingDirectory: URL? = nil, name: String, timeout: TimeInterval = 30.0)` |
+| — | var | public | StdioMCPServer.defaultEnvironmentAllowlist | `public static let defaultEnvironmentAllowlist: Set<String>` |
+| — | var | public | StdioMCPServer.defaultSandboxPATH | `public static let defaultSandboxPATH: String` |
+| — | func | public | StdioMCPServer.init(command:arguments:environment:inheritedEnvironmentKeys:workingDirectory:allowedWorkingDirectoryRoot:name:timeout:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, inheritedEnvironmentKeys: Set<String> = [], workingDirectory: URL? = nil, allowedWorkingDirectoryRoot: URL? = nil, name: String, timeout: TimeInterval = 30.0) throws` |
 | — | func | public | StdioMCPServer.callToolRaw(name:arguments:) | `public func callToolRaw(name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
 
 ### MCP/MCPCapabilities.swift
@@ -3388,6 +3393,50 @@ Apple platforms only (`canImport(Security)`).
 | — | func | public | SecretRedaction.isSensitiveName(_:) | `public static func isSensitiveName(_ name: String) -> Bool` |
 | — | func | public | SecretRedaction.redactedSensitiveValues(_:) | `public static func redactedSensitiveValues(_ values: [String: String]) -> [String: String]` |
 | — | func | public | SecretRedaction.redactingKnownSecrets(in:secrets:) | `public static func redactingKnownSecrets(in text: String, secrets: [String?]) -> String` |
+
+## 14d. SPI: ColonyInternal
+
+System programming interface, importable as `@_spi(ColonyInternal) import Swarm`.
+Unlike the public API above, SPI carries no source-stability guarantee and may
+change in any minor release. The catalog home is `Core/SwarmColonySPI.swift`;
+two resilience initializers participate because they take a `SwarmClock`.
+
+### Core/SwarmColonySPI.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 24 | enum | spi | SwarmChatRole | `@_spi(ColonyInternal) public enum SwarmChatRole` |
+| 31 | struct | spi | SwarmToolDefinition | `@_spi(ColonyInternal) public struct SwarmToolDefinition` |
+| 43 | struct | spi | SwarmToolCall | `@_spi(ColonyInternal) public struct SwarmToolCall` |
+| 55 | enum | spi | SwarmChatMessageOp | `@_spi(ColonyInternal) public enum SwarmChatMessageOp` |
+| 60 | struct | spi | SwarmChatMessage | `@_spi(ColonyInternal) public struct SwarmChatMessage` |
+| 91 | struct | spi | SwarmChatRequest | `@_spi(ColonyInternal) public struct SwarmChatRequest` |
+| 107 | struct | spi | SwarmChatResponse | `@_spi(ColonyInternal) public struct SwarmChatResponse` |
+| 115 | enum | spi | SwarmChatStreamChunk | `@_spi(ColonyInternal) public enum SwarmChatStreamChunk` |
+| 120 | struct | spi | SwarmToolResult | `@_spi(ColonyInternal) public struct SwarmToolResult` |
+| 130 | protocol | spi | SwarmModelClient | `@_spi(ColonyInternal) public protocol SwarmModelClient` |
+| 135 | struct | spi | SwarmAnyModelClient | `@_spi(ColonyInternal) public struct SwarmAnyModelClient` |
+| 157 | func | spi | SwarmModelClient.streamFinal(_:) | `@_spi(ColonyInternal) public func streamFinal(_ request: SwarmChatRequest) async throws -> SwarmChatResponse` |
+| 173 | protocol | spi | SwarmModelRouter | `@_spi(ColonyInternal) public protocol SwarmModelRouter` |
+| 177 | protocol | spi | SwarmToolRegistry | `@_spi(ColonyInternal) public protocol SwarmToolRegistry` |
+| 182 | struct | spi | SwarmAnyToolRegistry | `@_spi(ColonyInternal) public struct SwarmAnyToolRegistry` |
+| 204 | protocol | spi | SwarmClock | `@_spi(ColonyInternal) public protocol SwarmClock` |
+| 209 | protocol | spi | SwarmLogger | `@_spi(ColonyInternal) public protocol SwarmLogger` |
+| 215 | struct | spi | SwarmInferenceHints | `@_spi(ColonyInternal) public struct SwarmInferenceHints` |
+| 253 | enum | spi | SwarmRuntimeError | `@_spi(ColonyInternal) public enum SwarmRuntimeError` |
+
+### Resilience/CircuitBreaker.swift (SPI initializer)
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 105 | func | spi | CircuitBreaker.init(name:failureThreshold:successThreshold:resetTimeout:halfOpenMaxRequests:clock:) | `@_spi(ColonyInternal) public init(name:failureThreshold:successThreshold:resetTimeout:halfOpenMaxRequests:clock:)` |
+
+### Resilience/RateLimiter.swift (SPI initializers)
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 69 | func | spi | RateLimiter.init(maxRequestsPerMinute:clock:) | `@_spi(ColonyInternal) public init(maxRequestsPerMinute:clock:)` |
+| 92 | func | spi | RateLimiter.init(maxTokens:refillRatePerSecond:clock:) | `@_spi(ColonyInternal) public init(maxTokens:refillRatePerSecond:clock:)` |
 
 ## 15. Companion Products
 

@@ -35,7 +35,6 @@ public struct AgentMacro: MemberMacro, ExtensionMacro {
 
     // MARK: - MemberMacro
 
-    // swiftlint:disable:next function_body_length
     public static func expansion(
         of node: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,

@@ -271,6 +271,40 @@ struct ToolExecutionSemanticsEngineTests {
         #expect(recorded.toolCalls.map(\.toolName) == ["a", "b"])
     }
 
+    @Test("collectOutcomes returns outcomes in order")
+    func collectOutcomesReturnsOrderedOutcomes() throws {
+        let firstCall = ToolCall(toolName: "a", arguments: [:])
+        let secondCall = ToolCall(toolName: "b", arguments: [:])
+        let first = ToolExecutionEngine.Outcome(
+            call: firstCall,
+            result: .success(callId: firstCall.id, output: .string("a"), duration: .zero),
+            caughtError: nil
+        )
+        let second = ToolExecutionEngine.Outcome(
+            call: secondCall,
+            result: .success(callId: secondCall.id, output: .string("b"), duration: .zero),
+            caughtError: nil
+        )
+
+        let collected = try ToolExecutionEngine.collectOutcomes([first, second])
+
+        #expect(collected.map(\.call.toolName) == ["a", "b"])
+    }
+
+    @Test("collectOutcomes throws internalError when an outcome is missing")
+    func collectOutcomesThrowsOnMissingOutcome() {
+        let call = ToolCall(toolName: "a", arguments: [:])
+        let outcome = ToolExecutionEngine.Outcome(
+            call: call,
+            result: .success(callId: call.id, output: .string("a"), duration: .zero),
+            caughtError: nil
+        )
+
+        #expect(throws: AgentError.internalError(reason: "ToolExecutionEngine.executeBatch missing outcome at index 1")) {
+            _ = try ToolExecutionEngine.collectOutcomes([outcome, nil])
+        }
+    }
+
     @Test("execute still wraps stopOnToolError throws with original cause")
     func stopOnToolErrorThrowsWrappedToolFailureWithCause() async throws {
         let unique = UniqueToolError(code: 23)

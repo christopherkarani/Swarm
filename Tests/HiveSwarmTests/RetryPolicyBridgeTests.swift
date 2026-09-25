@@ -108,6 +108,44 @@ struct RetryPolicyBridgeTests {
             Issue.record("Expected .exponentialBackoff for negative maxDelay, got \(hive)")
         }
     }
+
+    @Test("Single total attempt maps to .none")
+    func bridge_singleAttempt_mapsToNone() {
+        let swarm = RetryPolicy(maxAttempts: 1, backoff: .immediate)
+        let hive = RetryPolicyBridge.toHive(swarm)
+        switch hive {
+        case .none:
+            break
+        default:
+            Issue.record("Expected .none for maxAttempts 1, got \(hive)")
+        }
+    }
+
+    @Test("Invalid maxAttempts passes through for Hive validation instead of .none")
+    func bridge_invalidMaxAttempts_passesThrough() {
+        for invalid in [0, -2] {
+            let swarm = RetryPolicy(maxAttempts: invalid, backoff: .immediate)
+            let hive = RetryPolicyBridge.toHive(swarm)
+            switch hive {
+            case .exponentialBackoff(_, _, let maxAttempts, _):
+                #expect(maxAttempts == invalid)
+            case .none:
+                Issue.record("Invalid maxAttempts \(invalid) must not map to .none")
+            }
+        }
+    }
+
+    @Test("Bridge preserves the unified total-attempt budget verbatim")
+    func bridge_preservesTotalAttempts() {
+        let swarm = RetryPolicy(maxAttempts: 4, backoff: .fixed(delay: 0.5))
+        let hive = RetryPolicyBridge.toHive(swarm)
+        switch hive {
+        case .exponentialBackoff(_, _, let maxAttempts, _):
+            #expect(maxAttempts == 4)
+        default:
+            Issue.record("Expected .exponentialBackoff, got \(hive)")
+        }
+    }
 }
 
 @Suite("ChatGraph retry behavior")

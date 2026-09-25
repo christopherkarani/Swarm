@@ -256,12 +256,27 @@ struct ToolExecutionEngine: Sendable {
             }
         }
 
-        return outcomes.map { outcome in
+        return try Self.collectOutcomes(outcomes)
+    }
+
+    /// Orders batch outcomes, throwing when an outcome is missing.
+    ///
+    /// `ToolBatchPlan.groups(eligibility:)` partitions every input index into
+    /// exactly one group, so a `nil` slot is unreachable unless batch planning
+    /// regresses. It throws ``AgentError/internalError(reason:)`` instead of
+    /// trapping so a planning bug surfaces as a catchable failure.
+    static func collectOutcomes(_ outcomes: [Outcome?]) throws -> [Outcome] {
+        var collected: [Outcome] = []
+        collected.reserveCapacity(outcomes.count)
+        for (index, outcome) in outcomes.enumerated() {
             guard let outcome else {
-                preconditionFailure("ToolExecutionEngine.executeBatch missing outcome")
+                throw AgentError.internalError(
+                    reason: "ToolExecutionEngine.executeBatch missing outcome at index \(index)"
+                )
             }
-            return outcome
+            collected.append(outcome)
         }
+        return collected
     }
 
     private func elapsedDuration(since startNanoseconds: UInt64) -> Duration {

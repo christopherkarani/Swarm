@@ -468,16 +468,30 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
     #endif
 }
 
+extension WebSearchTool.Configuration: CustomStringConvertible {
+    /// Renders the configuration without the API key value.
+    ///
+    /// Only key presence (already exposed by ``hasLiveSearchBackend``) is
+    /// shown, so logging or debugging a configuration cannot leak the key.
+    public var description: String {
+        "Configuration(apiKey: \(hasLiveSearchBackend ? "<configured>" : "<absent>"), contextProfile: \(contextProfile), summaryMode: \(summaryMode), enabled: \(enabled), storeURL: \(storeURL.path))"
+    }
+}
+
 private func nonEmpty(_ value: String) -> String? {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? nil : trimmed
 }
 
 extension WebSearchTool.Configuration: CustomDebugStringConvertible {
-    /// Debug description with the API key redacted.
+    /// Debug description with the API key value redacted.
+    ///
+    /// Reports only key presence plus the non-secret ``SecretReference``
+    /// pointer, so debugging a configuration cannot leak the key.
     public var debugDescription: String {
-        let key = apiKey == nil ? "nil" : "\"\(SecretRedaction.placeholder)\""
-        return "WebSearchTool.Configuration(apiKey: \(key), apiKeyReference: \(String(describing: apiKeyReference)), storeURL: \(storeURL), enabled: \(enabled))"
+        let key = hasLiveSearchBackend ? "\"\(SecretRedaction.placeholder)\"" : "nil"
+        let presence = hasLiveSearchBackend ? "<configured>" : "<absent>"
+        return "WebSearchTool.Configuration(apiKey: \(key), presence: \(presence), apiKeyReference: \(String(describing: apiKeyReference)), storeURL: \(storeURL), enabled: \(enabled))"
     }
 }
 

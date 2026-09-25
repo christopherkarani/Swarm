@@ -24,7 +24,6 @@ import XCTest
 final class AgentMacroTests: XCTestCase {
     // MARK: - Basic Agent Tests
 
-    // swiftlint:disable:next function_body_length
     func testBasicAgentExpansion() throws {
         #if canImport(SwarmMacros)
             assertMacroExpansion(
@@ -318,7 +317,6 @@ final class AgentMacroTests: XCTestCase {
         #endif
     }
 
-    // swiftlint:disable:next function_body_length
     func testAgentWithExistingTools() throws {
         #if canImport(SwarmMacros)
             assertMacroExpansion(
@@ -648,7 +646,6 @@ extension AgentMacroTests {
         #endif
     }
 
-    // swiftlint:disable:next function_body_length
     func testAgentWithoutProcessMethod() throws {
         #if canImport(SwarmMacros)
             // Agent without process method should still compile but run() throws

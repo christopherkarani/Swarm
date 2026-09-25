@@ -202,7 +202,7 @@ public struct ResilienceConfiguration: Sendable, Equatable {
 
     /// Whether any policy would change inference execution relative to the default.
     package var hasActivePolicies: Bool {
-        retryPolicy.maxAttempts > 0 || circuitBreaker != nil || rateLimit != nil
+        retryPolicy.maxAttempts != 1 || circuitBreaker != nil || rateLimit != nil
     }
 
     /// Builds the agent-scoped circuit breaker, or `nil` when breaker settings are absent.

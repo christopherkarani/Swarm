@@ -11,18 +11,13 @@ excluded:
   - docs/.vitepress
 
 disabled_rules:
-  - cyclomatic_complexity
-  - file_length
   - for_where
   - force_try
-  - function_body_length
-  - function_parameter_count
   - identifier_name
   - implicit_optional_initialization
   - large_tuple
   - leading_whitespace
   - line_length
-  - nesting
   - opening_brace
   - optional_data_string_conversion
   - orphaned_doc_comment
@@ -31,9 +26,27 @@ disabled_rules:
   - trailing_comma
   - trailing_newline
   - trailing_whitespace
-  - type_body_length
   - type_name
   - unneeded_synthesized_initializer
   - vertical_whitespace
+
+# Complexity gates re-enabled as warn-only (P2-1). Thresholds other than
+# file_length are baselined just above current maxima so CI stays green while
+# new growth warns; tighten them as the remaining god files are split.
+# file_length gates all files at 1000 lines; the remaining giants carry a
+# file-level disable until their pending split lands.
+cyclomatic_complexity:
+  warning: 50
+file_length:
+  warning: 1000
+function_body_length:
+  warning: 320
+function_parameter_count:
+  warning: 15
+type_body_length:
+  warning: 2800
+nesting:
+  type_level:
+    warning: 2
 
 strict: true

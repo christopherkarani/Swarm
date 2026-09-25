@@ -13,6 +13,12 @@ import HiveCore
 /// strategies are mapped to their non-jitter equivalents. The bridge preserves
 /// `maxAttempts` and base delay while stripping non-deterministic components.
 ///
+/// Both sides share one semantic: `maxAttempts` counts total attempts
+/// including the initial attempt and must be at least 1.
+/// `RetryPolicy.noRetry` (`maxAttempts == 1`) maps to `HiveRetryPolicy.none`.
+/// Invalid budgets (`maxAttempts < 1`) are passed through verbatim so Hive's
+/// `maxAttempts < 1` validation rejects them instead of silently becoming `.none`.
+///
 /// Example:
 /// ```swift
 /// let swarmPolicy = RetryPolicy.standard
@@ -26,7 +32,7 @@ enum RetryPolicyBridge {
     /// - Parameter policy: The Swarm retry policy to convert.
     /// - Returns: The equivalent `HiveRetryPolicy` for deterministic execution.
     static func toHive(_ policy: RetryPolicy) -> HiveRetryPolicy {
-        if policy.maxAttempts <= 0 {
+        if policy.maxAttempts == 1 {
             return .none
         }
 

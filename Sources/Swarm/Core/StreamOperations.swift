@@ -68,8 +68,14 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// When a stream throws an error, the factory is called again to create a new stream,
     /// up to the specified maximum attempts.
     ///
+    /// `maxAttempts` counts total attempts including the initial attempt and must
+    /// be at least 1. This matches ``RetryPolicy/maxAttempts`` and
+    /// `HiveRetryPolicy`: `1` runs the factory once with no retries, `3` runs it
+    /// up to three times. Values below 1 fail the returned stream with
+    /// `ResilienceError.invalidMaxAttempts` without invoking the factory.
+    ///
     /// - Parameters:
-    ///   - maxAttempts: Maximum number of attempts (including the initial attempt). Default: 3
+    ///   - maxAttempts: Total attempts including the initial attempt. Default: 3
     ///   - delay: Duration to wait between retry attempts. Default: zero
     ///   - factory: Closure that creates a new stream for each attempt
     /// - Returns: A stream from the first successful attempt.
@@ -96,6 +102,13 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
         delay: Duration = .zero,
         factory: @escaping @Sendable () async -> AsyncThrowingStream<AgentEvent, Error>
     ) -> AsyncThrowingStream<AgentEvent, Error> {
+        guard maxAttempts >= 1 else {
+            let invalid = maxAttempts
+            return StreamHelper.makeTrackedStream { continuation in
+                continuation.finish(throwing: ResilienceError.invalidMaxAttempts(invalid))
+            }
+        }
+
         let (stream, continuation): (AsyncThrowingStream<AgentEvent, Error>, AsyncThrowingStream<AgentEvent, Error>.Continuation) = StreamHelper.makeStream()
 
         let task = Task { @Sendable in
