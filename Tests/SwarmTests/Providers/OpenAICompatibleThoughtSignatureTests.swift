@@ -38,18 +38,9 @@ struct OpenAICompatibleThoughtSignatureTests {
 
     @Test("Non-streaming response carries the signature")
     func nonStreamingResponseCarriesSignature() throws {
-        let chunk = OpenAICompatibleChatChunk(json: [
-            "choices": [[
-                "message": [
-                    "tool_calls": [[
-                        "id": "call_1",
-                        "function": ["name": "echo", "arguments": #"{"text":"hi"}"#],
-                        "extra_content": ["google": ["thought_signature": "sig-1"]],
-                    ]],
-                ],
-                "finish_reason": "tool_calls",
-            ]],
-        ])
+        let chunk = try OpenAICompatibleChatChunk(decoding: Data(
+            #"{"choices":[{"message":{"tool_calls":[{"id":"call_1","function":{"name":"echo","arguments":"{\"text\":\"hi\"}"},"extra_content":{"google":{"thought_signature":"sig-1"}}}]},"finish_reason":"tool_calls"}]}"#.utf8
+        ))
 
         let response = try OpenAICompatibleCodec.inferenceResponse(from: chunk)
 
@@ -86,7 +77,7 @@ struct OpenAICompatibleThoughtSignatureTests {
     }
 
     @Test("Encoding echoes extra_content for signed calls only")
-    func encodingEchoesSignature() {
+    func encodingEchoesSignature() throws {
         let signed = InferenceMessage.ToolCall(
             id: "call_1",
             name: "echo",
@@ -101,15 +92,10 @@ struct OpenAICompatibleThoughtSignatureTests {
         let message = InferenceMessage(body: .assistant("working", toolCalls: [signed, unsigned]))
 
         let encoded = OpenAICompatibleCodec.encodeMessage(message)
-        guard let calls = encoded["tool_calls"] as? [[String: Any]] else {
-            Issue.record("expected tool_calls array")
-            return
-        }
+        let calls = try #require(encoded.toolCalls)
         #expect(calls.count == 2)
-        let extra = calls[0]["extra_content"] as? [String: Any]
-        let google = extra?["google"] as? [String: Any]
-        #expect(google?["thought_signature"] as? String == "sig-echo")
-        #expect(calls[1]["extra_content"] == nil)
+        #expect(calls[0].extraContent?.google.thoughtSignature == "sig-echo")
+        #expect(calls[1].extraContent == nil)
     }
 
     @Test("Turn transcript preserves signatures both directions")

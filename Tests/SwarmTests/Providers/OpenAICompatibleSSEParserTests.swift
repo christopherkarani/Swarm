@@ -92,29 +92,19 @@ struct OpenAICompatibleSSEParserTests {
     }
 
     @Test("Emits usage before toolCallsCompleted so Agent can record it")
-    func emitsUsageBeforeToolCallsCompleted() {
+    func emitsUsageBeforeToolCallsCompleted() throws {
         var accumulator = OpenAICompatibleStreamAccumulator()
         var updates: [InferenceStreamUpdate] = []
 
         updates += accumulator.consume(
-            OpenAICompatibleChatChunk(json: [
-                "choices": [[
-                    "delta": [
-                        "tool_calls": [[
-                            "index": 0,
-                            "id": "call_1",
-                            "function": ["name": "echo", "arguments": "{\"text\":\"hi\"}"],
-                        ]],
-                    ],
-                    "finish_reason": "tool_calls",
-                ]],
-            ])
+            try OpenAICompatibleChatChunk(decoding: Data(
+                #"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"echo","arguments":"{\"text\":\"hi\"}"}}]},"finish_reason":"tool_calls"}]}"#.utf8
+            ))
         )
         updates += accumulator.consume(
-            OpenAICompatibleChatChunk(json: [
-                "choices": [] as [Any],
-                "usage": ["prompt_tokens": 11, "completion_tokens": 4],
-            ])
+            try OpenAICompatibleChatChunk(decoding: Data(
+                #"{"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":4}}"#.utf8
+            ))
         )
         updates += accumulator.finish()
 

@@ -128,11 +128,10 @@ struct OpenAICompatibleChatChunk: Sendable, Equatable {
 
     /// Decodes a chunk from already-parsed JSON.
     ///
-    /// Typed fail-closed decoding is the primary path. The non-streaming
-    /// provider path calls this initializer without `try`, so payloads that
-    /// fail typed decoding fall back to the legacy lenient parse here; the
-    /// streaming path surfaces them as field-context `.malformed` events,
-    /// and direct callers should use throwing ``init(jsonData:)``.
+    /// Typed fail-closed decoding is the primary path; payloads that fail
+    /// typed decoding fall back to the legacy lenient parse here. The
+    /// streaming path surfaces them as field-context `.malformed` events
+    /// instead, and direct callers should use throwing ``init(jsonData:)``.
     init(json: [String: Any]) {
         if let data = try? JSONSerialization.data(withJSONObject: json),
            let typed = try? OpenAICompatibleChatChunk(jsonData: data)
@@ -295,12 +294,76 @@ struct OpenAICompatibleChatChunk: Sendable, Equatable {
             return int
         }
         if let double = value as? Double {
+            // `Int(_:)` traps out of range; degrade like any other mistyped
+            // count instead of crashing on absurd server payloads.
+            guard double.isFinite,
+                  double < Double(Int.max),
+                  double > Double(Int.min)
+            else {
+                return nil
+            }
             return Int(double)
         }
         if let number = value as? NSNumber {
             return number.intValue
         }
         return nil
+    }
+
+    /// Decodes one SSE or unary payload with a single throwing Codable decode.
+    init(decoding data: Data) throws {
+        let wire = try JSONDecoder().decode(OpenAICompatibleWire.Chunk.self, from: data)
+        self.init(wire: wire)
+    }
+
+    /// Maps wire values onto chunk values, applying the documented lenient
+    /// defaults: a missing choice or tool-call index falls back to its
+    /// offset, and missing tool-call arguments default to `""`.
+    init(wire: OpenAICompatibleWire.Chunk) {
+        id = wire.id
+        usage = Self.tokenUsage(from: wire.usage)
+        if wire.error != nil {
+            errorMessage = wire.error?.message ?? "OpenAI-compatible stream error"
+        } else {
+            errorMessage = nil
+        }
+        choices = wire.choices.enumerated().map { offset, choice in
+            Choice(
+                index: choice.index ?? offset,
+                finishReason: choice.finishReason,
+                message: Self.message(from: choice.message),
+                delta: Self.message(from: choice.delta)
+            )
+        }
+    }
+
+    private static func tokenUsage(from usage: OpenAICompatibleWire.Usage?) -> TokenUsage? {
+        guard let usage, usage.promptTokens != nil || usage.completionTokens != nil else {
+            return nil
+        }
+        return TokenUsage(
+            inputTokens: usage.promptTokens ?? 0,
+            outputTokens: usage.completionTokens ?? 0
+        )
+    }
+
+    private static func message(from wire: OpenAICompatibleWire.Message?) -> Message? {
+        guard let wire else {
+            return nil
+        }
+        return Message(
+            role: wire.role,
+            content: wire.content,
+            toolCalls: wire.toolCalls.enumerated().map { offset, call in
+                ToolCallDelta(
+                    index: call.index ?? offset,
+                    id: call.id,
+                    name: call.function?.name,
+                    arguments: call.function?.arguments ?? "",
+                    thoughtSignature: call.extraContent?.google?.thoughtSignature
+                )
+            }
+        )
     }
 }
 
@@ -475,6 +538,14 @@ private func lossyTokenCount<K: CodingKey>(
         return int
     }
     if let double = lossyDecode(Double.self, from: container, forKey: key) {
+        // `Int(_:)` traps out of range; degrade like any other mistyped
+        // count instead of crashing on absurd server payloads.
+        guard double.isFinite,
+              double < Double(Int.max),
+              double > Double(Int.min)
+        else {
+            return nil
+        }
         return Int(double)
     }
     if let bool = lossyDecode(Bool.self, from: container, forKey: key) {
