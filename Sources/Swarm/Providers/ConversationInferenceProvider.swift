@@ -40,9 +40,14 @@ public struct InferenceProviderCapabilities: OptionSet, Sendable, Hashable {
     /// default throws ``AgentError/providerOwnedToolLoopRequiresExecutor``.
     public static let providerOwnedToolLoop = Self(rawValue: 1 << 6)
 
+    /// Provider accepts audio ``InferenceMessage/Attachment`` values.
+    ///
+    /// Providers without this bit must omit or reject audio attachments.
+    public static let multimodalAudio = Self(rawValue: 1 << 7)
+
     /// Provider can consume ``InferenceMessage/Attachment`` image sidecars.
-    /// Providers without this bit must ignore attachments.
-    public static let multimodalImages = Self(rawValue: 1 << 7)
+    /// Providers without this bit must ignore image attachments.
+    public static let multimodalImages = Self(rawValue: 1 << 8)
 }
 
 public extension InferenceProviderCapabilities {
@@ -120,11 +125,12 @@ public struct InferenceMessage: Sendable, Equatable {
         }
     }
 
-    /// Optional multimodal sidecar. ``InferenceMessage/content`` stays text.
+    /// Optional multimodal sidecar. ``content`` stays text.
     ///
     /// Persist ``id`` and ``mimeType`` only — never raw bytes. Providers
-    /// without ``InferenceProviderCapabilities/multimodalImages`` must ignore
-    /// image attachments.
+    /// without ``InferenceProviderCapabilities/multimodalAudio`` must omit
+    /// audio attachments; without ``InferenceProviderCapabilities/multimodalImages``
+    /// must ignore image attachments.
     public struct Attachment: Sendable, Equatable {
         /// Attachment family.
         public enum Kind: String, Sendable, Equatable {
@@ -136,7 +142,7 @@ public struct InferenceMessage: Sendable, Equatable {
         public let id: String
         /// Audio or image.
         public let kind: Kind
-        /// MIME type such as `image/png`. Safe to store.
+        /// MIME type such as `audio/wav` or `image/png`. Safe to store.
         public let mimeType: String
         /// In-memory bytes. Do not log.
         public let data: Data?
@@ -162,7 +168,8 @@ public struct InferenceMessage: Sendable, Equatable {
     /// System, user, assistant, or tool payload.
     public let body: Body
 
-    /// Optional audio or image sidecars. Default empty.
+    /// Optional audio or image sidecars. Default empty. Token counting uses
+    /// ``content`` only.
     public let attachments: [Attachment]
 
     /// Role projected from ``body``.
@@ -225,7 +232,7 @@ public struct InferenceMessage: Sendable, Equatable {
     ///
     /// - Parameters:
     ///   - body: System, user, assistant, or tool payload.
-    ///   - attachments: Optional audio or image sidecars.
+    ///   - attachments: Optional audio or image sidecars. Default empty.
     public init(body: Body, attachments: [Attachment] = []) {
         self.body = body
         self.attachments = attachments

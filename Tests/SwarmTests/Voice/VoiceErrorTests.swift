@@ -44,6 +44,7 @@ struct VoiceErrorTests {
         #expect(configuration.voiceIdentifier == nil)
         #expect(configuration.speechRate == nil)
         #expect(configuration.installAssetsIfNeeded == false)
+        #expect(configuration.bargeInEnabled == false)
     }
 
     @Test("SpeechTranscript and VoiceTurnResult are Sendable value types")
@@ -61,5 +62,9 @@ struct VoiceErrorTests {
         #expect(result.spokenUtterances == ["Hi."])
         #expect(VoicePhase.idle.rawValue == "idle")
         #expect(VoiceEvent.phase(.listening) == .phase(.listening))
+        #expect(
+            VoiceEvent.interrupted(transcriptSoFar: "Hi.")
+                == .interrupted(transcriptSoFar: "Hi.")
+        )
     }
 }

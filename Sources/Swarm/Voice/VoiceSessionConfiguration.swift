@@ -32,6 +32,10 @@ public struct VoiceSessionConfiguration: Sendable, Equatable {
     /// Defaults to `false` so the first listen cannot surprise-download.
     public var installAssetsIfNeeded: Bool
 
+    /// When `true`, a ``VoiceActivityDetector`` may interrupt speaking and
+    /// start a replacement listen. Defaults to `false`.
+    public var bargeInEnabled: Bool
+
     /// Default configuration: 1200 ms silence, 8-character minimum, `. ! ? \\n`.
     public static let `default` = VoiceSessionConfiguration()
 
@@ -43,7 +47,8 @@ public struct VoiceSessionConfiguration: Sendable, Equatable {
         sentenceTerminators: Set<Character> = [".", "!", "?", "\n"],
         voiceIdentifier: String? = nil,
         speechRate: Float? = nil,
-        installAssetsIfNeeded: Bool = false
+        installAssetsIfNeeded: Bool = false,
+        bargeInEnabled: Bool = false
     ) {
         self.locale = locale
         self.endOfUtteranceSilence = endOfUtteranceSilence
@@ -52,5 +57,6 @@ public struct VoiceSessionConfiguration: Sendable, Equatable {
         self.voiceIdentifier = voiceIdentifier
         self.speechRate = speechRate
         self.installAssetsIfNeeded = installAssetsIfNeeded
+        self.bargeInEnabled = bargeInEnabled
     }
 }

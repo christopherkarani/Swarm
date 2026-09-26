@@ -29,12 +29,16 @@ extension VoiceSession {
         let speechToText = AppleSpeechToText(configuration: resolved)
         _ = try await speechToText.prepareForSession()
         let textToSpeech = AppleTextToSpeech(configuration: resolved)
+        let detector: (any VoiceActivityDetector)? = resolved.bargeInEnabled
+            ? AppleVoiceActivityDetector()
+            : nil
 
         return VoiceSession(
             agent: agent,
             speechToText: speechToText,
             textToSpeech: textToSpeech,
             session: session,
+            voiceActivityDetector: detector,
             configuration: resolved
         )
     }

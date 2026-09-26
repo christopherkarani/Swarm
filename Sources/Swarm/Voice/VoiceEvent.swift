@@ -36,6 +36,16 @@ public enum VoiceEvent: Sendable, Equatable {
     /// Speech synthesis of `text` started.
     case speaking(String)
 
+    /// One audio chunk for `utterance`, in playback order.
+    ///
+    /// Emitted only by ``StreamingTextToSpeech`` adapters. Chunks
+    /// concatenate byte-for-byte into the utterance audio; the bracketing
+    /// `speaking` / `speakingFinished` events frame playback.
+    case audioChunk(utterance: String, data: Data)
+
     /// Speech synthesis of `text` finished or was interrupted.
     case speakingFinished(String)
+
+    /// Barge-in committed. `transcriptSoFar` is what had already been spoken.
+    case interrupted(transcriptSoFar: String)
 }

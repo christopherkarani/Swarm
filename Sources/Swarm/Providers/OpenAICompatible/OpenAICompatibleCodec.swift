@@ -45,7 +45,8 @@ enum OpenAICompatibleCodec: Sendable {
         tools: [ToolSchema],
         options: InferenceOptions,
         stream: Bool,
-        structuredOutput: StructuredOutputRequest?
+        structuredOutput: StructuredOutputRequest?,
+        capabilities: InferenceProviderCapabilities = []
     ) throws -> URLRequest {
         let url = try chatCompletionsURL(for: configuration)
         var request = URLRequest(url: url)
@@ -73,7 +74,8 @@ enum OpenAICompatibleCodec: Sendable {
             tools: tools,
             options: options,
             stream: stream,
-            structuredOutput: structuredOutput
+            structuredOutput: structuredOutput,
+            capabilities: capabilities
         )
         request.httpBody = try OpenAICompatibleWire.encode(body)
         return request
@@ -85,11 +87,12 @@ enum OpenAICompatibleCodec: Sendable {
         tools: [ToolSchema],
         options: InferenceOptions,
         stream: Bool,
-        structuredOutput: StructuredOutputRequest?
+        structuredOutput: StructuredOutputRequest?,
+        capabilities: InferenceProviderCapabilities = []
     ) throws -> OpenAICompatibleWire.Request {
         OpenAICompatibleWire.Request(
             model: configuration.model,
-            messages: encodeMessages(messages),
+            messages: encodeMessages(messages, capabilities: capabilities),
             temperature: options.temperature,
             maxTokens: options.maxTokens,
             stop: options.stopSequences.isEmpty ? nil : options.stopSequences,
@@ -127,7 +130,10 @@ enum OpenAICompatibleCodec: Sendable {
         return try encodeResponseFormat(structuredOutput)
     }
 
-    static func encodeMessages(_ messages: [InferenceMessage]) -> [OpenAICompatibleWire.RequestMessage] {
+    static func encodeMessages(
+        _ messages: [InferenceMessage],
+        capabilities: InferenceProviderCapabilities = []
+    ) -> [OpenAICompatibleWire.RequestMessage] {
         var pendingCallIDs: [String] = []
         var pendingCallNames: [String] = []
         var nextUnused = 0
@@ -153,13 +159,14 @@ enum OpenAICompatibleCodec: Sendable {
                 toolCallID = message.toolCallID
             }
 
-            return encodeMessage(message, toolCallID: toolCallID)
+            return encodeMessage(message, toolCallID: toolCallID, capabilities: capabilities)
         }
     }
 
     static func encodeMessage(
         _ message: InferenceMessage,
-        toolCallID: String? = nil
+        toolCallID: String? = nil,
+        capabilities: InferenceProviderCapabilities = []
     ) -> OpenAICompatibleWire.RequestMessage {
         var name: String?
         if let messageName = message.name, message.role != .tool {
@@ -171,7 +178,7 @@ enum OpenAICompatibleCodec: Sendable {
         }
         return OpenAICompatibleWire.RequestMessage(
             role: message.role.rawValue,
-            content: message.content,
+            content: encodedContent(for: message, capabilities: capabilities),
             name: name,
             toolCallID: resolvedID,
             toolCalls: message.toolCalls.isEmpty ? nil : message.toolCalls.enumerated().map { index, call in
@@ -188,6 +195,71 @@ enum OpenAICompatibleCodec: Sendable {
                 parameters: parametersSchema(for: schema)
             )
         )
+    }
+
+    /// Text-only unless the provider advertised the matching multimodal bit.
+    private static func encodedContent(
+        for message: InferenceMessage,
+        capabilities: InferenceProviderCapabilities
+    ) -> OpenAICompatibleWire.RequestMessageContent {
+        let parts = attachmentParts(for: message, capabilities: capabilities)
+        guard !parts.isEmpty else {
+            return .text(message.content)
+        }
+        var content: [OpenAICompatibleWire.RequestContentPart] = []
+        if !message.content.isEmpty {
+            content.append(.text(message.content))
+        }
+        content.append(contentsOf: parts)
+        return .parts(content)
+    }
+
+    private static func attachmentParts(
+        for message: InferenceMessage,
+        capabilities: InferenceProviderCapabilities
+    ) -> [OpenAICompatibleWire.RequestContentPart] {
+        message.attachments.compactMap { attachment in
+            switch attachment.kind {
+            case .audio:
+                guard capabilities.contains(.multimodalAudio) else { return nil }
+                return audioPart(attachment)
+            case .image:
+                guard capabilities.contains(.multimodalImages) else { return nil }
+                return imagePart(attachment)
+            }
+        }
+    }
+
+    private static func audioPart(
+        _ attachment: InferenceMessage.Attachment
+    ) -> OpenAICompatibleWire.RequestContentPart? {
+        guard let data = attachment.data, !data.isEmpty else {
+            return nil
+        }
+        return .inputAudio(
+            data: data.base64EncodedString(),
+            format: audioFormat(from: attachment.mimeType)
+        )
+    }
+
+    private static func imagePart(
+        _ attachment: InferenceMessage.Attachment
+    ) -> OpenAICompatibleWire.RequestContentPart? {
+        guard let data = attachment.data, !data.isEmpty else {
+            return nil
+        }
+        return .imageURL("data:\(attachment.mimeType);base64,\(data.base64EncodedString())")
+    }
+
+    private static func audioFormat(from mimeType: String) -> String {
+        switch mimeType.lowercased() {
+        case "audio/mpeg", "audio/mp3":
+            "mp3"
+        case "audio/wav", "audio/x-wav", "audio/wave":
+            "wav"
+        default:
+            mimeType.split(separator: "/").last.map(String.init) ?? "wav"
+        }
     }
 
     static func encodeToolChoice(_ choice: ToolChoice) -> OpenAICompatibleWire.RequestToolChoice {

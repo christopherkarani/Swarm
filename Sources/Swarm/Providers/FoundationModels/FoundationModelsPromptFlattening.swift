@@ -18,6 +18,8 @@ enum FoundationModelsPromptFlattening: Sendable {
         var lines: [String] = []
         lines.reserveCapacity(messages.count)
 
+        // Attachments stay off the prompt string. OS 26 ignores them; do not
+        // flatten PCM or image bytes into text.
         for message in messages {
             switch message.role {
             case .system:

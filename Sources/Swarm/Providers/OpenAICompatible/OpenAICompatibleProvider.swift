@@ -98,12 +98,16 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     public var endpointURL: URL? { configuration.baseURL }
 
     public var capabilities: InferenceProviderCapabilities {
-        [
+        var bits: InferenceProviderCapabilities = [
             .conversationMessages,
             .nativeToolCalling,
             .streamingToolCalls,
             .structuredOutputs,
         ]
+        if configuration.supportsMultimodalAudio {
+            bits.insert(.multimodalAudio)
+        }
+        return bits
     }
 
     // MARK: - InferenceProvider
@@ -296,7 +300,8 @@ public struct OpenAICompatibleProvider: InferenceProvider,
             tools: tools,
             options: options,
             stream: false,
-            structuredOutput: structuredOutput
+            structuredOutput: structuredOutput,
+            capabilities: capabilities
         )
         let (data, response): (Data, URLResponse)
         do {
@@ -337,7 +342,8 @@ public struct OpenAICompatibleProvider: InferenceProvider,
             tools: tools,
             options: options,
             stream: true,
-            structuredOutput: structuredOutput
+            structuredOutput: structuredOutput,
+            capabilities: capabilities
         )
 
         // `data(for:)` is used instead of `bytes(for:)` so URLProtocol stubs

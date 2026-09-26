@@ -270,7 +270,7 @@ enum OpenAICompatibleWire: Sendable {
     /// One request message.
     struct RequestMessage: Encodable, Sendable, Equatable {
         var role: String
-        var content: String
+        var content: RequestMessageContent
         var name: String?
         var toolCallID: String?
         /// Set only when non-empty.
@@ -282,6 +282,66 @@ enum OpenAICompatibleWire: Sendable {
             case name
             case toolCallID = "tool_call_id"
             case toolCalls = "tool_calls"
+        }
+    }
+
+    /// Request message `content`: plain text, or text plus multimodal parts.
+    ///
+    /// Encodes as a JSON string when there are no parts, otherwise as a
+    /// content-part array, matching the chat-completions wire shape.
+    enum RequestMessageContent: Encodable, Sendable, Equatable {
+        case text(String)
+        case parts([RequestContentPart])
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case let .text(text):
+                try container.encode(text)
+            case let .parts(parts):
+                try container.encode(parts)
+            }
+        }
+    }
+
+    /// One multimodal content part of a request message.
+    enum RequestContentPart: Encodable, Sendable, Equatable {
+        case text(String)
+        case inputAudio(data: String, format: String)
+        case imageURL(String)
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            switch self {
+            case let .text(text):
+                try container.encode("text", forKey: .type)
+                try container.encode(text, forKey: .text)
+            case let .inputAudio(data, format):
+                try container.encode("input_audio", forKey: .type)
+                var audio = container.nestedContainer(keyedBy: AudioKeys.self, forKey: .inputAudio)
+                try audio.encode(data, forKey: .data)
+                try audio.encode(format, forKey: .format)
+            case let .imageURL(url):
+                try container.encode("image_url", forKey: .type)
+                var image = container.nestedContainer(keyedBy: ImageKeys.self, forKey: .imageURL)
+                try image.encode(url, forKey: .url)
+            }
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case type
+            case text
+            case inputAudio = "input_audio"
+            case imageURL = "image_url"
+        }
+
+        private enum AudioKeys: String, CodingKey {
+            case data
+            case format
+        }
+
+        private enum ImageKeys: String, CodingKey {
+            case url
         }
     }
 

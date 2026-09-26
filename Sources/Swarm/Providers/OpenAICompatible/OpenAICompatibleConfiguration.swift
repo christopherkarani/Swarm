@@ -86,6 +86,10 @@ public struct OpenAICompatibleProviderConfiguration: Sendable, Equatable {
     /// `ollama`, `azure-openai`, …).
     public var providerName: String
 
+    /// When `true`, advertise ``InferenceProviderCapabilities/multimodalAudio``
+    /// and emit input-audio parts. Defaults to `false` (fail closed).
+    public var supportsMultimodalAudio: Bool
+
     /// Creates a configuration.
     ///
     /// - Parameters:
@@ -99,6 +103,7 @@ public struct OpenAICompatibleProviderConfiguration: Sendable, Equatable {
     ///   - structuredOutputMode: Native `response_format` vs prompt-parse.
     ///     Default: ``OpenAICompatibleStructuredOutputMode/nativeJSONSchema``.
     ///   - providerName: Metadata name. Default: `openai-compatible`.
+    ///   - supportsMultimodalAudio: Advertise audio attachments. Default: `false`.
     public init(
         baseURL: URL,
         apiKey: String? = nil,
@@ -107,7 +112,8 @@ public struct OpenAICompatibleProviderConfiguration: Sendable, Equatable {
         httpHeaders: [String: String] = [:],
         queryItems: [String: String] = [:],
         structuredOutputMode: OpenAICompatibleStructuredOutputMode = .nativeJSONSchema,
-        providerName: String = "openai-compatible"
+        providerName: String = "openai-compatible",
+        supportsMultimodalAudio: Bool = false
     ) {
         self.baseURL = baseURL
         self.apiKey = apiKey
@@ -117,6 +123,7 @@ public struct OpenAICompatibleProviderConfiguration: Sendable, Equatable {
         self.queryItems = queryItems
         self.structuredOutputMode = structuredOutputMode
         self.providerName = providerName
+        self.supportsMultimodalAudio = supportsMultimodalAudio
     }
 
     /// Resolves the effective API key.

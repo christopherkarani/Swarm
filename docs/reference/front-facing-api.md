@@ -1226,8 +1226,10 @@ public case structuredOutputDecodingFailed(reason: String, underlying: (any Erro
 
 ## 12b) Voice
 
-`VoiceSession` is a turn-based actor around `any AgentRuntime`. Swarm does not
-accept audio. Inject `SpeechToText` and `TextToSpeech`. Barge-in is not in v1.
+`VoiceSession` is a turn-based actor around `any AgentRuntime`. VoiceSession
+sends text to `Agent.stream`; audio attachments are opt-in and
+capability-gated. Inject `SpeechToText` and `TextToSpeech`. Barge-in is opt-in
+via `bargeInEnabled`.
 
 ```swift
 public protocol SpeechToText: Sendable {
@@ -1240,18 +1242,31 @@ public protocol TextToSpeech: Sendable {
     func stop() async
 }
 
+public protocol VoiceActivityDetector: Sendable {
+    func start() -> AsyncThrowingStream<VoiceActivityEvent, Error>
+    func stop() async
+}
+
 public actor VoiceSession {
     public init(
         agent: any AgentRuntime,
         speechToText: any SpeechToText,
         textToSpeech: any TextToSpeech,
         session: (any Session)? = nil,
+        voiceActivityDetector: (any VoiceActivityDetector)? = nil,
         configuration: VoiceSessionConfiguration = .default
     )
     public var events: AsyncStream<VoiceEvent> { get }
     public func listenAndRespond() async throws -> VoiceTurnResult
-    public func respond(to transcript: String) async throws -> VoiceTurnResult
+    public func respond(
+        to transcript: String,
+        attachments: [InferenceMessage.Attachment] = []
+    ) async throws -> VoiceTurnResult
     public func stop() async
+}
+
+public struct VoiceTurnRuntime: AgentRuntime {
+    public init(voice: VoiceSession, presenting presented: any AgentRuntime)
 }
 
 #if canImport(Speech)

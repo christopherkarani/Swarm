@@ -24,7 +24,7 @@ public actor MockTextToSpeech: TextToSpeech {
     }
 
     public func speak(_ text: String) async throws {
-        if hangUntilStopped {
+        if hangUntilStopped, speakWaiters.isEmpty, spoken.isEmpty, stopCount == 0 {
             await withCheckedContinuation { continuation in
                 speakWaiters.append(continuation)
             }

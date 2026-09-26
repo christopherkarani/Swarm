@@ -354,13 +354,19 @@ enum ContextWindow {
     private static func replacingContent(of message: InferenceMessage, with content: String) -> InferenceMessage {
         switch message.body {
         case .system:
-            .system(content)
+            InferenceMessage(body: .system(content), attachments: message.attachments)
         case .user:
-            .user(content)
+            InferenceMessage(body: .user(content), attachments: message.attachments)
         case let .assistant(_, toolCalls):
-            .assistant(content, toolCalls: toolCalls)
+            InferenceMessage(
+                body: .assistant(content, toolCalls: toolCalls),
+                attachments: message.attachments
+            )
         case let .tool(name, _, toolCallID):
-            .tool(name: name, content: content, toolCallID: toolCallID)
+            InferenceMessage(
+                body: .tool(name: name, content: content, toolCallID: toolCallID),
+                attachments: message.attachments
+            )
         }
     }
 }
@@ -420,7 +426,10 @@ enum PromptEnvelope {
             guard case let .tool(name, _, toolCallID) = message.body, kept.contains(index) == false else {
                 return message
             }
-            return .tool(name: name, content: omittedToolResult, toolCallID: toolCallID)
+            return InferenceMessage(
+                body: .tool(name: name, content: omittedToolResult, toolCallID: toolCallID),
+                attachments: message.attachments
+            )
         }
     }
 

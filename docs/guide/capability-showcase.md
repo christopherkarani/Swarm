@@ -41,6 +41,8 @@ swift run --traits Integrations SwarmCapabilityShowcase smoke
 | `providers` | global provider config, per-agent override, and `MultiProvider` routing work |
 | `foundation-models` | First-class `.foundationModels()` factories, capability reporting, availability/degrade semantics, and Agent multi-turn/tool wiring used by on-device apps |
 | `voice` | Turn-based `VoiceSession` with scripted STT/TTS: one final transcript reaches the agent, output tokens are spoken, thinking is not |
+| `voice-bargein` | Opt-in barge-in: a scripted VAD interrupts hanging TTS and a replacement transcript is spoken |
+| `voice-workflow` | `VoiceTurnRuntime` as a `Workflow` step that speaks through `VoiceSession.respond(to:)` |
 
 Each scenario writes evidence into a temporary artifact directory under the system temp folder, rooted at `swarm-capability-showcase/`.
 
