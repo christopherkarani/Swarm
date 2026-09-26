@@ -261,6 +261,96 @@ public actor ToolRegistry {
         }
     }
 
+    /// Executes a registered typed tool with a compile-checked input value.
+    ///
+    /// This is a thin generic shell over
+    /// ``execute(toolNamed:arguments:agent:context:observer:)``: the input is
+    /// encoded to an argument dictionary, the existing untyped lifecycle
+    /// (lookup, enabled check, normalization, guardrails, observer notification,
+    /// error mapping) runs unchanged, and the result is decoded to `T.Output`.
+    ///
+    /// - Important: Registered-tool-wins: the passed `tool` supplies the registry
+    ///   `name` and the static `Input`/`Output` types; guardrails, semantics, and
+    ///   enabled state come from the tool instance stored in the registry, never
+    ///   from the passed instance.
+    ///
+    /// - Parameters:
+    ///   - tool: A typed tool whose `name` identifies the registered tool and whose
+    ///     `Input`/`Output` types drive encoding and decoding.
+    ///   - input: The typed input value. It must encode to a keyed object.
+    ///   - agent: Optional agent executing the tool (for guardrail validation).
+    ///   - context: Optional agent context for guardrail validation.
+    ///   - observer: Optional observer for error reporting.
+    /// - Returns: The decoded typed output.
+    /// - Throws: ``AgentError/toolNotFound`` if the tool doesn't exist or is disabled,
+    ///           ``AgentError/invalidToolArguments(toolName:reason:)`` if `input` fails
+    ///           to encode or does not encode to a keyed object,
+    ///           ``AgentError/toolFailure(toolName:message:cause:)`` if the result
+    ///           cannot be decoded as `T.Output`,
+    ///           ``GuardrailError`` if guardrails are triggered,
+    ///           or `CancellationError` if the task is cancelled.
+    public func execute<T: Tool>(
+        tool: T,
+        input: T.Input,
+        agent: (any AgentRuntime)? = nil,
+        context: AgentContext? = nil,
+        observer: (any AgentObserver)? = nil
+    ) async throws -> T.Output where T.Output: Decodable {
+        let arguments: [String: SendableValue]
+        do {
+            let encoded = try SendableValue(encoding: input)
+            guard let dictionary = encoded.dictionaryValue else {
+                throw AgentError.invalidToolArguments(
+                    toolName: tool.name,
+                    reason: "Input of type \(String(describing: T.Input.self)) must encode to a keyed object ([String: SendableValue])"
+                )
+            }
+            arguments = dictionary
+        } catch let agentError as AgentError {
+            throw agentError
+        } catch {
+            throw AgentError.invalidToolArguments(
+                toolName: tool.name,
+                reason: "Failed to encode input of type \(String(describing: T.Input.self)) to a keyed object ([String: SendableValue]): \(error.localizedDescription)"
+            )
+        }
+
+        let result = try await execute(
+            toolNamed: tool.name,
+            arguments: arguments,
+            agent: agent,
+            context: context,
+            observer: observer
+        )
+
+        // `SendableValue.decode()` routes scalar and null results through
+        // `JSONSerialization` without fragment support, which raises an
+        // uncatchable `NSException` (process abort) when `T.Output` is not the
+        // identical primitive. Divert those mismatches to `toolFailure` so the
+        // typed mismatch path always throws per REQ-004 instead of crashing.
+        guard result.canAttemptTypedDecode(as: T.Output.self) else {
+            let cause = SendableValue.ConversionError.decodingFailed(
+                "result is \(result.shapeDescription), which cannot decode as \(String(describing: T.Output.self))"
+            )
+            throw AgentError.toolFailure(
+                toolName: tool.name,
+                message: "Failed to decode result of \"\(tool.name)\" as \(String(describing: T.Output.self)): \(cause.localizedDescription)",
+                cause: cause
+            )
+        }
+
+        do {
+            let output: T.Output = try result.decode()
+            return output
+        } catch {
+            throw AgentError.toolFailure(
+                toolName: tool.name,
+                message: "Failed to decode result of \"\(tool.name)\" as \(String(describing: T.Output.self)): \(error.localizedDescription)",
+                cause: error
+            )
+        }
+    }
+
     // MARK: Private
 
     private var tools: [String: any AnyJSONTool] = [:]
@@ -271,6 +361,56 @@ public actor ToolRegistry {
             guard seen.insert(name).inserted else {
                 throw ToolRegistryError.duplicateToolName(name: name)
             }
+        }
+    }
+}
+
+// MARK: - Typed Decode Safety
+
+fileprivate extension SendableValue {
+    /// Whether `decode()` can be attempted for `type` without aborting the process.
+    ///
+    /// Mirrors `decode()`'s dispatch: the four JSON primitives are handled only
+    /// when `T` is the identical type (with `Double` also accepting `.int` via
+    /// `doubleValue`), and everything else goes through `JSONSerialization`,
+    /// whose top-level value must be an array or dictionary. Any other pairing
+    /// would raise an uncatchable `NSException` instead of throwing.
+    func canAttemptTypedDecode<T: Decodable>(as type: T.Type) -> Bool {
+        if dictionaryValue != nil || arrayValue != nil {
+            return true
+        }
+        if T.self == Bool.self {
+            return boolValue != nil
+        }
+        if T.self == Int.self {
+            return intValue != nil
+        }
+        if T.self == Double.self {
+            return doubleValue != nil
+        }
+        if T.self == String.self {
+            return stringValue != nil
+        }
+        return false
+    }
+
+    /// Short human-readable shape name for decode-failure messages.
+    var shapeDescription: String {
+        switch self {
+        case .null:
+            "null"
+        case .bool:
+            "a boolean"
+        case .int:
+            "an integer"
+        case .double:
+            "a double"
+        case .string:
+            "a string"
+        case .array:
+            "an array"
+        case .dictionary:
+            "a dictionary"
         }
     }
 }
