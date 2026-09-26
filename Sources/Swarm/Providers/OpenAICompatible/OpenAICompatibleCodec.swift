@@ -75,7 +75,7 @@ enum OpenAICompatibleCodec: Sendable {
             stream: stream,
             structuredOutput: structuredOutput
         )
-        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        request.httpBody = try OpenAICompatibleWire.encode(body)
         return request
     }
 
@@ -86,58 +86,48 @@ enum OpenAICompatibleCodec: Sendable {
         options: InferenceOptions,
         stream: Bool,
         structuredOutput: StructuredOutputRequest?
-    ) throws -> [String: Any] {
-        var body: [String: Any] = [
-            "model": configuration.model,
-            "messages": encodeMessages(messages),
-            "temperature": options.temperature,
-        ]
+    ) throws -> OpenAICompatibleWire.Request {
+        OpenAICompatibleWire.Request(
+            model: configuration.model,
+            messages: encodeMessages(messages),
+            temperature: options.temperature,
+            maxTokens: options.maxTokens,
+            stop: options.stopSequences.isEmpty ? nil : options.stopSequences,
+            topP: options.topP,
+            presencePenalty: options.presencePenalty,
+            frequencyPenalty: options.frequencyPenalty,
+            seed: options.seed,
+            parallelToolCalls: options.parallelToolCalls,
+            tools: tools.isEmpty ? nil : tools.map(encodeTool),
+            toolChoice: tools.isEmpty ? nil : options.toolChoice.map(encodeToolChoice),
+            stream: stream ? true : nil,
+            streamOptions: stream ? OpenAICompatibleWire.StreamOptions(includeUsage: true) : nil,
+            responseFormat: try responseFormatWire(
+                configuration: configuration,
+                tools: tools,
+                structuredOutput: structuredOutput
+            )
+        )
+    }
 
-        if let maxTokens = options.maxTokens {
-            body["max_tokens"] = maxTokens
-        }
-        if !options.stopSequences.isEmpty {
-            body["stop"] = options.stopSequences
-        }
-        if let topP = options.topP {
-            body["top_p"] = topP
-        }
-        if let presencePenalty = options.presencePenalty {
-            body["presence_penalty"] = presencePenalty
-        }
-        if let frequencyPenalty = options.frequencyPenalty {
-            body["frequency_penalty"] = frequencyPenalty
-        }
-        if let seed = options.seed {
-            body["seed"] = seed
-        }
-        if let parallel = options.parallelToolCalls {
-            body["parallel_tool_calls"] = parallel
-        }
-        if !tools.isEmpty {
-            body["tools"] = tools.map(encodeTool)
-            if let toolChoice = options.toolChoice {
-                body["tool_choice"] = encodeToolChoice(toolChoice)
-            }
-        }
-        if stream {
-            body["stream"] = true
-            body["stream_options"] = ["include_usage": true]
-        }
+    private static func responseFormatWire(
+        configuration: OpenAICompatibleProviderConfiguration,
+        tools: [ToolSchema],
+        structuredOutput: StructuredOutputRequest?
+    ) throws -> OpenAICompatibleWire.ResponseFormat? {
         // Many OpenAI-compatible hosts reject `tools` + `response_format` on
         // the same call. Native structured output is only advertised when this
         // request is not also a tool-calling turn.
-        if let structuredOutput,
-           configuration.structuredOutputMode == .nativeJSONSchema,
-           tools.isEmpty
-        {
-            body["response_format"] = try encodeResponseFormat(structuredOutput)
+        guard let structuredOutput,
+              configuration.structuredOutputMode == .nativeJSONSchema,
+              tools.isEmpty
+        else {
+            return nil
         }
-
-        return body
+        return try encodeResponseFormat(structuredOutput)
     }
 
-    static func encodeMessages(_ messages: [InferenceMessage]) -> [[String: Any]] {
+    static func encodeMessages(_ messages: [InferenceMessage]) -> [OpenAICompatibleWire.RequestMessage] {
         var pendingCallIDs: [String] = []
         var pendingCallNames: [String] = []
         var nextUnused = 0
@@ -167,74 +157,68 @@ enum OpenAICompatibleCodec: Sendable {
         }
     }
 
-    static func encodeMessage(_ message: InferenceMessage, toolCallID: String? = nil) -> [String: Any] {
-        var object: [String: Any] = [
-            "role": message.role.rawValue,
-            "content": message.content,
-        ]
-        if let name = message.name, message.role != .tool {
-            object["name"] = name
+    static func encodeMessage(
+        _ message: InferenceMessage,
+        toolCallID: String? = nil
+    ) -> OpenAICompatibleWire.RequestMessage {
+        var name: String?
+        if let messageName = message.name, message.role != .tool {
+            name = messageName
         }
-        if message.role == .tool {
-            if let toolCallID, !toolCallID.isEmpty {
-                object["tool_call_id"] = toolCallID
-            }
+        var resolvedID: String?
+        if message.role == .tool, let toolCallID, !toolCallID.isEmpty {
+            resolvedID = toolCallID
         }
-        if !message.toolCalls.isEmpty {
-            object["tool_calls"] = message.toolCalls.enumerated().map { index, call in
+        return OpenAICompatibleWire.RequestMessage(
+            role: message.role.rawValue,
+            content: message.content,
+            name: name,
+            toolCallID: resolvedID,
+            toolCalls: message.toolCalls.isEmpty ? nil : message.toolCalls.enumerated().map { index, call in
                 encodeToolCall(call, index: index)
             }
-        }
-        return object
+        )
     }
 
-    static func encodeTool(_ schema: ToolSchema) -> [String: Any] {
-        [
-            "type": "function",
-            "function": [
-                "name": schema.name,
-                "description": schema.description,
-                "parameters": parametersSchema(for: schema),
-            ] as [String: Any],
-        ]
+    static func encodeTool(_ schema: ToolSchema) -> OpenAICompatibleWire.RequestTool {
+        OpenAICompatibleWire.RequestTool(
+            function: OpenAICompatibleWire.RequestToolFunction(
+                name: schema.name,
+                description: schema.description,
+                parameters: parametersSchema(for: schema)
+            )
+        )
     }
 
-    static func encodeToolChoice(_ choice: ToolChoice) -> Any {
+    static func encodeToolChoice(_ choice: ToolChoice) -> OpenAICompatibleWire.RequestToolChoice {
         switch choice {
         case .auto:
-            return "auto"
+            return .auto
         case .none:
-            return "none"
+            return .none
         case .required:
-            return "required"
+            return .required
         case let .specific(toolName):
-            return [
-                "type": "function",
-                "function": ["name": toolName],
-            ] as [String: Any]
+            return .specific(toolName: toolName)
         }
     }
 
-    static func encodeResponseFormat(_ request: StructuredOutputRequest) throws -> [String: Any] {
+    static func encodeResponseFormat(
+        _ request: StructuredOutputRequest
+    ) throws -> OpenAICompatibleWire.ResponseFormat {
         switch request.format {
         case .jsonObject:
-            return ["type": "json_object"]
+            return .jsonObject
         case let .jsonSchema(name, schemaJSON):
             guard let data = schemaJSON.data(using: .utf8),
-                  let schema = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                  let schema = try? JSONDecoder().decode(SendableValue.self, from: data),
+                  case .dictionary = schema
             else {
                 throw AgentError.invalidInput(
                     reason: "Structured output JSON schema is not a JSON object"
                 )
             }
-            return [
-                "type": "json_schema",
-                "json_schema": [
-                    "name": sanitizeSchemaName(name),
-                    "schema": schema,
-                    "strict": true,
-                ] as [String: Any],
-            ]
+            return .jsonSchema(name: sanitizeSchemaName(name), schema: schema)
         }
     }
 
@@ -297,21 +281,21 @@ enum OpenAICompatibleCodec: Sendable {
         }
     }
 
-    static func parametersSchema(for schema: ToolSchema) -> [String: Any] {
-        parametersSchema(name: schema.name, parameters: schema.parameters)
+    static func parametersSchema(for schema: ToolSchema) -> SendableValue {
+        parametersSchemaValue(name: schema.name, parameters: schema.parameters)
     }
 
-    private static func parametersSchema(name: String, parameters: [ToolParameter]) -> [String: Any] {
-        var properties: [String: Any] = [:]
+    private static func parametersSchemaValue(name: String, parameters: [ToolParameter]) -> SendableValue {
+        var properties: [String: SendableValue] = [:]
         var required: [String] = []
 
         for parameter in parameters {
-            var schema = jsonSchema(for: parameter.type)
-            schema["description"] = parameter.description
+            var node = jsonSchemaValue(for: parameter.type).dictionaryValue ?? [:]
+            node["description"] = .string(parameter.description)
             if let defaultValue = parameter.defaultValue {
-                schema["default"] = defaultValue.toJSONObject()
+                node["default"] = defaultValue
             }
-            properties[parameter.name] = schema
+            properties[parameter.name] = .dictionary(node)
             if parameter.isRequired, parameter.defaultValue == nil {
                 required.append(parameter.name)
             }
@@ -319,44 +303,44 @@ enum OpenAICompatibleCodec: Sendable {
 
         required.sort { $0.utf8.lexicographicallyPrecedes($1.utf8) }
 
-        var root: [String: Any] = [
-            "type": "object",
-            "properties": properties,
-            "additionalProperties": false,
+        var root: [String: SendableValue] = [
+            "type": .string("object"),
+            "properties": .dictionary(properties),
+            "additionalProperties": .bool(false),
         ]
         if !required.isEmpty {
-            root["required"] = required
+            root["required"] = .array(required.map(SendableValue.string))
         }
         if properties.isEmpty {
-            root["description"] = "Tool parameters for \(name)"
+            root["description"] = .string("Tool parameters for \(name)")
         }
-        return root
+        return .dictionary(root)
     }
 
-    private static func jsonSchema(for type: ToolParameter.ParameterType) -> [String: Any] {
+    private static func jsonSchemaValue(for type: ToolParameter.ParameterType) -> SendableValue {
         switch type {
         case .string:
-            return ["type": "string"]
+            return .dictionary(["type": .string("string")])
         case .int:
-            return ["type": "integer"]
+            return .dictionary(["type": .string("integer")])
         case .double:
-            return ["type": "number"]
+            return .dictionary(["type": .string("number")])
         case .bool:
-            return ["type": "boolean"]
+            return .dictionary(["type": .string("boolean")])
         case let .array(elementType):
-            return [
-                "type": "array",
-                "items": jsonSchema(for: elementType),
-            ]
+            return .dictionary([
+                "type": .string("array"),
+                "items": jsonSchemaValue(for: elementType),
+            ])
         case let .object(properties):
-            return parametersSchema(name: "object", parameters: properties)
+            return parametersSchemaValue(name: "object", parameters: properties)
         case let .oneOf(options):
-            return [
-                "type": "string",
-                "enum": options,
-            ]
+            return .dictionary([
+                "type": .string("string"),
+                "enum": .array(options.map(SendableValue.string)),
+            ])
         case .any:
-            return [:]
+            return .dictionary([:])
         }
     }
 
@@ -395,24 +379,32 @@ enum OpenAICompatibleCodec: Sendable {
         return nil
     }
 
-    private static func encodeToolCall(_ call: InferenceMessage.ToolCall, index: Int) -> [String: Any] {
+    private static func encodeToolCall(
+        _ call: InferenceMessage.ToolCall,
+        index: Int
+    ) -> OpenAICompatibleWire.RequestToolCall {
+        // The arguments leaf stays on its historical serialization so echoed
+        // tool calls keep byte-identical argument strings; dynamic
+        // model-generated content is outside the typed wire boundary.
         let argumentsObject = SendableValue.dictionary(call.arguments).toJSONObject()
         let argumentsData = (try? JSONSerialization.data(withJSONObject: argumentsObject, options: [.sortedKeys]))
             ?? Data("{}".utf8)
         let arguments = String(data: argumentsData, encoding: .utf8) ?? "{}"
-        var encoded: [String: Any] = [
-            "id": synthesizedToolCallID(call.id, index: index),
-            "type": "function",
-            "function": [
-                "name": call.name,
-                "arguments": arguments,
-            ] as [String: Any],
-        ]
+        var extra: OpenAICompatibleWire.ThoughtSignatureExtra?
         // Gemini thinking models reject follow-ups without the echoed signature.
         if let signature = call.thoughtSignature, !signature.isEmpty {
-            encoded["extra_content"] = ["google": ["thought_signature": signature]]
+            extra = OpenAICompatibleWire.ThoughtSignatureExtra(
+                google: OpenAICompatibleWire.ThoughtSignatureGoogle(thoughtSignature: signature)
+            )
         }
-        return encoded
+        return OpenAICompatibleWire.RequestToolCall(
+            id: synthesizedToolCallID(call.id, index: index),
+            function: OpenAICompatibleWire.RequestToolCallFunction(
+                name: call.name,
+                arguments: arguments
+            ),
+            extraContent: extra
+        )
     }
 
     private static func sanitizeSchemaName(_ name: String) -> String {

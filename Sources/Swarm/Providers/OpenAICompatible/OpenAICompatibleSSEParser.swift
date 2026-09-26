@@ -60,11 +60,11 @@ struct OpenAICompatibleSSEParser: Sendable {
             return []
         }
         guard let data = payload.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+              let chunk = try? OpenAICompatibleChatChunk(decoding: data)
         else {
             return [.malformed(payload)]
         }
-        return [.chunk(OpenAICompatibleChatChunk(json: object))]
+        return [.chunk(chunk)]
     }
 }
 
@@ -96,82 +96,59 @@ struct OpenAICompatibleChatChunk: Sendable, Equatable {
         var thoughtSignature: String?
     }
 
-    init(json: [String: Any]) {
-        id = json["id"] as? String
-        usage = Self.parseUsage(json["usage"])
-        if let error = json["error"] as? [String: Any] {
-            errorMessage = error["message"] as? String ?? "OpenAI-compatible stream error"
+    /// Decodes one SSE or unary payload with a single throwing Codable decode.
+    init(decoding data: Data) throws {
+        let wire = try JSONDecoder().decode(OpenAICompatibleWire.Chunk.self, from: data)
+        self.init(wire: wire)
+    }
+
+    /// Maps wire values onto chunk values, applying the documented lenient
+    /// defaults: a missing choice or tool-call index falls back to its
+    /// offset, and missing tool-call arguments default to `""`.
+    init(wire: OpenAICompatibleWire.Chunk) {
+        id = wire.id
+        usage = Self.tokenUsage(from: wire.usage)
+        if wire.error != nil {
+            errorMessage = wire.error?.message ?? "OpenAI-compatible stream error"
         } else {
             errorMessage = nil
         }
-        let rawChoices = json["choices"] as? [[String: Any]] ?? []
-        choices = rawChoices.enumerated().map { offset, choice in
+        choices = wire.choices.enumerated().map { offset, choice in
             Choice(
-                index: choice["index"] as? Int ?? offset,
-                finishReason: choice["finish_reason"] as? String,
-                message: Self.parseMessage(choice["message"]),
-                delta: Self.parseMessage(choice["delta"])
+                index: choice.index ?? offset,
+                finishReason: choice.finishReason,
+                message: Self.message(from: choice.message),
+                delta: Self.message(from: choice.delta)
             )
         }
     }
 
-    static func parseUsage(_ value: Any?) -> TokenUsage? {
-        guard let object = value as? [String: Any] else {
+    private static func tokenUsage(from usage: OpenAICompatibleWire.Usage?) -> TokenUsage? {
+        guard let usage, usage.promptTokens != nil || usage.completionTokens != nil else {
             return nil
         }
-        let prompt = intValue(object["prompt_tokens"])
-        let completion = intValue(object["completion_tokens"])
-        guard prompt != nil || completion != nil else {
-            return nil
-        }
-        return TokenUsage(inputTokens: prompt ?? 0, outputTokens: completion ?? 0)
-    }
-
-    private static func parseMessage(_ value: Any?) -> Message? {
-        guard let object = value as? [String: Any] else {
-            return nil
-        }
-        let content: String?
-        if object["content"] is NSNull {
-            content = nil
-        } else {
-            content = object["content"] as? String
-        }
-        return Message(
-            role: object["role"] as? String,
-            content: content,
-            toolCalls: parseToolCalls(object["tool_calls"])
+        return TokenUsage(
+            inputTokens: usage.promptTokens ?? 0,
+            outputTokens: usage.completionTokens ?? 0
         )
     }
 
-    private static func parseToolCalls(_ value: Any?) -> [ToolCallDelta] {
-        guard let array = value as? [[String: Any]] else {
-            return []
+    private static func message(from wire: OpenAICompatibleWire.Message?) -> Message? {
+        guard let wire else {
+            return nil
         }
-        return array.enumerated().map { offset, call in
-            let function = call["function"] as? [String: Any] ?? [:]
-            let extra = call["extra_content"] as? [String: Any] ?? [:]
-            let google = extra["google"] as? [String: Any] ?? [:]
-            return ToolCallDelta(
-                index: call["index"] as? Int ?? offset,
-                id: call["id"] as? String,
-                name: function["name"] as? String,
-                arguments: function["arguments"] as? String ?? "",
-                thoughtSignature: google["thought_signature"] as? String
-            )
-        }
-    }
-
-    private static func intValue(_ value: Any?) -> Int? {
-        if let int = value as? Int {
-            return int
-        }
-        if let double = value as? Double {
-            return Int(double)
-        }
-        if let number = value as? NSNumber {
-            return number.intValue
-        }
-        return nil
+        return Message(
+            role: wire.role,
+            content: wire.content,
+            toolCalls: wire.toolCalls.enumerated().map { offset, call in
+                ToolCallDelta(
+                    index: call.index ?? offset,
+                    id: call.id,
+                    name: call.function?.name,
+                    arguments: call.function?.arguments ?? "",
+                    thoughtSignature: call.extraContent?.google?.thoughtSignature
+                )
+            }
+        )
     }
 }
