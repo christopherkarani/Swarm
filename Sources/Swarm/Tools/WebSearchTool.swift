@@ -444,10 +444,10 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
 
     /// Resolves `mode` from an explicit argument or the legacy property.
     ///
-    /// Absent (or blank) values take the documented default; unknown values
+    /// Absent, null, or blank values take the documented default; unknown values
     /// throw before any network call is made.
     private func parseMode(_ value: SendableValue?, fallback: String) throws -> Mode {
-        guard let value else {
+        guard let value, !value.isNull else {
             return try resolveMode(fallback)
         }
         guard let raw = value.stringValue else {
@@ -475,10 +475,10 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
 
     /// Resolves `detail` from an explicit argument or the legacy property.
     ///
-    /// Absent (or blank) values take the documented default; unknown values
+    /// Absent, null, or blank values take the documented default; unknown values
     /// throw before any network call is made.
     private func parseDetail(_ value: SendableValue?, fallback: String) throws -> Detail {
-        guard let value else {
+        guard let value, !value.isNull else {
             return try resolveDetail(fallback)
         }
         guard let raw = value.stringValue else {

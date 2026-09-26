@@ -105,6 +105,36 @@ struct WebSearchToolModesTests {
         #expect(output.contains("No web results found."))
     }
 
+    @Test("Null mode reads as absent and defaults to search")
+    func nullModeDefaultsToSearch() async throws {
+        let root = temporaryWebStoreURL()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tool = makeTool(storeURL: root)
+
+        let result = try await tool.execute(arguments: [
+            "mode": .null,
+            "query": .string("deterministic offline search"),
+        ])
+
+        let output = try #require(result.stringValue)
+        #expect(output.contains("No web results found."))
+    }
+
+    @Test("Null detail reads as absent and defaults to compact")
+    func nullDetailDefaultsToCompact() async throws {
+        let root = temporaryWebStoreURL()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tool = makeTool(storeURL: root)
+
+        let result = try await tool.execute(arguments: [
+            "query": .string("deterministic offline search"),
+            "detail": .null,
+        ])
+
+        let output = try #require(result.stringValue)
+        #expect(output.contains("No web results found."))
+    }
+
     @Test("Mode matching stays case-insensitive")
     func modeMatchingStaysCaseInsensitive() async throws {
         let root = temporaryWebStoreURL()

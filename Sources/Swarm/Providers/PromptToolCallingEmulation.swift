@@ -210,9 +210,6 @@ enum PromptToolParser {
                     continue
                 }
                 parsedCandidates.append(toolCalls)
-                guard parsedCandidates.count < 2 else {
-                    return nil
-                }
             } catch let error as PromptToolParseError {
                 if firstFieldError == nil {
                     firstFieldError = error
@@ -220,11 +217,13 @@ enum PromptToolParser {
             }
         }
 
-        if parsedCandidates.count == 1, firstFieldError == nil {
-            return parsedCandidates.first
-        }
+        // An authenticated-but-malformed envelope fails closed even when a
+        // valid (or ambiguous) envelope is also present.
         if let firstFieldError {
             throw firstFieldError
+        }
+        if parsedCandidates.count == 1 {
+            return parsedCandidates.first
         }
         return nil
     }

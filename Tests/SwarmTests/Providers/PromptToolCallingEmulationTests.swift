@@ -576,6 +576,22 @@ struct PromptToolParserFailClosedTests {
         }
     }
 
+    @Test("Ambiguous valid envelopes alongside a malformed envelope throw in either order")
+    func ambiguousValidPlusMalformedThrows() throws {
+        let valid = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":{}}}"#
+        let malformed = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":123,"arguments":{}}}"#
+
+        for response in ["\(valid)\n\(valid)\n\(malformed)", "\(malformed)\n\(valid)\n\(valid)"] {
+            #expect(throws: PromptToolParseError.self) {
+                _ = try PromptToolParser.parseToolCalls(
+                    from: response,
+                    availableTools: tools,
+                    context: context
+                )
+            }
+        }
+    }
+
     @Test("Mistyped nonce yields nil as unauthenticated text")
     func mistypedNonceYieldsNil() throws {
         let response = #"{"swarm_tool_call":{"nonce":123,"tool":"lookup","arguments":{}}}"#
