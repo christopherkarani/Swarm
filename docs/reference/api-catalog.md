@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 262 (269 including `Internal/GraphRuntime/`)
+- Source files scanned: 263 (270 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2434
 
 ## 1. Swarm (entry point)
@@ -175,6 +175,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 82 | case | public | AgentEvent.Tool.partial(update:) | `public case partial(update: PartialToolCallUpdate)` |
 | 85 | case | public | AgentEvent.Tool.completed(call:result:) | `public case completed(call: ToolCall, result: ToolResult)` |
 | 88 | case | public | AgentEvent.Tool.failed(call:error:) | `public case failed(call: ToolCall, error: AgentError)` |
+| 94 | case | public | AgentEvent.Tool.approvalRequested(call:) | `public case approvalRequested(call: ToolCall)` |
 | 94 | func | public | AgentEvent.Tool.completed(_:) | `public static func completed(_ invocation: ToolInvocation) -> Self` |
 | 100 | enum | public | AgentEvent.Output | `public enum Output` |
 | 102 | case | public | AgentEvent.Output.token(_:) | `public case token(String)` |
@@ -943,6 +944,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 89 | func | public | AgentObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 98 | func | public | AgentObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
 | 117 | func | public | AgentObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async` |
+| 128 | func | public | AgentObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 129 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async` |
 | 145 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `@available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.") public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async` |
 | 154 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async` |
@@ -960,6 +962,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 187 | func | public | AgentObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 190 | func | public | AgentObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
 | 244 | func | public | AgentObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async` |
+| 260 | func | public | AgentObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context _: AgentContext?, agent _: any AgentRuntime, call _: ToolCall) async` |
 | 249 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async` |
 | 253 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `@available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.") public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [MemoryMessage]) async` |
 | 256 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context _: AgentContext?, agent _: any AgentRuntime, response _: String, usage _: TokenUsage?) async` |
@@ -978,6 +981,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 300 | func | public | CompositeObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 310 | func | public | CompositeObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 320 | func | public | CompositeObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
+| 444 | func | public | CompositeObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 399 | func | public | CompositeObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async` |
 | 410 | func | public | CompositeObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `@available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.") package func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async` |
 | 420 | func | public | CompositeObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async` |
@@ -996,6 +1000,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 486 | func | public | LoggingObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async` |
 | 495 | func | public | LoggingObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent _: any AgentRuntime, result: ToolResult) async` |
 | 628 | func | public | LoggingObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent _: any AgentRuntime, invocation: ToolInvocation) async` |
+| 664 | func | public | LoggingObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async` |
 | 640 | func | public | LoggingObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [InferenceMessage]) async` |
 | 649 | func | public | LoggingObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent _: any AgentRuntime, response _: String, usage: TokenUsage?) async` |
 | 530 | func | public | LoggingObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
@@ -2663,6 +2668,22 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | struct | public | DurableWorkflow | `public struct DurableWorkflow` |
 | — | func | public | DurableWorkflow.execute(_:) | `public func execute(_ input: String) async throws -> AgentResult` |
 | — | func | public | DurableWorkflow.resume(_:from:) | `public func resume(_ input: String, from checkpointID: WorkflowCheckpointID) async throws -> AgentResult` |
+| — | func | public | DurableWorkflow.resume(decision:from:) | `public func resume(decision: WorkflowApprovalDecision, from checkpointID: WorkflowCheckpointID) async throws -> AgentResult` |
+
+### Workflow/WorkflowDurableApproval.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 15 | struct | public | WorkflowApprovalRequired | `public struct WorkflowApprovalRequired: Error, Sendable, Equatable` |
+| 17 | var | public | WorkflowApprovalRequired.toolName | `public let toolName: String` |
+| 20 | var | public | WorkflowApprovalRequired.arguments | `public let arguments: [String: SendableValue]` |
+| 24 | var | public | WorkflowApprovalRequired.stepCursor | `public let stepCursor: Int` |
+| 27 | var | public | WorkflowApprovalRequired.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
+| 30 | var | public | WorkflowApprovalRequired.interruptID | `public let interruptID: String` |
+| 33 | func | public | WorkflowApprovalRequired.init(toolName:arguments:stepCursor:checkpointID:interruptID:) | `public init(toolName: String, arguments: [String: SendableValue], stepCursor: Int, checkpointID: WorkflowCheckpointID, interruptID: String)` |
+| 67 | enum | public | WorkflowApprovalDecision | `public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable` |
+| 69 | case | public | WorkflowApprovalDecision.approve | `public case approve` |
+| 71 | case | public | WorkflowApprovalDecision.reject | `public case reject` |
 
 ### Workflow/WorkflowCheckpointID.swift
 

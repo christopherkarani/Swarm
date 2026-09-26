@@ -59,6 +59,10 @@ internal struct EventStreamObserver: AgentObserver {
         emitFailedIfNeeded(call: invocation.call, result: invocation.result)
     }
 
+    func onToolApprovalRequested(context _: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async {
+        continuation.yield(.tool(.approvalRequested(call: call)))
+    }
+
     func onThinking(context _: AgentContext?, agent _: any AgentRuntime, thought: String) async {
         continuation.yield(.output(.thinking(thought: thought)))
     }

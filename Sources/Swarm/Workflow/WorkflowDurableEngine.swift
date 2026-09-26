@@ -124,27 +124,7 @@ struct WorkflowDurableEngine: Sendable {
         if let controller = WorkflowDurableFaultInjection.controller {
             await controller.beginAttempt()
         }
-        let graph = try makeGraph()
-        let context = WorkflowDurableContext(
-            workflow: workflow,
-            signature: workflow.workflowSignature
-        )
-
-        let environment = HiveEnvironment<WorkflowDurableSchema>(
-            context: context,
-            clock: WorkflowDurableClock(),
-            logger: WorkflowDurableLogger(),
-            checkpointStore: faultInjectingStore(wrapping: AnyHiveCheckpointStore(
-                WorkflowLegacyMigratingCheckpointStore(
-                    inner: checkpointing.runtimeStore,
-                    schemaVersion: graph.schemaVersion,
-                    graphVersion: graph.graphVersion
-                )
-            ))
-        )
-
-        let runtime = try HiveRuntime(graph: graph, environment: environment)
-        let threadID = Self.hiveThreadID(for: WorkflowCheckpointID(checkpointID))
+        let components = try makeRuntimeComponents()
 
         if resume {
             guard try await checkpointing.containsCheckpoint(for: checkpointID) else {
@@ -156,8 +136,8 @@ struct WorkflowDurableEngine: Sendable {
             input: startInput,
             signature: workflow.workflowSignature
         )
-        let handle = await runtime.run(
-            threadID: threadID,
+        let handle = await components.runtime.run(
+            threadID: components.threadID,
             input: input,
             options: runOptions(for: policy)
         )
@@ -165,16 +145,96 @@ struct WorkflowDurableEngine: Sendable {
         let outcome = try await handle.outcome.value
         let result = try extractResult(from: outcome)
 
-        if policy == .onCompletion {
-            let flushHandle = await runtime.applyExternalWrites(
-                threadID: threadID,
-                writes: [],
-                options: HiveRunOptions(maxSteps: 1, checkpointPolicy: .everyStep)
-            )
-            _ = try await flushHandle.outcome.value
-        }
+        try await flushIfNeeded(runtime: components.runtime, threadID: components.threadID)
 
         return result
+    }
+
+    /// Delivers a human approval decision to a run paused on ``WorkflowApprovalRequired``.
+    ///
+    /// The pending interrupt is read back from the latest checkpoint, so the
+    /// caller only names the checkpoint thread. `.approve` carries the approved
+    /// call (plus earlier approvals in the pause chain) into the resumed step;
+    /// `.reject` fails the run with
+    /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing.
+    func resumeApproval(decision: WorkflowApprovalDecision) async throws -> AgentResult {
+        if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
+            throw error
+        }
+        if let controller = WorkflowDurableFaultInjection.controller {
+            await controller.beginAttempt()
+        }
+        let components = try makeRuntimeComponents()
+
+        guard try await checkpointing.containsCheckpoint(for: checkpointID) else {
+            throw WorkflowError.checkpointNotFound(id: checkpointID)
+        }
+        guard let checkpoint = try await components.store.loadLatest(threadID: components.threadID),
+              let interruption = checkpoint.interruption else {
+            throw WorkflowError.invalidWorkflow(reason: "No paused tool approval for checkpoint '\(checkpointID)'")
+        }
+        let request = try WorkflowApprovalRequestEnvelope.decoded(from: interruption.payload)
+        var approved = request.approved
+        if decision == .approve {
+            approved.append(WorkflowApprovedCall(toolName: request.toolName, arguments: request.arguments))
+        }
+        let resumePayload = try WorkflowApprovalDecisionEnvelope(
+            decision: decision,
+            toolName: request.toolName,
+            arguments: request.arguments,
+            approved: approved
+        ).encoded()
+
+        let handle = await components.runtime.resume(
+            threadID: components.threadID,
+            interruptID: interruption.id,
+            payload: resumePayload,
+            options: runOptions(for: policy)
+        )
+
+        let outcome = try await handle.outcome.value
+        let result = try extractResult(from: outcome)
+
+        try await flushIfNeeded(runtime: components.runtime, threadID: components.threadID)
+
+        return result
+    }
+
+    private func makeRuntimeComponents() throws -> WorkflowDurableRuntimeComponents {
+        let graph = try makeGraph()
+        let context = WorkflowDurableContext(
+            workflow: workflow,
+            signature: workflow.workflowSignature
+        )
+        let store = faultInjectingStore(wrapping: AnyHiveCheckpointStore(
+            WorkflowLegacyMigratingCheckpointStore(
+                inner: checkpointing.runtimeStore,
+                schemaVersion: graph.schemaVersion,
+                graphVersion: graph.graphVersion
+            )
+        ))
+        let environment = HiveEnvironment<WorkflowDurableSchema>(
+            context: context,
+            clock: WorkflowDurableClock(),
+            logger: WorkflowDurableLogger(),
+            checkpointStore: store
+        )
+        let runtime = try HiveRuntime(graph: graph, environment: environment)
+        let threadID = Self.hiveThreadID(for: WorkflowCheckpointID(checkpointID))
+        return WorkflowDurableRuntimeComponents(runtime: runtime, threadID: threadID, store: store)
+    }
+
+    private func flushIfNeeded(
+        runtime: HiveRuntime<WorkflowDurableSchema>,
+        threadID: HiveThreadID
+    ) async throws {
+        guard policy == .onCompletion else { return }
+        let flushHandle = await runtime.applyExternalWrites(
+            threadID: threadID,
+            writes: [],
+            options: HiveRunOptions(maxSteps: 1, checkpointPolicy: .everyStep)
+        )
+        _ = try await flushHandle.outcome.value
     }
 
     private func faultInjectingStore(
@@ -232,8 +292,15 @@ struct WorkflowDurableEngine: Sendable {
             return try extractResult(from: output)
         case .outOfSteps:
             throw WorkflowError.invalidWorkflow(reason: "Workflow exceeded execution budget")
-        case .interrupted:
-            throw WorkflowError.invalidWorkflow(reason: "Workflow runtime interrupted unexpectedly")
+        case .interrupted(let interruption):
+            let request = try WorkflowApprovalRequestEnvelope.decoded(from: interruption.interrupt.payload)
+            throw WorkflowApprovalRequired(
+                toolName: request.toolName,
+                arguments: request.arguments,
+                stepCursor: request.stepCursor,
+                checkpointID: WorkflowCheckpointID(checkpointID),
+                interruptID: interruption.interrupt.id.rawValue
+            )
         }
     }
 
@@ -304,6 +371,12 @@ enum WorkflowDurableRouting: Sendable {
     }
 }
 
+private struct WorkflowDurableRuntimeComponents {
+    let runtime: HiveRuntime<WorkflowDurableSchema>
+    let threadID: HiveThreadID
+    let store: AnyHiveCheckpointStore<WorkflowDurableSchema>
+}
+
 private enum WorkflowNodeID {
     static let execute = HiveNodeID("workflow.execute")
 }
@@ -336,14 +409,21 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
         if let controller = WorkflowDurableFaultInjection.controller {
             await controller.markWorkflowStepStarted()
         }
-        let result = try await input.context.workflow.execute(step: step, withInput: progress.currentInput)
-        let nextDecision = WorkflowTransition.afterStep(
-            progress: progress,
-            result: result,
-            policy: policy
-        )
-        let nextProgress = try progressValue(from: nextDecision)
-        return runningOutput(for: nextProgress)
+        let allowedCalls = try approvalGateAllowing(resumePayload: input.run.resume?.payload)
+        do {
+            let result = try await WorkflowDurableApprovalGate.$allowed.withValue(allowedCalls) {
+                try await input.context.workflow.execute(step: step, withInput: progress.currentInput)
+            }
+            let nextDecision = WorkflowTransition.afterStep(
+                progress: progress,
+                result: result,
+                policy: policy
+            )
+            let nextProgress = try progressValue(from: nextDecision)
+            return runningOutput(for: nextProgress)
+        } catch let request as WorkflowToolApprovalRequest {
+            return try approvalInterruptOutput(progress: progress, request: request, allowed: allowedCalls)
+        }
 
     case .evaluateRepeat(let progress, let result):
         guard let repeatCondition = input.context.workflow.repeatCondition else {
@@ -372,6 +452,46 @@ private func progressValue(from decision: WorkflowTransition.Decision) throws ->
     case .fail(let error):
         throw error
     }
+}
+
+/// Resolves the approval gate for one step execution.
+///
+/// A fresh step arms the gate with no allowances. A Hive-resumed step carries
+/// the human decision: `.reject` fails without executing, `.approve` allows
+/// the calls approved so far in the pause chain.
+private func approvalGateAllowing(resumePayload: String?) throws -> [WorkflowApprovedCall] {
+    guard let resumePayload else { return [] }
+    let decision = try WorkflowApprovalDecisionEnvelope.decoded(from: resumePayload)
+    switch decision.decision {
+    case .reject:
+        throw WorkflowError.humanApprovalRejected(
+            prompt: decision.toolName,
+            reason: "Operator rejected tool '\(decision.toolName)' at durable approval resume"
+        )
+    case .approve:
+        return decision.approved
+    }
+}
+
+/// Builds the pause output for an approval request.
+///
+/// The writes preserve the incoming progress (step cursor included) rather
+/// than advancing it, so the interrupt-forced checkpoint holds the paused
+/// state and the resumed run replays the step from its start.
+private func approvalInterruptOutput(
+    progress: WorkflowTransition.Progress,
+    request: WorkflowToolApprovalRequest,
+    allowed: [WorkflowApprovedCall]
+) throws -> HiveNodeOutput<WorkflowDurableSchema> {
+    let payload = try WorkflowApprovalRequestEnvelope(
+        toolName: request.toolName,
+        arguments: request.arguments,
+        stepCursor: progress.stepCursor,
+        approved: allowed
+    ).encoded()
+    var output = runningOutput(for: progress)
+    output.interrupt = HiveInterruptRequest(payload: payload)
+    return output
 }
 
 private func runningOutput(for progress: WorkflowTransition.Progress) -> HiveNodeOutput<WorkflowDurableSchema> {

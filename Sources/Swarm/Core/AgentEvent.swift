@@ -87,6 +87,12 @@ public enum AgentEvent: Sendable {
         /// A tool call failed.
         case failed(call: ToolCall, error: AgentError)
 
+        /// A durable run paused for human approval of a tool call.
+        ///
+        /// Emitted instead of executing the tool. The call has not run; approve
+        /// it with `DurableWorkflow.resume(decision:from:)`.
+        case approvalRequested(call: ToolCall)
+
         /// Builds ``completed(call:result:)`` from a paired invocation.
         ///
         /// The enum associated values stay `call` and `result`. Use this when
@@ -485,6 +491,8 @@ extension AgentEvent.Tool: Equatable {
             lCall == rCall && lResult == rResult
         case let (.failed(lCall, lError), .failed(rCall, rError)):
             lCall == rCall && lError == rError
+        case let (.approvalRequested(l), .approvalRequested(r)):
+            l == r
         default:
             false
         }

@@ -136,3 +136,33 @@ permissions and the full migration notes.
 Agent session history, memory backends, and in-flight tool calls are **not**
 part of a workflow checkpoint. Rebuild those independently, or keep step bodies
 idempotent so a re-run is safe.
+
+## Tool approvals (human-in-the-loop)
+
+A tool that declares `ToolExecutionSemantics(approvalRequirement: .always)`
+pauses a durable run instead of executing. `DurableWorkflow.execute(_:)` throws
+`WorkflowApprovalRequired` carrying the tool name, arguments, paused step
+cursor, and checkpoint/interrupt IDs; the tool has not run and the checkpoint
+holds the paused step cursor. There is no timeout on the wait.
+
+```swift
+do {
+    return try await durable.execute("Tear down staging")
+} catch let required as WorkflowApprovalRequired {
+    print("Approve \(required.toolName) at step \(required.stepCursor)")
+}
+// Later — same process or a fresh one sharing the checkpoint store:
+let result = try await durable.resume(decision: .approve, from: checkpointID)
+```
+
+`.approve` executes the paused call and continues the run; `.reject` fails with
+`WorkflowError.humanApprovalRejected` without executing. There is no
+edited-arguments resume: approval runs the call exactly as requested. A resumed
+step that reaches another approval-required tool pauses again with its own
+`WorkflowApprovalRequired`.
+
+Replay semantics still apply: the resumed run replays the paused step from its
+start, so already-approved tools in that step may execute again, and direct
+(non-durable) runs never pause. Observe pauses on the `AgentEvent` stream via
+`AgentEvent.Tool.approvalRequested` (or
+`AgentObserver.onToolApprovalRequested`).

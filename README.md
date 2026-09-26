@@ -198,7 +198,7 @@ swift run OnDeviceChat --demo
 | Guardrails | Validate inputs, outputs, and tool arguments before they reach your application. |
 | Streaming | Observe lifecycle, tool, thinking, and output events through `AsyncThrowingStream`. |
 | Resilience | Retry provider inference (`maxAttempts` counts total attempts, minimum 1), circuit breakers, rate limits, fallback chains. |
-| Durable execution | Checkpoint workflow progress and resume after a process restart when the `Integrations` trait is enabled. |
+| Durable execution | Checkpoint workflow progress and resume after a process restart when the `Integrations` trait is enabled. Approval-required tools pause for human review. |
 | MCP | Discover and bridge Model Context Protocol tools. |
 | Observability | Export agent and inference traces with OpenTelemetry or Swift logging. |
 
@@ -231,7 +231,7 @@ await Swarm.configure(provider: myProvider)
 | [Secret Storage](docs/guide/secret-storage.md) | Keychain-backed API keys, redaction, checkpoint file permissions |
 | [Foundation Models](docs/guide/foundation-models.md) | Capture and native session modes |
 | [Voice](docs/guide/voice.md) | Turn-based `VoiceSession` around an existing Agent |
-| [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics |
+| [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics, tool approvals |
 | [OpenTelemetry Tracing](docs/guide/opentelemetry-tracing.md) | Traces and propagation |
 | [Front-Facing API](docs/reference/front-facing-api.md) | Public API overview |
 | [API Catalog](docs/reference/api-catalog.md) | Complete symbol reference |
