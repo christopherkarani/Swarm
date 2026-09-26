@@ -91,8 +91,14 @@ public actor MetalANNSVectorIndex: VectorIndex {
     /// Replaces index state with `snapshot`, rebuilding the MetalANNS shard.
     public func restore(_ snapshot: VectorIndexSnapshot) async throws {
         var widths = Set<Int>()
+        var seenIDs = Set<VectorRecordID>()
         for record in snapshot.records {
             widths.insert(record.vector.count)
+            guard seenIDs.insert(record.id).inserted else {
+                throw VectorIndexError.snapshotIncompatible(
+                    reason: "snapshot contains duplicate record id \(record.id.rawValue)"
+                )
+            }
         }
         if widths.count > 1 {
             throw VectorIndexError.snapshotIncompatible(reason: "snapshot records have mixed widths")

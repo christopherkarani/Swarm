@@ -205,8 +205,21 @@ public actor DefaultAgentMemory: Memory {
     public func clear() async {
         await contextMemory.clear()
 
-        waxMemoryTask?.cancel()
-        waxMemoryTask = nil
+        if let task = waxMemoryTask {
+            // Join in-flight construction instead of cancelling it: cancel is
+            // cooperative and the detached open ignores it, so a cancelled
+            // task would still complete and reinstall its store over this
+            // reset. The slot stays set while joining so late callers join
+            // the same open instead of starting a second one.
+            if let memory = try? await task.value {
+                await memory.clear()
+                waxMemory = memory
+                waxMemoryTask = nil
+                return
+            }
+            // Construction failed; its owner settles the slot. Fall through
+            // to clear whatever state exists now.
+        }
         if let waxMemory {
             await waxMemory.clear()
         } else {

@@ -245,11 +245,13 @@ enum HashFallbackDiagnostics {
     }
 
     static func recordIfNeeded() {
+        // Unlike the CoreML provider's fallback message, this must not advise
+        // ensureModelAvailable(): without CoreML the real compiler always
+        // fails, so only an injected provider can restore real embeddings.
         let message = """
         Real embeddings are unavailable (CoreML is unavailable on this platform). Semantic recall quality is degraded — \
         vector rankings are not meaningful until a real embedding model is available. \
-        Call SemanticEmbeddingAvailability.ensureModelAvailable() to download the MiniLM model, \
-        or set downloadsEmbeddingModelAutomatically on the memory configuration.
+        Inject a custom EmbeddingProvider via ContextConfiguration.embeddingProvider.
         """
         state.lock.lock()
         defer { state.lock.unlock() }

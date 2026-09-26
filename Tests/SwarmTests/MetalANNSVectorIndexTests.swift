@@ -82,6 +82,25 @@ struct MetalANNSVectorIndexTests {
         #expect(try await store.retrieve(query: [1, 0], k: 1) == [])
     }
 
+    @Test("restore rejects duplicate record IDs")
+    func restoreRejectsDuplicateIDs() async throws {
+        let index = MetalANNSVectorIndex()
+        try await index.insert(id: "a", vector: [1, 0, 0, 0])
+        let bad = VectorIndexSnapshot(
+            backendID: .metalANNS,
+            metric: .cosine,
+            dimension: 4,
+            records: [
+                .init(id: "x", vector: [1, 0, 0, 0]),
+                .init(id: "x", vector: [0, 1, 0, 0]),
+            ]
+        )
+        await #expect(throws: VectorIndexError.self) {
+            try await index.restore(bad)
+        }
+        #expect(await index.count == 1)
+    }
+
     @Test("default stores keep the MetalANNS backend")
     func defaultStoresUseMetalANNS() async throws {
         let semantic = SemanticStore()

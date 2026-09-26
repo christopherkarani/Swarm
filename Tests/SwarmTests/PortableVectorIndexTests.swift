@@ -126,6 +126,25 @@ struct PortableVectorIndexTests {
         }
     }
 
+    @Test("restore rejects duplicate record IDs instead of trapping")
+    func restoreRejectsDuplicateIDs() async throws {
+        let index = BruteForceVectorIndex()
+        try await index.insert(id: "a", vector: [1, 0])
+        let bad = VectorIndexSnapshot(
+            backendID: .bruteForce,
+            metric: .cosine,
+            dimension: 2,
+            records: [
+                .init(id: "x", vector: [1, 0]),
+                .init(id: "x", vector: [0, 1]),
+            ]
+        )
+        await #expect(throws: VectorIndexError.self) {
+            try await index.restore(bad)
+        }
+        #expect(await index.count == 1)
+    }
+
     @Test("record IDs wrap chunk UUIDs")
     func recordIDWrapsUUID() {
         let uuid = UUID()

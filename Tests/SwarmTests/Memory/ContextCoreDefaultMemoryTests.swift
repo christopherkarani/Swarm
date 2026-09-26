@@ -370,6 +370,33 @@ struct ContextCoreDefaultMemoryTests {
         #expect(await memory.count == 2)
         #expect((await memory.allMessages()).map(\.content) == ["alpha", "beta"])
     }
+
+    @Test("racing clear with first touch keeps memory usable", .timeLimit(.minutes(2)))
+    func racingClearWithFirstTouchKeepsMemoryUsable() async throws {
+        // clear() joins in-flight construction instead of cancelling it, so
+        // a clear racing first touch must neither hang (second open on the
+        // exclusive lock) nor leave the stack unusable. Iterated to catch
+        // rare interleavings; each iteration uses a fresh store.
+        for _ in 0..<10 {
+            let url = try makeTemporaryWaxURL()
+            let memory = try DefaultAgentMemory(
+                configuration: .init(
+                    waxStoreURL: url
+                )
+            )
+
+            async let first: Void = memory.add(.user("alpha"))
+            async let cleared: Void = memory.clear()
+            async let second: Void = memory.add(.assistant("beta"))
+            _ = await (first, cleared, second)
+
+            await memory.clear()
+            await memory.add(.user("gamma"))
+            #expect(await memory.count == 1)
+            #expect((await memory.allMessages()).map(\.content) == ["gamma"])
+            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+        }
+    }
 }
 
 private actor CountingPromptTokenCounter: PromptTokenCounter {
