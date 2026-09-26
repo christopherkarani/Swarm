@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 262 (269 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2434
+- Source files scanned: 263 (270 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2452
 
 ## 1. Swarm (entry point)
 
@@ -2733,7 +2733,30 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 85 | func | public | JobSession.ingest(_:) | `public func ingest(_ record: JobRecord) async` |
 | 97 | func | public | JobSession.window(query:tokenLimit:) | `public func window(query: String, tokenLimit: Int) async -> String` |
 | 107 | func | public | JobSession.records(kind:) | `public func records(kind: String) async -> [JobRecord]` |
-| 117 | func | public | JobSession.fanOut(_:) | `public func fanOut(_ children: [JobChild]) async throws -> [JobChildResult]` |
+| 118 | func | public | JobSession.fanOut(_:observer:) | `public func fanOut(_ children: [JobChild], observer: (any AgentObserver)? = nil) async throws -> [JobChildResult]` |
+
+### Job/JobTask.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 9 | struct | public | JobTask | `public struct JobTask` |
+| 10 | var | public | JobTask.name | `public let name: String` |
+| 11 | var | public | JobTask.agent | `public let agent: any AgentRuntime` |
+| 12 | var | public | JobTask.brief | `public let brief: String` |
+| 13 | var | public | JobTask.expectedOutput | `public let expectedOutput: String` |
+| 15 | func | public | JobTask.init(name:agent:brief:expectedOutput:) | `public init(name: String, agent: some AgentRuntime, brief: String, expectedOutput: String = "")` |
+| 41 | struct | public | JobProduct | `public struct JobProduct` |
+| 43 | var | public | JobProduct.results | `public let results: [String: AgentResult]` |
+| 46 | var | public | JobProduct.summary | `public let summary: String` |
+| 48 | func | public | JobProduct.init(results:summary:) | `public init(results: [String: AgentResult], summary: String)` |
+| 58 | struct | public | JobAssignment | `public struct JobAssignment` |
+| 59 | var | public | JobAssignment.name | `public let name: String` |
+| 60 | var | public | JobAssignment.agent | `public let agent: any AgentRuntime` |
+| 61 | var | public | JobAssignment.notesQuery | `public let notesQuery: String` |
+| 62 | var | public | JobAssignment.expectedOutput | `public let expectedOutput: String` |
+| 64 | func | public | JobAssignment.init(name:agent:notesQuery:expectedOutput:) | `public init(name: String, agent: some AgentRuntime, notesQuery: String, expectedOutput: String = "")` |
+| 104 | func | public | Job.run(_:tasks:merge:observer:) | `public func run(_ input: String, tasks: [JobTask], merge: Workflow.MergeStrategy = .structured, observer: (any AgentObserver)? = nil) async throws -> JobProduct` |
+| 145 | func | public | Job.delegate(_:manager:assignments:merge:observer:tokenLimit:prepare:) | `public func delegate(_ input: String, manager: some AgentRuntime, assignments: [JobAssignment], merge: Workflow.MergeStrategy = .structured, observer: (any AgentObserver)? = nil, tokenLimit: Int = 4000, prepare: @Sendable (JobSession) async throws -> Void = { _ in }) async throws -> JobProduct` |
 
 ### Job/JobStore.swift
 
