@@ -173,3 +173,146 @@ struct OpenAICompatibleSSEParserTests {
         #expect(chunk.choices.first?.delta?.content == "ab")
     }
 }
+
+@Suite("OpenAI-compatible SSE parser fail-closed")
+struct OpenAICompatibleSSEParserFailClosedTests {
+    @Test("Object arguments throw naming the field")
+    func objectArgumentsThrow() throws {
+        let data = Data(#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"echo","arguments":{"text":"hi"}}}]}}]}"#.utf8)
+
+        let field = try #require(throwsFieldName { try OpenAICompatibleChatChunk(jsonData: data) })
+        #expect(field == "choices[0].delta.tool_calls[0].function.arguments")
+    }
+
+    @Test("Mistyped choices throw naming the field")
+    func mistypedChoicesThrow() throws {
+        let data = Data(#"{"choices":{}}"#.utf8)
+
+        let field = try #require(throwsFieldName { try OpenAICompatibleChatChunk(jsonData: data) })
+        #expect(field == "choices")
+    }
+
+    @Test("Mistyped tool calls throw naming the field")
+    func mistypedToolCallsThrow() throws {
+        let data = Data(#"{"choices":[{"delta":{"tool_calls":{}}}]}"#.utf8)
+
+        let field = try #require(throwsFieldName { try OpenAICompatibleChatChunk(jsonData: data) })
+        #expect(field == "choices[0].delta.tool_calls")
+    }
+
+    @Test("Non-JSON payload throws invalidJSON")
+    func nonJSONThrowsInvalidJSON() {
+        do {
+            _ = try OpenAICompatibleChatChunk(jsonData: Data("not-json".utf8))
+            Issue.record("expected invalidJSON")
+        } catch let error as OpenAICompatibleChunkDecodingError {
+            guard case .invalidJSON = error else {
+                Issue.record("expected invalidJSON, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("unexpected error \(error)")
+        }
+    }
+
+    @Test("Stream surfaces mistyped chunks as field-context malformed events and continues")
+    func streamSkipsMistypedChunkWithFieldContext() {
+        var parser = OpenAICompatibleSSEParser()
+        var events: [OpenAICompatibleSSEEvent] = []
+        events += parser.consume(line: #"data: {"choices":[{"delta":{"content":"ok"}}]}"#)
+        events += parser.consume(line: "")
+        events += parser.consume(line: #"data: {"choices":{}}"#)
+        events += parser.consume(line: "")
+        events += parser.consume(line: "data: [DONE]")
+        events += parser.consume(line: "")
+        events += parser.finish()
+
+        #expect(events.count == 3)
+        guard case let .chunk(chunk) = events[0] else {
+            Issue.record("expected first chunk")
+            return
+        }
+        #expect(chunk.choices.first?.delta?.content == "ok")
+        guard case let .malformed(payload) = events[1] else {
+            Issue.record("expected malformed event for mistyped choices")
+            return
+        }
+        #expect(payload.contains("'choices'"))
+        #expect(events[2] == .done)
+    }
+
+    @Test("Typed decoding matches the dictionary entry on valid inputs")
+    func typedDecodingMatchesDictionaryEntryOnValidInputs() throws {
+        let fixtures = [
+            #"{"id":"chatcmpl-1","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":4}}"#,
+            #"{"choices":[{"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_1","function":{"name":"echo","arguments":"{}"},"extra_content":{"google":{"thought_signature":"sig"}}}]}}]}"#,
+            #"{"choices":[{"delta":{"content":[{"type":"text","text":"blocks"}]}}]}"#,
+            #"{"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":11.0,"completion_tokens":4.5}}"#,
+            #"{"error":{"message":"overloaded"}}"#,
+            #"{"error":{"message":42},"choices":[]}"#,
+            #"{}"#,
+        ]
+        for fixture in fixtures {
+            let data = Data(fixture.utf8)
+            let typed = try OpenAICompatibleChatChunk(jsonData: data)
+            let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(typed == OpenAICompatibleChatChunk(json: object))
+        }
+    }
+
+    @Test("Typed decoding preserves legacy lossy defaults on valid inputs")
+    func typedDecodingPreservesLegacyDefaults() throws {
+        let usageChunk = try OpenAICompatibleChatChunk(
+            jsonData: Data(#"{"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":11.0,"completion_tokens":4.5}}"#.utf8)
+        )
+        #expect(usageChunk.usage == TokenUsage(inputTokens: 11, outputTokens: 4))
+        #expect(usageChunk.choices.first?.index == 0)
+        let delta = try #require(usageChunk.choices.first?.delta)
+        #expect(delta.toolCalls.isEmpty)
+
+        let errorChunk = try OpenAICompatibleChatChunk(
+            jsonData: Data(#"{"error":{"message":42},"choices":[]}"#.utf8)
+        )
+        #expect(errorChunk.errorMessage == "OpenAI-compatible stream error")
+
+        let emptyChunk = try OpenAICompatibleChatChunk(jsonData: Data("{}".utf8))
+        #expect(emptyChunk.choices.isEmpty)
+        #expect(emptyChunk.usage == nil)
+        #expect(emptyChunk.errorMessage == nil)
+
+        let offsetChunk = try OpenAICompatibleChatChunk(
+            jsonData: Data(#"{"choices":[{"delta":{"content":"a"}},{"delta":{"content":"b"}}]}"#.utf8)
+        )
+        #expect(offsetChunk.choices.map(\.index) == [0, 1])
+    }
+
+    @Test("Array content parts decode lossily instead of failing")
+    func arrayContentDecodesLossily() throws {
+        let chunk = try OpenAICompatibleChatChunk(
+            jsonData: Data(#"{"choices":[{"delta":{"content":[{"type":"text"}]}}]}"#.utf8)
+        )
+        #expect(chunk.choices.first?.delta?.content == nil)
+    }
+
+    @Test("Legacy dictionary init keeps lenient fallback for invalid shapes")
+    func legacyDictionaryInitKeepsLenientFallback() {
+        // The non-streaming provider path calls init(json:) without try, so
+        // invalid shapes keep the legacy lenient result there.
+        let chunk = OpenAICompatibleChatChunk(json: ["choices": ["not": "an array"]])
+        #expect(chunk.choices.isEmpty)
+    }
+
+    private func throwsFieldName(_ decode: () throws -> OpenAICompatibleChatChunk) throws -> String? {
+        do {
+            _ = try decode()
+            Issue.record("expected shapeMismatch")
+            return nil
+        } catch let error as OpenAICompatibleChunkDecodingError {
+            guard case let .shapeMismatch(field, _) = error else {
+                Issue.record("expected shapeMismatch, got \(error)")
+                return nil
+            }
+            return field
+        }
+    }
+}
