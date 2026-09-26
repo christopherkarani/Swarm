@@ -215,4 +215,19 @@ struct ToolArgumentsLatticeTests {
             _ = try args.optionalValue("precision", as: Int.self)
         }
     }
+
+    @Test("optionalValue distinguishes missing from mistyped for custom conformances")
+    func optionalValueCustomConformance() throws {
+        let missing = ToolArguments([:])
+        #expect(try missing.optionalValue("site", as: URL.self) == nil)
+        let present = ToolArguments(["site": .string("https://example.com")])
+        #expect(try present.optionalValue("site", as: URL.self) == URL(string: "https://example.com"))
+        let mistyped = ToolArguments(["site": .int(42)], toolName: "lookup")
+        #expect(throws: AgentError.invalidToolArguments(
+            toolName: "lookup",
+            reason: "Argument 'site' is not of type URL"
+        )) {
+            _ = try mistyped.optionalValue("site", as: URL.self)
+        }
+    }
 }
