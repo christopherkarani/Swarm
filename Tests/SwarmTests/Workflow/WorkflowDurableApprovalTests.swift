@@ -43,14 +43,11 @@ func makeApprovalTestAgent(
 }
 
 /// Records `onToolApprovalRequested` callbacks.
-final class ApprovalRecordingObserver: AgentObserver, @unchecked Sendable {
-    private let lock = NSLock()
+actor ApprovalRecordingObserver: AgentObserver {
     private var calls: [ToolCall] = []
 
     var recorded: [ToolCall] {
-        lock.lock()
-        defer { lock.unlock() }
-        return calls
+        calls
     }
 
     func onToolApprovalRequested(
@@ -58,8 +55,6 @@ final class ApprovalRecordingObserver: AgentObserver, @unchecked Sendable {
         agent _: any AgentRuntime,
         call: ToolCall
     ) async {
-        lock.lock()
-        defer { lock.unlock() }
         calls.append(call)
     }
 }
@@ -298,7 +293,7 @@ struct WorkflowDurableApprovalTests {
         } catch is WorkflowApprovalRequired {
         }
 
-        let recorded = observer.recorded
+        let recorded = await observer.recorded
         #expect(recorded.count == 1)
         #expect(recorded.first?.toolName == "delete_vm")
         #expect(recorded.first?.arguments == ["id": .string("vm-1")])

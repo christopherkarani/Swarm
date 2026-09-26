@@ -55,4 +55,37 @@ public struct DurableWorkflow: Sendable {
             resume: true
         )
     }
+
+    /// Delivers a human approval decision to a run paused on ``WorkflowApprovalRequired``.
+    ///
+    /// The pending approval is read back from the checkpoint thread, so the
+    /// call works from a fresh process as long as the checkpoint store is
+    /// shared. `.approve` executes the paused tool call and continues the run
+    /// (pausing again if the step reaches another approval-required tool);
+    /// `.reject` fails with
+    /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing.
+    ///
+    /// There is no timeout on the approval wait itself: the run stays paused
+    /// until this method is called.
+    ///
+    /// - Parameters:
+    ///   - decision: The human decision for the paused tool call.
+    ///   - checkpointID: The checkpoint thread holding the paused state.
+    /// - Returns: The workflow's final ``AgentResult``.
+    /// - Throws: ``WorkflowError/checkpointNotFound(id:)`` when no checkpoint exists,
+    ///   ``WorkflowError/invalidWorkflow(reason:)`` when no approval is paused,
+    ///   ``WorkflowError/humanApprovalRejected(prompt:reason:)`` on `.reject`,
+    ///   ``WorkflowApprovalRequired`` when the resumed run pauses again,
+    ///   or ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
+    public func resume(
+        decision: WorkflowApprovalDecision,
+        from checkpointID: WorkflowCheckpointID
+    ) async throws -> AgentResult {
+        try await workflow.executeDurableApprovalConfigured(
+            decision: decision,
+            checkpointID: checkpointID,
+            checkpointing: checkpointing,
+            policy: policy
+        )
+    }
 }

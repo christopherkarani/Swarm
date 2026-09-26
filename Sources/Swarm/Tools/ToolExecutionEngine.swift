@@ -66,6 +66,13 @@ struct ToolExecutionEngine: Sendable {
         stopOnToolError: Bool
     ) async throws -> Outcome {
         let call = ToolCall(providerCallId: providerCallId, toolName: toolName, arguments: arguments)
+        try await WorkflowDurableApprovalGate.check(
+            call: call,
+            registry: registry,
+            agent: agent,
+            context: context,
+            observer: observer
+        )
         _ = resultBuilder.addToolCall(call)
 
         await observer?.onToolStart(context: context, agent: agent, call: call)
