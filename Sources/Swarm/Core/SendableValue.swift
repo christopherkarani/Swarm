@@ -297,6 +297,13 @@ public extension SendableValue {
             return
         }
 
+        // Identity: a `SendableValue` payload round-trips exactly.
+        // (A JSON round-trip would collapse whole-number `.double` to `.int`.)
+        if let sendableValue = value as? SendableValue {
+            self = sendableValue
+            return
+        }
+
         // For complex types, use JSON encoding as an intermediate format.
         // Fragments are allowed so scalar `Encodable` payloads outside the
         // fast paths above (enums, `Float`, `Date`, `Optional`, ...) encode
@@ -329,6 +336,14 @@ public extension SendableValue {
     /// // Result: UserInfo(name: "Alice", age: 30)
     /// ```
     func decode<T: Decodable>() throws -> T {
+        // Identity: decoding as `SendableValue` itself round-trips exactly.
+        // (A JSON round-trip would collapse whole-number `.double` to `.int`.)
+        if T.self == SendableValue.self {
+            guard let result = self as? T else {
+                throw ConversionError.decodingFailed("Failed to cast SendableValue to \(T.self)")
+            }
+            return result
+        }
         // Handle primitive types directly
         if T.self == Bool.self, let value = boolValue {
             guard let result = value as? T else {

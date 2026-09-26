@@ -173,6 +173,25 @@ struct SendableValueTests {
             let _: String = try SendableValue.null.decode()
         }
     }
+
+    @Test("SendableValue payloads round-trip with exact identity")
+    func sendableValueIdentityRoundTripsExactly() throws {
+        // Whole-number doubles must survive; a JSON round-trip would
+        // collapse them to `.int`.
+        let double = SendableValue.double(2.0)
+        #expect(try SendableValue(encoding: double) == double)
+        let decoded: SendableValue = try double.decode()
+        #expect(decoded == double)
+
+        for value: SendableValue in [
+            .null, .bool(true), .int(1), .string("hi"),
+            .array([.int(1), .null]), .dictionary(["k": .double(2.0)]),
+        ] {
+            #expect(try SendableValue(encoding: value) == value)
+            let roundTripped: SendableValue = try value.decode()
+            #expect(roundTripped == value)
+        }
+    }
 }
 
 // MARK: - AgentConfigurationTests
