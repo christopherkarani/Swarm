@@ -65,6 +65,7 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
     private let url: URL
     private let memoryFactory: @Sendable (URL) async throws -> any WaxPointerIndex
     private var memory: (any WaxPointerIndex)?
+    private var memoryTask: Task<any WaxPointerIndex, Error>?
     private var cachedPayloads: [String: Data] = [:]
 
     init(
@@ -174,12 +175,32 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
         if let memory {
             return memory
         }
-        let resolved = try await memoryFactory(url)
-        memory = resolved
-        return resolved
+        if let memoryTask {
+            return try await memoryTask.value
+        }
+
+        // Memoize the in-flight construction: concurrent callers must join it
+        // instead of opening the same store twice (Wax takes an exclusive
+        // file lock per open). Detached so awaiting it never re-enters
+        // this actor.
+        let factory = memoryFactory
+        let storeURL = url
+        let task = Task.detached { try await factory(storeURL) }
+        memoryTask = task
+        do {
+            let resolved = try await task.value
+            memory = resolved
+            memoryTask = nil
+            return resolved
+        } catch {
+            memoryTask = nil
+            throw error
+        }
     }
 
     private func closeMemoryIfOpen() async throws {
+        memoryTask?.cancel()
+        memoryTask = nil
         guard let existing = memory else { return }
         try await existing.close()
         memory = nil
@@ -198,10 +219,10 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
         let frameStore = try await openFrameStore()
         do {
             let result = try await body(frameStore)
-            await frameStore.close()
+            try await frameStore.close()
             return result
         } catch {
-            await frameStore.close()
+            try? await frameStore.close()
             throw error
         }
     }
@@ -231,7 +252,7 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
     private func persistedPayloadFrame(pointerID: String) async throws -> Data? {
         try await closeMemoryIfOpen()
         return try await withFrameStore { frameStore in
-            let frames = await frameStore.frames()
+            let frames = try await frameStore.frames()
             guard let frame = frames.reversed().first(where: {
                 $0.status == .active &&
                     $0.metadata[MetadataKey.pointerID] == pointerID &&
@@ -259,7 +280,7 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
         }
         try await closeMemoryIfOpen()
         try await withFrameStore { frameStore in
-            let frames = await frameStore.frames()
+            let frames = try await frameStore.frames()
             for frame in frames where frame.status == .active && frame.metadata[MetadataKey.pointerID] == pointerID {
                 try await frameStore.delete(frameID: frame.id)
             }

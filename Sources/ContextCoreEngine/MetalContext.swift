@@ -1,3 +1,4 @@
+#if canImport(Metal)
 import ContextCoreShaders
 import ContextCoreTypes
 import Foundation
@@ -103,3 +104,4 @@ extension MTLDevice {
         }
     }
 }
+#endif

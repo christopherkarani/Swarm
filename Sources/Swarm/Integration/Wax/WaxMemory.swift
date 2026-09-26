@@ -66,17 +66,15 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, 
         do {
             let frameStore = try await Self.makeFrameStore(at: url)
             loadedMessages = await Self.loadPersistedMessages(from: frameStore)
-            await frameStore.close()
+            try await frameStore.close()
         }
 
         var waxConfig = Wax.Memory.Config.default
         waxConfig.enableVectorSearch = embedder != nil && configuration.enableVectorSearch
-
         if let embedder {
-            self.store = try await Wax.Memory(at: url, config: waxConfig, embedding: embedder)
-        } else {
-            self.store = try await Wax.Memory(at: url, config: waxConfig)
+            waxConfig.embedding = .custom(embedder)
         }
+        self.store = try await Wax.Memory(at: url, config: waxConfig)
 
         self.persistedMessages = loadedMessages
         self.persistedMessageIDs = Set(loadedMessages.map(\.id))
@@ -132,17 +130,23 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, 
 
     public func clear() async {
         generation += 1
+        // Close is best-effort: on platforms where the Wax backend cannot
+        // flush (Linux FTS5), a close failure must not pin the stale store.
         do {
             try await store.close()
+        } catch {
+            Log.memory.warning(
+                "WaxMemory: Store close failed during clear, resetting anyway: \(error.localizedDescription)"
+            )
+        }
+        do {
             try removePersistedStoreIfPresent()
             var waxConfig = Wax.Memory.Config.default
             waxConfig.enableVectorSearch = embedder != nil && configuration.enableVectorSearch
-
             if let embedder {
-                store = try await Wax.Memory(at: url, config: waxConfig, embedding: embedder)
-            } else {
-                store = try await Wax.Memory(at: url, config: waxConfig)
+                waxConfig.embedding = .custom(embedder)
             }
+            store = try await Wax.Memory(at: url, config: waxConfig)
             persistedMessages.removeAll()
             persistedMessageIDs.removeAll()
         } catch {
@@ -186,7 +190,7 @@ public actor WaxMemory: Memory, MemoryPromptDescriptor, MemorySessionLifecycle, 
     }
 
     private static func loadPersistedMessages(from frameStore: FrameStore) async -> [MemoryMessage] {
-        let frames = await frameStore.frames()
+        let frames = (try? await frameStore.frames()) ?? []
         let timestampFormatter = ISO8601DateFormatter()
         var messages: [MemoryMessage] = []
         messages.reserveCapacity(frames.count)

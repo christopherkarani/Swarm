@@ -92,8 +92,10 @@ struct FoundationModelsSessionModel: Sendable {
         if let system = model as? SystemLanguageModel {
             return system.contextSize
         }
-        if let pcc = model as? PrivateCloudComputeLanguageModel {
-            return pcc.contextSize
+        if model is PrivateCloudComputeLanguageModel {
+            // Documented PCC size. SDK 27 exposes only an async-throws
+            // contextSize on PCC models, which cannot serve this sync path.
+            return FoundationModelsContextBudget.privateCloudComputeContextSize
         }
         return FoundationModelsContextBudget.fallbackContextSize
     }

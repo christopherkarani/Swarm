@@ -99,7 +99,7 @@ public struct ContextConfiguration: Sendable {
             centralityWeight: 0.4,
             efSearch: 64,
             embeddingProvider: CachingEmbeddingProvider(
-                base: CoreMLEmbeddingProvider(),
+                base: DefaultEmbeddingProvider.make(),
                 cache: EmbeddingCache(capacity: 512)
             ),
             tokenCounter: ApproximateTokenCounter(),

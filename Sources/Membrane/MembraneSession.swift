@@ -1,5 +1,4 @@
 import Foundation
-import MembraneContextCore
 import MembraneCore
 
 /// Internal Membrane session configuration.
@@ -82,7 +81,7 @@ public actor MembraneSession {
     ) {
         self.configuration = configuration
         self.baseBudget = budget
-        self.backend = backend ?? MembraneContextCoreBackend()
+        self.backend = backend ?? PassthroughMembraneBackend()
         self.recallStore = recallStore
 
         let resolvedPointerStore = pointerStore ?? InMemoryPointerStore()

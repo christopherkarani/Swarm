@@ -1,12 +1,98 @@
 import Foundation
+#if canImport(OSLog)
 import OSLog
-import os.lock
+#else
+import Logging
+#endif
 import ContextCoreEngine
 
+#if canImport(OSLog)
 extension Logger {
     static let contextCore = Logger(subsystem: "com.contextcore", category: "AgentContext")
     static let consolidation = Logger(subsystem: "com.contextcore", category: "Consolidation")
     static let scoring = Logger(subsystem: "com.contextcore", category: "Scoring")
+}
+#else
+/// OSLog-compatible `Logger` fallback for platforms without OSLog (Linux).
+///
+/// Supports the same `info`/`error`/`debug` call sites as the OSLog-backed
+/// loggers above, including `\(value, privacy: .public)` interpolation, and
+/// forwards rendered messages to swift-log. Privacy annotations are accepted
+/// for source compatibility and do not redact. File-scoped so other files in
+/// this module keep resolving `Logger` to swift-log.
+private struct Logger: Sendable {
+    /// Privacy annotation accepted for OSLog source compatibility.
+    enum Privacy: Sendable {
+        case auto
+        case `public`
+        case `private`
+        case sensitive
+    }
+
+    /// String-interpolable log message supporting OSLog's `privacy:` label.
+    struct Message: Sendable, ExpressibleByStringLiteral, ExpressibleByStringInterpolation {
+        struct StringInterpolation: StringInterpolationProtocol {
+            var text = ""
+            init(literalCapacity: Int, interpolationCount: Int) {}
+            mutating func appendLiteral(_ literal: String) {
+                text += literal
+            }
+            mutating func appendInterpolation<T>(_ value: T) {
+                text += String(describing: value)
+            }
+            mutating func appendInterpolation<T>(_ value: T, privacy: Privacy) {
+                text += String(describing: value)
+            }
+        }
+
+        let text: String
+        init(stringLiteral value: String) {
+            text = value
+        }
+        init(stringInterpolation: StringInterpolation) {
+            text = stringInterpolation.text
+        }
+    }
+
+    static let contextCore = Logger(subsystem: "com.contextcore", category: "AgentContext")
+    static let consolidation = Logger(subsystem: "com.contextcore", category: "Consolidation")
+    static let scoring = Logger(subsystem: "com.contextcore", category: "Scoring")
+
+    func info(_ message: Message) {
+        backend.info("\(message.text)")
+    }
+
+    func error(_ message: Message) {
+        backend.error("\(message.text)")
+    }
+
+    func debug(_ message: Message) {
+        backend.debug("\(message.text)")
+    }
+
+    private let backend: Logging.Logger
+
+    private init(subsystem: String, category: String) {
+        backend = Logging.Logger(label: "\(subsystem).\(category)")
+    }
+}
+#endif
+
+/// NSLock-backed box so `AgentContext/stats` stays nonisolated on platforms
+/// without `os.lock` (Linux). Same `withLock` shape as `OSAllocatedUnfairLock`.
+private final class Locked<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
+
+    init(_ value: Value) {
+        self.value = value
+    }
+
+    func withLock<T>(_ body: (inout Value) throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body(&value)
+    }
 }
 
 /// High-level actor API coordinating retrieval, scoring, packing, compression, and persistence.
@@ -20,10 +106,10 @@ public actor AgentContext {
     private let semanticStore: SemanticStore
     private let proceduralStore: ProceduralStore
 
-    private let scoringEngine: ScoringEngine
-    private let attentionEngine: AttentionEngine
-    private let compressionEngine: CompressionEngine
-    private let consolidationEngine: ConsolidationEngine
+    private let scoringEngine: any RelevanceScoringEngine
+    private let attentionEngine: any AttentionScoringEngine
+    private let compressionEngine: any CompressionEngineProtocol
+    private let consolidationEngine: any ConsolidationEngineProtocol
 
     private let windowPacker: WindowPacker
     private let chunkOrderer: ChunkOrderer
@@ -33,7 +119,7 @@ public actor AgentContext {
 
     private let consolidationScheduler: ConsolidationScheduler
 
-    private nonisolated let statsLock = OSAllocatedUnfairLock(initialState: ContextStats())
+    private nonisolated let statsLock = Locked(ContextStats())
 
     /// Latest nonisolated runtime stats snapshot.
     public nonisolated var stats: ContextStats {
@@ -42,8 +128,10 @@ public actor AgentContext {
 
     /// Creates an ``AgentContext`` and initializes all processing subsystems.
     ///
+    /// Prefers Metal-backed engines when Metal is available and falls back to the
+    /// portable CPU engines otherwise.
+    ///
     /// - Parameter configuration: Runtime configuration. Defaults to ``ContextConfiguration/default``.
-    /// - Throws: `ContextCoreError.metalDeviceUnavailable` when no compatible Metal device exists.
     public init(configuration: ContextConfiguration = .default) throws {
         self.configuration = configuration
 
@@ -58,19 +146,18 @@ public actor AgentContext {
         self.semanticStore = SemanticStore()
         self.proceduralStore = ProceduralStore()
 
-        self.scoringEngine = try ScoringEngine()
-        self.attentionEngine = try AttentionEngine()
-        self.compressionEngine = try CompressionEngine(
-            embeddingProvider: provider,
+        let compressionEngine = Self.makeCompressionEngine(
+            provider: provider,
             tokenCounter: configuration.tokenCounter,
             compressionDelegate: configuration.compressionDelegate
         )
-        self.consolidationEngine = try ConsolidationEngine(
-            embeddingProvider: provider
-        )
+        self.scoringEngine = Self.makeScoringEngine()
+        self.attentionEngine = Self.makeAttentionEngine()
+        self.compressionEngine = compressionEngine
+        self.consolidationEngine = Self.makeConsolidationEngine(provider: provider)
 
         self.windowPacker = WindowPacker(
-            compressionEngine: self.compressionEngine,
+            compressionEngine: compressionEngine,
             tokenCounter: configuration.tokenCounter,
             minimumChunkSize: 50,
             recentTurnsGuaranteed: configuration.recentTurnsGuaranteed
@@ -91,6 +178,56 @@ public actor AgentContext {
         Task.detached(priority: .background) {
             _ = try? await provider.embed("warmup")
         }
+    }
+
+    private static func makeScoringEngine() -> any RelevanceScoringEngine {
+        #if canImport(Metal)
+        if let engine = try? ScoringEngine() {
+            return engine
+        }
+        #endif
+        return CPUScoringEngine()
+    }
+
+    private static func makeAttentionEngine() -> any AttentionScoringEngine {
+        #if canImport(Metal)
+        if let engine = try? AttentionEngine() {
+            return engine
+        }
+        #endif
+        return CPUAttentionEngine()
+    }
+
+    private static func makeCompressionEngine(
+        provider: CachingEmbeddingProvider,
+        tokenCounter: any TokenCounter,
+        compressionDelegate: (any CompressionDelegate)?
+    ) -> any CompressionEngineProtocol & SentenceRanker {
+        #if canImport(Metal)
+        if let engine = try? CompressionEngine(
+            embeddingProvider: provider,
+            tokenCounter: tokenCounter,
+            compressionDelegate: compressionDelegate
+        ) {
+            return engine
+        }
+        #endif
+        return CPUCompressionEngine(
+            embeddingProvider: provider,
+            tokenCounter: tokenCounter,
+            compressionDelegate: compressionDelegate
+        )
+    }
+
+    private static func makeConsolidationEngine(
+        provider: CachingEmbeddingProvider
+    ) -> any ConsolidationEngineProtocol {
+        #if canImport(Metal)
+        if let engine = try? ConsolidationEngine(embeddingProvider: provider) {
+            return engine
+        }
+        #endif
+        return CPUConsolidationEngine(embeddingProvider: provider)
     }
 
     /// Restores an ``AgentContext`` from a checkpoint file.

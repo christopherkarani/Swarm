@@ -1,6 +1,11 @@
+#if canImport(CoreML)
 import CoreML
-import CryptoKit
+#endif
+import ContextCoreEngine
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Progress of an explicit MiniLM download / compile.
 public struct EmbeddingModelDeliveryProgress: Sendable, Equatable {
@@ -198,11 +203,15 @@ protocol EmbeddingModelCompiling: Sendable {
 
 struct CoreMLEmbeddingModelCompiler: EmbeddingModelCompiling {
     func compileModel(at sourceURL: URL) throws -> URL {
+        #if canImport(CoreML)
         do {
             return try MLModel.compileModel(at: sourceURL)
         } catch {
             throw EmbeddingModelDeliveryError.compilationFailed(error.localizedDescription)
         }
+        #else
+        throw EmbeddingModelDeliveryError.compilationFailed("CoreML is unavailable on this platform")
+        #endif
     }
 }
 
@@ -266,6 +275,25 @@ actor EmbeddingModelDownloader {
     }
 
     private func download(from source: URL, to destination: URL, session: URLSession) async throws {
+        // File URLs never need the network stack (and FoundationNetworking
+        // rejects them in download tasks with "unsupported URL").
+        if source.isFileURL {
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: source, to: destination)
+            return
+        }
+        #if canImport(FoundationNetworking)
+        // FoundationNetworking's download-task machinery traps with custom
+        // URLProtocols on Linux; a data task plus atomic write is equivalent
+        // for a single model blob and stays stub-testable.
+        let (data, response) = try await session.data(from: source)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw EmbeddingModelDeliveryError.invalidResponse("HTTP \(http.statusCode)")
+        }
+        try data.write(to: destination, options: .atomic)
+        #else
         let (tempURL, response) = try await session.download(from: source)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             try? FileManager.default.removeItem(at: tempURL)
@@ -275,6 +303,7 @@ actor EmbeddingModelDownloader {
             try FileManager.default.removeItem(at: destination)
         }
         try FileManager.default.moveItem(at: tempURL, to: destination)
+        #endif
     }
 
     private func report(
@@ -288,7 +317,7 @@ actor EmbeddingModelDownloader {
     private static func sha256Hex(ofFile url: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
-        var hasher = SHA256()
+        var hasher = ContextCoreSHA256.Hasher()
         while true {
             let chunk = try handle.read(upToCount: 1_048_576) ?? Data()
             if chunk.isEmpty {
@@ -296,7 +325,7 @@ actor EmbeddingModelDownloader {
             }
             hasher.update(data: chunk)
         }
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return hasher.finalizeHex()
     }
 
     private static func prepareCompileSource(downloadedFile: URL, stagingRoot: URL) throws -> URL {

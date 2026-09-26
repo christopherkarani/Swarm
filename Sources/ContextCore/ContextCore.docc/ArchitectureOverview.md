@@ -13,8 +13,10 @@ ContextCore manages four complementary memory layers and builds a task-specific 
 
 1. Embed the current task query.
 2. Retrieve episodic and semantic candidates.
-3. Compute relevance and recency scores on GPU via ``ScoringEngine``.
-4. Apply attention-based reranking via ``AttentionEngine``.
+3. Compute relevance and recency scores via the scoring engine (Metal
+   ``ScoringEngine`` on Apple, portable ``CPUScoringEngine`` elsewhere).
+4. Apply attention-based reranking (``AttentionEngine`` on Apple,
+   ``CPUAttentionEngine`` elsewhere).
 5. Pack candidates under budget with ``WindowPacker``.
 6. Optionally compress low-priority chunks via ``ProgressiveCompressor``.
 7. Order chunks for model attention using ``ChunkOrderer``.
@@ -32,13 +34,25 @@ Consolidation periodically scans episodic memory for near-duplicate chunks, prom
 │           ContextCore               │  ← this framework
 │  AgentContext · WindowPacker        │
 │  ConsolidationEngine · Scoring      │
-│  Metal kernels (5 shaders)          │
+│  Metal kernels (5 shaders, Apple)   │
 ├─────────────────────────────────────┤
-│            MetalANNS                │  ← vector index dependency
-│  Fixed out-degree graph · NN-Descent│
-│  Metal kernels (5 shaders)          │
+│  MetalANNS / BruteForceVectorIndex  │  ← vector index (MetalANNS on Apple,
+│  Fixed out-degree graph · NN-Descent│     portable brute-force elsewhere)
 ├─────────────────────────────────────┤
-│         Apple Frameworks            │
+│  Apple Frameworks (accelerated)     │
 │  Metal · CoreML · Accelerate · ANE  │
 └─────────────────────────────────────┘
 ```
+
+## Portability
+
+``AgentContext`` prefers Metal-backed engines when Metal is available and
+falls back to the portable CPU engines (``CPUScoringEngine``,
+``CPUAttentionEngine``, ``CPUCompressionEngine``,
+``CPUConsolidationEngine``) otherwise, so the same API builds and runs on
+Linux. The vector stores use MetalANNS where it can be imported and the
+portable ``BruteForceVectorIndex`` elsewhere; the default embedding provider
+is CoreML MiniLM on Apple and deterministic ``HashEmbeddingProvider``
+pseudo-vectors elsewhere. MiniLM download and ZIP deflate extraction need
+CoreML and the Compression framework, so `ensureModelAvailable()` only
+delivers real embeddings on Apple platforms.

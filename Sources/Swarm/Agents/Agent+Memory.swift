@@ -23,8 +23,10 @@ extension Agent {
 
     /// Creates the package default memory for agents that do not pass one explicitly.
     ///
-    /// With the Integrations trait: ContextCore+Wax ``DefaultAgentMemory``.
-    /// Without Integrations (lean default): ``SlidingWindowMemory``.
+    /// With the Integrations trait: ContextCore+Wax ``DefaultAgentMemory`` on
+    /// all platforms (portable CPU/hash backends on Linux, Metal/CoreML
+    /// acceleration on Apple). Without Integrations (lean default):
+    /// ``SlidingWindowMemory``.
     /// Prefer this over constructing integration types from macros or client code so
     /// trait gating stays inside the Swarm module.
     /// - Parameter waxStoreURL: Explicit location of the durable Wax store.
@@ -43,7 +45,8 @@ extension Agent {
             waxStoreURL: resolvedWaxStoreURL
         ))
         #else
-        // Lean builds, or Integrations on non-Apple (no ContextCore link).
+        // Lean builds (Integrations off). ContextCore links on all platforms
+        // when Integrations is on, so this branch is trait-only, not platform-gated.
         return SlidingWindowMemory()
         #endif
     }

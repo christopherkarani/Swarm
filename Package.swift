@@ -59,10 +59,11 @@ var packageDependencies: [Package.Dependency] = [
 // Product edges into those modules (and their remote deps) are trait-gated so
 // lean resolve/build does not pull MetalANNS/Wax/crypto/mutex/collections.
 //
-// ContextCore / Membrane (full stack) require Apple frameworks (Metal, CoreML,
-// Accelerate). They are trait-linked only on Apple platforms so Linux
-// Integrations can still build Hive + MembraneCore + web helpers without
-// compiling the GPU memory stack.
+// ContextCore / Membrane ship a portable stack that builds on Linux (CPU
+// engines, brute-force vector index, hash embeddings, passthrough/in-memory
+// Membrane backends) and accelerate on Apple platforms (Metal/CoreML/
+// Accelerate, MetalANNS). The MetalANNS package and framework links stay
+// platform-gated; the targets themselves register and link on all platforms.
 let macrosTrait = "Macros"
 let mcpTrait = "MCP"
 let otelTrait = "OpenTelemetry"
@@ -76,11 +77,10 @@ if enableIntegrationModules {
         // collections/MetalANNS). With Integrations off, SPM does not pin them.
         // SWARM_CORE_ONLY=1 or SWARM_OMIT_INTEGRATION_TARGETS=1 drops this block.
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.13.5"),
-        // Floor at the previously exact pin. 0.1.24 fails to clone (broken
-        // homebrew-wax submodule ref). 0.1.25 makes FrameStore.close()/frames()
-        // throwing and breaks WaxMemory + WaxMembraneStorage. Revisit after
-        // adapting to the throwing API.
-        .package(url: "https://github.com/christopherkarani/Wax.git", "0.1.23"..<"0.1.24"),
+        // Pinned: 0.1.47 is the newest plain-tagged release (0.1.48 exists
+        // only as waxmcp-v0.1.48, which is not an SPM version). Swarm is
+        // adapted to the post-0.1.25 throwing FrameStore API.
+        .package(url: "https://github.com/christopherkarani/Wax.git", "0.1.47"..<"0.1.48"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.7.0"),
         .package(url: "https://github.com/swhitty/swift-mutex.git", from: "0.0.6"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
@@ -106,27 +106,16 @@ if enableIntegrationModules {
         // HTML parsing for web helpers; only linked when Integrations is enabled.
         .product(name: "SwiftSoup", package: "SwiftSoup", condition: .when(traits: [integrationTrait])),
         // Portable Integrations modules (all platforms when trait is on).
+        // Membrane/ContextCore use their portable backends on Linux and
+        // accelerate with Metal/CoreML/MetalANNS where available.
         .target(name: "HiveCore", condition: .when(traits: [integrationTrait])),
         .target(name: "MembraneCore", condition: .when(traits: [integrationTrait])),
+        .target(name: "Membrane", condition: .when(traits: [integrationTrait])),
+        .target(name: "MembraneContextCore", condition: .when(traits: [integrationTrait])),
+        .target(name: "ContextCore", condition: .when(traits: [integrationTrait])),
         // Wax remains an external package + trait-gated product dependency.
         .product(name: "Wax", package: "Wax", condition: .when(traits: [integrationTrait])),
     ]
-    if registerAppleIntegrationTargets {
-        swarmDependencies += [
-            .target(
-                name: "Membrane",
-                condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
-            ),
-            .target(
-                name: "MembraneContextCore",
-                condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
-            ),
-            .target(
-                name: "ContextCore",
-                condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
-            ),
-        ]
-    }
     swarmSwiftSettings.append(.define("SWARM_INTEGRATIONS", .when(traits: [integrationTrait])))
 }
 
@@ -249,19 +238,16 @@ var packageTargets: [Target] = [
             if enableIntegrationModules {
                 dependencies += [
                     .target(name: "MembraneCore", condition: .when(traits: [integrationTrait])),
+                    .target(name: "ContextCoreTypes", condition: .when(traits: [integrationTrait])),
+                    .target(name: "Membrane", condition: .when(traits: [integrationTrait])),
+                    .target(name: "ContextCore", condition: .when(traits: [integrationTrait])),
+                    // swift-crypto for tests that hash (Linux has no CryptoKit).
+                    .product(
+                        name: "Crypto",
+                        package: "swift-crypto",
+                        condition: .when(traits: [integrationTrait])
+                    ),
                 ]
-                if registerAppleIntegrationTargets {
-                    dependencies += [
-                        .target(
-                            name: "Membrane",
-                            condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
-                        ),
-                        .target(
-                            name: "ContextCore",
-                            condition: .when(platforms: appleIntegrationPlatforms, traits: [integrationTrait])
-                        ),
-                    ]
-                }
             }
             return dependencies
         }(),
@@ -337,6 +323,25 @@ if enableIntegrationModules {
         traits: [integrationTrait]
     )
 
+    // MetalANNS is only a declared package on Apple (see packageDependencies):
+    // naming it in a target edge on Linux fails manifest evaluation even when
+    // the edge condition can never match, so build the ContextCore dependency
+    // list with the product edge Apple-only at the manifest level.
+    var contextCoreDependencies: [Target.Dependency] = [
+        "ContextCoreEngine",
+        "ContextCoreTypes",
+        .product(name: "Logging", package: "swift-log"),
+    ]
+    if registerAppleIntegrationTargets {
+        contextCoreDependencies.append(
+            .product(
+                name: "MetalANNS",
+                package: "MetalANNS",
+                condition: integrationsAppleRemoteDepsActive
+            )
+        )
+    }
+
     packageTargets += [
         // HiveCore — durable graph / checkpoint runtime
         .target(
@@ -364,6 +369,84 @@ if enableIntegrationModules {
             swiftSettings: integrationsTargetSwiftSettings
         ),
 
+        // Portable ContextCore value types, vector-index and embedding
+        // contracts. Zero dependencies, so it builds on Linux as the home of
+        // the portable backends (brute-force index, hash embeddings).
+        .target(
+            name: "ContextCoreTypes",
+            path: "Sources/ContextCoreTypes",
+            swiftSettings: integrationsTargetSwiftSettings
+        ),
+
+        // Membrane session façade. Portable: pointer IDs hash with CryptoKit
+        // where available and swift-crypto elsewhere (Linux).
+        .target(
+            name: "Membrane",
+            dependencies: [
+                "MembraneCore",
+                .product(
+                    name: "Crypto",
+                    package: "swift-crypto",
+                    condition: integrationsRemoteDepsActive
+                ),
+            ],
+            path: "Sources/Membrane",
+            swiftSettings: integrationsTargetSwiftSettings
+        ),
+        .target(
+            name: "MembraneContextCore",
+            dependencies: [
+                "MembraneCore",
+                "ContextCore",
+            ],
+            path: "Sources/MembraneContextCore",
+            swiftSettings: integrationsTargetSwiftSettings
+        ),
+        .target(
+            name: "ContextCoreShaders",
+            path: "Sources/ContextCoreShaders",
+            resources: [.process("Shaders")],
+            swiftSettings: integrationsTargetSwiftSettings,
+            linkerSettings: [
+                .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
+            ]
+        ),
+
+        // ContextCore engine + façade. Portable on Linux via the CPU engines,
+        // brute-force index, and hash embeddings; Metal/CoreML/Accelerate and
+        // MetalANNS light up only where present (Apple, Integrations on).
+        .target(
+            name: "ContextCoreEngine",
+            dependencies: [
+                "ContextCoreShaders",
+                "ContextCoreTypes",
+                .product(
+                    name: "Crypto",
+                    package: "swift-crypto",
+                    condition: integrationsRemoteDepsActive
+                ),
+            ],
+            path: "Sources/ContextCoreEngine",
+            swiftSettings: integrationsTargetSwiftSettings,
+            linkerSettings: [
+                .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
+                .linkedFramework("CoreML", .when(platforms: appleIntegrationPlatforms)),
+                .linkedFramework("Accelerate", .when(platforms: appleIntegrationPlatforms)),
+            ]
+        ),
+        .target(
+            name: "ContextCore",
+            dependencies: contextCoreDependencies,
+            path: "Sources/ContextCore",
+            resources: [.process("Resources")],
+            swiftSettings: integrationsTargetSwiftSettings,
+            linkerSettings: [
+                .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
+                .linkedFramework("CoreML", .when(platforms: appleIntegrationPlatforms)),
+                .linkedFramework("Accelerate", .when(platforms: appleIntegrationPlatforms)),
+            ]
+        ),
+
         .testTarget(
             name: "HiveSwarmTests",
             dependencies: [
@@ -373,78 +456,6 @@ if enableIntegrationModules {
             swiftSettings: swarmSwiftSettings
         ),
     ]
-
-    if registerAppleIntegrationTargets {
-        packageTargets += [
-            .target(
-                name: "MembraneContextCore",
-                dependencies: [
-                    "MembraneCore",
-                    "ContextCore",
-                ],
-                path: "Sources/MembraneContextCore",
-                swiftSettings: integrationsTargetSwiftSettings
-            ),
-            .target(
-                name: "Membrane",
-                dependencies: [
-                    "MembraneCore",
-                    "MembraneContextCore",
-                ],
-                path: "Sources/Membrane",
-                swiftSettings: integrationsTargetSwiftSettings
-            ),
-            .target(
-                name: "ContextCoreTypes",
-                path: "Sources/ContextCoreTypes",
-                swiftSettings: integrationsTargetSwiftSettings
-            ),
-            .target(
-                name: "ContextCoreShaders",
-                path: "Sources/ContextCoreShaders",
-                resources: [.process("Shaders")],
-                swiftSettings: integrationsTargetSwiftSettings,
-                linkerSettings: [
-                    .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
-                ]
-            ),
-            .target(
-                name: "ContextCoreEngine",
-                dependencies: [
-                    "ContextCoreShaders",
-                    "ContextCoreTypes",
-                ],
-                path: "Sources/ContextCoreEngine",
-                swiftSettings: integrationsTargetSwiftSettings,
-                linkerSettings: [
-                    .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
-                    .linkedFramework("CoreML", .when(platforms: appleIntegrationPlatforms)),
-                    .linkedFramework("Accelerate", .when(platforms: appleIntegrationPlatforms)),
-                ]
-            ),
-            .target(
-                name: "ContextCore",
-                dependencies: [
-                    "ContextCoreEngine",
-                    "ContextCoreTypes",
-                    .product(name: "Logging", package: "swift-log"),
-                    .product(
-                        name: "MetalANNS",
-                        package: "MetalANNS",
-                        condition: integrationsAppleRemoteDepsActive
-                    ),
-                ],
-                path: "Sources/ContextCore",
-                resources: [.process("Resources")],
-                swiftSettings: integrationsTargetSwiftSettings,
-                linkerSettings: [
-                    .linkedFramework("Metal", .when(platforms: appleIntegrationPlatforms)),
-                    .linkedFramework("CoreML", .when(platforms: appleIntegrationPlatforms)),
-                    .linkedFramework("Accelerate", .when(platforms: appleIntegrationPlatforms)),
-                ]
-            ),
-        ]
-    }
 }
 
 if includeDemo {
@@ -519,8 +530,8 @@ let package = Package(
             Enable SWARM_INTEGRATIONS: durable Hive workflows, ContextCore+Wax default memory, \
             Membrane adapters, and web helpers. Off by default. HiveCore, Membrane, and \
             ContextCore are native in-tree Sources/ targets (internal; not separate products). \
-            ContextCore / full Membrane session stack require Apple platforms (Metal/CoreML); \
-            Linux Integrations still gets Hive + MembraneCore + web helpers. \
+            The memory/Membrane stack is portable (CPU engines, brute-force index, hash \
+            embeddings on Linux) and accelerates with Metal/CoreML/MetalANNS on Apple. \
             Wax remains an external package for now. Enabling Integrations also enables Macros.
             """,
             enabledTraits: [macrosTrait]

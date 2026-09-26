@@ -1,9 +1,10 @@
+#if canImport(Metal)
 import ContextCoreTypes
 import Foundation
 import Metal
 
 /// GPU-backed attention centrality and eviction scoring engine.
-public actor AttentionEngine {
+public actor AttentionEngine: AttentionScoringEngine {
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let centralityPipeline: MTLComputePipelineState
@@ -185,3 +186,4 @@ public actor AttentionEngine {
         return output
     }
 }
+#endif

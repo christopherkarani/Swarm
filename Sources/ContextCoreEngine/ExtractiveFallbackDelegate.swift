@@ -1,19 +1,18 @@
 import ContextCoreTypes
 import Foundation
-import NaturalLanguage
 
 /// Default extractive compression delegate used when no custom delegate is provided.
 public actor ExtractiveFallbackDelegate: CompressionDelegate {
-    private let compressionEngine: CompressionEngine
+    private let compressionEngine: any CompressionEngineProtocol
     private let tokenCounter: any TokenCounter
 
     /// Creates an extractive fallback delegate.
     ///
     /// - Parameters:
-    ///   - compressionEngine: Compression engine used for sentence ranking.
+    ///   - compressionEngine: Compression engine used for sentence ranking (Metal or CPU).
     ///   - tokenCounter: Token counter used for budget checks.
     public init(
-        compressionEngine: CompressionEngine,
+        compressionEngine: any CompressionEngineProtocol,
         tokenCounter: any TokenCounter
     ) {
         self.compressionEngine = compressionEngine
@@ -40,7 +39,7 @@ public actor ExtractiveFallbackDelegate: CompressionDelegate {
             return text
         }
 
-        let originalSentences = splitSentences(from: text)
+        let originalSentences = PortableSentences.split(text)
         let indexedBySentence = sentenceIndicesByText(originalSentences)
 
         var indices = indexedBySentence
@@ -92,35 +91,7 @@ public actor ExtractiveFallbackDelegate: CompressionDelegate {
     /// - Parameter text: Source text.
     /// - Returns: Trimmed sentence facts.
     public func extractFacts(from text: String) async throws -> [String] {
-        let tokenizer = NLTokenizer(unit: .sentence)
-        tokenizer.string = text
-
-        var facts: [String] = []
-        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
-            let sentence = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !sentence.isEmpty {
-                facts.append(sentence)
-            }
-            return true
-        }
-
-        return facts
-    }
-
-    private func splitSentences(from text: String) -> [String] {
-        let tokenizer = NLTokenizer(unit: .sentence)
-        tokenizer.string = text
-
-        var sentences: [String] = []
-        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
-            let sentence = text[range].trimmingCharacters(in: .whitespacesAndNewlines)
-            if !sentence.isEmpty {
-                sentences.append(sentence)
-            }
-            return true
-        }
-
-        return sentences
+        PortableSentences.split(text)
     }
 
     private func sentenceIndicesByText(_ sentences: [String]) -> [String: [Int]] {

@@ -414,11 +414,11 @@ struct MembraneIntegrationTests {
         }
 
         let frameStore = try await Wax.FrameStore.open(at: url)
-        let activePayloadFrames = await frameStore.frames().filter {
+        let activePayloadFrames = try await frameStore.frames().filter {
             $0.status == .active &&
                 $0.metadata["membrane.kind"] == "membrane.pointer.payloadFrame"
         }
-        await frameStore.close()
+        try await frameStore.close()
 
         #expect(activePayloadFrames.isEmpty)
     }

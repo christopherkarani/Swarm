@@ -1,9 +1,12 @@
+import ContextCoreTypes
 import Foundation
+#if canImport(MetalANNS)
 import MetalANNS
+#endif
 
 /// Vector-backed episodic memory store for turn-level history.
 public actor EpisodicStore: ConsolidationEpisodicStore {
-    private let index: Advanced.StreamingIndex
+    private let index: any VectorIndex
     private var chunksByID: [String: MemoryChunk] = [:]
     private let sourceSessionID: UUID
     private var embeddingDimension: Int?
@@ -11,15 +14,17 @@ public actor EpisodicStore: ConsolidationEpisodicStore {
 
     /// Creates an episodic store for a source session.
     ///
-    /// - Parameter sourceSessionID: Session identifier attached to inserted chunks.
-    public init(sourceSessionID: UUID = UUID()) {
+    /// - Parameters:
+    ///   - sourceSessionID: Session identifier attached to inserted chunks.
+    ///   - index: Vector index backend. Defaults to MetalANNS where available
+    ///     and the portable brute-force index otherwise (Linux).
+    public init(sourceSessionID: UUID = UUID(), index: (any VectorIndex)? = nil) {
         self.sourceSessionID = sourceSessionID
-        let config = StreamingConfiguration(
-            deltaCapacity: 1_024,
-            mergeStrategy: .blocking,
-            indexConfiguration: IndexConfiguration(metric: .cosine)
-        )
-        self.index = Advanced.StreamingIndex(config: config)
+        #if canImport(MetalANNS)
+        self.index = index ?? MetalANNSVectorIndex()
+        #else
+        self.index = index ?? BruteForceVectorIndex()
+        #endif
     }
 
     /// Number of chunks currently stored.
@@ -66,7 +71,7 @@ public actor EpisodicStore: ConsolidationEpisodicStore {
         try validateDimension(chunk.embedding)
 
         let chunkID = chunk.id.uuidString
-        try await index.insert(chunk.embedding, id: chunkID)
+        try await index.insert(id: VectorRecordID(chunkID), vector: chunk.embedding)
         chunksByID[chunkID] = chunk
     }
 
@@ -90,7 +95,7 @@ public actor EpisodicStore: ConsolidationEpisodicStore {
 
         var retrieved: [MemoryChunk] = []
         for result in results {
-            guard let chunk = chunksByID[result.id] else {
+            guard let chunk = chunksByID[result.id.rawValue] else {
                 continue
             }
             retrieved.append(chunk)
@@ -134,7 +139,7 @@ public actor EpisodicStore: ConsolidationEpisodicStore {
         guard chunksByID[key] != nil else {
             throw ContextCoreError.chunkNotFound(id: id)
         }
-        try await index.delete(id: key)
+        try await index.delete(id: VectorRecordID(key))
         chunksByID.removeValue(forKey: key)
     }
 

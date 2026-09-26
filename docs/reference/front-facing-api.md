@@ -33,12 +33,15 @@ are **swift-syntax** (via the default-on **Macros** trait) and **swift-log**.
 Enable `traits: ["MCP"]` for `SwarmMCP`, or `traits: ["OpenTelemetry"]` for
 `SwarmOpenTelemetry`. Disable Macros with `traits: []` to drop swift-syntax
 and use ``FunctionTool`` instead of `@Tool`.
-`SWARM_CORE_ONLY=1` drops the integration package block. ContextCore / full
-Membrane session stack are Apple-only (Metal/CoreML); Linux Integrations keeps
-Hive + MembraneCore + web helpers. `DefaultAgentMemory` (ContextCore + Wax)
-uses fallback pseudo-embeddings when MiniLM is not cached or bundled, logs a
-once-per-process warning naming `SemanticEmbeddingAvailability.ensureModelAvailable()`,
-and exposes `DefaultAgentMemory.isSemanticMemoryAvailable`. See README Install.
+`SWARM_CORE_ONLY=1` drops the integration package block. ContextCore and the
+full Membrane session stack link on all platforms with Integrations: Linux
+uses portable CPU scoring/compression engines, the brute-force vector index,
+hash embeddings, and passthrough/in-memory Membrane backends, while Apple
+builds accelerate with Metal/CoreML/Accelerate and MetalANNS. On Apple,
+`DefaultAgentMemory` (ContextCore + Wax) uses fallback pseudo-embeddings when
+MiniLM is not cached or bundled, logs a once-per-process warning naming
+`SemanticEmbeddingAvailability.ensureModelAvailable()`, and exposes
+`DefaultAgentMemory.isSemanticMemoryAvailable`. See README Install.
 
 ## 1) Entry point and global configuration
 
@@ -683,7 +686,7 @@ When an agent is created without an explicit `memory:` argument, Swarm uses
 ```swift
 // Trait-aware package default (prefer over constructing integration types yourself)
 public static func makeDefaultMemory() throws -> any Memory
-// Integrations on  → DefaultAgentMemory (ContextCore + Wax)
+// Integrations on  → DefaultAgentMemory (ContextCore + Wax), all platforms
 // Integrations off → SlidingWindowMemory
 // Query DefaultAgentMemory.isSemanticMemoryAvailable when using the Integrations default.
 // Call SemanticEmbeddingAvailability.ensureModelAvailable() to download MiniLM.

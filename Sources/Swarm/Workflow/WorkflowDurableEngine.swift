@@ -242,7 +242,8 @@ struct WorkflowDurableEngine: Sendable {
         }
     }
 
-    private func extractResult(from output: HiveRunOutput<WorkflowDurableSchema>) throws -> AgentResult {
+    // Internal (not private): the same-module `WorkflowDurableEngineTesting` seam below calls it.
+    func extractResult(from output: HiveRunOutput<WorkflowDurableSchema>) throws -> AgentResult {
         switch output {
         case .fullStore(let store):
             let phase = try store.get(WorkflowDurableSchema.phaseKey)

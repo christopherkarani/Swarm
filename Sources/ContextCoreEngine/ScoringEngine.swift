@@ -1,9 +1,10 @@
+#if canImport(Metal)
 import ContextCoreTypes
 import Foundation
 import Metal
 
 /// GPU-backed relevance and recency scoring engine.
-public actor ScoringEngine {
+public actor ScoringEngine: RelevanceScoringEngine {
     package final class PreparedScoringInputs: @unchecked Sendable {
         fileprivate let queryBuffer: MTLBuffer
         fileprivate let chunksBuffer: MTLBuffer
@@ -101,7 +102,7 @@ public actor ScoringEngine {
         return unsorted.sorted(by: { $0.score > $1.score })
     }
 
-    package func scoreChunksUnsorted(
+    public func scoreChunksUnsorted(
         query: [Float],
         chunks: [MemoryChunk],
         recencyWeights: [Float],
@@ -470,3 +471,4 @@ public actor ScoringEngine {
         }
     }
 }
+#endif
