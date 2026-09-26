@@ -116,6 +116,21 @@ let checkpointing = WorkflowCheckpointing.fileSystem(
 
 In-memory stores are unbounded and intended for tests.
 
+## Checkpoint file permissions
+
+Checkpoint files and the manifest are written owner-only (`0600` files;
+directories created by the store are `0700`, pre-existing directories keep
+their permissions) because they may contain prompt and tool-result content.
+Files written before this hardening keep their original permissions; migrate
+a pre-existing directory in place, or delete and re-run:
+
+```swift
+let hardened = try WorkflowCheckpointing.hardenFilePermissions(in: checkpointsURL)
+```
+
+See the [Secret Storage guide](secret-storage.md) for memory-store
+permissions and the full migration notes.
+
 ## What is not checkpointed
 
 Agent session history, memory backends, and in-flight tool calls are **not**

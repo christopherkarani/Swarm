@@ -579,6 +579,8 @@ let config = AgentConfiguration.default
 
 Retries wrap **provider calls only** (not tools), share the run's remaining timeout, and skip permanent failures such as guardrail rejection. See ``InferenceRetryability``.
 
+`maxAttempts` counts total attempts including the initial attempt and must be at least 1 (`noRetry` is 1, `standard` is 3 total). The same budget applies to `AsyncThrowingStream.retry` and `HiveRetryPolicy`; values below 1 throw `ResilienceError.invalidMaxAttempts`.
+
 ### Structured output
 
 `runStructured` uses Foundation Models guided generation when the JSON Schema

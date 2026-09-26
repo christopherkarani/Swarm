@@ -74,6 +74,7 @@ export default defineConfig({
             { text: 'Foundation Models', link: '/guide/foundation-models' },
             { text: 'Voice', link: '/guide/voice' },
             { text: 'Remote Providers', link: '/guide/remote-providers' },
+            { text: 'Secret Storage', link: '/guide/secret-storage' },
             { text: 'Capability Showcase', link: '/guide/capability-showcase' },
             { text: 'Agent Workspace', link: '/guide/agent-workspace' },
             { text: 'OpenTelemetry Tracing', link: '/guide/opentelemetry-tracing' },

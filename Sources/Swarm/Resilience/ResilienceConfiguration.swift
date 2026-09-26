@@ -123,8 +123,9 @@ public struct RateLimitSettings: Sendable, Equatable {
 /// Foundation Models native-session generation). Tool execution is never
 /// retried — tools can have side effects.
 ///
-/// Provider fallback (``FallbackChain``) is **not** wired here. Compose
-/// providers yourself, or wait for a dedicated fallback API.
+/// Provider fallback is **not** wired here. Compose providers with
+/// ``FailoverProvider`` (or ``FallbackChain`` for custom operations)
+/// and pass the result as the agent's inference provider.
 ///
 /// ## Timeout interaction
 ///
@@ -201,7 +202,7 @@ public struct ResilienceConfiguration: Sendable, Equatable {
 
     /// Whether any policy would change inference execution relative to the default.
     package var hasActivePolicies: Bool {
-        retryPolicy.maxAttempts > 0 || circuitBreaker != nil || rateLimit != nil
+        retryPolicy.maxAttempts != 1 || circuitBreaker != nil || rateLimit != nil
     }
 
     /// Builds the agent-scoped circuit breaker, or `nil` when breaker settings are absent.

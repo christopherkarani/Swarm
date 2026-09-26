@@ -92,14 +92,14 @@ struct RetryPolicyTests {
             Issue.record("Should have thrown ResilienceError.retriesExhausted")
         } catch let error as ResilienceError {
             if case let .retriesExhausted(attempts, lastError) = error {
-                #expect(attempts == 3) // initial + 2 retries
+                #expect(attempts == 2) // 2 total attempts
                 #expect(lastError.contains("Permanent"))
             } else {
                 Issue.record("Expected retriesExhausted, got \(error)")
             }
         }
 
-        #expect(await counter.get() == 3)
+        #expect(await counter.get() == 2)
     }
 
 	    @Test("All retries fail with consistent error")
@@ -114,10 +114,10 @@ struct RetryPolicyTests {
 	            }
 	            Issue.record("Expected error to be thrown")
 	        } catch let error as ResilienceError {
-	            #expect(error == .retriesExhausted(attempts: 4, lastError: TestError.timeout.localizedDescription))
+	            #expect(error == .retriesExhausted(attempts: 3, lastError: TestError.timeout.localizedDescription))
 	        }
 
-	        #expect(await counter.get() == 4) // initial + 3 retries
+	        #expect(await counter.get() == 3) // 3 total attempts
 	    }
 
     // MARK: - BackoffStrategy Tests
@@ -225,7 +225,7 @@ struct RetryPolicyTests {
         } catch {
             // Expected to exhaust retries
         }
-        #expect(await transientCounter.get() == 4) // initial + 3 retries
+        #expect(await transientCounter.get() == 3) // 3 total attempts
 
         // Test with permanent error - should not retry
         do {
@@ -264,9 +264,8 @@ struct RetryPolicyTests {
         }
 
         let callbacks = await recorder.getAll()
-        #expect(callbacks.count == 2)
+        #expect(callbacks.count == 1) // 2 total attempts means 1 retry
         #expect(callbacks[0].0 == 1)
-        #expect(callbacks[1].0 == 2)
     }
 
     @Test("Cancellation is propagated without retry")
@@ -302,7 +301,7 @@ struct RetryPolicyTests {
         let counter = TestCounter()
         let clock = CancellationIgnoringClock()
         let policy = RetryPolicy(
-            maxAttempts: 1,
+            maxAttempts: 2,
             backoff: .exponential(base: 1.0e20, multiplier: 2.0, maxDelay: 1.0e20),
             clock: clock
         )
@@ -336,7 +335,7 @@ struct RetryPolicyTests {
     func smallFiniteRetryDelayStillRetries() async throws {
         let counter = TestCounter()
         let policy = RetryPolicy(
-            maxAttempts: 1,
+            maxAttempts: 2,
             backoff: .immediate
         )
 
@@ -388,8 +387,10 @@ struct RetryPolicyTests {
     @Test("Invalid backoff delay values do not crash and retries exhaust")
     func invalidBackoffDelayValuesAreIgnored() async throws {
         let counter = TestCounter()
+        // maxAttempts 3 keeps both invalid-delay branches reachable: the
+        // backoff runs for attempts 1 (-.infinity) and 2 (.nan).
         let policy = RetryPolicy(
-            maxAttempts: 2,
+            maxAttempts: 3,
             backoff: .custom { attempt in
                 switch attempt {
                 case 1: return -.infinity
@@ -420,7 +421,7 @@ struct RetryPolicyTests {
     func infiniteBackoffDelayIsSafe() async throws {
         let counter = TestCounter()
         let policy = RetryPolicy(
-            maxAttempts: 1,
+            maxAttempts: 2,
             backoff: .custom { _ in .infinity }
         )
 
@@ -559,7 +560,7 @@ private struct RetryPolicyDeterminismTests {
             let clock = VirtualClock()
             let random = SharedSeededRandom(seed: 2_026)
             let counter = TestCounter()
-            let policy = RetryPolicy(maxAttempts: 3, backoff: strategy, clock: clock, random: random.random(in:))
+            let policy = RetryPolicy(maxAttempts: 4, backoff: strategy, clock: clock, random: random.random(in:))
 
             _ = try await policy.execute {
                 let count = await counter.increment()
@@ -569,7 +570,7 @@ private struct RetryPolicyDeterminismTests {
                 return true
             }
 
-            #expect(await counter.get() == 4) // initial + 3 retries
+            #expect(await counter.get() == 4) // 4 total attempts
             return clock.recordedSleeps
         }
 
@@ -660,7 +661,7 @@ private struct RetryPolicyDeterminismTests {
         let clock = CancellationIgnoringClock()
         let counter = TestCounter()
         let policy = RetryPolicy(
-            maxAttempts: 1,
+            maxAttempts: 2,
             backoff: .fixed(delay: 1.0),
             clock: clock
         )
@@ -688,6 +689,168 @@ private struct RetryPolicyDeterminismTests {
         }
 
         #expect(await counter.get() == 1)
+    }
+
+    // MARK: Retry-After Tests
+
+    @Test("Server Retry-After hint extends the policy backoff")
+    func retryAfterHintExtendsBackoff() async throws {
+        let clock = VirtualClock()
+        let counter = TestCounter()
+        let policy = RetryPolicy(maxAttempts: 2, backoff: .fixed(delay: 1.0), clock: clock)
+
+        let result = try await policy.execute {
+            if await counter.increment() == 1 {
+                throw AgentError.rateLimitExceeded(retryAfter: 30)
+            }
+            return "recovered"
+        }
+
+        #expect(result == "recovered")
+        #expect(clock.recordedSleeps == [30_000_000_000])
+    }
+
+    @Test("Policy backoff wins when the Retry-After hint is shorter")
+    func backoffWinsOverShortRetryAfter() async throws {
+        let clock = VirtualClock()
+        let counter = TestCounter()
+        let policy = RetryPolicy(maxAttempts: 2, backoff: .fixed(delay: 5.0), clock: clock)
+
+        _ = try await policy.execute {
+            if await counter.increment() == 1 {
+                throw AgentError.rateLimitExceeded(retryAfter: 2)
+            }
+            return true
+        }
+
+        #expect(clock.recordedSleeps == [5_000_000_000])
+    }
+
+    @Test("Missing Retry-After hint keeps the policy backoff")
+    func missingRetryAfterKeepsBackoff() async throws {
+        let clock = VirtualClock()
+        let counter = TestCounter()
+        let policy = RetryPolicy(maxAttempts: 2, backoff: .fixed(delay: 2.0), clock: clock)
+
+        _ = try await policy.execute {
+            if await counter.increment() == 1 {
+                throw AgentError.rateLimitExceeded(retryAfter: nil)
+            }
+            return true
+        }
+
+        #expect(clock.recordedSleeps == [2_000_000_000])
+    }
+
+    @Test("Retry-After hint only applies to rate-limit errors")
+    func retryAfterIgnoredForOtherErrors() async throws {
+        let clock = VirtualClock()
+        let counter = TestCounter()
+        let policy = RetryPolicy(maxAttempts: 2, backoff: .fixed(delay: 2.0), clock: clock)
+
+        _ = try await policy.execute {
+            if await counter.increment() == 1 {
+                throw AgentError.generationFailed(reason: "boom")
+            }
+            return true
+        }
+
+        #expect(clock.recordedSleeps == [2_000_000_000])
+    }
+}
+
+// MARK: - Unified Retry Semantics (P1-1)
+
+@Suite("RetryPolicy Unified Semantics", .ephemeralDefaultStores)
+struct RetryPolicyUnifiedSemanticsTests {
+    @Test("maxAttempts counts total attempts including the initial attempt")
+    func maxAttemptsCountsTotalAttempts() async throws {
+        for budget in [1, 2, 3] {
+            let policy = RetryPolicy(maxAttempts: budget, backoff: .immediate)
+            let counter = TestCounter()
+            do {
+                _ = try await policy.execute {
+                    _ = await counter.increment()
+                    throw TestError.transient
+                }
+                Issue.record("Expected retriesExhausted for budget \(budget)")
+            } catch let error as ResilienceError {
+                #expect(error == .retriesExhausted(attempts: budget, lastError: TestError.transient.localizedDescription))
+            }
+            #expect(await counter.get() == budget)
+        }
+    }
+
+    @Test("maxAttempts 1 runs once with no retries or callbacks")
+    func maxAttemptsOneRunsOnce() async throws {
+        let retryRecorder = TestRecorder<Int>()
+        let policy = RetryPolicy(
+            maxAttempts: 1,
+            backoff: .immediate,
+            onRetry: { attempt, _ in await retryRecorder.append(attempt) }
+        )
+        let counter = TestCounter()
+        do {
+            _ = try await policy.execute {
+                _ = await counter.increment()
+                throw TestError.transient
+            }
+            Issue.record("Expected retriesExhausted")
+        } catch let error as ResilienceError {
+            #expect(error == .retriesExhausted(attempts: 1, lastError: TestError.transient.localizedDescription))
+        }
+        #expect(await counter.get() == 1)
+        #expect(await retryRecorder.getAll().isEmpty)
+    }
+
+    @Test("noRetry is exactly one total attempt")
+    func noRetryIsOneTotalAttempt() {
+        #expect(RetryPolicy.noRetry.maxAttempts == 1)
+    }
+
+    @Test("maxAttempts below 1 throws invalidMaxAttempts without invoking the operation")
+    func invalidMaxAttemptsThrowsWithoutInvokingOperation() async throws {
+        for invalid in [0, -1, -10] {
+            let policy = RetryPolicy(maxAttempts: invalid, backoff: .immediate)
+            #expect(policy.maxAttempts == invalid)
+            let counter = TestCounter()
+            await #expect(throws: ResilienceError.invalidMaxAttempts(invalid)) {
+                try await policy.execute {
+                    _ = await counter.increment()
+                    return "unreachable"
+                }
+            }
+            #expect(await counter.get() == 0)
+        }
+    }
+
+    @Test("invalidMaxAttempts is not retryable and has stable descriptions")
+    func invalidMaxAttemptsIsNotRetryable() {
+        let error = ResilienceError.invalidMaxAttempts(0)
+        #expect(InferenceRetryability.isRetryable(error) == false)
+        #expect(error.errorDescription?.contains("at least 1") == true)
+        #expect(error.debugDescription == "ResilienceError.invalidMaxAttempts(0)")
+    }
+
+    @Test("invalid retry policy surfaces through Agent inference")
+    func invalidPolicySurfacesThroughAgent() async throws {
+        let provider = MockInferenceProvider(responses: ["unused"])
+        let agent = try Agent(
+            tools: [],
+            instructions: "Invalid retry",
+            configuration: AgentConfiguration.default
+                .enableStreaming(false)
+                .timeout(.seconds(5))
+                .resilience(ResilienceConfiguration(
+                    retryPolicy: RetryPolicy(maxAttempts: 0, backoff: .immediate)
+                ))
+                .defaultTracingEnabled(false),
+            inferenceProvider: provider
+        )
+        await #expect(throws: ResilienceError.invalidMaxAttempts(0)) {
+            _ = try await agent.run("hello")
+        }
+        #expect(await provider.recordedInferenceCallCount == 0)
     }
 }
 

@@ -47,6 +47,16 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         ?? FileManager.default.temporaryDirectory.appendingPathComponent("SwarmWebMemoryPlane", isDirectory: true)
 
         public var apiKey: String?
+
+        /// Keychain (or other ``SecretStore``) pointer for the search API key.
+        ///
+        /// Resolved at request time when ``apiKey`` is `nil` or empty. Pass a
+        /// store via `WebSearchTool(configuration:secretStore:)`; without one
+        /// the reference cannot resolve and live search returns no hits.
+        /// Prefer this over embedding the raw key when the configuration is
+        /// persisted or logged.
+        public var apiKeyReference: SecretReference?
+
         public var contextProfile: ContextProfile
         public var summaryMode: SummaryMode
         public var fetchTimeout: TimeInterval
@@ -65,6 +75,7 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
 
         public init(
             apiKey: String? = nil,
+            apiKeyReference: SecretReference? = nil,
             contextProfile: ContextProfile = .strict4k,
             summaryMode: SummaryMode = .contextCoreThenFoundationModels,
             fetchTimeout: TimeInterval = 20,
@@ -82,6 +93,7 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
             persistEvidenceBundles: Bool = true
         ) {
             self.apiKey = apiKey
+            self.apiKeyReference = apiKeyReference
             self.contextProfile = contextProfile
             self.summaryMode = summaryMode
             self.fetchTimeout = fetchTimeout
@@ -100,7 +112,27 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         }
 
         public var hasLiveSearchBackend: Bool {
-            !(apiKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            if !(apiKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
+                return true
+            }
+            return apiKeyReference != nil
+        }
+
+        /// Resolves the effective search API key.
+        ///
+        /// The inline ``apiKey`` wins when non-empty; otherwise
+        /// ``apiKeyReference`` is loaded from `store`. Returns `nil` when
+        /// neither is available.
+        ///
+        /// - Parameter store: Backend holding the referenced secret, if any.
+        /// - Returns: The effective key, or `nil` when unavailable.
+        public func resolveAPIKey(using store: (any SecretStore)?) async throws -> String? {
+            let inline = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let inline, !inline.isEmpty {
+                return inline
+            }
+            guard let apiKeyReference, let store else { return nil }
+            return try await store.secret(for: apiKeyReference)
         }
     }
 
@@ -242,11 +274,13 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
 
     private let configuration: Configuration?
     private let legacyAPIKey: String?
+    private let secretStore: (any SecretStore)?
 
     public init(apiKey: String) {
         IntegrationsTrait.warnIfUnavailable(feature: "Web search")
         configuration = nil
         legacyAPIKey = apiKey
+        secretStore = nil
         mode = Mode.search.rawValue
         query = ""
         maxResults = 5
@@ -267,6 +301,38 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         IntegrationsTrait.warnIfUnavailable(feature: "Web search")
         self.configuration = configuration
         legacyAPIKey = configuration.apiKey
+        secretStore = nil
+        mode = Mode.search.rawValue
+        query = ""
+        maxResults = 5
+        includeRawContent = false
+        url = ""
+        goal = ""
+        detail = Detail.compact.rawValue
+        preferCached = true
+        persist = configuration.persistFetchedArtifacts
+        artifactID = ""
+        sectionIDs = []
+        bundleID = ""
+        domains = []
+        recencyDays = nil
+    }
+
+    /// Creates a tool that resolves `configuration.apiKeyReference` from `secretStore`.
+    ///
+    /// When the configuration carries an inline key it is used as-is;
+    /// otherwise the reference is loaded from the store on every live search.
+    /// Use ``KeychainSecretStore`` on Apple platforms so the raw key never
+    /// sits in persisted configuration.
+    ///
+    /// - Parameters:
+    ///   - configuration: Search behavior, persistence, and auth pointer.
+    ///   - secretStore: Backend holding the referenced secret.
+    public init(configuration: Configuration, secretStore: any SecretStore) {
+        IntegrationsTrait.warnIfUnavailable(feature: "Web search")
+        self.configuration = configuration
+        legacyAPIKey = configuration.apiKey
+        self.secretStore = secretStore
         mode = Mode.search.rawValue
         query = ""
         maxResults = 5
@@ -288,7 +354,8 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         let request = try parseRequest(arguments: arguments)
         let envelope = try await WebToolRuntime.shared.execute(
             request: request,
-            configuration: resolvedConfiguration
+            configuration: resolvedConfiguration,
+            secretStore: secretStore
         )
         return .string(formatLegacy(envelope))
         #else
@@ -304,7 +371,8 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         #if SWARM_INTEGRATIONS
         let envelope = try await WebToolRuntime.shared.execute(
             request: legacyRequest(),
-            configuration: resolvedConfiguration
+            configuration: resolvedConfiguration,
+            secretStore: secretStore
         )
         return formatLegacy(envelope)
         #else
@@ -400,7 +468,37 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
     #endif
 }
 
+extension WebSearchTool.Configuration: CustomStringConvertible {
+    /// Renders the configuration without the API key value.
+    ///
+    /// Only key presence (already exposed by ``hasLiveSearchBackend``) is
+    /// shown, so logging or debugging a configuration cannot leak the key.
+    public var description: String {
+        "Configuration(apiKey: \(hasLiveSearchBackend ? "<configured>" : "<absent>"), contextProfile: \(contextProfile), summaryMode: \(summaryMode), enabled: \(enabled), storeURL: \(storeURL.path))"
+    }
+}
+
 private func nonEmpty(_ value: String) -> String? {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? nil : trimmed
+}
+
+extension WebSearchTool.Configuration: CustomDebugStringConvertible {
+    /// Debug description with the API key value redacted.
+    ///
+    /// Reports only key presence plus the non-secret ``SecretReference``
+    /// pointer, so debugging a configuration cannot leak the key.
+    public var debugDescription: String {
+        let key = hasLiveSearchBackend ? "\"\(SecretRedaction.placeholder)\"" : "nil"
+        let presence = hasLiveSearchBackend ? "<configured>" : "<absent>"
+        return "WebSearchTool.Configuration(apiKey: \(key), presence: \(presence), apiKeyReference: \(String(describing: apiKeyReference)), storeURL: \(storeURL), enabled: \(enabled))"
+    }
+}
+
+extension WebSearchTool: CustomDebugStringConvertible {
+    /// Debug description with API key material redacted.
+    public var debugDescription: String {
+        let key = legacyAPIKey == nil ? "nil" : "\"\(SecretRedaction.placeholder)\""
+        return "WebSearchTool(name: \"\(name)\", mode: \"\(mode)\", maxResults: \(maxResults), legacyAPIKey: \(key), configuration: \(String(reflecting: resolvedConfiguration)))"
+    }
 }

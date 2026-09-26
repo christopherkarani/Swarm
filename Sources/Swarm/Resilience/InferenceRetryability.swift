@@ -34,8 +34,8 @@ import FoundationNetworking
 /// |---|---|
 /// | `CancellationError`, ``AgentError/cancelled`` | Caller aborted the run |
 /// | ``AgentError/timeout(duration:)`` | The **run** deadline expired; retries must not outlive it |
-/// | ``AgentError/invalidInput(reason:)``, ``AgentError/invalidLoop(reason:)`` | Caller / configuration error |
-/// | ``AgentError/maxIterationsExceeded(iterations:)`` | Loop bound, not a transient blip |
+/// | ``AgentError/invalidInput(reason:)``, ``AgentError/invalidLoop(reason:)``, ``AgentError/authenticationFailed(reason:)`` | Caller / configuration error |
+/// | ``AgentError/maxIterationsExceeded(iterations:)``, ``AgentError/toolCallLoopDetected(toolNames:repetitions:)`` | Loop bound, not a transient blip |
 /// | ``AgentError/guardrailViolation(reason:)``, ``GuardrailError`` | Safety rejection |
 /// | ``AgentError/contentFiltered(reason:)`` | Provider safety filter |
 /// | ``AgentError/invalidToolArguments(toolName:reason:)`` | Schema / parse failure |
@@ -45,6 +45,7 @@ import FoundationNetworking
 /// | ``AgentError/agentNotFound(name:)``, ``AgentError/internalError(reason:)``, ``AgentError/toolCallingUnsupported`` | Non-transient |
 /// | ``ResilienceError/circuitBreakerOpen(serviceName:)`` | Breaker already short-circuited |
 /// | ``ResilienceError/retriesExhausted(attempts:lastError:)`` | Budget already spent |
+/// | ``ResilienceError/invalidMaxAttempts(_:)`` | Configuration error, not a transient failure |
 /// | Unknown `Error` types | Fail closed — do not retry unclassified failures |
 ///
 /// Provider timeouts surface as ``AgentError/generationFailed(reason:)`` or
@@ -66,7 +67,7 @@ public enum InferenceRetryability: Sendable {
 
         if let resilienceError = error as? ResilienceError {
             switch resilienceError {
-            case .circuitBreakerOpen, .retriesExhausted, .allFallbacksFailed:
+            case .circuitBreakerOpen, .retriesExhausted, .allFallbacksFailed, .invalidMaxAttempts:
                 return false
             }
         }

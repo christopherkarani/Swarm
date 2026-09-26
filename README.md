@@ -157,7 +157,7 @@ a provider on every agent.
 
 | Provider | Use it when |
 |---|---|
-| Apple Foundation Models | You want on-device inference, OS 27 PCC via `.foundationModels(model:)`, owned-loop `reasoningLevel`, Swarm profile history seeded onto `Transcript`, or capture `Transcript` rehydration |
+| Apple Foundation Models | You want on-device inference, OS 27 PCC via `.privateCloudCompute()`, image attachments, native profile sessions, owned-loop `reasoningLevel`, Swarm profile history seeded onto `Transcript`, or capture `Transcript` rehydration |
 | Ollama or LM Studio | You want a local HTTP model for development or private deployments |
 | OpenAI, Azure, or OpenRouter | You want a cloud model through an OpenAI-compatible API |
 | Custom provider | You need another model backend or an internal service |
@@ -193,9 +193,11 @@ swift run OnDeviceChat --demo
 
 | Capability | What it does |
 |---|---|
-| Conversation and memory | Preserve multi-turn state with `Conversation`; choose conversation, sliding-window, vector, summary, or hybrid memory. |
+| Conversation and memory | Preserve multi-turn state with `Conversation`; choose conversation, sliding-window, vector, summary, or hybrid memory. Sessions snapshot to portable JSON or `FileSession` files. |
+| Resilience | Retry with backoff and `Retry-After`, circuit breakers, rate limits, `FailoverProvider` chains, and tool-loop detection. |
 | Guardrails | Validate inputs, outputs, and tool arguments before they reach your application. |
 | Streaming | Observe lifecycle, tool, thinking, and output events through `AsyncThrowingStream`. |
+| Resilience | Retry provider inference (`maxAttempts` counts total attempts, minimum 1), circuit breakers, rate limits, fallback chains. |
 | Durable execution | Checkpoint workflow progress and resume after a process restart when the `Integrations` trait is enabled. |
 | MCP | Discover and bridge Model Context Protocol tools. |
 | Observability | Export agent and inference traces with OpenTelemetry or Swift logging. |
@@ -226,6 +228,7 @@ await Swarm.configure(provider: myProvider)
 | [Getting Started](docs/guide/getting-started.md) | Installation and first agent |
 | [Why Swarm?](docs/guide/why-swarm.md) | Design choices and architecture |
 | [Remote Providers](docs/guide/remote-providers.md) | OpenAI, Azure, OpenRouter, Ollama, and LM Studio |
+| [Secret Storage](docs/guide/secret-storage.md) | Keychain-backed API keys, redaction, checkpoint file permissions |
 | [Foundation Models](docs/guide/foundation-models.md) | Capture and native session modes |
 | [Voice](docs/guide/voice.md) | Turn-based `VoiceSession` around an existing Agent |
 | [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics |

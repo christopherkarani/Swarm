@@ -103,6 +103,36 @@ outputs default to prompt-parse fallback; switch
 ``OpenAICompatibleStructuredOutputMode/nativeJSONSchema`` if your build
 supports it.
 
+## API key storage
+
+Keep raw keys out of persisted configuration. Set `apiKeyReference` instead
+of `apiKey` and pass a store; the inline key wins when non-empty, otherwise
+the reference resolves on every request:
+
+```swift
+let reference = SecretReference(service: "com.example.app", account: "openai-api-key")
+let configuration = OpenAICompatibleProviderConfiguration(
+    baseURL: URL(string: "https://api.openai.com/v1")!,
+    apiKeyReference: reference,
+    model: "gpt-4o"
+)
+let store: any SecretStore
+#if canImport(Security)
+store = KeychainSecretStore()
+#else
+store = EnvironmentSecretStore()
+#endif
+let provider: any InferenceProvider = .openAICompatible(
+    configuration,
+    secretStore: store
+)
+```
+
+Use ``KeychainSecretStore`` on Apple platforms and
+``EnvironmentSecretStore`` on Linux and CI. Debug descriptions render keys
+as `[redacted]`. See the [Secret Storage guide](secret-storage.md) for the
+full contract, including MCP and web-search wiring.
+
 ## When to use which provider
 
 | Provider | Use when | Data leaves the device? |
@@ -121,7 +151,26 @@ The provider implements the conversation seams the agent loop prefers:
 - Token usage from `usage.prompt_tokens` / `usage.completion_tokens`
 - W3C `traceparent` / `tracestate` via ``TraceContextHeaders``
 - HTTP errors classified for ``InferenceRetryability`` (429 / 5xx / network
-  retryable; 400 / 401 / 403 not)
+  retryable; 400 / 402 / quota-exhausted not). 401 / 403 surface as
+  ``AgentError/authenticationFailed``; 402 and `insufficient_quota` are
+  non-retryable billing errors. `Retry-After` headers (delay-seconds and
+  HTTP-date forms) feed ``RetryPolicy`` backoff.
+- Gemini thought signatures (`extra_content.google.thought_signature`)
+  round-trip on tool calls so thinking-model follow-ups are accepted.
+
+## Failover
+
+Wrap providers in ``FailoverProvider`` to try a backup when the primary
+fails retryably (rate limits, 5xx, network). Permanent failures —
+including ``AgentError/authenticationFailed`` — rethrow immediately.
+
+```swift
+let provider = FailoverProvider(
+    primary: .openAICompatible(.openAI(apiKey: key, model: "gpt-4o")),
+    fallbacks: [.openAICompatible(.ollama(model: "llama3.2"))]
+)
+let agent = try Agent("Be concise.", inferenceProvider: provider)
+```
 
 ## Live Ollama tests
 

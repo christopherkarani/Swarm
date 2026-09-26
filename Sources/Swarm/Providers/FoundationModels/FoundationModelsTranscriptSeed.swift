@@ -4,16 +4,18 @@ import Foundation
 import FoundationModels
 #endif
 
-/// Maps capture-mode ``InferenceMessage`` history onto transcript-shaped
-/// entries so Apple can see roles natively.
+/// Maps ``InferenceMessage`` history onto transcript-shaped entries so Apple
+/// sees roles natively.
 ///
-/// Flattening remains the fallback when a message cannot be represented
-/// (assistant tool-call metadata, extra system text). This is not Apple's
-/// `LanguageModelSession.DynamicProfile`.
-enum FoundationModelsCaptureTranscript: Sendable {
+/// Both the capture turn (``FoundationModelsInferenceProvider/makeCaptureTurn(tools:messages:flattenTools:instructions:options:)``)
+/// and the owned-loop session (`makeOwnedLoopSession`) seed from this one
+/// module. Flattening remains the fallback when a message cannot be
+/// represented (assistant tool-call metadata, extra system text). This is not
+/// Apple's `LanguageModelSession.DynamicProfile`.
+enum FoundationModelsTranscriptSeed: Sendable {
     enum Entry: Sendable, Equatable {
         case instructions(String)
-        case prompt(String)
+        case prompt(text: String, images: [PendingImage])
         case response(String)
         case toolOutput(name: String, content: String, toolCallID: String?)
     }
@@ -22,6 +24,7 @@ enum FoundationModelsCaptureTranscript: Sendable {
         var instructions: String?
         var seedEntries: [Entry]
         var pendingPrompt: String
+        var pendingImages: [PendingImage]
         var canRehydrate: Bool
     }
 
@@ -34,18 +37,21 @@ enum FoundationModelsCaptureTranscript: Sendable {
         let mapped = mapEntries(messages: messages, instructions: instructions)
         var entries = mapped.entries
         let pending: String
-        if case let .prompt(text) = entries.last, messages.last?.role == .user {
+        let pendingImages: [PendingImage]
+        if case let .prompt(text, images) = entries.last, messages.last?.role == .user {
             pending = text
+            pendingImages = images
             entries.removeLast()
         } else {
-            pending = messages.last(where: { $0.role == .user })?.content
-                ?? messages.last?.content
-                ?? ""
+            let fallback = messages.last(where: { $0.role == .user }) ?? messages.last
+            pending = fallback?.content ?? ""
+            pendingImages = fallback.map { FoundationModelsImageAttachments.pendingImages(in: $0) } ?? []
         }
         return Seed(
             instructions: instructions,
             seedEntries: entries,
             pendingPrompt: pending,
+            pendingImages: pendingImages,
             canRehydrate: mapped.canRehydrate && messages.last?.role == .user
         )
     }
@@ -68,10 +74,12 @@ enum FoundationModelsCaptureTranscript: Sendable {
                 if text == instructions {
                     continue
                 }
+                // Extra system text has no Instructions/Prompt split we trust.
                 canRehydrate = false
             case .user:
-                guard !message.content.isEmpty else { continue }
-                entries.append(.prompt(message.content))
+                let images = FoundationModelsImageAttachments.pendingImages(in: message)
+                guard !message.content.isEmpty || !images.isEmpty else { continue }
+                entries.append(.prompt(text: message.content, images: images))
             case .assistant:
                 if !message.toolCalls.isEmpty {
                     canRehydrate = false
@@ -103,7 +111,7 @@ enum FoundationModelsCaptureTranscript: Sendable {
             switch entry {
             case .instructions:
                 return nil
-            case let .prompt(text):
+            case let .prompt(text, _):
                 return .user(text)
             case let .response(text):
                 return .assistant(text)
@@ -118,7 +126,7 @@ enum FoundationModelsCaptureTranscript: Sendable {
 @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)
-extension FoundationModelsCaptureTranscript {
+extension FoundationModelsTranscriptSeed {
     static func makeTranscript(from entries: [Entry]) -> Transcript? {
         guard !entries.isEmpty else { return nil }
         return Transcript(entries: entries.map(appleEntry(from:)))
@@ -134,11 +142,11 @@ extension FoundationModelsCaptureTranscript {
                     toolDefinitions: []
                 )
             )
-        case let .prompt(text):
+        case let .prompt(text, images):
             return .prompt(
                 Transcript.Prompt(
                     id: UUID().uuidString,
-                    segments: [textSegment(text)],
+                    segments: promptSegments(text: text, images: images),
                     options: GenerationOptions()
                 )
             )
@@ -163,6 +171,15 @@ extension FoundationModelsCaptureTranscript {
 
     private static func textSegment(_ content: String) -> Transcript.Segment {
         .text(Transcript.TextSegment(id: UUID().uuidString, content: content))
+    }
+
+    /// Text plus one attachment segment per image on OS 27. Older systems
+    /// keep the text-only segment; image sidecars need OS 27.
+    private static func promptSegments(text: String, images: [PendingImage]) -> [Transcript.Segment] {
+        if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *), !images.isEmpty {
+            return FoundationModelsImageAttachments.transcriptSegments(text: text, images: images)
+        }
+        return [textSegment(text)]
     }
 }
 #endif

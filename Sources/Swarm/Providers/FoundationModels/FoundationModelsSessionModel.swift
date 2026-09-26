@@ -15,6 +15,8 @@ struct FoundationModelsSessionModel: Sendable {
     let contextSize: Int
     let displayName: String
     let isAvailable: Bool
+    /// True only for on-device `SystemLanguageModel` backing (never PCC).
+    let runsOnDevice: Bool
 
     private let build: @Sendable (
         _ tools: [any FoundationModels.Tool],
@@ -22,19 +24,48 @@ struct FoundationModelsSessionModel: Sendable {
         _ transcript: Transcript?
     ) -> LanguageModelSession
 
+    /// OS 27 profile builder. The signature stays OS 26-safe (snapshot is a
+    /// Swarm value); the closure body gates Apple profile APIs internally.
+    private let buildProfile: @Sendable (
+        _ tools: [any FoundationModels.Tool],
+        _ snapshot: FoundationModelsOwnedLoopSnapshot,
+        _ history: Transcript?
+    ) -> LanguageModelSession
+
     static func system(_ model: SystemLanguageModel = .default) -> Self {
-        Self(
+        let legacy: @Sendable (
+            [any FoundationModels.Tool],
+            String?,
+            Transcript?
+        ) -> LanguageModelSession = { tools, instructions, transcript in
+            if let transcript {
+                return LanguageModelSession(model: model, tools: tools, transcript: transcript)
+            }
+            if let instructions, !instructions.isEmpty {
+                return LanguageModelSession(model: model, tools: tools, instructions: instructions)
+            }
+            return LanguageModelSession(model: model, tools: tools)
+        }
+        return Self(
             contextSize: model.contextSize,
             displayName: "systemLanguageModel",
             isAvailable: model.availability == .available,
-            build: { tools, instructions, transcript in
-                if let transcript {
-                    return LanguageModelSession(model: model, tools: tools, transcript: transcript)
+            runsOnDevice: true,
+            build: legacy,
+            buildProfile: { tools, snapshot, history in
+                if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *) {
+                    let profile = FoundationModelsNativeDynamicProfile(
+                        snapshot: snapshot,
+                        model: model,
+                        tools: tools
+                    )
+                    if let history {
+                        return LanguageModelSession(profile: profile, history: history)
+                    }
+                    return LanguageModelSession(profile: profile)
                 }
-                if let instructions, !instructions.isEmpty {
-                    return LanguageModelSession(model: model, tools: tools, instructions: instructions)
-                }
-                return LanguageModelSession(model: model, tools: tools)
+                let instructions = snapshot.instructions.isEmpty ? nil : snapshot.instructions
+                return legacy(tools, instructions, history)
             }
         )
     }
@@ -46,18 +77,35 @@ struct FoundationModelsSessionModel: Sendable {
     ) -> Self {
         let boxed: any LanguageModel = model
         let name = displayName ?? Self.displayName(for: boxed)
+        let legacy: @Sendable (
+            [any FoundationModels.Tool],
+            String?,
+            Transcript?
+        ) -> LanguageModelSession = { tools, instructions, transcript in
+            if let transcript {
+                return LanguageModelSession(model: boxed, tools: tools, transcript: transcript)
+            }
+            if let instructions, !instructions.isEmpty {
+                return LanguageModelSession(model: boxed, tools: tools, instructions: instructions)
+            }
+            return LanguageModelSession(model: boxed, tools: tools)
+        }
         return Self(
             contextSize: Self.contextSize(for: boxed),
             displayName: name,
             isAvailable: Self.isAvailable(boxed),
-            build: { tools, instructions, transcript in
-                if let transcript {
-                    return LanguageModelSession(model: boxed, tools: tools, transcript: transcript)
+            runsOnDevice: boxed is SystemLanguageModel,
+            build: legacy,
+            buildProfile: { tools, snapshot, history in
+                let profile = FoundationModelsNativeDynamicProfile(
+                    snapshot: snapshot,
+                    model: boxed,
+                    tools: tools
+                )
+                if let history {
+                    return LanguageModelSession(profile: profile, history: history)
                 }
-                if let instructions, !instructions.isEmpty {
-                    return LanguageModelSession(model: boxed, tools: tools, instructions: instructions)
-                }
-                return LanguageModelSession(model: boxed, tools: tools)
+                return LanguageModelSession(profile: profile)
             }
         )
     }
@@ -74,6 +122,19 @@ struct FoundationModelsSessionModel: Sendable {
         transcript: Transcript
     ) -> LanguageModelSession {
         build(tools, nil, transcript)
+    }
+
+    /// Owned-loop session from a resolved turn snapshot.
+    ///
+    /// OS 27 builds `LanguageModelSession(profile:history:)` so instructions,
+    /// tools, and knobs flow through one Apple session. Older systems use the
+    /// same legacy `model:tools:` construction as ``makeSession(tools:instructions:)``.
+    func makeProfileSession(
+        tools: [any FoundationModels.Tool],
+        snapshot: FoundationModelsOwnedLoopSnapshot,
+        history: Transcript?
+    ) -> LanguageModelSession {
+        buildProfile(tools, snapshot, history)
     }
 
     @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
@@ -93,8 +154,7 @@ struct FoundationModelsSessionModel: Sendable {
             return system.contextSize
         }
         if model is PrivateCloudComputeLanguageModel {
-            // Documented PCC size. SDK 27 exposes only an async-throws
-            // contextSize on PCC models, which cannot serve this sync path.
+            // Current SDKs expose PCC `contextSize` as async/throws; this factory stays sync.
             return FoundationModelsContextBudget.privateCloudComputeContextSize
         }
         return FoundationModelsContextBudget.fallbackContextSize

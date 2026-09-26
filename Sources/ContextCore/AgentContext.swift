@@ -583,7 +583,9 @@ public actor AgentContext {
 
     /// Persists full runtime state to a checkpoint file.
     ///
-    /// Writes atomically through a temporary file and move operation.
+    /// Writes atomically through a temporary file and move operation. The
+    /// checkpoint file is restricted to owner-only (`0600`) permissions
+    /// because it contains conversation content.
     ///
     /// - Parameter url: Destination checkpoint URL.
     /// - Throws: `ContextCoreError.checkpointCorrupt` when encoding or file I/O fails.
@@ -615,15 +617,18 @@ public actor AgentContext {
         let fileManager = FileManager.default
 
         do {
-            try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
+            try ContextCoreSecureFileIO.createDirectory(at: parent)
 
             let tempURL = parent.appendingPathComponent(".\(url.lastPathComponent).tmp-\(UUID().uuidString)")
-            try data.write(to: tempURL, options: .atomic)
+            try ContextCoreSecureFileIO.write(data, to: tempURL)
 
             if fileManager.fileExists(atPath: url.path) {
                 try fileManager.removeItem(at: url)
             }
             try fileManager.moveItem(at: tempURL, to: url)
+            // The moved file inherits the temp file's owner-only permissions;
+            // re-apply defensively so the final checkpoint is always 0600.
+            try ContextCoreSecureFileIO.hardenFile(at: url)
             Logger.contextCore.info("Checkpoint saved to \(url.path, privacy: .public)")
         } catch {
             Logger.contextCore.error("Error in checkpoint(to:): \(error.localizedDescription, privacy: .public)")

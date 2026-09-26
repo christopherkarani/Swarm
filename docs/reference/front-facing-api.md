@@ -248,7 +248,15 @@ let config = AgentConfiguration.default
     ))
 ```
 
-Retryability is ``InferenceRetryability/isRetryable(_:)`` **and** the policy's `shouldRetry` (default: always). Permanent failures in that table are never retried. ``FallbackChain`` is not wired into `Agent` in this release.
+Retryability is ``InferenceRetryability/isRetryable(_:)`` **and** the policy's `shouldRetry` (default: always). Permanent failures in that table are never retried. A server `Retry-After` hint carried by ``AgentError/rateLimitExceeded(retryAfter:)`` extends the policy backoff (never shortens it).
+
+For provider fallback, compose ``FailoverProvider`` and pass it as the agent's inference provider — it advances across `primary` + `fallbacks` on retryable failures only, rethrows the last error when exhausted, and stays out of `Agent`'s own retry wrapper. ``FallbackChain`` remains the escape hatch for custom operations.
+
+### Loop safety
+
+The tool loop fingerprints every tool-call batch (tool names plus canonical arguments) and stops the run with ``AgentError/toolCallLoopDetected(toolNames:repetitions:)`` after ``AgentConfiguration/maxConsecutiveToolRepeats`` (default: 3) consecutive identical batches, before executing the repeat again. Tune with `.maxConsecutiveToolRepeats(_:)` (floor: 2).
+
+`RetryPolicy.maxAttempts` counts total attempts including the initial attempt and must be at least 1 (`noRetry` is 1; `standard` is 3 total; `aggressive` is 5 total). The same budget is shared by `AsyncThrowingStream.retry(maxAttempts:delay:factory:)` and `HiveRetryPolicy`. Values below 1 throw `ResilienceError.invalidMaxAttempts` from `RetryPolicy.execute` (or fail the stream) without invoking the operation.
 
 ### Runtime wrappers (on AgentRuntime)
 
@@ -881,6 +889,7 @@ public struct InferenceMessage: Sendable, Equatable {
         public let id: String?
         public let name: String
         public let arguments: [String: SendableValue]
+        public let thoughtSignature: String?
     }
 
     public let body: Body
@@ -943,6 +952,7 @@ available for source compatibility: `PromptTokenCountingInferenceProvider`,
 .foundationModels(model: .default)  // Apple SystemLanguageModel (not Swarm Profile)
 .foundationModels(profile: profile) // Swarm DynamicProfile re-resolved each turn
 .foundationModels(model: pcc)       // OS 27 Apple LanguageModel / PCC
+.privateCloudCompute()              // OS 27 PCC convenience (quota-aware IfAvailable variant)
 .openAICompatible(.ollama(model: "llama3.2"))
 .openAICompatible(.openAI(apiKey: "sk-...", model: "gpt-4o"))
 .textOnly(stringBackend)            // TextOnlyBackend → flatten adapter
@@ -955,6 +965,7 @@ available for source compatibility: `PromptTokenCountingInferenceProvider`,
 | `.foundationModelsOwningToolLoop()` | `FoundationModelsInferenceProvider` | Same type; advertises a provider-owned tool loop |
 | `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Capture adapter driven by Swarm ``DynamicProfile`` (not Apple's OS 27 `LanguageModelSession.DynamicProfile`) |
 | `.foundationModels(model:)` | `FoundationModelsInferenceProvider` | OS 27+ Apple `LanguageModel`, including `PrivateCloudComputeLanguageModel`. `ifAvailable(model:)` does not fall back to on-device. |
+| `.privateCloudCompute()` | `FoundationModelsInferenceProvider` | OS 27+ PCC convenience. `.privateCloudComputeIfAvailable()` returns nil when PCC is unavailable or its daily quota is exhausted; neither falls back to on-device. PCC-backed providers do not advertise `.privateInference`. |
 | `.openAICompatible(_:)` | `OpenAICompatibleProvider` | OpenAI / Azure / OpenRouter / Ollama / LM Studio over Chat Completions; Linux-first |
 | `.textOnly(_:)` | `TextOnlyConversationInferenceProviderAdapter` | Wraps a ``TextOnlyBackend``; only flatten site |
 | Custom `InferenceProvider` | your type | Implement the protocol for other backends |
@@ -974,14 +985,66 @@ OS 27 owned-loop can set ``FoundationModelsProviderConfiguration/reasoningLevel`
 stays a prompt sentence.
 Owned-loop applies Swarm ``ProfileHistoryPolicy`` before seeding a text-only
 Apple `Transcript`. It does not rename Swarm ``DynamicProfile`` to Apple's
-`LanguageModelSession.DynamicProfile`.
+`LanguageModelSession.DynamicProfile`. It does build the Apple session from
+a native `LanguageModelSession(profile:history:)` on OS 27, so the resolved
+instructions, tools, and knobs flow through one Apple session.
 Capture rehydrates a `Transcript` from user/assistant/tool messages when it
 can; flattening is the fallback for assistant tool-call metadata or extra
 system text.
+On OS 27, ``InferenceMessage`` image ``InferenceMessage/Attachment`` sidecars
+ride `Transcript` attachment segments (history) and multimodal `Prompt`
+attachments (pending turn). The provider advertises
+``InferenceProviderCapabilities/multimodalImages`` only on OS 27.
 See the [Foundation Models guide](/guide/foundation-models).
 
 You can register a user-authored `FoundationModels.Tool` in `@ToolBuilder`
 (wrapped as ``FoundationModelsNativeTool``).
+
+### Failover composition
+
+``FailoverProvider`` wraps an ordered `primary` + `fallbacks` chain behind
+the ``InferenceProvider`` protocol. Capabilities come from `primary`;
+prompt, streaming, and prompt-structured calls inherit failover through
+the protocol defaults.
+
+```swift
+let provider = FailoverProvider(
+    primary: .openAICompatible(.openAI(apiKey: key, model: "gpt-4o")),
+    fallbacks: [.openAICompatible(.ollama(model: "llama3.2"))],
+    onFailover: { index, error in print("provider \(index) failed: \(error)") }
+)
+let agent = try Agent("Be concise.", inferenceProvider: provider)
+```
+
+## 11b) Secret storage
+
+``SecretReference`` points at an API key held in a ``SecretStore`` so
+persisted configuration never embeds the raw key. ``KeychainSecretStore``
+(Apple platforms), ``EnvironmentSecretStore`` (Linux, CI), and
+``InMemorySecretStore`` (tests) implement the protocol. The inline key wins
+when non-empty; otherwise the reference resolves at request time:
+
+```swift
+let reference = SecretReference(service: "com.example.app", account: "openai-api-key")
+let configuration = OpenAICompatibleProviderConfiguration(
+    baseURL: URL(string: "https://api.openai.com/v1")!,
+    apiKeyReference: reference,
+    model: "gpt-4o"
+)
+let provider: OpenAICompatibleProvider = .openAICompatible(configuration, secretStore: store)
+```
+
+The same `apiKeyReference` + store shape wires into
+``WebSearchTool/Configuration`` (via
+`WebSearchTool(configuration:secretStore:)`) and ``HTTPMCPServer`` (via
+`init(url:name:apiKeyReference:secretStore:)`). Configuration debug
+descriptions render keys as `[redacted]`; ``SecretRedaction`` scrubs custom
+payloads. File-system checkpoints, ContextCore checkpoints, Wax memory
+stores, and the web memory plane are written owner-only (`0600` files;
+store-created directories are `0700`, pre-existing directories keep their
+permissions); migrate a pre-existing checkpoint directory with
+``WorkflowCheckpointing/hardenFilePermissions(in:)``. See the
+[Secret Storage guide](/guide/secret-storage).
 
 ## 12) Events and results
 
@@ -1281,8 +1344,8 @@ let http = try HTTPMCPServer(
     name: "example-server",
     apiKey: "sk-..."
 )
-let stdio = StdioMCPServer(
-    command: "npx",
+let stdio = try StdioMCPServer(
+    command: "/opt/homebrew/bin/npx",
     arguments: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
     name: "filesystem"
 )
@@ -1299,6 +1362,12 @@ let bridgedTools = try await bridge.bridgeTools()
 `HTTPMCPServer` speaks streamable HTTP (JSON or SSE responses, session id,
 `MCP-Protocol-Version`) and negotiates `2024-11-05` through `2025-11-25`.
 `StdioMCPServer` launches a child process and uses newline-delimited JSON-RPC.
+The launch is sandboxed: `command` must be an absolute path (`PATH` lookup is
+disabled), the child inherits only a minimal environment allowlist (plus an
+explicit `environment` overlay and `inheritedEnvironmentKeys`), and
+`workingDirectory` must be an absolute file URL (existence as a directory
+is enforced when `initialize()` launches the child), and must stay inside
+`allowedWorkingDirectoryRoot` when that sandbox root is set.
 `callTool` unwraps MCP content blocks; `callToolRaw` returns the envelope.
 Swarm does not implement prompts or sampling — those capability flags stay
 `false` on connections. `MCPClient` aggregates multiple connections and
@@ -1335,3 +1404,56 @@ restart after `stop()`.
 - Agent is a struct (value type). Execution state lives in `run()`.
 - `Workflow` is the last-answer chain. `Job` is the shared-notes job with per-helper briefs.
 - No legacy types: `AgentBuilder`, `AnyAgent`, `AnyTool`, `ClosureInputGuardrail`, `ClosureOutputGuardrail`, `AgentBlueprint`, `AgentLoop`.
+
+## 16) Deprecation sunset schedule
+
+Deprecated API keeps working until its removal boundary; nothing below is
+silently broken. Migrate at your pace, starting with the 0.7.0 group.
+
+| Deprecated API | Use instead | Removal |
+|---|---|---|
+| `Agent.Builder` compatibility shim | `Agent` initializers or `withTools(_:)` | 0.7.0 |
+| `SwarmMembrane` product | `import Swarm` | 0.7.0 |
+| `AgentContextProviding` protocol | `ContextKey<Value>` with `setTyped(_:value:)` / `getTyped(_:)` | 0.7.0 |
+| `AgentContext` `AgentContextProviding` overloads (`setTyped(_:)`, `typed(_:)`, `removeTyped(_:)`, `hasTyped(_:)`) | `ContextKey<Value>` overloads | 0.7.0 |
+| `RunHooks.onLLMStart` `[MemoryMessage]` overload | `[InferenceMessage]` overload | 0.7 |
+| No-backend `persistent()` factory overload | Explicit backend (`SwiftDataBackend.persistent()` on Apple, or `InMemoryBackend()`) | 0.7.0 |
+| `AgentContextKey` get/set | Typed `ContextKey` accessors such as `get(.originalInput)` | Later minor |
+| `HandoffReceiver` | Override `handleHandoff` on any `AgentRuntime` | Later minor |
+| `nestHandoffHistory:` boolean initializers | `history: HandoffHistory` | Later minor |
+| `ToolResult.init(callId:isSuccess:output:duration:errorMessage:)` | `ToolResult.success` / `.failure` | Documented breaking boundary (§12) |
+| `ToolCallRecord` compatibility initializer | `ToolCallRecord.success` / `.failure` | Documented breaking boundary (§12) |
+| `AgentError.toolExecutionFailed` | `toolFailure(toolName:message:cause:)` | Later minor |
+| `GuardrailResult` compatibility initializer | `passed` / `tripwire` | Later minor |
+| `AgentResponse` compatibility initializer | `ToolCallRecord.success` / `.failure` | Later minor |
+| `InferenceMessage` memberwise `init(role:content:name:toolCallID:toolCalls:)` | `init(body:)` or the role factories | Later minor |
+| `PromptTokenCountingInferenceProvider` | `promptTokenCounter` on `InferenceProvider` | Later minor |
+| `StructuredOutputInferenceProvider` | `InferenceProviderCapabilities.structuredOutputs` + `generateStructured` | Later minor |
+| `ToolCallStreamingInferenceProvider` | `streamingToolCalls` + `streamWithToolCalls` | Later minor |
+| `ConversationInferenceProvider` and its `Streaming` / `ToolCallStreaming` / `StructuredOutput` refinements | `InferenceProvider` | Later minor |
+| `CapabilityReportingInferenceProvider` | Capabilities declared on `InferenceProvider` | Later minor |
+| `InferenceProviderCapabilities.inferred(from:)` | `resolved(for:)` | Later minor |
+| `FoundationModelsExecutionMode` / `foundationModelsExecution` (ignored flag) | Provider-owned tool-loop adapters | Later minor |
+| `MemorySessionLifecycle` | `beginMemorySession()` / `endMemorySession()` on `Memory` | Later minor |
+| `MemorySessionReplayAware` | `importSessionHistory(_:)` on `Memory` | Later minor |
+| `MemoryRetrievalPolicyAware` | `context(for: MemoryQuery)` on `Memory` | Later minor |
+| `MemorySessionImportPolicy` | `allowsAutomaticSessionSeeding` on `Memory` | Later minor |
+| `MemoryPromptDescriptor` (and the `memoryPromptTitle` / `memoryPromptGuidance` / `memoryPriority` members) | `memoryPromptMetadata` on `Memory` | Later minor |
+| `WaxIntegration` | `IntegrationsTrait.isEnabled`, `WaxMemory`, or `WaxEmbeddingProviderAdapter` | Later minor |
+| `MCPServer` | `MCPServerConnection` | Later minor |
+| `Retry` | `RetryPolicy` | Later minor |
+| `Fallback` | `FallbackChain` | Later minor |
+| `Workflow` `checkpoint(id:)` / `checkpointing(_:)` builders | `configured(id:store:policy:)` | Later minor |
+| `Workflow` legacy `fallback(...)` builder | `Workflow.fallback(primary:to:retries:)` | Later minor |
+| `Workflow.run(_:resumeFrom:)` | `execute(_:resumeFrom:)` | Later minor |
+| Legacy `Workflow.execute(_:resumeFrom:)` | `DurableWorkflow.execute(_:)` or `resume(_:from:)` | Later minor |
+| `Workflow.first` | `firstCompleted` | Later minor |
+
+## 16b) Public-log redaction
+
+Public trace logs (`ConsoleTracer`, `SwiftLogTracer`) redact trace-event
+metadata whose key names credentials: API keys, bearer tokens, authorization
+headers, session identifiers, and cookies, plus the existing
+content-bearing keys. Unrelated counters such as `total_tokens` stay visible.
+`WebSearchTool.Configuration` descriptions likewise report only whether a key
+is configured, never the key value.

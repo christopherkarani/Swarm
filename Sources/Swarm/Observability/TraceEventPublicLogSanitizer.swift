@@ -21,7 +21,54 @@ enum TraceEventPublicLogSanitizer {
         "prompt",
         "reasoning",
         "result",
-        "thought"
+        "thought",
+    ]
+    private static let sensitiveSecretTokens = [
+        "secret",
+        "password",
+        "passwd",
+        "credential",
+        "authorization",
+        "bearer",
+        "cookie",
+        "api_key",
+        "apikey",
+        "api-key",
+        "private_key",
+        "privatekey",
+        "private-key",
+        "session_id",
+        "sessionid",
+        "session-id",
+        "access_token",
+        "accesstoken",
+        "refresh_token",
+        "refreshtoken",
+        "id_token",
+        "auth_token",
+        "auth-token",
+        "authtoken",
+        "client_secret",
+        "clientsecret",
+    ]
+    private static let sensitiveSecretKeys: Set<String> = [
+        "token",
+        "secret",
+        "password",
+        "passwd",
+        "credential",
+        "credentials",
+        "authorization",
+        "cookie",
+        "bearer",
+        "apikey",
+        "api_key",
+        "api-key",
+        "sessionid",
+        "session_id",
+        "mcp-session-id",
+        "privatekey",
+        "private_key",
     ]
 
     static func message(for event: TraceEvent) -> String {
@@ -76,6 +123,12 @@ enum TraceEventPublicLogSanitizer {
 
     private static func isSensitiveMetadataKey(_ key: String) -> Bool {
         let lowercased = key.lowercased()
+        if sensitiveSecretKeys.contains(lowercased) {
+            return true
+        }
+        if sensitiveSecretTokens.contains(where: { lowercased.contains($0) }) {
+            return true
+        }
         return sensitiveMetadataTokens.contains { lowercased.contains($0) }
     }
 }

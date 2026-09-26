@@ -137,11 +137,15 @@ public actor DefaultAgentMemory: Memory {
         let primaryBudget = max(1, Int(Double(query.tokenLimit) * 0.7))
         let secondaryBudget = query.tokenLimit
 
-        async let primaryContextTask = contextMemory.context(
+        let primaryAllowance = query.maxItems == 1 ? 1 : max(1, query.maxItems - 1)
+        async let primaryItemsTask = contextMemory.promptItems(
             for: query.text,
-            tokenLimit: primaryBudget
+            tokenLimit: primaryBudget,
+            maxItems: primaryAllowance,
+            maxItemTokens: query.maxItemTokens,
+            estimate: Self.estimatePromptTokens
         )
-        let secondaryContextStr = await waxContext(
+        let secondaryItems = await waxPromptItems(
             for: MemoryQuery(
                 text: query.text,
                 tokenLimit: secondaryBudget,
@@ -149,27 +153,30 @@ public actor DefaultAgentMemory: Memory {
                 maxItemTokens: query.maxItemTokens
             )
         )
-        let primaryContextStr = await primaryContextTask
+        let primaryItems = await primaryItemsTask
 
-        let primaryAllowance = query.maxItems == 1 ? 1 : max(1, query.maxItems - 1)
-        let primary = await limitContextItems(
-            primaryContextStr,
+        let primary = await MemoryPromptAssembly.limit(
+            primaryItems,
             maxItems: primaryAllowance,
             maxItemTokens: query.maxItemTokens,
-            tokenLimit: primaryBudget
+            tokenLimit: primaryBudget,
+            estimate: Self.estimatePromptTokens
         )
 
         let secondaryAllowance = max(0, query.maxItems - primary.count)
-        let secondary = await limitContextItems(
-            secondaryContextStr,
+        let secondary = await MemoryPromptAssembly.limit(
+            secondaryItems,
             maxItems: secondaryAllowance,
             maxItemTokens: query.maxItemTokens,
-            tokenLimit: secondaryBudget
+            tokenLimit: secondaryBudget,
+            estimate: Self.estimatePromptTokens
         )
 
         return await formatContext(
-            primary: primary.text.trimmingCharacters(in: .whitespacesAndNewlines),
-            secondary: secondary.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            primary: primary.map(\.text).joined(separator: "\n\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            secondary: secondary.map(\.text).joined(separator: "\n\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines),
             tokenLimit: query.tokenLimit
         )
     }
@@ -301,18 +308,22 @@ public actor DefaultAgentMemory: Memory {
         }
     }
 
-    private func waxContext(for query: MemoryQuery) async -> String {
+    private func waxPromptItems(for query: MemoryQuery) async -> [MemoryPromptItem] {
         guard query.tokenLimit > 0 else {
-            return ""
+            return []
         }
 
         do {
             let wax = try await ensureWaxMemory()
-            return await wax.context(for: query)
+            return await wax.promptItems(for: query.text)
         } catch {
             Log.memory.warning("DefaultAgentMemory: Failed to retrieve Wax context: \(error.localizedDescription)")
-            return ""
+            return []
         }
+    }
+
+    private static func estimatePromptTokens(_ text: String) async -> Int {
+        await PromptTokenBudgeting.countTokens(in: text)
     }
 
     private func formatContext(primary: String, secondary: String, tokenLimit: Int) async -> String {
@@ -390,90 +401,6 @@ public actor DefaultAgentMemory: Memory {
         }
 
         return rendered.joined(separator: "\n")
-    }
-
-    private func limitContextItems(
-        _ context: String,
-        maxItems: Int,
-        maxItemTokens: Int,
-        tokenLimit: Int
-    ) async -> (text: String, count: Int) {
-        guard maxItems > 0, tokenLimit > 0 else {
-            return ("", 0)
-        }
-
-        var rendered: [String] = []
-        rendered.reserveCapacity(maxItems)
-
-        for item in contextItems(from: context) {
-            guard rendered.count < maxItems else {
-                break
-            }
-
-            let itemLimit = min(maxItemTokens, tokenLimit)
-            let trimmedItem = await trimToTokenLimit(item, tokenLimit: itemLimit)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmedItem.isEmpty else {
-                continue
-            }
-
-            let candidate = (rendered + [trimmedItem]).joined(separator: "\n\n")
-            if await tokenCount(for: candidate) <= tokenLimit {
-                rendered.append(trimmedItem)
-            } else {
-                if rendered.isEmpty {
-                    let fallback = await trimToTokenLimit(trimmedItem, tokenLimit: tokenLimit)
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !fallback.isEmpty {
-                        rendered.append(fallback)
-                    }
-                }
-                break
-            }
-        }
-
-        return (rendered.joined(separator: "\n\n"), rendered.count)
-    }
-
-    private func contextItems(from context: String) -> [String] {
-        var items: [String] = []
-        var current: [String] = []
-
-        for line in context.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                if !current.isEmpty {
-                    current.append(line)
-                }
-                continue
-            }
-
-            if isContextItemHeader(trimmed), !current.isEmpty {
-                items.append(current.joined(separator: "\n"))
-                current = [line]
-            } else {
-                current.append(line)
-            }
-        }
-
-        if !current.isEmpty {
-            items.append(current.joined(separator: "\n"))
-        }
-
-        return items
-    }
-
-    private func isContextItemHeader(_ line: String) -> Bool {
-        if line.hasPrefix("[user]:")
-            || line.hasPrefix("[assistant]:")
-            || line.hasPrefix("[system]:")
-            || line.hasPrefix("[tool]:") {
-            return true
-        }
-
-        return line.hasPrefix("[expanded frame:")
-            || line.hasPrefix("[surrogate frame:")
-            || line.hasPrefix("[snippet frame:")
     }
 
     private func trimToTokenLimit(_ text: String, tokenLimit: Int) async -> String {

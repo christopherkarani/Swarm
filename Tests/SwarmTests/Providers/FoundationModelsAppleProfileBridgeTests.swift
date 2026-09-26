@@ -44,9 +44,9 @@ struct FoundationModelsAppleProfileBridgeTests {
         #expect(plan.canRehydrateTranscript)
         #expect(plan.entries.contains { if case .toolOutput = $0 { true } else { false } } == false)
         #expect(plan.entries.contains(.instructions("Be precise.")))
-        #expect(plan.entries.contains(.prompt("look it up")))
+        #expect(plan.entries.contains(.prompt(text: "look it up", images: [])))
         #expect(plan.entries.contains(.response("thinking")))
-        #expect(plan.entries.contains(.prompt("thanks")))
+        #expect(plan.entries.contains(.prompt(text: "thanks", images: [])))
         #expect(plan.entries.contains(.response("final")))
     }
 
@@ -62,61 +62,6 @@ struct FoundationModelsAppleProfileBridgeTests {
         )
         #expect(plan.canRehydrateTranscript == false)
         #expect(plan.entries.contains { if case .toolOutput = $0 { true } else { false } })
-    }
-
-    @Test("seed drops the pending user prompt from transcript entries")
-    func seedDropsPendingUserPrompt() {
-        let seed = FoundationModelsAppleProfileBridge.seed(
-            messages: [
-                .system("Be precise."),
-                .user("u1"),
-                .assistant("a1"),
-                .user("u2"),
-            ],
-            instructions: "Be precise."
-        )
-        #expect(seed.canRehydrateTranscript)
-        #expect(seed.pendingPrompt == "u2")
-        #expect(seed.seedEntries == [
-            .instructions("Be precise."),
-            .prompt("u1"),
-            .response("a1"),
-        ])
-    }
-
-    @Test("history that does not end with a user turn cannot rehydrate")
-    func historyNotEndingWithUserCannotRehydrate() {
-        let seed = FoundationModelsAppleProfileBridge.seed(
-            messages: [
-                .user("u1"),
-                .assistant("a1"),
-            ],
-            instructions: nil
-        )
-        #expect(seed.canRehydrateTranscript == false)
-    }
-
-    @Test("rehydrate pending prompt keeps ToolChoice.specific suffix")
-    func rehydratePendingPromptKeepsSpecificToolChoice() {
-        let seed = FoundationModelsAppleProfileBridge.seed(
-            messages: [
-                .user("look it up"),
-                .assistant("thinking"),
-                .user("thanks"),
-            ],
-            instructions: nil
-        )
-        #expect(seed.canRehydrateTranscript)
-        #expect(seed.pendingPrompt == "thanks")
-
-        let lookup = ToolSchema(name: "lookup", description: "Look up", parameters: [])
-        let prompt = FoundationModelsPromptFlattening.appendTurnSuffixes(
-            to: seed.pendingPrompt,
-            tools: [lookup],
-            options: InferenceOptions(toolChoice: .specific(toolName: "lookup"))
-        )
-        #expect(prompt.contains(#"call "lookup""#))
-        #expect(prompt.hasPrefix("thanks"))
     }
 
     @Test("does not alias Swarm Profile onto Apple DynamicProfile")

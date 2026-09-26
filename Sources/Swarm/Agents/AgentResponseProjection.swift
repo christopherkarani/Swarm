@@ -25,7 +25,7 @@ enum AgentResponseProjection: Sendable {
             }
 
             return ToolCallRecord(
-                callId: toolCall.id,
+                callId: toolResult.callId,
                 toolName: toolCall.toolName,
                 arguments: toolCall.arguments,
                 duration: toolResult.duration,

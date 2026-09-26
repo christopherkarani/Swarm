@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 231 (238 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2347
+- Source files scanned: 252 (259 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2409
 
 ## 1. Swarm (entry point)
 
@@ -59,6 +59,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 108 | func | public | AgentConfiguration.includeToolCallDetails(_:) | `public @discardableResult func includeToolCallDetails(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.inferencePolicy(_:) | `public @discardableResult func inferencePolicy(_ value: InferencePolicy?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.maxIterations(_:) | `public @discardableResult func maxIterations(_ value: Int) -> AgentConfiguration` |
+| 884 | func | public | AgentConfiguration.maxConsecutiveToolRepeats(_:) | `public @discardableResult func maxConsecutiveToolRepeats(_ value: Int) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.maxTokens(_:) | `public @discardableResult func maxTokens(_ value: Int?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.modelSettings(_:) | `public @discardableResult func modelSettings(_ value: ModelSettings?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.name(_:) | `public @discardableResult func name(_ value: String) -> AgentConfiguration` |
@@ -73,6 +74,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 113 | var | public | AgentConfiguration.default | `public static let `default`: AgentConfiguration` |
 | 119 | var | public | AgentConfiguration.name | `public var name: String` |
 | 125 | var | public | AgentConfiguration.maxIterations | `public var maxIterations: Int` |
+| 287 | var | public | AgentConfiguration.maxConsecutiveToolRepeats | `public var maxConsecutiveToolRepeats: Int` |
 | 129 | var | public | AgentConfiguration.timeout | `public var timeout: Duration` |
 | 135 | var | public | AgentConfiguration.temperature | `public var temperature: Double` |
 | 139 | var | public | AgentConfiguration.maxTokens | `public var maxTokens: Int?` |
@@ -96,7 +98,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 139 | case | public | FoundationModelsExecutionMode.nativeSession | `public case nativeSession` |
 | 604 | var | public | AgentConfiguration.foundationModelsExecution | `public var foundationModelsExecution: FoundationModelsExecutionMode` |
 | 608 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
-| 630 | func | public | AgentConfiguration.init(name:maxIterations:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
+| 630 | func | public | AgentConfiguration.init(name:maxIterations:maxConsecutiveToolRepeats:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, maxConsecutiveToolRepeats: Int = 3, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
 | 108 | func | public | AgentConfiguration.resilience(_:) | `public @discardableResult func resilience(_ value: ResilienceConfiguration) -> AgentConfiguration` |
 | 345 | var | public | AgentConfiguration.description | `public var description: String { get }` |
 
@@ -143,6 +145,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 366 | case | public | AgentError.duplicateHandoffToolName(name:) | `public case duplicateHandoffToolName(name: String)` |
 | 380 | case | public | AgentError.handoffToolNameCollidesWithTool(name:) | `public case handoffToolNameCollidesWithTool(name: String)` |
 | 565 | case | public | AgentError.structuredOutputDecodingFailed(reason:underlying:) | `public case structuredOutputDecodingFailed(reason: String, underlying: (any Error)?)` |
+| 212 | case | public | AgentError.toolCallLoopDetected(toolNames:repetitions:) | `public case toolCallLoopDetected(toolNames: [String], repetitions: Int)` |
+| 464 | case | public | AgentError.authenticationFailed(reason:) | `public case authenticationFailed(reason: String)` |
 | 672 | func | public | AgentError.==(_:_:) | `public static func == (lhs: AgentError, rhs: AgentError) -> Bool` |
 | 90 | var | public | AgentError.errorDescription | `public var errorDescription: String? { get }` |
 | 139 | var | public | AgentError.recoverySuggestion | `public var recoverySuggestion: String? { get }` |
@@ -392,7 +396,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 456 | var | public | InferenceResponse.ParsedToolCall.id | `public let id: String?` |
 | 459 | var | public | InferenceResponse.ParsedToolCall.name | `public let name: String` |
 | 462 | var | public | InferenceResponse.ParsedToolCall.arguments | `public let arguments: [String : SendableValue]` |
-| 469 | func | public | InferenceResponse.ParsedToolCall.init(id:name:arguments:) | `public init(id: String? = nil, name: String, arguments: [String : SendableValue])` |
+| 725 | var | public | InferenceResponse.ParsedToolCall.thoughtSignature | `public let thoughtSignature: String?` |
+| 733 | func | public | InferenceResponse.ParsedToolCall.init(id:name:arguments:thoughtSignature:) | `public init(id: String? = nil, name: String, arguments: [String : SendableValue], thoughtSignature: String? = nil)` |
 | 477 | var | public | InferenceResponse.content | `public let content: String?` |
 | 480 | var | public | InferenceResponse.toolCalls | `public let toolCalls: [InferenceResponse.ParsedToolCall]` |
 | 483 | var | public | InferenceResponse.finishReason | `public let finishReason: InferenceResponse.FinishReason` |
@@ -452,7 +457,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 40 | var | public | ContextProfile.Strict4kTemplate.summaryCadenceTurns | `public var summaryCadenceTurns: Int` |
 | 41 | var | public | ContextProfile.Strict4kTemplate.summaryTriggerUtilization | `public var summaryTriggerUtilization: Double` |
 | 43 | var | public | ContextProfile.Strict4kTemplate.maxInputTokens | `public var maxInputTokens: Int { get }` |
-| 47 | func | public | ContextProfile.Strict4kTemplate.init(maxTotalContextTokens:systemTokens:historyTokens:memoryTokens:toolIOTokens:outputReserveTokens:protocolOverheadReserveTokens:safetyMarginTokens:maxToolOutputTokens:maxRetrievedItems:maxRetrievedItemTokens:summaryCadenceTurns:summaryTriggerUtilization:) | `public init(maxTotalContextTokens: Int = 4096, systemTokens: Int = 512, historyTokens: Int = 1400, memoryTokens: Int = 900, toolIOTokens: Int = 600, outputReserveTokens: Int = 500, protocolOverheadReserveTokens: Int = 120, safetyMarginTokens: Int = 64, maxToolOutputTokens: Int = 600, maxRetrievedItems: Int = 3, maxRetrievedItemTokens: Int = 300, summaryCadenceTurns: Int = 2, summaryTriggerUtilization: Double = 0.65)` |
+| 47 | func | public | ContextProfile.Strict4kTemplate.init(maxTotalContextTokens:systemTokens:historyTokens:memoryTokens:toolIOTokens:outputReserveTokens:protocolOverheadReserveTokens:safetyMarginTokens:maxToolOutputTokens:maxRetrievedItems:maxRetrievedItemTokens:summaryCadenceTurns:summaryTriggerUtilization:) | `public init(maxTotalContextTokens: Int = 4096, systemTokens: Int = 512, historyTokens: Int = 1400, memoryTokens: Int = 900, toolIOTokens: Int = 600, outputReserveTokens: Int = 500, protocolOverheadReserveTokens: Int = 120, safetyMarginTokens: Int = 64, maxToolOutputTokens: Int = 600, maxRetrievedItems: Int = 3, maxRetrievedItemTokens: Int = 300, summaryCadenceTurns: Int = 2, summaryTriggerUtilization: Double = 0.65) throws` |
 | 99 | struct | public | ContextProfile.PlatformDefaults | `public struct PlatformDefaults` |
 | 101 | var | public | ContextProfile.PlatformDefaults.iOS | `public static let iOS: ContextProfile.PlatformDefaults` |
 | 103 | var | public | ContextProfile.PlatformDefaults.macOS | `public static let macOS: ContextProfile.PlatformDefaults` |
@@ -1125,6 +1130,20 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 ## 3. Agents
 
+### Core/ToolCallLoopDetector.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 9 | struct | public | ToolCallLoop | `public struct ToolCallLoop` |
+| 11 | var | public | ToolCallLoop.toolNames | `public let toolNames: [String]` |
+| 14 | var | public | ToolCallLoop.repetitions | `public let repetitions: Int` |
+| 17 | func | public | ToolCallLoop.init(toolNames:repetitions:) | `public init(toolNames: [String], repetitions: Int)` |
+| 47 | struct | public | ToolCallLoopDetector | `public struct ToolCallLoopDetector` |
+| 52 | var | public | ToolCallLoopDetector.maxConsecutiveRepeats | `public var maxConsecutiveRepeats: Int` |
+| 57 | func | public | ToolCallLoopDetector.init(maxConsecutiveRepeats:) | `public init(maxConsecutiveRepeats: Int = 3)` |
+| 67 | func | public | ToolCallLoopDetector.observe(_:) | `public mutating func observe(_ calls: [InferenceResponse.ParsedToolCall]) -> ToolCallLoop?` |
+| 86 | func | public | ToolCallLoopDetector.reset() | `public mutating func reset()` |
+
 ### Agents/Agent.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -1450,6 +1469,11 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 22 | struct | public | WebSearchTool | `public struct WebSearchTool` |
 | 57 | func | public | WebSearchTool.init(apiKey:) | `public init(apiKey: String)` |
 | 68 | func | public | WebSearchTool.execute() | `public func execute() async throws -> String` |
+| — | var | public | WebSearchTool.Configuration.apiKeyReference | `public var apiKeyReference: SecretReference?` |
+| — | func | public | WebSearchTool.Configuration.resolveAPIKey(using:) | `public func resolveAPIKey(using store: (any SecretStore)?) async throws -> String?` |
+| — | func | public | WebSearchTool.init(configuration:secretStore:) | `public init(configuration: WebSearchTool.Configuration, secretStore: any SecretStore)` |
+| 408 | var | public | WebSearchTool.Configuration.description | `public var description: String { get }` |
+| 413 | var | public | WebSearchTool.Configuration.debugDescription | `public var debugDescription: String { get }` |
 
 ### Tools/ZoniSearchTool.swift
 
@@ -1590,6 +1614,22 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | enum | public | EmbeddingModelCatalog | Publishing-target URL + `expectedSHA256` |
 | — | var | public | ContextCoreMemoryConfiguration.downloadsEmbeddingModelAutomatically | Default `false`; failed auto-download does not block session start |
 | — | var | public | ContextCoreMemoryConfiguration.embeddingModelDelivery | Delivery config used when auto-download is on |
+
+### Memory/FileSession.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 34 | class | public | FileSession | `public actor FileSession` |
+| 38 | var | public | FileSession.sessionId | `public nonisolated let sessionId: String` |
+| 41 | var | public | FileSession.directory | `public nonisolated let directory: URL` |
+| 48 | var | public | FileSession.itemCount | `public var itemCount: Int { get }` |
+| 61 | var | public | FileSession.isEmpty | `public var isEmpty: Bool { get }` |
+| 77 | func | public | FileSession.init(sessionId:directory:) | `public init(sessionId: String = UUID().uuidString, directory: URL)` |
+| 83 | func | public | FileSession.getItemCount() | `public func getItemCount() async throws -> Int` |
+| 91 | func | public | FileSession.getItems(limit:) | `public func getItems(limit: Int?) async throws -> [MemoryMessage]` |
+| 104 | func | public | FileSession.addItems(_:) | `public func addItems(_ newItems: [MemoryMessage]) async throws` |
+| 111 | func | public | FileSession.popItem() | `public func popItem() async throws -> MemoryMessage?` |
+| 122 | func | public | FileSession.clearSession() | `public func clearSession() async throws` |
 
 ### Memory/HybridMemory.swift
 
@@ -1802,6 +1842,24 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 191 | func | public | Session.addItem(_:) | `public func addItem(_ item: MemoryMessage) async throws` |
 | 201 | func | public | Session.getAllItems() | `public func getAllItems() async throws -> [MemoryMessage]` |
 | 208 | func | public | Session.getItemCount() | `public func getItemCount() async throws -> Int` |
+
+### Memory/SessionSnapshot.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 22 | struct | public | SessionSnapshot | `public struct SessionSnapshot` |
+| 24 | var | public | SessionSnapshot.currentSchemaVersion | `public static let currentSchemaVersion: Int` |
+| 27 | var | public | SessionSnapshot.schemaVersion | `public let schemaVersion: Int` |
+| 30 | var | public | SessionSnapshot.sessionId | `public let sessionId: String` |
+| 33 | var | public | SessionSnapshot.exportedAt | `public let exportedAt: Date` |
+| 36 | var | public | SessionSnapshot.items | `public let items: [MemoryMessage]` |
+| 45 | func | public | SessionSnapshot.init(sessionId:items:exportedAt:schemaVersion:) | `public init(sessionId: String, items: [MemoryMessage], exportedAt: Date = Date(), schemaVersion: Int = SessionSnapshot.currentSchemaVersion)` |
+| 58 | func | public | SessionSnapshot.encoded() | `public func encoded() throws -> Data` |
+| 70 | func | public | SessionSnapshot.init(encoded:) | `public init(encoded data: Data) throws` |
+| 87 | func | public | Session.snapshot() | `public func snapshot() async throws -> SessionSnapshot` |
+| 92 | func | public | Session.snapshotData() | `public func snapshotData() async throws -> Data` |
+| 101 | func | public | Session.restore(from:) | `public func restore(from snapshot: SessionSnapshot) async throws` |
+| 116 | func | public | Session.restore(from:) | `public func restore(from data: Data) async throws` |
 
 ### Memory/SlidingWindowMemory.swift
 
@@ -2376,6 +2434,22 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 506 | var | public | TraceEvent.description | `public var description: String { get }` |
 | 533 | var | public | EventLevel.description | `public var description: String { get }` |
 
+### Observability/TraceRedactor.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 25 | struct | public | TraceRedactor | `public struct TraceRedactor` |
+| 27 | struct | public | TraceRedactor.Rule | `public struct Rule` |
+| 29 | var | public | TraceRedactor.Rule.name | `public let name: String` |
+| 32 | var | public | TraceRedactor.Rule.pattern | `public let pattern: String` |
+| 35 | var | public | TraceRedactor.Rule.replacement | `public let replacement: String` |
+| 38 | func | public | TraceRedactor.Rule.init(name:pattern:replacement:) | `public init(name: String, pattern: String, replacement: String)` |
+| 50 | var | public | TraceRedactor.Rule.defaults | `public static var defaults: [Rule] { get }` |
+| 87 | var | public | TraceRedactor.none | `public static let none: TraceRedactor` |
+| 90 | var | public | TraceRedactor.rules | `public let rules: [Rule]` |
+| 95 | func | public | TraceRedactor.init(rules:) | `public init(rules: [Rule] = Rule.defaults)` |
+| 100 | func | public | TraceRedactor.redact(_:) | `public func redact(_ text: String) -> String` |
+
 ### Observability/TraceSpan.swift
 
 | Line | Kind | Access | Name | Signature |
@@ -2545,29 +2619,30 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 13 | case | public | ResilienceError.retriesExhausted(attempts:lastError:) | `public case retriesExhausted(attempts: Int, lastError: String)` |
 | 16 | case | public | ResilienceError.circuitBreakerOpen(serviceName:) | `public case circuitBreakerOpen(serviceName: String)` |
 | 19 | case | public | ResilienceError.allFallbacksFailed(errors:) | `public case allFallbacksFailed(errors: [String])` |
-| 25 | var | public | ResilienceError.errorDescription | `public var errorDescription: String? { get }` |
-| 40 | var | public | ResilienceError.debugDescription | `public var debugDescription: String { get }` |
-| 55 | enum | public | BackoffStrategy | `public enum BackoffStrategy` |
-| 61 | func | public | BackoffStrategy.delay(forAttempt:) | `public func delay(forAttempt attempt: Int) -> TimeInterval` |
-| 97 | case | public | BackoffStrategy.fixed(delay:) | `public case fixed(delay: TimeInterval)` |
-| 100 | case | public | BackoffStrategy.linear(initial:increment:maxDelay:) | `public case linear(initial: TimeInterval, increment: TimeInterval, maxDelay: TimeInterval)` |
-| 103 | case | public | BackoffStrategy.exponential(base:multiplier:maxDelay:) | `public case exponential(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
-| 106 | case | public | BackoffStrategy.exponentialWithJitter(base:multiplier:maxDelay:) | `public case exponentialWithJitter(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
-| 109 | case | public | BackoffStrategy.decorrelatedJitter(base:maxDelay:) | `public case decorrelatedJitter(base: TimeInterval, maxDelay: TimeInterval)` |
-| 112 | case | public | BackoffStrategy.immediate | `public case immediate` |
-| 120 | case | public | BackoffStrategy.custom(_:) | `public case custom((Int) -> TimeInterval)` |
-| 126 | func | public | BackoffStrategy.==(_:_:) | `public static func == (lhs: BackoffStrategy, rhs: BackoffStrategy) -> Bool` |
-| 152 | struct | public | RetryPolicy | `public struct RetryPolicy` |
-| 160 | var | public | RetryPolicy.noRetry | `public static let noRetry: RetryPolicy` |
-| 163 | var | public | RetryPolicy.standard | `public static let standard: RetryPolicy` |
-| 169 | var | public | RetryPolicy.aggressive | `public static let aggressive: RetryPolicy` |
-| 175 | var | public | RetryPolicy.maxAttempts | `public let maxAttempts: Int` |
-| 178 | var | public | RetryPolicy.backoff | `public let backoff: BackoffStrategy` |
-| 181 | var | public | RetryPolicy.shouldRetry | `public let shouldRetry: (any Error) -> Bool` |
-| 184 | var | public | RetryPolicy.onRetry | `public let onRetry: ((Int, any Error) async -> Void)?` |
-| 194 | func | public | RetryPolicy.init(maxAttempts:backoff:shouldRetry:onRetry:) | `public init(maxAttempts: Int = 3, backoff: BackoffStrategy = .exponential(base: 1.0, multiplier: 2.0, maxDelay: 60.0), shouldRetry: @escaping (any Error) -> Bool = { _ in true }, onRetry: ((Int, any Error) async -> Void)? = nil)` |
-| 213 | func | public | RetryPolicy.execute(_:) | `public func execute<T>(_ operation: () async throws -> T) async throws -> T where T : Sendable` |
-| 271 | func | public | RetryPolicy.==(_:_:) | `public static func == (lhs: RetryPolicy, rhs: RetryPolicy) -> Bool` |
+| 26 | case | public | ResilienceError.invalidMaxAttempts(_:) | `public case invalidMaxAttempts(Int)` |
+| 32 | var | public | ResilienceError.errorDescription | `public var errorDescription: String? { get }` |
+| 49 | var | public | ResilienceError.debugDescription | `public var debugDescription: String { get }` |
+| 66 | enum | public | BackoffStrategy | `public enum BackoffStrategy` |
+| 72 | func | public | BackoffStrategy.delay(forAttempt:) | `public func delay(forAttempt attempt: Int) -> TimeInterval` |
+| 123 | case | public | BackoffStrategy.fixed(delay:) | `public case fixed(delay: TimeInterval)` |
+| 126 | case | public | BackoffStrategy.linear(initial:increment:maxDelay:) | `public case linear(initial: TimeInterval, increment: TimeInterval, maxDelay: TimeInterval)` |
+| 129 | case | public | BackoffStrategy.exponential(base:multiplier:maxDelay:) | `public case exponential(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
+| 132 | case | public | BackoffStrategy.exponentialWithJitter(base:multiplier:maxDelay:) | `public case exponentialWithJitter(base: TimeInterval, multiplier: Double, maxDelay: TimeInterval)` |
+| 135 | case | public | BackoffStrategy.decorrelatedJitter(base:maxDelay:) | `public case decorrelatedJitter(base: TimeInterval, maxDelay: TimeInterval)` |
+| 138 | case | public | BackoffStrategy.immediate | `public case immediate` |
+| 146 | case | public | BackoffStrategy.custom(_:) | `public case custom((Int) -> TimeInterval)` |
+| 152 | func | public | BackoffStrategy.==(_:_:) | `public static func == (lhs: BackoffStrategy, rhs: BackoffStrategy) -> Bool` |
+| 187 | struct | public | RetryPolicy | `public struct RetryPolicy` |
+| 195 | var | public | RetryPolicy.noRetry | `public static let noRetry: RetryPolicy` |
+| 198 | var | public | RetryPolicy.standard | `public static let standard: RetryPolicy` |
+| 204 | var | public | RetryPolicy.aggressive | `public static let aggressive: RetryPolicy` |
+| 214 | var | public | RetryPolicy.maxAttempts | `public let maxAttempts: Int` |
+| 217 | var | public | RetryPolicy.backoff | `public let backoff: BackoffStrategy` |
+| 220 | var | public | RetryPolicy.shouldRetry | `public let shouldRetry: (any Error) -> Bool` |
+| 223 | var | public | RetryPolicy.onRetry | `public let onRetry: ((Int, any Error) async -> Void)?` |
+| 246 | func | public | RetryPolicy.init(maxAttempts:backoff:shouldRetry:onRetry:) | `public init(maxAttempts: Int = 3, backoff: BackoffStrategy = .exponential(base: 1.0, multiplier: 2.0, maxDelay: 60.0), shouldRetry: @escaping (any Error) -> Bool = { _ in true }, onRetry: ((Int, any Error) async -> Void)? = nil)` |
+| 301 | func | public | RetryPolicy.execute(_:) | `public func execute<T>(_ operation: () async throws -> T) async throws -> T where T : Sendable` |
+| 381 | func | public | RetryPolicy.==(_:_:) | `public static func == (lhs: RetryPolicy, rhs: RetryPolicy) -> Bool` |
 
 ## 9. Workflow
 
@@ -2631,6 +2706,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 27 | struct | public | WorkflowCheckpointing | `public struct WorkflowCheckpointing` |
 | 49 | func | public | WorkflowCheckpointing.inMemory() | `public static func inMemory() -> WorkflowCheckpointing` |
 | 70 | func | public | WorkflowCheckpointing.fileSystem(directory:retention:) | `public static func fileSystem(directory: URL, retention: WorkflowCheckpointRetention = .default) -> WorkflowCheckpointing` |
+| — | func | public | WorkflowCheckpointing.hardenFilePermissions(in:) | `public static func hardenFilePermissions(in directory: URL) throws -> Int` |
 
 ## 9b. Job
 
@@ -2695,6 +2771,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 56 | var | public | HTTPMCPServer.name | `public let name: String` |
 | 62 | var | public | HTTPMCPServer.capabilities | `public var capabilities: MCPCapabilities { get }` |
 | 77 | func | public | HTTPMCPServer.init(url:name:apiKey:timeout:maxRetries:session:) | `public init(url: URL, name: String, apiKey: String? = nil, timeout: TimeInterval = 30.0, maxRetries: Int = 3, session: URLSession = .shared) throws` |
+| — | func | public | HTTPMCPServer.init(url:name:apiKeyReference:secretStore:timeout:maxRetries:session:) | `public init(url: URL, name: String, apiKeyReference: SecretReference, secretStore: any SecretStore, timeout: TimeInterval = 30.0, maxRetries: Int = 3, session: URLSession = .shared) throws` |
 | 70 | var | public | HTTPMCPServer.negotiatedProtocolVersion | `public var negotiatedProtocolVersion: String? { get }` |
 | 76 | var | public | HTTPMCPServer.sessionID | `public var sessionID: String? { get }` |
 | 113 | func | public | HTTPMCPServer.initialize() | `public func initialize() async throws -> MCPCapabilities` |
@@ -2710,7 +2787,9 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | — | class | public | StdioMCPServer | `public actor StdioMCPServer` |
-| — | func | public | StdioMCPServer.init(command:arguments:environment:workingDirectory:name:timeout:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, workingDirectory: URL? = nil, name: String, timeout: TimeInterval = 30.0)` |
+| — | var | public | StdioMCPServer.defaultEnvironmentAllowlist | `public static let defaultEnvironmentAllowlist: Set<String>` |
+| — | var | public | StdioMCPServer.defaultSandboxPATH | `public static let defaultSandboxPATH: String` |
+| — | func | public | StdioMCPServer.init(command:arguments:environment:inheritedEnvironmentKeys:workingDirectory:allowedWorkingDirectoryRoot:name:timeout:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, inheritedEnvironmentKeys: Set<String> = [], workingDirectory: URL? = nil, allowedWorkingDirectoryRoot: URL? = nil, name: String, timeout: TimeInterval = 30.0) throws` |
 | — | func | public | StdioMCPServer.callToolRaw(name:arguments:) | `public func callToolRaw(name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
 
 ### MCP/MCPCapabilities.swift
@@ -2870,7 +2949,8 @@ Provider-facing conversation message. The payload is a closed `Body`; `role`, `c
 | 99 | var | public | InferenceMessage.ToolCall.id | `public let id: String?` |
 | 100 | var | public | InferenceMessage.ToolCall.name | `public let name: String` |
 | 101 | var | public | InferenceMessage.ToolCall.arguments | `public let arguments: [String: SendableValue]` |
-| 103 | func | public | InferenceMessage.ToolCall.init(id:name:arguments:) | `public init(id: String? = nil, name: String, arguments: [String: SendableValue])` |
+| 103 | var | public | InferenceMessage.ToolCall.thoughtSignature | `public let thoughtSignature: String?` |
+| 105 | func | public | InferenceMessage.ToolCall.init(id:name:arguments:thoughtSignature:) | `public init(id: String? = nil, name: String, arguments: [String: SendableValue], thoughtSignature: String? = nil)` |
 | 111 | var | public | InferenceMessage.body | `public let body: InferenceMessage.Body` |
 | 114 | var | public | InferenceMessage.role | `public var role: InferenceMessage.Role { get }` |
 | 128 | var | public | InferenceMessage.content | `public var content: String { get }` |
@@ -2898,7 +2978,11 @@ OpenAI-compatible Chat Completions provider (`URLSession` only). Covers OpenAI, 
 | func | public | OpenAICompatibleProviderConfiguration.ollama(model:baseURL:) | `public static func ollama(model: String, baseURL: URL = URL(string: "http://127.0.0.1:11434/v1")!) -> OpenAICompatibleProviderConfiguration` |
 | func | public | OpenAICompatibleProviderConfiguration.lmStudio(model:baseURL:apiKey:) | `public static func lmStudio(model: String, baseURL: URL = URL(string: "http://127.0.0.1:1234/v1")!, apiKey: String? = nil) -> OpenAICompatibleProviderConfiguration` |
 | struct | public | OpenAICompatibleProvider | `public struct OpenAICompatibleProvider` |
+| var | public | OpenAICompatibleProviderConfiguration.apiKeyReference | `public var apiKeyReference: SecretReference?` |
+| func | public | OpenAICompatibleProviderConfiguration.resolveAPIKey(using:reference:) | `public func resolveAPIKey(using store: (any SecretStore)?, reference: SecretReference? = nil) async throws -> String?` |
+| func | public | OpenAICompatibleProvider.init(configuration:secretStore:session:) | `public init(configuration: OpenAICompatibleProviderConfiguration, secretStore: any SecretStore, session: URLSession = .shared)` |
 | func | public | InferenceProvider.openAICompatible(_:) | `public static func openAICompatible(_ configuration: OpenAICompatibleProviderConfiguration, session: URLSession = .shared) -> OpenAICompatibleProvider` |
+| func | public | InferenceProvider.openAICompatible(_:secretStore:session:) | `public static func openAICompatible(_ configuration: OpenAICompatibleProviderConfiguration, secretStore: any SecretStore, session: URLSession = .shared) -> OpenAICompatibleProvider` |
 
 ### Providers/FoundationModels/FoundationModelsInferenceProvider.swift
 
@@ -2915,14 +2999,20 @@ First-class Apple Foundation Models path (on-device `SystemLanguageModel`, plus 
 | 152 | func | public | FoundationModelsInferenceProvider.isAvailable(_:) | `public static func isAvailable(_ model: SystemLanguageModel) -> Bool` |
 | 157 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:ownsToolLoop:model:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider?` |
 | 177 | func | public | FoundationModelsInferenceProvider.ifAvailable(model:configuration:profile:ownsToolLoop:) | `public static func ifAvailable(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider?` |
-| 201 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:ownsToolLoop:model:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default)` |
-| 223 | func | public | FoundationModelsInferenceProvider.init(model:configuration:profile:ownsToolLoop:) | `public init(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false)` |
-| 740 | func | public | InferenceProvider.foundationModels(configuration:model:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
-| 751 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:model:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
-| 763 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
-| 793 | func | public | InferenceProvider.foundationModels(profile:configuration:model:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
-| 824 | func | public | InferenceProvider.foundationModels(model:configuration:profile:) | `public static func foundationModels(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
-| 838 | func | public | InferenceProvider.foundationModelsOwningToolLoop(model:configuration:profile:) | `public static func foundationModelsOwningToolLoop(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
+| 197 | func | public | FoundationModelsInferenceProvider.isPrivateCloudComputeAvailable(_:) | `public static func isPrivateCloudComputeAvailable(_ model: PrivateCloudComputeLanguageModel = .init()) -> Bool` |
+| 208 | func | public | FoundationModelsInferenceProvider.privateCloudComputeIfAvailable(configuration:profile:ownsToolLoop:model:) | `public static func privateCloudComputeIfAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: PrivateCloudComputeLanguageModel = .init()) -> FoundationModelsInferenceProvider?` |
+| 232 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:ownsToolLoop:model:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default)` |
+| 254 | func | public | FoundationModelsInferenceProvider.init(model:configuration:profile:ownsToolLoop:) | `public init(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false)` |
+| 892 | func | public | InferenceProvider.foundationModels(configuration:model:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 903 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:model:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 915 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
+| 928 | func | public | InferenceProvider.foundationModelsOwningToolLoop(instructions:prewarmOnInit:) | `public static func foundationModelsOwningToolLoop(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
+| 945 | func | public | InferenceProvider.foundationModels(profile:configuration:model:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 958 | func | public | InferenceProvider.foundationModelsOwningToolLoop(profile:configuration:model:) | `public static func foundationModelsOwningToolLoop(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 976 | func | public | InferenceProvider.foundationModels(model:configuration:profile:) | `public static func foundationModels(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
+| 990 | func | public | InferenceProvider.foundationModelsOwningToolLoop(model:configuration:profile:) | `public static func foundationModelsOwningToolLoop(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
+| 1009 | func | public | InferenceProvider.privateCloudCompute(configuration:profile:ownsToolLoop:) | `public static func privateCloudCompute(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider` |
+| 1026 | func | public | InferenceProvider.privateCloudComputeIfAvailable(configuration:profile:ownsToolLoop:) | `public static func privateCloudComputeIfAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider?` |
 
 ### Providers/FoundationModels/FoundationModelsReasoningLevel.swift
 
@@ -2972,6 +3062,23 @@ Swarm capture-path types. Owned-loop consumes ``Profile`` / ``ProfileHistoryPoli
 | 264 | struct | public | ClosureDynamicProfile | `public struct ClosureDynamicProfile` |
 | 291 | class | public | ProfileMode | `public final class ProfileMode<Mode>` |
 | 314 | struct | public | ModeSwitchingDynamicProfile | `public struct ModeSwitchingDynamicProfile<Mode>` |
+
+### Providers/FailoverProvider.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 39 | struct | public | FailoverProvider | `public struct FailoverProvider` |
+| 41 | var | public | FailoverProvider.primary | `public let primary: any InferenceProvider` |
+| 44 | var | public | FailoverProvider.fallbacks | `public let fallbacks: [any InferenceProvider]` |
+| 51 | var | public | FailoverProvider.shouldFailover | `public let shouldFailover: @Sendable (Error) -> Bool` |
+| 57 | var | public | FailoverProvider.onFailover | `public let onFailover: (@Sendable (Int, Error) async -> Void)?` |
+| 63 | var | public | FailoverProvider.capabilities | `public var capabilities: InferenceProviderCapabilities { get }` |
+| 68 | var | public | FailoverProvider.promptTokenCounter | `public var promptTokenCounter: (any PromptTokenCounter)? { get }` |
+| 79 | func | public | FailoverProvider.init(primary:fallbacks:shouldFailover:onFailover:) | `public init(primary: any InferenceProvider, fallbacks: [any InferenceProvider] = [], shouldFailover: @escaping @Sendable (Error) -> Bool = InferenceRetryability.isRetryable, onFailover: (@Sendable (Int, Error) async -> Void)? = nil)` |
+| 92 | func | public | FailoverProvider.generate(messages:options:) | `public func generate(messages: [InferenceMessage], options: InferenceOptions) async throws -> String` |
+| 99 | func | public | FailoverProvider.generateWithToolCalls(messages:tools:options:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions) async throws -> InferenceResponse` |
+| 110 | func | public | FailoverProvider.generateWithToolCalls(messages:tools:options:toolExecutor:) | `public func generateWithToolCalls(messages: [InferenceMessage], tools: [ToolSchema], options: InferenceOptions, toolExecutor: ToolCallExecutor?) async throws -> InferenceResponse` |
+| 130 | func | public | FailoverProvider.generateStructured(messages:request:options:) | `public func generateStructured(messages: [InferenceMessage], request: StructuredOutputRequest, options: InferenceOptions) async throws -> StructuredOutputResult` |
 
 ### Providers/MultiProvider.swift
 
@@ -3248,6 +3355,90 @@ Apple-only (`#if canImport(AVFoundation)`).
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 18 | func | public | VoiceSession.appleOnDevice(agent:session:locale:configuration:installAssetsIfNeeded:) | `public static func appleOnDevice(agent: any AgentRuntime, session: (any Session)? = nil, locale: Locale = .current, configuration: VoiceSessionConfiguration = .default, installAssetsIfNeeded: Bool = false) async throws -> VoiceSession` |
+
+## 14c. Security
+
+### Security/SecretReference.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | struct | public | SecretReference | `public struct SecretReference` |
+| — | var | public | SecretReference.service | `public var service: String` |
+| — | var | public | SecretReference.account | `public var account: String` |
+| — | func | public | SecretReference.init(service:account:) | `public init(service: String, account: String)` |
+
+### Security/SecretStore.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | enum | public | SecretStoreError | `public enum SecretStoreError` |
+| — | protocol | public | SecretStore | `public protocol SecretStore` |
+| — | actor | public | InMemorySecretStore | `public actor InMemorySecretStore` |
+| — | struct | public | EnvironmentSecretStore | `public struct EnvironmentSecretStore` |
+
+### Security/KeychainSecretStore.swift
+
+Apple platforms only (`canImport(Security)`).
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | enum | public | KeychainAccessible | `public enum KeychainAccessible` |
+| — | actor | public | KeychainSecretStore | `public actor KeychainSecretStore` |
+| — | func | public | KeychainSecretStore.init(accessible:) | `public init(accessible: KeychainAccessible = .whenUnlockedThisDeviceOnly)` |
+
+### Security/SecretRedaction.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | enum | public | SecretRedaction | `public enum SecretRedaction` |
+| — | var | public | SecretRedaction.placeholder | `public static let placeholder: String` |
+| — | func | public | SecretRedaction.isSensitiveName(_:) | `public static func isSensitiveName(_ name: String) -> Bool` |
+| — | func | public | SecretRedaction.redactedSensitiveValues(_:) | `public static func redactedSensitiveValues(_ values: [String: String]) -> [String: String]` |
+| — | func | public | SecretRedaction.redactingKnownSecrets(in:secrets:) | `public static func redactingKnownSecrets(in text: String, secrets: [String?]) -> String` |
+
+## 14d. SPI: ColonyInternal
+
+System programming interface, importable as `@_spi(ColonyInternal) import Swarm`.
+Unlike the public API above, SPI carries no source-stability guarantee and may
+change in any minor release. The catalog home is `Core/SwarmColonySPI.swift`;
+two resilience initializers participate because they take a `SwarmClock`.
+
+### Core/SwarmColonySPI.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 24 | enum | spi | SwarmChatRole | `@_spi(ColonyInternal) public enum SwarmChatRole` |
+| 31 | struct | spi | SwarmToolDefinition | `@_spi(ColonyInternal) public struct SwarmToolDefinition` |
+| 43 | struct | spi | SwarmToolCall | `@_spi(ColonyInternal) public struct SwarmToolCall` |
+| 55 | enum | spi | SwarmChatMessageOp | `@_spi(ColonyInternal) public enum SwarmChatMessageOp` |
+| 60 | struct | spi | SwarmChatMessage | `@_spi(ColonyInternal) public struct SwarmChatMessage` |
+| 91 | struct | spi | SwarmChatRequest | `@_spi(ColonyInternal) public struct SwarmChatRequest` |
+| 107 | struct | spi | SwarmChatResponse | `@_spi(ColonyInternal) public struct SwarmChatResponse` |
+| 115 | enum | spi | SwarmChatStreamChunk | `@_spi(ColonyInternal) public enum SwarmChatStreamChunk` |
+| 120 | struct | spi | SwarmToolResult | `@_spi(ColonyInternal) public struct SwarmToolResult` |
+| 130 | protocol | spi | SwarmModelClient | `@_spi(ColonyInternal) public protocol SwarmModelClient` |
+| 135 | struct | spi | SwarmAnyModelClient | `@_spi(ColonyInternal) public struct SwarmAnyModelClient` |
+| 157 | func | spi | SwarmModelClient.streamFinal(_:) | `@_spi(ColonyInternal) public func streamFinal(_ request: SwarmChatRequest) async throws -> SwarmChatResponse` |
+| 173 | protocol | spi | SwarmModelRouter | `@_spi(ColonyInternal) public protocol SwarmModelRouter` |
+| 177 | protocol | spi | SwarmToolRegistry | `@_spi(ColonyInternal) public protocol SwarmToolRegistry` |
+| 182 | struct | spi | SwarmAnyToolRegistry | `@_spi(ColonyInternal) public struct SwarmAnyToolRegistry` |
+| 204 | protocol | spi | SwarmClock | `@_spi(ColonyInternal) public protocol SwarmClock` |
+| 209 | protocol | spi | SwarmLogger | `@_spi(ColonyInternal) public protocol SwarmLogger` |
+| 215 | struct | spi | SwarmInferenceHints | `@_spi(ColonyInternal) public struct SwarmInferenceHints` |
+| 253 | enum | spi | SwarmRuntimeError | `@_spi(ColonyInternal) public enum SwarmRuntimeError` |
+
+### Resilience/CircuitBreaker.swift (SPI initializer)
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 105 | func | spi | CircuitBreaker.init(name:failureThreshold:successThreshold:resetTimeout:halfOpenMaxRequests:clock:) | `@_spi(ColonyInternal) public init(name:failureThreshold:successThreshold:resetTimeout:halfOpenMaxRequests:clock:)` |
+
+### Resilience/RateLimiter.swift (SPI initializers)
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 69 | func | spi | RateLimiter.init(maxRequestsPerMinute:clock:) | `@_spi(ColonyInternal) public init(maxRequestsPerMinute:clock:)` |
+| 92 | func | spi | RateLimiter.init(maxTokens:refillRatePerSecond:clock:) | `@_spi(ColonyInternal) public init(maxTokens:refillRatePerSecond:clock:)` |
 
 ## 15. Companion Products
 

@@ -369,16 +369,13 @@ struct AgentTurnDependenciesTests {
             environment,
             addingTokenCounterFrom: countingProvider
         )
-        // Concrete downcast instead of `as AnyObject`: the existential
-        // `as AnyObject` + `===` combination aborts swift-frontend 6.4
-        // (SILGen useConformance) on this function.
-        #expect(merged.promptTokenCounter as? MockInferenceProvider === countingProvider)
+        #expect(merged.promptTokenCounter is MockInferenceProvider)
 
         let preserved = AgentTurnDependencyResolver.runtimeEnvironment(
             environment,
             addingTokenCounterFrom: bare
         )
-        #expect(preserved.promptTokenCounter as? IdentityTurnDependencyTokenCounter === originalCounter)
+        #expect(preserved.promptTokenCounter is IdentityTurnDependencyTokenCounter)
     }
 
     // MARK: - Inference options (pure values; shell owns ResponseTracker)

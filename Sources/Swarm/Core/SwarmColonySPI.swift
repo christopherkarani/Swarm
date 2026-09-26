@@ -1,5 +1,26 @@
 import Foundation
 
+// `ColonyInternal` system programming interface (SPI).
+//
+// This file is the catalog home of Swarm's `@_spi(ColonyInternal)` surface:
+// the chat-model value types (`SwarmChatRole`, `SwarmChatMessage`,
+// `SwarmChatMessageOp`, `SwarmChatRequest`, `SwarmChatResponse`,
+// `SwarmChatStreamChunk`),
+// tool-plumbing types (`SwarmToolDefinition`, `SwarmToolCall`,
+// `SwarmToolResult`, `SwarmToolRegistry`, `SwarmAnyToolRegistry`),
+// model-client seams (`SwarmModelClient`, `SwarmAnyModelClient`,
+// `SwarmModelRouter`, `SwarmInferenceHints`), and runtime dependencies
+// (`SwarmClock`, `SwarmLogger`, `SwarmRuntimeError`).
+//
+// Two resilience initializers also participate in this SPI because they take
+// a `SwarmClock`: the clock-injecting `CircuitBreaker` and `RateLimiter`
+// initializers.
+//
+// SPI is importable with `@_spi(ColonyInternal) import Swarm` but carries no
+// source-stability guarantee: it may change in any minor release. See
+// `docs/reference/api-catalog.md` ("SPI: ColonyInternal") for the
+// consumer-facing catalog entry.
+
 @_spi(ColonyInternal) public enum SwarmChatRole: String, Codable, Sendable, Equatable {
     case system
     case user

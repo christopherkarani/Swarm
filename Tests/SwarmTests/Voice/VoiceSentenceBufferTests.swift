@@ -32,8 +32,39 @@ struct VoiceSentenceBufferTests {
     @Test("two short sentences stay held then flush together")
     func twoShortSentencesFlushTogether() {
         var buffer = VoiceSentenceBuffer()
-        #expect(buffer.append("Hi. Bye.").isEmpty)
-        #expect(buffer.flush() == "Hi. Bye.")
+        #expect(buffer.append("Hi. Yo.").isEmpty)
+        #expect(buffer.flush() == "Hi. Yo.")
+    }
+
+    @Test("short prefix does not block a later speakable sentence")
+    func shortPrefixScansPastToLaterTerminator() {
+        var buffer = VoiceSentenceBuffer()
+        #expect(buffer.append("Hi. Hello world, speak now.") == ["Hi. Hello world, speak now."])
+    }
+
+    @Test("short prefix accumulates across appends")
+    func shortPrefixAccumulatesAcrossAppends() {
+        var buffer = VoiceSentenceBuffer()
+        #expect(buffer.append("Hi.").isEmpty)
+        #expect(buffer.append(" Hello world, speak now.") == ["Hi. Hello world, speak now."])
+    }
+
+    @Test("short prefix joins the first sentence and later sentences still split")
+    func shortPrefixJoinsFirstSentenceOnly() {
+        var buffer = VoiceSentenceBuffer()
+        #expect(buffer.append("Hi. Hello world. Bye now friend.") == [
+            "Hi. Hello world.",
+            " Bye now friend.",
+        ])
+    }
+
+    @Test("combined span at exactly the minimum emits")
+    func combinedSpanAtMinimumEmits() {
+        var buffer = VoiceSentenceBuffer()
+        // "Hi. Bye." is 8 characters, exactly minSpeakCharacters: the short
+        // prefix no longer blocks, so the combined span emits at once.
+        #expect(buffer.append("Hi. Bye.") == ["Hi. Bye."])
+        #expect(buffer.flush() == nil)
     }
 
     @Test("chunk with two long sentences emits both")

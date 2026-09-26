@@ -1,3 +1,5 @@
+// P2-1 grandfather: split pending; new files are gated at 1000 lines.
+// swiftlint:disable file_length
 import Foundation
 import Swarm
 
@@ -750,7 +752,7 @@ private func runGuardrailsScenario(context: CapabilityScenarioContext) async thr
 
 private func runResilienceScenario(context: CapabilityScenarioContext) async throws -> CapabilityScenarioResult {
     let retryCounter = AttemptCounter()
-    let retryResult = try await RetryPolicy(maxAttempts: 2, backoff: .immediate).execute {
+    let retryResult = try await RetryPolicy(maxAttempts: 3, backoff: .immediate).execute {
         let attempt = await retryCounter.incrementAndGet()
         if attempt < 3 {
             throw CapabilityShowcaseError.expectationFailed("retry \(attempt)")

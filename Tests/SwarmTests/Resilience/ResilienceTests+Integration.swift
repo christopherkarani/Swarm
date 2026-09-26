@@ -20,7 +20,7 @@ struct ResilienceIntegrationTests {
         )
 
         let policy = RetryPolicy(
-            maxAttempts: 2,
+            maxAttempts: 3,
             backoff: .immediate
         )
 
@@ -38,7 +38,7 @@ struct ResilienceIntegrationTests {
             // Expected to fail
         }
 
-        // Should have attempted: initial + 2 retries = 3 times
+        // Should have attempted 3 total times
         // Circuit should be open now
         let state = await breaker.currentState()
         if case .open = state {
@@ -53,7 +53,7 @@ struct ResilienceIntegrationTests {
         let primaryCounter = TestCounter()
         let secondaryCounter = TestCounter()
 
-        let policy = RetryPolicy(maxAttempts: 2, backoff: .immediate)
+        let policy = RetryPolicy(maxAttempts: 3, backoff: .immediate)
 
         let result = try await FallbackChain<String>()
             .attempt(name: "Primary") {
@@ -74,7 +74,7 @@ struct ResilienceIntegrationTests {
             .execute()
 
         #expect(result == "secondary-success")
-        #expect(await primaryCounter.get() == 3) // initial + 2 retries
-        #expect(await secondaryCounter.get() == 2) // initial + 1 retry
+        #expect(await primaryCounter.get() == 3) // 3 total attempts
+        #expect(await secondaryCounter.get() == 2) // succeeds on the 2nd total attempt
     }
 }

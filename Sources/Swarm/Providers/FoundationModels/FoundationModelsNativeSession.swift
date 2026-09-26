@@ -333,19 +333,24 @@ extension FoundationModelsInferenceProvider {
             toolNames: boundTools.map(\.name).sorted()
         )
         let instructions = resolved.instructions
-        let seed = FoundationModelsAppleProfileBridge.seed(
+        let seed = FoundationModelsTranscriptSeed.seed(
             messages: resolved.messages,
             instructions: instructions
         )
+        let snapshot = FoundationModelsOwnedLoopSnapshot(
+            instructions: instructions,
+            options: resolved.options,
+            reasoning: ownedLoopReasoningLevel
+        )
         let store = nativeSessionStore
         let (session, reused, lease) = await store.tryBeginOwnedLoop(matching: identity) {
-            self.makeOwnedLoopSession(tools: boundTools, seed: seed)
+            self.makeOwnedLoopSession(tools: boundTools, seed: seed, snapshot: snapshot)
         } recreate: { transcript in
-            self.makeSession(tools: boundTools, transcript: transcript)
+            self.makeProfileSession(tools: boundTools, snapshot: snapshot, history: transcript)
         }
 
         let prompt: String
-        if reused || seed.canRehydrateTranscript {
+        if reused || seed.canRehydrate {
             prompt = FoundationModelsPromptFlattening.appendTurnSuffixes(
                 to: seed.pendingPrompt,
                 tools: boundSchemas,
@@ -358,6 +363,7 @@ extension FoundationModelsInferenceProvider {
                 options: resolved.options
             )
         }
+        let promptImages = seed.pendingImages
 
         let generationOptions = makeGenerationOptions(from: resolved.options)
         let reasoningLevel = ownedLoopReasoningLevel
@@ -367,16 +373,37 @@ extension FoundationModelsInferenceProvider {
             try Task.checkCancellation()
             let content: String
             let usage: TokenUsage?
+            let multimodal = multimodalPrompt(text: prompt, images: promptImages)
             if let onOutputChunk {
-                let streamed = try await streamNativeResponse(
-                    session: session,
-                    prompt: prompt,
-                    options: generationOptions,
-                    reasoningLevel: reasoningLevel,
-                    onOutputChunk: onOutputChunk
-                )
+                let streamed: (content: String, usage: TokenUsage?)
+                if let multimodal {
+                    streamed = try await streamNativeResponse(
+                        session: session,
+                        prompt: multimodal,
+                        options: generationOptions,
+                        reasoningLevel: reasoningLevel,
+                        onOutputChunk: onOutputChunk
+                    )
+                } else {
+                    streamed = try await streamNativeResponse(
+                        session: session,
+                        prompt: prompt,
+                        options: generationOptions,
+                        reasoningLevel: reasoningLevel,
+                        onOutputChunk: onOutputChunk
+                    )
+                }
                 content = applyStopSequences(streamed.content, options: resolved.options)
                 usage = streamed.usage
+            } else if let multimodal {
+                let response = try await respondNative(
+                    session: session,
+                    prompt: multimodal,
+                    options: generationOptions,
+                    reasoningLevel: reasoningLevel
+                )
+                content = applyStopSequences(response.content, options: resolved.options)
+                usage = response.usage
             } else {
                 let response = try await respondNative(
                     session: session,
@@ -449,23 +476,93 @@ extension FoundationModelsInferenceProvider {
         return (response.content, FoundationModelsUsageMapping.tokenUsage(from: response))
     }
 
+    /// Multimodal variant of ``respondNative(session:prompt:options:reasoningLevel:)``.
+    private func respondNative(
+        session: LanguageModelSession,
+        prompt: Prompt,
+        options: GenerationOptions,
+        reasoningLevel: FoundationModelsReasoningLevel?
+    ) async throws -> (content: String, usage: TokenUsage?) {
+        if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *), let reasoningLevel {
+            let response = try await session.respond(
+                to: prompt,
+                options: options,
+                contextOptions: reasoningLevel.contextOptions
+            )
+            return (response.content, FoundationModelsUsageMapping.tokenUsage(from: response))
+        }
+        let response = try await session.respond(to: prompt, options: options)
+        return (response.content, FoundationModelsUsageMapping.tokenUsage(from: response))
+    }
+
     /// New owned-loop sessions prefer a text-only `Transcript` seed from the
     /// resolved Swarm profile. Tool-bearing history still flattens.
     func makeOwnedLoopSession(
         tools: [any FoundationModels.Tool],
-        seed: FoundationModelsAppleProfileBridge.Seed
+        seed: FoundationModelsTranscriptSeed.Seed,
+        snapshot: FoundationModelsOwnedLoopSnapshot
     ) -> LanguageModelSession {
-        if seed.canRehydrateTranscript,
-           let transcript = FoundationModelsAppleProfileBridge.makeTranscript(from: seed.seedEntries)
+        if seed.canRehydrate,
+           let transcript = FoundationModelsTranscriptSeed.makeTranscript(from: seed.seedEntries)
         {
-            return makeSession(tools: tools, transcript: transcript)
+            return makeProfileSession(tools: tools, snapshot: snapshot, history: transcript)
         }
-        return makeSession(tools: tools, instructions: seed.instructions)
+        return makeProfileSession(tools: tools, snapshot: snapshot, history: nil)
     }
 
     private func streamNativeResponse(
         session: LanguageModelSession,
         prompt: String,
+        options: GenerationOptions,
+        reasoningLevel: FoundationModelsReasoningLevel?,
+        onOutputChunk: @Sendable (String) async -> Void
+    ) async throws -> (content: String, usage: TokenUsage?) {
+        var previous = ""
+        var usage: TokenUsage?
+        if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *), let reasoningLevel {
+            for try await snapshot in session.streamResponse(
+                to: prompt,
+                options: options,
+                contextOptions: reasoningLevel.contextOptions
+            ) {
+                try Task.checkCancellation()
+                let current = snapshot.content
+                let delta: String
+                if current.hasPrefix(previous) {
+                    delta = String(current.dropFirst(previous.count))
+                } else {
+                    delta = current
+                }
+                previous = current
+                usage = FoundationModelsUsageMapping.tokenUsage(from: snapshot)
+                if !delta.isEmpty {
+                    await onOutputChunk(delta)
+                }
+            }
+            return (previous, usage)
+        }
+        for try await snapshot in session.streamResponse(to: prompt, options: options) {
+            try Task.checkCancellation()
+            let current = snapshot.content
+            let delta: String
+            if current.hasPrefix(previous) {
+                delta = String(current.dropFirst(previous.count))
+            } else {
+                delta = current
+            }
+            previous = current
+            usage = FoundationModelsUsageMapping.tokenUsage(from: snapshot)
+            if !delta.isEmpty {
+                await onOutputChunk(delta)
+            }
+        }
+        return (previous, usage)
+    }
+
+    /// Multimodal variant of the text streaming helper above.
+    private func streamNativeResponse(
+        session: LanguageModelSession,
+        prompt: Prompt,
         options: GenerationOptions,
         reasoningLevel: FoundationModelsReasoningLevel?,
         onOutputChunk: @Sendable (String) async -> Void

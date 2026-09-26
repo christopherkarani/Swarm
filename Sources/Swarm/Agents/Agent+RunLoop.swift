@@ -221,19 +221,23 @@ extension Agent {
             let pendingHandoff = OwnedLoopPendingHandoff()
             configuration.warnIfDeprecatedNativeSessionFlag()
             let toolLoopOutcome = try await AgentEnvironmentValues.$current.withValue(runtimeEnvironment) {
-                try await executeToolCallingLoop(
-                    input: input,
-                    dependencies: dependencies,
-                    sessionHistory: sessionHistory,
-                    session: session,
-                    resultBuilder: resultBuilder,
-                    observer: observer,
-                    tracing: tracing,
-                    structuredOutputRequest: structuredOutputRequest,
-                    executionContext: executionContext,
-                    executionGate: executionGate,
-                    pendingHandoff: pendingHandoff
+                var turnRunner = AgentTurnRunner(
+                    agent: self,
+                    request: AgentTurnRequest(
+                        input: input,
+                        dependencies: dependencies,
+                        sessionHistory: sessionHistory,
+                        session: session,
+                        resultBuilder: resultBuilder,
+                        observer: observer,
+                        tracing: tracing,
+                        structuredOutputRequest: structuredOutputRequest,
+                        executionContext: executionContext,
+                        executionGate: executionGate,
+                        pendingHandoff: pendingHandoff
+                    )
                 )
+                return try await turnRunner.run()
             }
 
             _ = resultBuilder.setOutput(toolLoopOutcome.output)

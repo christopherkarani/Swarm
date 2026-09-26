@@ -68,7 +68,7 @@ final class FoundationWorkflowCheckpointFileOperator: WorkflowCheckpointFileOper
     }
 
     func createDirectory(at url: URL) throws {
-        try fileManager.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
+        try SecureFileIO.createDirectory(at: url)
     }
 
     func removeItem(at url: URL) throws {
@@ -80,7 +80,7 @@ final class FoundationWorkflowCheckpointFileOperator: WorkflowCheckpointFileOper
     }
 
     func write(_ data: Data, to url: URL) throws {
-        try data.write(to: url, options: .atomic)
+        try SecureFileIO.write(data, to: url)
     }
 }
 
