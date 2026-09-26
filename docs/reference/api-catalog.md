@@ -1354,6 +1354,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 637 | func | public | ToolRegistry.tool(named:) | `public func tool(named name: String) -> (any AnyJSONTool)?` |
 | 644 | func | public | ToolRegistry.contains(named:) | `public func contains(named name: String) -> Bool` |
 | 659 | func | public | ToolRegistry.execute(toolNamed:arguments:agent:context:observer:) | `public func execute(toolNamed name: String, arguments: [String : SendableValue], agent: (any AgentRuntime)? = nil, context: AgentContext? = nil, observer: (any AgentObserver)? = nil) async throws -> SendableValue` |
+| 292 | func | public | ToolRegistry.execute(tool:input:agent:context:observer:) | `public func execute<T: Tool>(tool: T, input: T.Input, agent: (any AgentRuntime)? = nil, context: AgentContext? = nil, observer: (any AgentObserver)? = nil) async throws -> T.Output where T.Output : Decodable` |
 
 ### Tools/ToolBridging.swift
 

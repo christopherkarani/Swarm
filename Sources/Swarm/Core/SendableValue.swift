@@ -297,13 +297,23 @@ public extension SendableValue {
             return
         }
 
-        // For complex types, use JSON encoding as an intermediate format
+        // Identity: a `SendableValue` payload round-trips exactly.
+        // (A JSON round-trip would collapse whole-number `.double` to `.int`.)
+        if let sendableValue = value as? SendableValue {
+            self = sendableValue
+            return
+        }
+
+        // For complex types, use JSON encoding as an intermediate format.
+        // Fragments are allowed so scalar `Encodable` payloads outside the
+        // fast paths above (enums, `Float`, `Date`, `Optional`, ...) encode
+        // instead of failing.
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
 
         do {
             let data = try encoder.encode(value)
-            let jsonObject = try JSONSerialization.jsonObject(with: data)
+            let jsonObject = try JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
             self = try Self.fromJSONObject(jsonObject)
         } catch {
             throw ConversionError.encodingFailed(String(describing: error))
@@ -326,6 +336,14 @@ public extension SendableValue {
     /// // Result: UserInfo(name: "Alice", age: 30)
     /// ```
     func decode<T: Decodable>() throws -> T {
+        // Identity: decoding as `SendableValue` itself round-trips exactly.
+        // (A JSON round-trip would collapse whole-number `.double` to `.int`.)
+        if T.self == SendableValue.self {
+            guard let result = self as? T else {
+                throw ConversionError.decodingFailed("Failed to cast SendableValue to \(T.self)")
+            }
+            return result
+        }
         // Handle primitive types directly
         if T.self == Bool.self, let value = boolValue {
             guard let result = value as? T else {
@@ -352,12 +370,14 @@ public extension SendableValue {
             return result
         }
 
-        // For complex types, use JSON decoding as an intermediate format
-        let jsonObject = _convertToJSONObject()
+        // Decode via JSONEncoder (`SendableValue` is `Codable`) rather than
+        // `JSONSerialization`: scalar and null top-level values are valid
+        // fragments for `JSONEncoder`, while `JSONSerialization` raises an
+        // uncatchable `NSException` (process abort) for them. Mismatches now
+        // throw instead of crashing.
         do {
-            let data = try JSONSerialization.data(withJSONObject: jsonObject)
-            let decoder = JSONDecoder()
-            return try decoder.decode(T.self, from: data)
+            let data = try JSONEncoder().encode(self)
+            return try JSONDecoder().decode(T.self, from: data)
         } catch {
             throw ConversionError.decodingFailed(String(describing: error))
         }

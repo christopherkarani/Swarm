@@ -261,6 +261,83 @@ public actor ToolRegistry {
         }
     }
 
+    /// Executes a registered typed tool with a compile-checked input value.
+    ///
+    /// This is a thin generic shell over
+    /// ``execute(toolNamed:arguments:agent:context:observer:)``: the input is
+    /// encoded to an argument dictionary, the existing untyped lifecycle
+    /// (lookup, enabled check, normalization, guardrails, observer notification,
+    /// error mapping) runs unchanged, and the result is decoded to `T.Output`.
+    ///
+    /// - Important: Registered-tool-wins: the passed `tool` supplies the registry
+    ///   `name` and the static `Input`/`Output` types; guardrails, semantics, and
+    ///   enabled state come from the tool instance stored in the registry, never
+    ///   from the passed instance.
+    ///
+    /// - Parameters:
+    ///   - tool: A typed tool whose `name` identifies the registered tool and whose
+    ///     `Input`/`Output` types drive encoding and decoding.
+    ///   - input: The typed input value. It must encode to a keyed object.
+    ///   - agent: Optional agent executing the tool (for guardrail validation).
+    ///   - context: Optional agent context for guardrail validation.
+    ///   - observer: Optional observer for error reporting.
+    /// - Returns: The decoded typed output.
+    /// - Throws: ``AgentError/toolNotFound`` if the tool doesn't exist or is disabled,
+    ///           ``AgentError/invalidToolArguments(toolName:reason:)`` if `input` fails
+    ///           to encode or does not encode to a keyed object,
+    ///           ``AgentError/toolFailure(toolName:message:cause:)`` if the result
+    ///           cannot be decoded as `T.Output`,
+    ///           ``GuardrailError`` if guardrails are triggered,
+    ///           or `CancellationError` if the task is cancelled.
+    public func execute<T: Tool>(
+        tool: T,
+        input: T.Input,
+        agent: (any AgentRuntime)? = nil,
+        context: AgentContext? = nil,
+        observer: (any AgentObserver)? = nil
+    ) async throws -> T.Output where T.Output: Decodable {
+        let arguments: [String: SendableValue]
+        do {
+            let encoded = try SendableValue(encoding: input)
+            guard let dictionary = encoded.dictionaryValue else {
+                throw AgentError.invalidToolArguments(
+                    toolName: tool.name,
+                    reason: "Input of type \(String(describing: T.Input.self)) must encode to a keyed object ([String: SendableValue])"
+                )
+            }
+            arguments = dictionary
+        } catch let agentError as AgentError {
+            throw agentError
+        } catch {
+            throw AgentError.invalidToolArguments(
+                toolName: tool.name,
+                reason: "Failed to encode input of type \(String(describing: T.Input.self)) to a keyed object ([String: SendableValue]): \(error.localizedDescription)"
+            )
+        }
+
+        let result = try await execute(
+            toolNamed: tool.name,
+            arguments: arguments,
+            agent: agent,
+            context: context,
+            observer: observer
+        )
+
+        // `SendableValue.decode()` supports scalar and null fragments, so
+        // every result/type pairing either decodes or throws (never aborts).
+        // Map decode mismatches to `toolFailure` with the underlying cause.
+        do {
+            let output: T.Output = try result.decode()
+            return output
+        } catch {
+            throw AgentError.toolFailure(
+                toolName: tool.name,
+                message: "Failed to decode result of \"\(tool.name)\" as \(String(describing: T.Output.self)): \(error.localizedDescription)",
+                cause: error
+            )
+        }
+    }
+
     // MARK: Private
 
     private var tools: [String: any AnyJSONTool] = [:]

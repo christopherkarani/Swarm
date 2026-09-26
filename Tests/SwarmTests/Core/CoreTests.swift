@@ -124,6 +124,74 @@ struct SendableValueTests {
         #expect(dict[.int(1)] == "one")
         #expect(dict[.string("key")] == "value")
     }
+
+    // MARK: - Fragment Encoding/Decoding
+
+    @Test("Scalar encodables outside the fast paths encode to fragments")
+    func scalarEncodablesEncodeToFragments() throws {
+        enum Mood: String, Codable { case happy }
+
+        #expect(try SendableValue(encoding: Mood.happy) == .string("happy"))
+        #expect(try SendableValue(encoding: Float(1.5)) == .double(1.5))
+        let none: String? = nil
+        #expect(try SendableValue(encoding: none) == .null)
+        let some: String? = "hi"
+        #expect(try SendableValue(encoding: some) == .string("hi"))
+    }
+
+    @Test("Scalar and null fragments decode or throw without aborting")
+    func fragmentDecodeThrowsInsteadOfCrashing() throws {
+        enum Mood: String, Codable { case happy }
+        struct Box: Codable, Equatable { let value: Int }
+
+        // Matches decode, including Optional and RawRepresentable outputs.
+        let mood: Mood = try SendableValue.string("happy").decode()
+        #expect(mood == .happy)
+        let some: String? = try SendableValue.string("hi").decode()
+        #expect(some == "hi")
+        let none: String? = try SendableValue.null.decode()
+        #expect(none == nil)
+        let double: Double = try SendableValue.int(1).decode()
+        #expect(double == 1.0)
+        let box: Box = try SendableValue.dictionary(["value": .int(2)]).decode()
+        #expect(box == Box(value: 2))
+
+        // Mismatches throw instead of aborting the process.
+        #expect(throws: SendableValue.ConversionError.self) {
+            let _: String = try SendableValue.int(1).decode()
+        }
+        #expect(throws: SendableValue.ConversionError.self) {
+            let _: Int = try SendableValue.string("hi").decode()
+        }
+        #expect(throws: SendableValue.ConversionError.self) {
+            let _: Box = try SendableValue.int(1).decode()
+        }
+        #expect(throws: SendableValue.ConversionError.self) {
+            let _: Box = try SendableValue.null.decode()
+        }
+        #expect(throws: SendableValue.ConversionError.self) {
+            let _: String = try SendableValue.null.decode()
+        }
+    }
+
+    @Test("SendableValue payloads round-trip with exact identity")
+    func sendableValueIdentityRoundTripsExactly() throws {
+        // Whole-number doubles must survive; a JSON round-trip would
+        // collapse them to `.int`.
+        let double = SendableValue.double(2.0)
+        #expect(try SendableValue(encoding: double) == double)
+        let decoded: SendableValue = try double.decode()
+        #expect(decoded == double)
+
+        for value: SendableValue in [
+            .null, .bool(true), .int(1), .string("hi"),
+            .array([.int(1), .null]), .dictionary(["k": .double(2.0)]),
+        ] {
+            #expect(try SendableValue(encoding: value) == value)
+            let roundTripped: SendableValue = try value.decode()
+            #expect(roundTripped == value)
+        }
+    }
 }
 
 // MARK: - AgentConfigurationTests
