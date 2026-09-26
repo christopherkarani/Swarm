@@ -56,13 +56,25 @@ struct FoundationModelsOS27AdapterTests {
     #if canImport(FoundationModels)
     @Test("injected SystemLanguageModel drives availability and the capture envelope")
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
-    func injectedModelDrivesAvailabilityAndEnvelope() {
+    func injectedModelDrivesAvailabilityAndEnvelope() async throws {
         let model = SystemLanguageModel.default
         #expect(
             FoundationModelsInferenceProvider.isAvailable(model)
                 == (model.availability == .available)
         )
         if FoundationModelsInferenceProvider.isAvailable(model) {
+            // SystemLanguageModel.contextSize can report 0 on a cold first
+            // read while the on-device model loads; wait for a stable value
+            // so the provider and the expectation observe the same size.
+            var observed = model.contextSize
+            for _ in 0 ..< 50 where observed <= 0 {
+                try await Task.sleep(for: .milliseconds(100))
+                observed = model.contextSize
+            }
+            guard observed > 0 else {
+                Issue.record("SystemLanguageModel.contextSize never stabilized; cannot verify envelope mapping")
+                return
+            }
             let provider = FoundationModelsInferenceProvider(configuration: .default, model: model)
             let expected = FoundationModelsContextBudget.profile(contextSize: model.contextSize)
             #expect(provider.envelopeProfile.budget.maxInputTokens == expected.budget.maxInputTokens)

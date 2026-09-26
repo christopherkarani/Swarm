@@ -20,7 +20,14 @@ struct SemanticMemoryAvailabilityTests {
         #expect(warning.contains("Real embeddings are unavailable"))
         #expect(warning.contains("Semantic recall quality is degraded"))
         #expect(warning.contains("vector rankings are not meaningful"))
+        #if canImport(CoreML)
         #expect(warning.contains("SemanticEmbeddingAvailability.ensureModelAvailable()"))
+        #else
+        // Without CoreML, model delivery cannot succeed: the warning must
+        // advise injecting a provider instead.
+        #expect(warning.contains("Inject a custom EmbeddingProvider"))
+        #expect(!warning.contains("SemanticEmbeddingAvailability.ensureModelAvailable()"))
+        #endif
     }
 
     @Test("custom embedding provider reports semantic memory available")

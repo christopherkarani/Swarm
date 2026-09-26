@@ -3,8 +3,8 @@
 // Swarm Framework
 //
 // Default agent memory stack combining ContextCore working context with
-// Wax durable recall.
-// Apple-only: requires ContextCore (Metal/CoreML), which is not linked on Linux.
+// Wax durable recall. ContextCore links on all platforms with Integrations:
+// portable CPU/hash backends on Linux, Metal/CoreML acceleration on Apple.
 
 import ContextCore
 import Foundation
@@ -67,13 +67,17 @@ public actor DefaultAgentMemory: Memory {
     /// Whether this memory stack can produce real semantic embeddings.
     ///
     /// Returns `false` when ContextCore's default CoreML MiniLM model is missing
-    /// or failed to load. Rankings then use hash-seeded pseudo-vectors and
-    /// semantic recall quality is degraded. Call
+    /// or failed to load, or when the default is a hash pseudo-vector provider
+    /// (platforms without CoreML). Rankings then use hash-seeded pseudo-vectors
+    /// and semantic recall quality is degraded. Call
     /// ``SemanticEmbeddingAvailability/ensureModelAvailable(configuration:progressHandler:)``
     /// to download the model; this property flips in-process after a successful
     /// delivery. Custom embedding providers injected through
     /// ``ContextCoreMemoryConfiguration`` are treated as available.
     public nonisolated var isSemanticMemoryAvailable: Bool {
+        if usesDegradedHashEmbedder {
+            return false
+        }
         if tracksDefaultCoreMLEmbedder {
             return SemanticEmbeddingAvailability.isAvailable
         }
@@ -95,9 +99,9 @@ public actor DefaultAgentMemory: Memory {
         self.contextMemory = try ContextCoreMemory(configuration: configuration.contextCoreConfiguration)
         self.memoryPromptTitle = "ContextCore + Wax Memory Context"
         self.memoryPromptGuidance = "Use the ContextCore section first for current-session context. Use the Wax section only for durable recall that does not conflict."
-        self.tracksDefaultCoreMLEmbedder = SemanticEmbeddingAvailability.tracksDefaultCoreML(
-            for: configuration.contextCoreConfiguration.contextConfiguration.embeddingProvider
-        )
+        let embedder = configuration.contextCoreConfiguration.contextConfiguration.embeddingProvider
+        self.tracksDefaultCoreMLEmbedder = SemanticEmbeddingAvailability.tracksDefaultCoreML(for: embedder)
+        self.usesDegradedHashEmbedder = SemanticEmbeddingAvailability.isKnownDegradedDefault(for: embedder)
     }
 
     public func add(_ message: MemoryMessage) async {
@@ -208,6 +212,21 @@ public actor DefaultAgentMemory: Memory {
     public func clear() async {
         await contextMemory.clear()
 
+        if let task = waxMemoryTask {
+            // Join in-flight construction instead of cancelling it: cancel is
+            // cooperative and the detached open ignores it, so a cancelled
+            // task would still complete and reinstall its store over this
+            // reset. The slot stays set while joining so late callers join
+            // the same open instead of starting a second one.
+            if let memory = try? await task.value {
+                await memory.clear()
+                waxMemory = memory
+                waxMemoryTask = nil
+                return
+            }
+            // Construction failed; its owner settles the slot. Fall through
+            // to clear whatever state exists now.
+        }
         if let waxMemory {
             await waxMemory.clear()
         } else {
@@ -240,19 +259,39 @@ public actor DefaultAgentMemory: Memory {
     private let configuration: Configuration
     private let contextMemory: ContextCoreMemory
     private nonisolated let tracksDefaultCoreMLEmbedder: Bool
+    private nonisolated let usesDegradedHashEmbedder: Bool
     private var waxMemory: WaxMemory?
+    private var waxMemoryTask: Task<WaxMemory, Error>?
 
     private func ensureWaxMemory() async throws -> WaxMemory {
         if let waxMemory {
             return waxMemory
         }
+        if let waxMemoryTask {
+            return try await waxMemoryTask.value
+        }
 
-        let memory = try await WaxMemory(
-            url: configuration.waxStoreURL,
-            configuration: configuration.waxConfiguration
-        )
-        waxMemory = memory
-        return memory
+        // Memoize the in-flight construction: concurrent callers must join it
+        // instead of opening the same store twice. Wax takes an exclusive
+        // file lock per open, so a second concurrent open blocks until the
+        // first closes — which never happens while it is stored here.
+        // Detached (with captured values) so awaiting it never re-enters
+        // this actor.
+        let url = configuration.waxStoreURL
+        let waxConfiguration = configuration.waxConfiguration
+        let task = Task.detached {
+            try await WaxMemory(url: url, configuration: waxConfiguration)
+        }
+        waxMemoryTask = task
+        do {
+            let memory = try await task.value
+            waxMemory = memory
+            waxMemoryTask = nil
+            return memory
+        } catch {
+            waxMemoryTask = nil
+            throw error
+        }
     }
 
     private func waxContext(for query: String, tokenLimit: Int) async -> String {

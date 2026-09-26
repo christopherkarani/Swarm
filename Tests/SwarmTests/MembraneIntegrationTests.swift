@@ -414,13 +414,55 @@ struct MembraneIntegrationTests {
         }
 
         let frameStore = try await Wax.FrameStore.open(at: url)
-        let activePayloadFrames = await frameStore.frames().filter {
+        let activePayloadFrames = try await frameStore.frames().filter {
             $0.status == .active &&
                 $0.metadata["membrane.kind"] == "membrane.pointer.payloadFrame"
         }
-        await frameStore.close()
+        try await frameStore.close()
 
         #expect(activePayloadFrames.isEmpty)
+    }
+
+    @Test("close during first touch releases the orphan and recovers", .timeLimit(.minutes(1)))
+    func closeDuringFirstTouchReleasesOrphanAndRecovers() async throws {
+        let url = temporaryWaxStoreURL()
+        let factory = GatedPointerIndexFactory()
+        let storage = WaxMembraneStorage(url: url) { _ in await factory.makeIndex() }
+
+        // First touch blocks inside the factory while a concurrent close
+        // consumes the in-flight construction. Ordering is gate-driven, not
+        // timing-driven: the factory cannot return until the test opens it.
+        let storeTask = Task {
+            try await storage.store(
+                payload: Data("race-payload".utf8),
+                dataType: .document,
+                summary: "race"
+            )
+        }
+        await factory.waitForFirstEntry()
+        await storage.delete(pointerID: "nonexistent")
+        await factory.openGate()
+
+        let pointer = try await storeTask.value
+        #expect(pointer.summary == "race")
+        #expect(pointer.byteSize == Data("race-payload".utf8).count)
+
+        // The consumed first open is closed, never installed; the waiter
+        // transparently retries onto a second open.
+        #expect(await factory.entryCount() == 2)
+        let indexes = await factory.createdIndexes()
+        try #require(indexes.count == 2)
+        #expect(await indexes[0].closeCount == 1)
+        #expect(await indexes[1].closeCount == 0)
+
+        // The recovered generation stays functional (each store reopens after
+        // its own persist-phase close).
+        _ = try await storage.store(
+            payload: Data("second".utf8),
+            dataType: .document,
+            summary: "second"
+        )
+        #expect(await factory.entryCount() == 3)
     }
 }
 
@@ -539,6 +581,67 @@ private actor FailingWaxPointerIndex: WaxPointerIndex {
     }
 
     func close() async throws {}
+}
+
+/// Gated factory for the close-during-first-touch test: entries block until
+/// the test opens the gate, so the close/store interleaving is deterministic.
+private actor GatedPointerIndexFactory {
+    private var entries = 0
+    private var gateOpen = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var gateWaiters: [CheckedContinuation<Void, Never>] = []
+    private var created: [RecordingWaxPointerIndex] = []
+
+    func makeIndex() async -> RecordingWaxPointerIndex {
+        entries += 1
+        let waiters = entryWaiters
+        entryWaiters = []
+        waiters.forEach { $0.resume() }
+        if !gateOpen {
+            await withCheckedContinuation { gateWaiters.append($0) }
+        }
+        let index = RecordingWaxPointerIndex()
+        created.append(index)
+        return index
+    }
+
+    func waitForFirstEntry() async {
+        if entries > 0 {
+            return
+        }
+        await withCheckedContinuation { entryWaiters.append($0) }
+    }
+
+    func openGate() {
+        gateOpen = true
+        let waiters = gateWaiters
+        gateWaiters = []
+        waiters.forEach { $0.resume() }
+    }
+
+    func entryCount() -> Int {
+        entries
+    }
+
+    func createdIndexes() -> [RecordingWaxPointerIndex] {
+        created
+    }
+}
+
+private actor RecordingWaxPointerIndex: WaxPointerIndex {
+    private(set) var closeCount = 0
+
+    func save(_: String, metadata _: [String: String]) async throws {}
+
+    func flush() async throws {}
+
+    func search(_ query: String, options _: Wax.Memory.SearchOptions) async throws -> Wax.Memory.Results {
+        Wax.Memory.Results(query: query, items: [], totalTokens: 0)
+    }
+
+    func close() async throws {
+        closeCount += 1
+    }
 }
 
 private actor PointerResolvingInferenceProvider: InferenceProvider, MessagesFromPromptInference {

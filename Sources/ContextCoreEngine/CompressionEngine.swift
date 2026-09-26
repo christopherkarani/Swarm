@@ -1,10 +1,10 @@
+#if canImport(Metal)
 import ContextCoreTypes
 import Foundation
 import Metal
-import NaturalLanguage
 
 /// GPU-assisted compression engine for ranking and reducing text chunks.
-public actor CompressionEngine {
+public actor CompressionEngine: CompressionEngineProtocol {
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let sentenceImportancePipeline: MTLComputePipelineState
@@ -185,7 +185,7 @@ public actor CompressionEngine {
         compressionDelegate = delegate
     }
 
-    func embedForCompression(_ text: String) async throws -> [Float] {
+    public func embedForCompression(_ text: String) async throws -> [Float] {
         try await embeddingProvider.embed(text)
     }
 
@@ -197,18 +197,7 @@ public actor CompressionEngine {
     }
 
     private func splitSentences(from text: String) -> [String] {
-        let tokenizer = NLTokenizer(unit: .sentence)
-        tokenizer.string = text
-
-        var sentences: [String] = []
-        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
-            let sentence = text[range].trimmingCharacters(in: .whitespacesAndNewlines)
-            if !sentence.isEmpty {
-                sentences.append(sentence)
-            }
-            return true
-        }
-
-        return sentences
+        PortableSentences.split(text)
     }
 }
+#endif

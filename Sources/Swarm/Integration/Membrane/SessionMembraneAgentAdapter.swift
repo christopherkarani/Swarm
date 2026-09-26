@@ -1,6 +1,7 @@
 #if SWARM_INTEGRATIONS && canImport(Membrane)
 import Foundation
 import Membrane
+import MembraneContextCore
 import MembraneCore
 
 /// Swarm-side adapter over `Membrane.MembraneSession`.
@@ -124,6 +125,7 @@ public extension MembraneEnvironment {
         let session = Membrane.MembraneSession(
             configuration: configuration.makeMembraneSessionConfiguration(),
             budget: budget,
+            backend: MembraneContextCoreBackend(),
             recallStore: recallStore,
             pointerStore: pointerStore,
             initialSnapshot: initialSnapshot

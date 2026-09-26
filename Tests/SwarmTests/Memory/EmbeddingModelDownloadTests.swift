@@ -1,6 +1,13 @@
 #if SWARM_INTEGRATIONS && canImport(ContextCore)
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import ContextCore
 @testable import Swarm
 import Testing
@@ -20,8 +27,14 @@ struct EmbeddingModelDownloadTests {
 
         #expect(FileManager.default.fileExists(atPath: harness.compiledModelURL.path))
         #expect(FileManager.default.fileExists(atPath: harness.hashSidecarURL.path))
+        #if canImport(CoreML)
         #expect(SemanticEmbeddingAvailability.isAvailable)
         #expect(SemanticEmbeddingAvailability.lastLoadSource == .compiledCache)
+        #else
+        // No CoreML: delivery succeeds but availability never flips.
+        #expect(SemanticEmbeddingAvailability.isAvailable == false)
+        #expect(SemanticEmbeddingAvailability.lastLoadSource == .missing)
+        #endif
         let recorded = stages.snapshot()
         #expect(recorded.contains(.downloading))
         #expect(recorded.contains(.verifying))
@@ -94,7 +107,12 @@ struct EmbeddingModelDownloadTests {
 
         try await SemanticEmbeddingAvailability.ensureModelAvailable(configuration: harness.configuration)
         #expect(CountingEmbeddingURLProtocol.requestCount == 1)
+        #if canImport(CoreML)
         #expect(SemanticEmbeddingAvailability.isAvailable)
+        #else
+        // No CoreML: delivery succeeds but real embeddings stay unavailable.
+        #expect(SemanticEmbeddingAvailability.isAvailable == false)
+        #endif
     }
 
     @Test("availability flips after ensureModelAvailable without restart")
@@ -107,8 +125,14 @@ struct EmbeddingModelDownloadTests {
 
         try await SemanticEmbeddingAvailability.ensureModelAvailable(configuration: harness.configuration)
 
+        #if canImport(CoreML)
         #expect(SemanticEmbeddingAvailability.isAvailable)
         #expect(SemanticEmbeddingAvailability.lastLoadSource == .compiledCache)
+        #else
+        // No CoreML: delivery succeeds but availability never flips.
+        #expect(SemanticEmbeddingAvailability.isAvailable == false)
+        #expect(SemanticEmbeddingAvailability.lastLoadSource == .missing)
+        #endif
     }
 
     @Test("auto-download flag defaults to off")
@@ -153,7 +177,12 @@ struct EmbeddingModelDownloadTests {
 
         SemanticEmbeddingAvailability.reprobe()
         #expect(SemanticEmbeddingAvailability.isAvailable == false)
+        #if canImport(CoreML)
         #expect(SemanticEmbeddingAvailability.lastLoadSource == .compiledCache)
+        #else
+        // Without CoreML, reprobe() is a no-op and the source stays missing.
+        #expect(SemanticEmbeddingAvailability.lastLoadSource == .missing)
+        #endif
     }
 
     @Test("ZIP extract rejects path traversal")
@@ -191,10 +220,24 @@ struct EmbeddingModelDownloadTests {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: destination) }
 
+        #if canImport(Compression)
         try EmbeddingModelZip.extract(archive: deflatedMiniLMZipFixture, to: destination)
         let model = try EmbeddingModelZip.locateModelPackage(in: destination)
         let contents = try String(contentsOf: model, encoding: .utf8)
         #expect(contents == "not-a-real-model")
+        #else
+        // Without the Compression framework, deflate fails with a typed error.
+        do {
+            try EmbeddingModelZip.extract(archive: deflatedMiniLMZipFixture, to: destination)
+            Issue.record("Expected deflate to be unavailable without the Compression framework")
+        } catch let error as EmbeddingModelDeliveryError {
+            guard case .compilationFailed(let reason) = error else {
+                Issue.record("Expected compilationFailed, got \(error)")
+                return
+            }
+            #expect(reason.contains("unavailable on this platform"))
+        }
+        #endif
     }
 }
 

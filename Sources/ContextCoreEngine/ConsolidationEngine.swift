@@ -1,34 +1,10 @@
+#if canImport(Metal)
 import ContextCoreTypes
 import Foundation
 import Metal
 
-/// Summary metrics from a consolidation pass.
-public struct ConsolidationResult: Sendable, Equatable {
-    /// Number of duplicate pairs found.
-    public let duplicatePairsFound: Int
-    /// Number of facts promoted to semantic memory.
-    public let factsPromoted: Int
-    /// Number of episodic chunks evicted.
-    public let chunksEvicted: Int
-    /// Consolidation duration in milliseconds.
-    public let durationMs: Double
-
-    /// Creates a consolidation result.
-    public init(
-        duplicatePairsFound: Int,
-        factsPromoted: Int,
-        chunksEvicted: Int,
-        durationMs: Double
-    ) {
-        self.duplicatePairsFound = duplicatePairsFound
-        self.factsPromoted = factsPromoted
-        self.chunksEvicted = chunksEvicted
-        self.durationMs = durationMs
-    }
-}
-
 /// GPU-backed consolidation engine for deduplication, promotion, and contradiction detection.
-public actor ConsolidationEngine {
+public actor ConsolidationEngine: ConsolidationEngineProtocol {
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let pairwisePipeline: MTLComputePipelineState
@@ -707,102 +683,4 @@ public actor ConsolidationEngine {
     }
 }
 
-/// Background trigger that schedules consolidation after insertion thresholds.
-public actor ConsolidationScheduler {
-    private let engine: ConsolidationEngine
-    private let countThreshold: Int
-    private let insertionThreshold: Int
-    private let similarityThreshold: Float
-
-    private var insertionsSinceLastConsolidation = 0
-    private var isConsolidating = false
-    private var triggerCountValue = 0
-    private var lastResultValue: ConsolidationResult?
-
-    /// Creates a consolidation scheduler.
-    ///
-    /// - Parameters:
-    ///   - engine: Consolidation engine to run.
-    ///   - countThreshold: Episodic count trigger threshold.
-    ///   - insertionThreshold: Insertion count trigger threshold.
-    ///   - similarityThreshold: Duplicate similarity threshold for scheduled runs.
-    public init(
-        engine: ConsolidationEngine,
-        countThreshold: Int = 200,
-        insertionThreshold: Int = 50,
-        similarityThreshold: Float = 0.92
-    ) {
-        self.engine = engine
-        self.countThreshold = countThreshold
-        self.insertionThreshold = insertionThreshold
-        self.similarityThreshold = similarityThreshold
-    }
-
-    /// Notifies scheduler that an insertion occurred and may trigger consolidation.
-    ///
-    /// - Parameters:
-    ///   - episodicCount: Current episodic chunk count.
-    ///   - session: Active session identifier.
-    ///   - episodicStore: Episodic store.
-    ///   - semanticStore: Semantic store.
-    public func notifyInsertion(
-        episodicCount: Int,
-        session: UUID,
-        episodicStore: any ConsolidationEpisodicStore,
-        semanticStore: any ConsolidationSemanticStore
-    ) async {
-        insertionsSinceLastConsolidation += 1
-
-        let shouldConsolidate = episodicCount > countThreshold || insertionsSinceLastConsolidation > insertionThreshold
-        guard shouldConsolidate, !isConsolidating else {
-            return
-        }
-
-        isConsolidating = true
-        triggerCountValue += 1
-
-        let engine = self.engine
-        let threshold = self.similarityThreshold
-
-        Task.detached(priority: .background) {
-            do {
-                let result = try await engine.consolidate(
-                    session: session,
-                    episodicStore: episodicStore,
-                    semanticStore: semanticStore,
-                    threshold: threshold
-                )
-                await self.finish(result: result)
-            } catch {
-                await self.finish(result: nil)
-            }
-        }
-    }
-
-    /// Number of consolidation triggers issued.
-    public func triggerCount() -> Int {
-        triggerCountValue
-    }
-
-    /// Indicates whether a background consolidation task is running.
-    public func isRunning() -> Bool {
-        isConsolidating
-    }
-
-    /// Latest successful consolidation result.
-    public func lastResult() -> ConsolidationResult? {
-        lastResultValue
-    }
-
-    private func finish(result: ConsolidationResult?) {
-        if let result {
-            lastResultValue = result
-            resetCounter()
-        }
-        isConsolidating = false
-    }
-
-    private func resetCounter() {
-        insertionsSinceLastConsolidation = 0
-    }
-}
+#endif

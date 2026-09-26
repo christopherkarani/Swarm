@@ -3,7 +3,8 @@
 // Swarm Framework
 //
 // ContextCore-backed memory implementation used by default in Swarm.
-// Apple-only: ContextCore is trait-linked only on Apple platforms (Metal/CoreML).
+// ContextCore is trait-linked on all platforms: portable CPU/hash backends
+// on Linux, Metal/CoreML acceleration on Apple.
 
 import ContextCore
 import Foundation

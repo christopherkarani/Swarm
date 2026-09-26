@@ -65,6 +65,11 @@ struct ContextCoreDefaultMemoryTests {
         #expect(systemMessage?.content.contains("First no-session reply") == true)
     }
 
+    // Durable-layer tests below require working Wax FTS5 persistence. Wax
+    // 0.1.23 threw on Linux (`canImport(SQLite3)` gate); 0.1.47 links
+    // GRDBSQLite so FTS5 should persist there too, but no Linux runner has
+    // confirmed it yet — keep the gate until one does.
+    #if canImport(SQLite3)
     @Test("DefaultAgentMemory seeds replayed history into both layers")
     func defaultCompositeMemorySeedsReplayIntoBothLayers() async throws {
         let url = try makeTemporaryWaxURL()
@@ -93,7 +98,9 @@ struct ContextCoreDefaultMemoryTests {
         #expect(workingMessages.map(\.content) == ["alpha", "beta"])
         #expect(durableMessages.map(\.content) == ["alpha", "beta"])
     }
+    #endif
 
+    #if canImport(SQLite3)
     @Test("DefaultAgentMemory reports durable history through the composite view after reopen")
     func defaultCompositeMemoryReportsDurableHistoryAfterReopen() async throws {
         let url = try makeTemporaryWaxURL()
@@ -125,7 +132,9 @@ struct ContextCoreDefaultMemoryTests {
         #expect((await reopened.workingMessages()).isEmpty)
         #expect((await reopened.durableMessages()).map(\.content) == ["alpha", "beta"])
     }
+    #endif
 
+    #if canImport(SQLite3)
     @Test("DefaultAgentMemory keeps layered context within the requested token budget")
     func defaultCompositeMemoryHonorsCompositeBudget() async throws {
         let url = try makeTemporaryWaxURL()
@@ -161,6 +170,7 @@ struct ContextCoreDefaultMemoryTests {
         #expect(durableMessages.isEmpty == false)
         #expect(context.isEmpty == false)
     }
+    #endif
 
     @Test("DefaultAgentMemory policy query limits retrieved items")
     func defaultCompositeMemoryPolicyQueryLimitsRetrievedItems() async throws {
@@ -265,6 +275,7 @@ struct ContextCoreDefaultMemoryTests {
         #expect(!context.contains("drop-secondary"))
     }
 
+    #if canImport(SQLite3)
     @Test("DefaultAgentMemory policy query trims durable-only oversized items after reopen")
     func defaultCompositeMemoryPolicyQueryTrimsDurableOnlyOversizedItemsAfterReopen() async throws {
         let url = try makeTemporaryWaxURL()
@@ -305,6 +316,7 @@ struct ContextCoreDefaultMemoryTests {
         #expect(context.contains("durable-policytopic"))
         #expect(!context.contains("tail-not-allowed"))
     }
+    #endif
 
     @Test("DefaultAgentMemory skips duplicate replay entries against an existing Wax store")
     func defaultCompositeMemorySkipsDuplicateReplayEntries() async throws {
@@ -335,6 +347,55 @@ struct ContextCoreDefaultMemoryTests {
         #expect(await reopened.count == 2)
         #expect((await reopened.allMessages()).map(\.content) == ["gamma", "delta"])
         #expect((await reopened.durableMessages()).map(\.content) == ["gamma", "delta"])
+    }
+
+    @Test("concurrent first-touch opens the durable store once", .timeLimit(.minutes(1)))
+    func concurrentFirstTouchOpensStoreOnce() async throws {
+        let url = try makeTemporaryWaxURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let memory = try DefaultAgentMemory(
+            configuration: .init(
+                waxStoreURL: url
+            )
+        )
+
+        // First touch races lazy WaxMemory construction from two tasks. Without
+        // in-flight memoization this opened the same store twice; Wax takes an
+        // exclusive file lock per open, so the second open blocked forever.
+        async let first: Void = memory.add(.user("alpha"))
+        async let second: Void = memory.add(.assistant("beta"))
+        _ = await (first, second)
+
+        #expect(await memory.count == 2)
+        #expect((await memory.allMessages()).map(\.content) == ["alpha", "beta"])
+    }
+
+    @Test("racing clear with first touch keeps memory usable", .timeLimit(.minutes(2)))
+    func racingClearWithFirstTouchKeepsMemoryUsable() async throws {
+        // clear() joins in-flight construction instead of cancelling it, so
+        // a clear racing first touch must neither hang (second open on the
+        // exclusive lock) nor leave the stack unusable. Iterated to catch
+        // rare interleavings; each iteration uses a fresh store.
+        for _ in 0..<10 {
+            let url = try makeTemporaryWaxURL()
+            let memory = try DefaultAgentMemory(
+                configuration: .init(
+                    waxStoreURL: url
+                )
+            )
+
+            async let first: Void = memory.add(.user("alpha"))
+            async let cleared: Void = memory.clear()
+            async let second: Void = memory.add(.assistant("beta"))
+            _ = await (first, cleared, second)
+
+            await memory.clear()
+            await memory.add(.user("gamma"))
+            #expect(await memory.count == 1)
+            #expect((await memory.allMessages()).map(\.content) == ["gamma"])
+            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+        }
     }
 }
 

@@ -1,5 +1,7 @@
 import ContextCoreEngine
+#if canImport(CoreML)
 import CoreML
+#endif
 import Foundation
 import Logging
 
@@ -18,19 +20,31 @@ public enum SemanticEmbeddingAvailability: Sendable {
     ///
     /// Becomes `true` in-process after a successful
     /// ``ensureModelAvailable(configuration:progressHandler:)`` without requiring
-    /// a restart.
+    /// a restart. Always `false` where CoreML is unavailable.
     public static var isAvailable: Bool {
+        #if canImport(CoreML)
         CoreMLEmbeddingProvider.isRealModelAvailable
+        #else
+        false
+        #endif
     }
 
     /// Why real embeddings are unavailable, if they are.
     public static var unavailabilityReason: String? {
+        #if canImport(CoreML)
         CoreMLEmbeddingProvider.unavailabilityReason
+        #else
+        "CoreML is unavailable on this platform"
+        #endif
     }
 
     /// Most recent fallback warning in this process, if any.
     public static var lastWarningMessage: String? {
+        #if canImport(CoreML)
         CoreMLEmbeddingProvider.lastWarningMessage
+        #else
+        HashFallbackDiagnostics.lastWarning
+        #endif
     }
 
     /// Where the default provider last resolved the MiniLM artifact.
@@ -41,10 +55,16 @@ public enum SemanticEmbeddingAvailability: Sendable {
     /// Whether `provider` can produce real semantic embeddings.
     ///
     /// Custom embedders are treated as available. The default CoreML MiniLM
-    /// path reports ``isAvailable``.
+    /// path reports ``isAvailable``. Known-degraded hash defaults report
+    /// `false` on every platform.
     public static func isAvailable(for provider: any EmbeddingProvider) -> Bool {
+        #if canImport(CoreML)
         if provider is CoreMLEmbeddingProvider {
             return CoreMLEmbeddingProvider.isRealModelAvailable
+        }
+        #endif
+        if isKnownDegradedDefault(for: provider) {
+            return false
         }
         if let caching = provider as? CachingEmbeddingProvider {
             return isAvailable(for: caching.base)
@@ -52,11 +72,28 @@ public enum SemanticEmbeddingAvailability: Sendable {
         return true
     }
 
+    /// Whether `provider` is a known-degraded default (hash pseudo-vectors).
+    ///
+    /// Pure type check: never probes, never warns. Covers the Linux default
+    /// (`HashEmbeddingProvider`) and the portable deterministic-hash provider,
+    /// including when wrapped in ``CachingEmbeddingProvider``.
+    public static func isKnownDegradedDefault(for provider: any EmbeddingProvider) -> Bool {
+        if provider is HashEmbeddingProvider || provider is DeterministicHashEmbeddingProvider {
+            return true
+        }
+        if let caching = provider as? CachingEmbeddingProvider {
+            return isKnownDegradedDefault(for: caching.base)
+        }
+        return false
+    }
+
     /// Whether `provider` is the default CoreML MiniLM path (possibly cached).
     public static func tracksDefaultCoreML(for provider: any EmbeddingProvider) -> Bool {
+        #if canImport(CoreML)
         if provider is CoreMLEmbeddingProvider {
             return true
         }
+        #endif
         if let caching = provider as? CachingEmbeddingProvider {
             return tracksDefaultCoreML(for: caching.base)
         }
@@ -86,7 +123,9 @@ public enum SemanticEmbeddingAvailability: Sendable {
             configuration: configuration,
             progressHandler: progressHandler
         )
+        #if canImport(CoreML)
         CoreMLEmbeddingProvider.markDelivered(source: .compiledCache)
+        #endif
     }
 
     /// Clears the last probe and checks the cache / bundle again.
@@ -94,16 +133,143 @@ public enum SemanticEmbeddingAvailability: Sendable {
     /// Unlike ``ensureModelAvailable(configuration:progressHandler:)``, this
     /// requires CoreML to load the compiled model before ``isAvailable`` is `true`.
     public static func reprobe() {
+        #if canImport(CoreML)
         CoreMLEmbeddingProvider.reprobeAvailability()
+        #endif
     }
 
     /// Resets process-wide fallback diagnostics. Intended for tests.
     public static func resetForTesting() {
+        #if canImport(CoreML)
         CoreMLEmbeddingProvider.resetAvailabilityForTesting()
+        #endif
         EmbeddingModelCache.resetForTesting()
+        HashFallbackDiagnostics.resetForTesting()
     }
 }
 
+/// Factory for the default embedding provider: CoreML MiniLM where available,
+/// portable hash-seeded vectors otherwise.
+enum DefaultEmbeddingProvider {
+    static func make() -> any EmbeddingProvider {
+        #if canImport(CoreML)
+        CoreMLEmbeddingProvider()
+        #else
+        HashEmbeddingProvider()
+        #endif
+    }
+}
+
+/// Portable hash-seeded embedding provider used where CoreML is unavailable.
+///
+/// Produces deterministic L2-normalized pseudo-vectors (same derivation as the
+/// CoreML provider's missing-model fallback). Rankings from this path are not
+/// semantically meaningful.
+public struct HashEmbeddingProvider: EmbeddingProvider, Sendable {
+    /// Dimensionality produced by this provider.
+    public let dimensions: Int
+    /// Human-readable model identifier.
+    public let modelIdentifier = "hash-fallback-v1"
+
+    /// Creates a hash-seeded provider.
+    public init(dimensions: Int = 384) {
+        self.dimensions = dimensions
+    }
+
+    /// Produces a deterministic pseudo-vector for a single text input.
+    public func embed(_ text: String) async throws -> [Float] {
+        HashFallbackDiagnostics.recordIfNeeded()
+        return Self.deterministicVector(for: text, dimension: dimensions)
+    }
+
+    /// Produces deterministic pseudo-vectors for multiple inputs.
+    public func embed(_ texts: [String]) async throws -> [[Float]] {
+        HashFallbackDiagnostics.recordIfNeeded()
+        return texts.map { Self.deterministicVector(for: $0, dimension: dimensions) }
+    }
+
+    private static func deterministicVector(for text: String, dimension: Int) -> [Float] {
+        var state = stableSeed(from: text)
+        var values = [Float](repeating: 0, count: dimension)
+
+        for index in values.indices {
+            state &*= 6364136223846793005
+            state &+= 1442695040888963407
+            let component = Float(Int64(bitPattern: state & 0x0000_FFFF_FFFF_FFFF) % 10_000) / 5_000.0 - 1.0
+            values[index] = component
+        }
+
+        return l2Normalize(values)
+    }
+
+    private static func stableSeed(from text: String) -> UInt64 {
+        var hash: UInt64 = 1469598103934665603
+        for byte in text.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1099511628211
+        }
+        return hash
+    }
+
+    private static func l2Normalize(_ vector: [Float]) -> [Float] {
+        let norm = vector.reduce(0) { partial, value in
+            partial + (value * value)
+        }.squareRoot()
+
+        guard norm > 0 else {
+            return vector
+        }
+
+        return vector.map { $0 / norm }
+    }
+}
+
+/// Process-wide record-once degradation warning for hash pseudo-vectors.
+///
+/// Mirrors the CoreML provider's `takeFallback` message so diagnostics read
+/// the same on platforms without CoreML. Same locked-`State` shape as
+/// `EmbeddingModelCache`.
+enum HashFallbackDiagnostics {
+    private static let state = State()
+    private static let logger = Logger(label: "com.swarm.memory")
+
+    private final class State: @unchecked Sendable {
+        let lock = NSLock()
+        var warning: String?
+    }
+
+    static var lastWarning: String? {
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        return state.warning
+    }
+
+    static func recordIfNeeded() {
+        // Unlike the CoreML provider's fallback message, this must not advise
+        // ensureModelAvailable(): without CoreML the real compiler always
+        // fails, so only an injected provider can restore real embeddings.
+        let message = """
+        Real embeddings are unavailable (CoreML is unavailable on this platform). Semantic recall quality is degraded — \
+        vector rankings are not meaningful until a real embedding model is available. \
+        Inject a custom EmbeddingProvider via ContextConfiguration.embeddingProvider.
+        """
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        guard state.warning == nil else {
+            return
+        }
+        state.warning = message
+        logger.warning("\(message)")
+    }
+
+    static func resetForTesting() {
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        state.warning = nil
+    }
+}
+
+#if canImport(CoreML)
 internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
     internal let dimensions: Int = 384
     internal let modelIdentifier = "minilm-l6-v2"
@@ -365,6 +531,7 @@ internal struct CoreMLEmbeddingProvider: EmbeddingProvider, Sendable {
         return hash
     }
 }
+#endif
 
 internal struct CachingEmbeddingProvider: EmbeddingProvider, Sendable {
     fileprivate let base: any EmbeddingProvider

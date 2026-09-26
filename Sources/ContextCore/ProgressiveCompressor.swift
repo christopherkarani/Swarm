@@ -69,7 +69,7 @@ public struct ProgressiveCompressionResult: Sendable {
 
 /// Applies progressive, score-aware compression to satisfy budget deficits.
 public actor ProgressiveCompressor {
-    private let compressionEngine: CompressionEngine
+    private let compressionEngine: any CompressionEngineProtocol
     private let tokenCounter: any TokenCounter
 
     /// Creates a progressive compressor.
@@ -78,7 +78,7 @@ public actor ProgressiveCompressor {
     ///   - compressionEngine: Engine used for light/heavy compression passes.
     ///   - tokenCounter: Token counter used for deficit accounting.
     public init(
-        compressionEngine: CompressionEngine,
+        compressionEngine: any CompressionEngineProtocol,
         tokenCounter: any TokenCounter
     ) {
         self.compressionEngine = compressionEngine

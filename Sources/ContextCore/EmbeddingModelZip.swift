@@ -1,4 +1,6 @@
+#if canImport(Compression)
 import Compression
+#endif
 import Foundation
 
 /// Minimal ZIP extractor for MiniLM release assets (stored + deflate).
@@ -180,10 +182,17 @@ enum EmbeddingModelZip {
             return decoded
         }
 
+        #if canImport(Compression)
         throw EmbeddingModelDeliveryError.compilationFailed("ZIP deflate failed")
+        #else
+        throw EmbeddingModelDeliveryError.compilationFailed(
+            "ZIP deflate decompression is unavailable on this platform (Compression framework not present)"
+        )
+        #endif
     }
 
     private static func decodeZlib(_ input: Data, capacity: Int) -> Data? {
+        #if canImport(Compression)
         var destination = Data(count: capacity)
         let decodedCount = input.withUnsafeBytes { sourceBuffer in
             destination.withUnsafeMutableBytes { destinationBuffer in
@@ -207,6 +216,9 @@ enum EmbeddingModelZip {
         }
         destination.count = decodedCount
         return destination
+        #else
+        return nil
+        #endif
     }
 }
 

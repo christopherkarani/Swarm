@@ -55,10 +55,12 @@ targets and their package-dependency block for lean root-package verification.
 Disable Macros with `traits: []` to drop swift-syntax. `SWARM_CORE_ONLY=1`
 drops the integration package block entirely.
 
-**Platform note:** ContextCore and the full Membrane session stack need Apple
-frameworks (Metal/CoreML/Accelerate). On Linux, Integrations still enables Hive
-durable workflows, MembraneCore, and web helpers; default memory falls back to
-`SlidingWindowMemory` when ContextCore is unavailable.
+**Platform note:** ContextCore and the full Membrane session stack link on
+all platforms with Integrations. Linux uses portable CPU scoring/compression
+engines, the brute-force vector index, hash embeddings, and
+passthrough/in-memory Membrane backends, so `Agent.makeDefaultMemory()` still
+returns `DefaultAgentMemory` (ContextCore + Wax) there. Apple builds
+accelerate the same stack with Metal/CoreML/Accelerate and MetalANNS.
 
 **Embeddings:** the CoreML MiniLM model is not bundled with Swarm. Call
 `SemanticEmbeddingAvailability.ensureModelAvailable()` to download it on

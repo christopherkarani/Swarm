@@ -1,13 +1,20 @@
 import Foundation
 
-protocol SentenceRanker: Sendable {
+/// Ranks sentences in a chunk by semantic importance.
+///
+/// Both the Metal-backed and CPU compression engines conform to this protocol.
+public protocol SentenceRanker: Sendable {
+    /// Ranks sentences in a chunk by similarity to the chunk embedding, descending.
     func rankSentences(
         in chunk: String,
         chunkEmbedding: [Float]
     ) async throws -> [(sentence: String, importance: Float)]
 }
 
+extension CPUCompressionEngine: SentenceRanker {}
+#if canImport(Metal)
 extension CompressionEngine: SentenceRanker {}
+#endif
 
 /// Packs system prompt, recent turns, and ranked memory into a token budget.
 public actor WindowPacker {
@@ -25,7 +32,7 @@ public actor WindowPacker {
     ///   - minimumChunkSize: Remaining budget threshold below which packing stops.
     ///   - recentTurnsGuaranteed: Number of latest turns that must always be included.
     public init(
-        compressionEngine: CompressionEngine,
+        compressionEngine: any CompressionEngineProtocol & SentenceRanker,
         tokenCounter: any TokenCounter,
         minimumChunkSize: Int = 50,
         recentTurnsGuaranteed: Int = 3

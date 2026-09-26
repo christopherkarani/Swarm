@@ -65,6 +65,8 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
     private let url: URL
     private let memoryFactory: @Sendable (URL) async throws -> any WaxPointerIndex
     private var memory: (any WaxPointerIndex)?
+    private var memoryTask: Task<any WaxPointerIndex, Error>?
+    private var constructionEpoch = 0
     private var cachedPayloads: [String: Data] = [:]
 
     init(
@@ -171,15 +173,80 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
     }
 
     private func ensureMemory() async throws -> any WaxPointerIndex {
-        if let memory {
-            return memory
+        while true {
+            if let memory {
+                return memory
+            }
+            if let task = memoryTask {
+                let epoch = constructionEpoch
+                do {
+                    let resolved = try await task.value
+                    if epoch != constructionEpoch {
+                        // Late-cancel race: a close consumed this task after
+                        // it completed. Retry instead of using the orphan.
+                        continue
+                    }
+                    return resolved
+                } catch is CancellationError {
+                    if epoch != constructionEpoch {
+                        // A concurrent close consumed this construction; retry
+                        // against fresh state instead of surfacing it.
+                        continue
+                    }
+                    throw CancellationError()
+                }
+            } else {
+                // Memoize the in-flight construction: concurrent callers must
+                // join it instead of opening the same store twice (Wax takes
+                // an exclusive file lock per open). Detached so awaiting it
+                // never re-enters this actor.
+                let factory = memoryFactory
+                let storeURL = url
+                constructionEpoch += 1
+                let epoch = constructionEpoch
+                let task = Task.detached { () async throws -> any WaxPointerIndex in
+                    let resolved = try await factory(storeURL)
+                    if Task.isCancelled {
+                        // A concurrent close consumed this construction; close
+                        // the orphan instead of handing waiters a zombie.
+                        try? await resolved.close()
+                        throw CancellationError()
+                    }
+                    return resolved
+                }
+                memoryTask = task
+                do {
+                    let resolved = try await task.value
+                    if epoch == constructionEpoch {
+                        memory = resolved
+                        memoryTask = nil
+                        return resolved
+                    }
+                    // Late-cancel race: consumed after the task's own check.
+                    // Release the orphan and retry.
+                    try? await resolved.close()
+                } catch is CancellationError {
+                    if epoch == constructionEpoch {
+                        memoryTask = nil
+                        throw CancellationError()
+                    }
+                    // Consumed by a concurrent close; retry.
+                } catch {
+                    if epoch == constructionEpoch {
+                        memoryTask = nil
+                    }
+                    throw error
+                }
+            }
         }
-        let resolved = try await memoryFactory(url)
-        memory = resolved
-        return resolved
     }
 
     private func closeMemoryIfOpen() async throws {
+        memoryTask?.cancel()
+        memoryTask = nil
+        // Invalidate in-flight waiters: their construction no longer belongs
+        // to this generation, so they must release it and retry.
+        constructionEpoch += 1
         guard let existing = memory else { return }
         try await existing.close()
         memory = nil
@@ -198,10 +265,10 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
         let frameStore = try await openFrameStore()
         do {
             let result = try await body(frameStore)
-            await frameStore.close()
+            try await frameStore.close()
             return result
         } catch {
-            await frameStore.close()
+            try? await frameStore.close()
             throw error
         }
     }
@@ -231,7 +298,7 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
     private func persistedPayloadFrame(pointerID: String) async throws -> Data? {
         try await closeMemoryIfOpen()
         return try await withFrameStore { frameStore in
-            let frames = await frameStore.frames()
+            let frames = try await frameStore.frames()
             guard let frame = frames.reversed().first(where: {
                 $0.status == .active &&
                     $0.metadata[MetadataKey.pointerID] == pointerID &&
@@ -259,7 +326,7 @@ actor WaxMembraneStorage: PointerStore, ContextRecallStore {
         }
         try await closeMemoryIfOpen()
         try await withFrameStore { frameStore in
-            let frames = await frameStore.frames()
+            let frames = try await frameStore.frames()
             for frame in frames where frame.status == .active && frame.metadata[MetadataKey.pointerID] == pointerID {
                 try await frameStore.delete(frameID: frame.id)
             }

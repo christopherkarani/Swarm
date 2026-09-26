@@ -1611,7 +1611,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | — | struct | public | ContextCoreEmbeddingAdapter | Bridges Swarm `EmbeddingProvider` into ContextCore |
-| — | enum | public | SemanticEmbeddingAvailability | `ensureModelAvailable()`, `isAvailable`, `reprobe()` |
+| — | enum | public | SemanticEmbeddingAvailability | `ensureModelAvailable()`, `isAvailable`, `reprobe()`, `isKnownDegradedDefault(for:)` |
 | — | struct | public | EmbeddingModelDeliveryConfiguration | Download URL, pinned SHA-256, cache directory |
 | — | enum | public | EmbeddingModelCatalog | Publishing-target URL + `expectedSHA256` |
 | — | var | public | ContextCoreMemoryConfiguration.downloadsEmbeddingModelAutomatically | Default `false`; failed auto-download does not block session start |
@@ -3131,6 +3131,8 @@ Swarm capture-path types. Owned-loop consumes ``Profile`` / ``ProfileHistoryPoli
 | 36 | func | public | ToolCallStreamingInferenceProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
 
 ## 12. Integration (Membrane + Wax)
+
+Integrations links on all platforms: Linux uses the portable ContextCore/Membrane backends (CPU engines, brute-force index, hash embeddings, passthrough/in-memory backends); Apple builds accelerate with Metal/CoreML/MetalANNS.
 
 ### Integration/Membrane/MembraneAgentAdapter.swift
 
