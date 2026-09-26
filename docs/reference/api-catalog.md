@@ -1253,6 +1253,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 13 | func | public | ToolArguments.init(_:toolName:) | `public init(_ arguments: [String : SendableValue], toolName: String = "tool")` |
 | 19 | func | public | ToolArguments.require(_:as:) | `public func require<T: ToolArgumentValue>(_ key: String, as type: T.Type = T.self) throws -> T` |
 | 45 | func | public | ToolArguments.optional(_:as:) | `public func optional<T: ToolArgumentValue>(_ key: String, as type: T.Type = T.self) -> T?` |
+| 910 | func | public | ToolArguments.optionalValue(_:as:) | `public func optionalValue<T: ToolArgumentValue>(_ key: String, as type: T.Type = T.self) throws -> T?` |
 | 57 | func | public | ToolArguments.string(_:default:) | `public func string(_ key: String, default defaultValue: String = "") -> String` |
 | 62 | func | public | ToolArguments.int(_:default:) | `public func int(_ key: String, default defaultValue: Int = 0) -> Int` |
 | 96 | struct | public | FunctionTool | `public struct FunctionTool` |
@@ -1302,7 +1303,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 1194 | protocol | public | ToolArgumentValue | `public protocol ToolArgumentValue : Sendable` _(Lattice: `String`, `Int`, `Double`, `Bool`.)_ |
+| 755 | protocol | public | ToolArgumentValue | `public protocol ToolArgumentValue : Sendable` _(Open lattice: built-in `String`, `Int`, `Double`, `Bool`; custom `Sendable` types conform via `extract(from:)`.)_ |
+| 760 | func | public | ToolArgumentValue.extract(from:) | `public static func extract(from value: SendableValue) -> Self?` |
 | 32 | protocol | public | AnyJSONTool | `public protocol AnyJSONTool : Sendable` |
 | 34 | var | public | AnyJSONTool.name | `public var name: String { get }` |
 | 37 | var | public | AnyJSONTool.description | `public var description: String { get }` |

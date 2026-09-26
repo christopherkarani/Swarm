@@ -738,22 +738,75 @@ public struct ToolSchema: Sendable, Equatable {
 /// Types that ``ToolArguments/require(_:as:)`` and ``ToolArguments/optional(_:as:)``
 /// can extract from a tool-call argument dictionary.
 ///
-/// The lattice is `String`, `Int`, `Double`, and `Bool`. Other `Sendable` types
-/// such as `URL` do not conform and fail at compile time. Decoding arbitrary
-/// `Decodable` payloads still uses unconstrained ``SendableValue/decode()``.
-public protocol ToolArgumentValue: Sendable {}
+/// The built-in lattice is `String`, `Int`, `Double`, and `Bool`. The lattice is
+/// open: any `Sendable` type (such as `URL`) can conform by implementing
+/// ``extract(from:)``, and a conformance that omits the requirement fails at
+/// compile time. Decoding arbitrary `Decodable` payloads still uses
+/// unconstrained ``SendableValue/decode()``.
+///
+/// ## Strict Extraction
+///
+/// Extraction is exact-case with no coercion: `.int(1)` extracts as `Int` only,
+/// never as `Double`, and `.string("1")` never extracts as a number. Apply
+/// schema-driven coercion first with ``AnyJSONTool/normalizeArguments(_:)``
+/// (backed by `ToolArgumentProcessor`), then extract with ``ToolArguments``.
+/// That normalize-then-extract composition keeps LLM-input tolerance in the
+/// normalization layer and exactness in the handler layer.
+public protocol ToolArgumentValue: Sendable {
+    /// Extracts `Self` from a wire value, or returns `nil` when the case does not match.
+    ///
+    /// Implementations must be exact-case (no numeric or string coercion); the
+    /// built-in conformances share the internal strict policy below.
+    static func extract(from value: SendableValue) -> Self?
+}
 
-extension String: ToolArgumentValue {}
-extension Int: ToolArgumentValue {}
-extension Double: ToolArgumentValue {}
-extension Bool: ToolArgumentValue {}
+/// Strict exact-case extraction shared by the built-in ``ToolArgumentValue`` conformances.
+///
+/// One policy serves all four lattice types: a value extracts only when its
+/// `SendableValue` case matches the requested type exactly.
+enum ToolArgumentExtraction {
+    static func extract<T>(_: T.Type, from value: SendableValue) -> T? {
+        let extracted: Any? = switch value {
+        case let .string(s) where T.self == String.self: s
+        case let .int(i) where T.self == Int.self: i
+        case let .double(d) where T.self == Double.self: d
+        case let .bool(b) where T.self == Bool.self: b
+        default: nil
+        }
+        return extracted as? T
+    }
+}
+
+extension String: ToolArgumentValue {
+    public static func extract(from value: SendableValue) -> String? {
+        ToolArgumentExtraction.extract(String.self, from: value)
+    }
+}
+
+extension Int: ToolArgumentValue {
+    public static func extract(from value: SendableValue) -> Int? {
+        ToolArgumentExtraction.extract(Int.self, from: value)
+    }
+}
+
+extension Double: ToolArgumentValue {
+    public static func extract(from value: SendableValue) -> Double? {
+        ToolArgumentExtraction.extract(Double.self, from: value)
+    }
+}
+
+extension Bool: ToolArgumentValue {
+    public static func extract(from value: SendableValue) -> Bool? {
+        ToolArgumentExtraction.extract(Bool.self, from: value)
+    }
+}
 
 /// A convenience wrapper for extracting typed values from tool arguments.
 ///
 /// `ToolArguments` provides a type-safe interface for accessing the raw
 /// `[String: SendableValue]` dictionary passed to tool execution.
 /// ``require(_:as:)`` and ``optional(_:as:)`` are generic over
-/// ``ToolArgumentValue`` only (`String`, `Int`, `Double`, `Bool`).
+/// ``ToolArgumentValue`` only (built in: `String`, `Int`, `Double`, and `Bool`).
 ///
 /// ## Usage
 ///
@@ -784,6 +837,12 @@ extension Bool: ToolArgumentValue {}
 /// - `Int` - Extracts from `.int` values
 /// - `Double` - Extracts from `.double` values
 /// - `Bool` - Extracts from `.bool` values
+///
+/// Custom `Sendable` types can join the lattice by implementing
+/// ``ToolArgumentValue/extract(from:)``. Each accessor dispatches to that
+/// requirement: ``require(_:as:)`` throws when the key is missing or mistyped,
+/// ``optional(_:as:)`` returns `nil` in both cases, and
+/// ``optionalValue(_:as:)`` returns `nil` only when the key is missing.
 ///
 /// - SeeAlso: ``FunctionTool``, ``ToolArgumentValue``
 public struct ToolArguments: Sendable {
@@ -818,15 +877,7 @@ public struct ToolArguments: Sendable {
             )
         }
 
-        let extracted: Any? = switch value {
-        case let .string(s) where type == String.self: s
-        case let .int(i) where type == Int.self: i
-        case let .double(d) where type == Double.self: d
-        case let .bool(b) where type == Bool.self: b
-        default: nil
-        }
-
-        guard let result = extracted as? T else {
+        guard let result = T.extract(from: value) else {
             throw AgentError.invalidToolArguments(
                 toolName: toolName,
                 reason: "Argument '\(key)' is not of type \(T.self)"
@@ -843,13 +894,28 @@ public struct ToolArguments: Sendable {
     /// - Returns: The typed value, or `nil` if missing or wrong type.
     public func optional<T: ToolArgumentValue>(_ key: String, as type: T.Type = T.self) -> T? {
         guard let value = raw[key] else { return nil }
-        return switch value {
-        case let .string(s) where type == String.self: s as? T
-        case let .int(i) where type == Int.self: i as? T
-        case let .double(d) where type == Double.self: d as? T
-        case let .bool(b) where type == Bool.self: b as? T
-        default: nil
+        return T.extract(from: value)
+    }
+
+    /// Gets an optional argument, throwing when a present value has the wrong type.
+    ///
+    /// Unlike ``optional(_:as:)``, which conflates "missing" and "mistyped" as
+    /// `nil`, this strict optional returns `nil` only when the key is absent.
+    ///
+    /// - Parameters:
+    ///   - key: The argument key.
+    ///   - type: The expected lattice type (inferred by default).
+    /// - Returns: The typed value, or `nil` if the key is missing.
+    /// - Throws: ``AgentError/invalidToolArguments`` if a present value has the wrong type.
+    public func optionalValue<T: ToolArgumentValue>(_ key: String, as type: T.Type = T.self) throws -> T? {
+        guard let value = raw[key] else { return nil }
+        guard let result = T.extract(from: value) else {
+            throw AgentError.invalidToolArguments(
+                toolName: toolName,
+                reason: "Argument '\(key)' is not of type \(T.self)"
+            )
         }
+        return result
     }
 
     /// Gets a string argument or returns the default.

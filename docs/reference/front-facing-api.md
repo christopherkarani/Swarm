@@ -338,10 +338,14 @@ let greet = FunctionTool(
 }
 ```
 
-`ToolArguments.require` and `optional` extract only `ToolArgumentValue` types:
-`String`, `Int`, `Double`, and `Bool`. Other `Sendable` types such as `URL` do
-not compile. `SendableValue.decode()` remains unconstrained for `Decodable`
-payloads.
+`ToolArguments.require`, `optional`, and `optionalValue` extract
+`ToolArgumentValue` types. The built-in lattice is `String`, `Int`, `Double`,
+and `Bool`, and it is open: any `Sendable` type (such as `URL`) can conform by
+implementing `extract(from:)`. Extraction is exact-case with no coercion, so
+apply schema-driven coercion first with `normalizeArguments(_:)`, then extract.
+`require` throws when a key is missing or mistyped, `optional` returns `nil` in
+both cases, and `optionalValue` returns `nil` only when the key is missing.
+`SendableValue.decode()` remains unconstrained for `Decodable` payloads.
 
 `ToolExecutionSemantics.runtimePolicy()` is the public derivation of retry,
 approval, and parallel eligibility. ``ToolExecutionSemantics/automatic`` stays
