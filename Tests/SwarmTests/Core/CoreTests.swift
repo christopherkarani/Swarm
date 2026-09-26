@@ -124,6 +124,55 @@ struct SendableValueTests {
         #expect(dict[.int(1)] == "one")
         #expect(dict[.string("key")] == "value")
     }
+
+    // MARK: - Fragment Encoding/Decoding
+
+    @Test("Scalar encodables outside the fast paths encode to fragments")
+    func scalarEncodablesEncodeToFragments() throws {
+        enum Mood: String, Codable { case happy }
+
+        #expect(try SendableValue(encoding: Mood.happy) == .string("happy"))
+        #expect(try SendableValue(encoding: Float(1.5)) == .double(1.5))
+        let none: String? = nil
+        #expect(try SendableValue(encoding: none) == .null)
+        let some: String? = "hi"
+        #expect(try SendableValue(encoding: some) == .string("hi"))
+    }
+
+    @Test("Scalar and null fragments decode or throw without aborting")
+    func fragmentDecodeThrowsInsteadOfCrashing() throws {
+        enum Mood: String, Codable { case happy }
+        struct Box: Codable, Equatable { let value: Int }
+
+        // Matches decode, including Optional and RawRepresentable outputs.
+        let mood: Mood = try SendableValue.string("happy").decode()
+        #expect(mood == .happy)
+        let some: String? = try SendableValue.string("hi").decode()
+        #expect(some == "hi")
+        let none: String? = try SendableValue.null.decode()
+        #expect(none == nil)
+        let double: Double = try SendableValue.int(1).decode()
+        #expect(double == 1.0)
+        let box: Box = try SendableValue.dictionary(["value": .int(2)]).decode()
+        #expect(box == Box(value: 2))
+
+        // Mismatches throw instead of aborting the process.
+        #expect(throws: SendableValue.ConversionError.self) {
+            let _: String = try SendableValue.int(1).decode()
+        }
+        #expect(throws: SendableValue.ConversionError.self) {
+            let _: Int = try SendableValue.string("hi").decode()
+        }
+        #expect(throws: SendableValue.ConversionError.self) {
+            let _: Box = try SendableValue.int(1).decode()
+        }
+        #expect(throws: SendableValue.ConversionError.self) {
+            let _: Box = try SendableValue.null.decode()
+        }
+        #expect(throws: SendableValue.ConversionError.self) {
+            let _: String = try SendableValue.null.decode()
+        }
+    }
 }
 
 // MARK: - AgentConfigurationTests

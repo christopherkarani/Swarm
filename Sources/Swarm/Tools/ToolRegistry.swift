@@ -323,22 +323,9 @@ public actor ToolRegistry {
             observer: observer
         )
 
-        // `SendableValue.decode()` routes scalar and null results through
-        // `JSONSerialization` without fragment support, which raises an
-        // uncatchable `NSException` (process abort) when `T.Output` is not the
-        // identical primitive. Divert those mismatches to `toolFailure` so the
-        // typed mismatch path always throws per REQ-004 instead of crashing.
-        guard result.canAttemptTypedDecode(as: T.Output.self) else {
-            let cause = SendableValue.ConversionError.decodingFailed(
-                "result is \(result.shapeDescription), which cannot decode as \(String(describing: T.Output.self))"
-            )
-            throw AgentError.toolFailure(
-                toolName: tool.name,
-                message: "Failed to decode result of \"\(tool.name)\" as \(String(describing: T.Output.self)): \(cause.localizedDescription)",
-                cause: cause
-            )
-        }
-
+        // `SendableValue.decode()` supports scalar and null fragments, so
+        // every result/type pairing either decodes or throws (never aborts).
+        // Map decode mismatches to `toolFailure` with the underlying cause.
         do {
             let output: T.Output = try result.decode()
             return output
@@ -361,56 +348,6 @@ public actor ToolRegistry {
             guard seen.insert(name).inserted else {
                 throw ToolRegistryError.duplicateToolName(name: name)
             }
-        }
-    }
-}
-
-// MARK: - Typed Decode Safety
-
-fileprivate extension SendableValue {
-    /// Whether `decode()` can be attempted for `type` without aborting the process.
-    ///
-    /// Mirrors `decode()`'s dispatch: the four JSON primitives are handled only
-    /// when `T` is the identical type (with `Double` also accepting `.int` via
-    /// `doubleValue`), and everything else goes through `JSONSerialization`,
-    /// whose top-level value must be an array or dictionary. Any other pairing
-    /// would raise an uncatchable `NSException` instead of throwing.
-    func canAttemptTypedDecode<T: Decodable>(as type: T.Type) -> Bool {
-        if dictionaryValue != nil || arrayValue != nil {
-            return true
-        }
-        if T.self == Bool.self {
-            return boolValue != nil
-        }
-        if T.self == Int.self {
-            return intValue != nil
-        }
-        if T.self == Double.self {
-            return doubleValue != nil
-        }
-        if T.self == String.self {
-            return stringValue != nil
-        }
-        return false
-    }
-
-    /// Short human-readable shape name for decode-failure messages.
-    var shapeDescription: String {
-        switch self {
-        case .null:
-            "null"
-        case .bool:
-            "a boolean"
-        case .int:
-            "an integer"
-        case .double:
-            "a double"
-        case .string:
-            "a string"
-        case .array:
-            "an array"
-        case .dictionary:
-            "a dictionary"
         }
     }
 }

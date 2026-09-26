@@ -110,6 +110,67 @@ private struct DisabledDynamicTool: AnyJSONTool {
     }
 }
 
+private enum Mood: String, Codable, Sendable {
+    case happy
+    case calm
+}
+
+private struct MoodTool: Tool {
+    struct Input: Codable, Sendable {
+        let text: String
+    }
+
+    typealias Output = Mood
+
+    let name = "typed_mood"
+    let description = "Returns a mood for the text"
+    let parameters: [ToolParameter] = [
+        ToolParameter(name: "text", description: "Text", type: .string)
+    ]
+
+    func execute(_ input: Input) async throws -> Mood {
+        input.text.isEmpty ? .calm : .happy
+    }
+}
+
+private struct OptionalEchoTool: Tool {
+    typealias Input = EchoInput
+    typealias Output = String?
+
+    let name = "typed_optional_echo"
+    let description = "Echoes text or returns nil for empty input"
+    let parameters: [ToolParameter] = [
+        ToolParameter(name: "text", description: "Text to echo", type: .string)
+    ]
+
+    func execute(_ input: Input) async throws -> String? {
+        input.text.isEmpty ? nil : "echo:\(input.text)"
+    }
+}
+
+private struct FixedResultDynamicTool: AnyJSONTool {
+    let name: String
+    let description = "Returns a fixed result regardless of schema"
+    let parameters: [ToolParameter]
+    let result: SendableValue
+
+    init(
+        name: String,
+        result: SendableValue,
+        parameters: [ToolParameter] = [
+            ToolParameter(name: "text", description: "Text", type: .string)
+        ]
+    ) {
+        self.name = name
+        self.result = result
+        self.parameters = parameters
+    }
+
+    func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
+        result
+    }
+}
+
 private struct GuardrailedEchoTool: Tool {
     typealias Input = EchoInput
     typealias Output = EchoOutput
@@ -163,6 +224,29 @@ struct ToolRegistryTypedExecuteTests {
 
         let output: String = try await registry.execute(tool: tool, input: .init(name: "Ada"))
         #expect(output == "Hello, Ada!")
+    }
+
+    @Test("typed execute supports enum outputs")
+    func typedExecuteEnumOutput() async throws {
+        let registry = ToolRegistry()
+        let tool = MoodTool()
+        try await registry.register(tool)
+
+        let output: Mood = try await registry.execute(tool: tool, input: .init(text: "hi"))
+        #expect(output == .happy)
+    }
+
+    @Test("typed execute supports optional outputs")
+    func typedExecuteOptionalOutput() async throws {
+        let registry = ToolRegistry()
+        let tool = OptionalEchoTool()
+        try await registry.register(tool)
+
+        let some: String? = try await registry.execute(tool: tool, input: EchoInput(text: "hi"))
+        #expect(some == "echo:hi")
+
+        let none: String? = try await registry.execute(tool: tool, input: EchoInput(text: ""))
+        #expect(none == nil)
     }
 
     @Test("typed execute throws toolNotFound for an unregistered name")
@@ -233,6 +317,49 @@ struct ToolRegistryTypedExecuteTests {
             #expect(toolName == tool.name)
             #expect((message ?? "").contains("EchoOutput"))
             #expect((message ?? "").contains(tool.name))
+            #expect(cause != nil)
+        }
+    }
+
+    @Test("typed execute throws toolFailure on scalar-to-scalar mismatch")
+    func typedExecuteScalarMismatchThrowsToolFailure() async throws {
+        let registry = ToolRegistry()
+        try await registry.register(
+            FixedResultDynamicTool(
+                name: "typed_greet",
+                result: .int(1),
+                parameters: [ToolParameter(name: "name", description: "The person's name", type: .string)]
+            )
+        )
+        let tool = GreetTool()
+        do {
+            let _: String = try await registry.execute(tool: tool, input: .init(name: "Ada"))
+            Issue.record("expected AgentError.toolFailure")
+        } catch let error as AgentError {
+            guard case .toolFailure(let toolName, let message, let cause) = error else {
+                Issue.record("expected toolFailure, got \(error)")
+                return
+            }
+            #expect(toolName == tool.name)
+            #expect((message ?? "").contains("String"))
+            #expect(cause != nil)
+        }
+    }
+
+    @Test("typed execute throws toolFailure on null result for non-optional output")
+    func typedExecuteNullMismatchThrowsToolFailure() async throws {
+        let registry = ToolRegistry()
+        try await registry.register(FixedResultDynamicTool(name: "typed_echo", result: .null))
+        let tool = TypedEchoTool()
+        do {
+            let _: EchoOutput = try await registry.execute(tool: tool, input: EchoInput(text: "hi"))
+            Issue.record("expected AgentError.toolFailure")
+        } catch let error as AgentError {
+            guard case .toolFailure(let toolName, _, let cause) = error else {
+                Issue.record("expected toolFailure, got \(error)")
+                return
+            }
+            #expect(toolName == tool.name)
             #expect(cause != nil)
         }
     }
