@@ -592,14 +592,24 @@ public struct Agent: AgentRuntime, Sendable {
     // MARK: - Turn Dependency Resolution
 
     /// Gathers every resolution channel for one turn — explicit configuration,
-    /// the TaskLocal environment snapshot, package globals, and the agent's
-    /// base tools — and resolves them exactly once into an
-    /// ``AgentTurnDependencies`` value.
+    /// the TaskLocal environment snapshot, package globals, the agent's
+    /// base tools, and the on-device Foundation Models provider — and resolves
+    /// them exactly once into an ``AgentTurnDependencies`` value.
     ///
     /// Ranking lives only on ``AgentTurnDependencyResolver``. This gather step
     /// does not read ``ResponseTracker``; the shell awaits the tracker before
     /// calling ``AgentTurnDependencyResolver/inferenceOptions``.
     func resolveTurnDependencies() async throws -> AgentTurnDependencies {
+        let environment = AgentEnvironmentValues.current
+        let globalProvider = await runEnvironment.defaultProvider()
+        // The Foundation Models availability check is effectful, so the shell
+        // resolves it only when it could win: privacy-required ranks it first,
+        // otherwise it is the last resort after explicit, environment, and
+        // global. Winners match the previous lazy behavior exactly.
+        let needsFoundationModels = configuration.inferencePolicy?.privacyRequired == true
+            || (inferenceProvider == nil
+                && environment.inferenceProvider == nil
+                && globalProvider == nil)
         let query = AgentTurnDependencyQuery(
             configuration: configuration,
             explicitProvider: inferenceProvider,
@@ -608,9 +618,12 @@ public struct Agent: AgentRuntime, Sendable {
             explicitTracer: tracer,
             metricsCollector: metricsCollector,
             baseTools: await toolRegistry.allTools,
-            environment: AgentEnvironmentValues.current,
-            globalProvider: await runEnvironment.defaultProvider(),
-            globalWebSearch: await runEnvironment.webConfiguration()
+            environment: environment,
+            globalProvider: globalProvider,
+            globalWebSearch: await runEnvironment.webConfiguration(),
+            foundationModelsProvider: needsFoundationModels
+                ? DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable()
+                : nil
         )
         return try AgentTurnDependencyResolver.resolve(query)
     }
