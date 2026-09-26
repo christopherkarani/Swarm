@@ -10,7 +10,7 @@ The current API reference covers the supported public surface for Swarm 0.6.6. P
 | [Tools](/reference/front-facing-api) | `@Tool` macro, `FunctionTool`, and `ToolCollection` |
 | [Workflow](/guide/getting-started) | Fluent last-answer chain: sequential, parallel, routed execution |
 | [Job](/reference/front-facing-api) | Shared notes, per-helper briefs, late N fan-out |
-| [Durable execution](/guide/durable-execution) | Checkpoint/resume, signatures, pruning |
+| [Durable execution](/guide/durable-execution) | Checkpoint/resume, signatures, pruning, tool approvals |
 | [Handoffs](/reference/front-facing-api) | Agent handoffs and routing between runtime agents |
 | [Memory](/reference/front-facing-api) | Package default (`Agent.makeDefaultMemory()`), Conversation, Vector, Summary, SwiftData backends; file sessions and snapshots |
 | [Streaming](/reference/front-facing-api) | `AgentEvent` streaming and text output |
