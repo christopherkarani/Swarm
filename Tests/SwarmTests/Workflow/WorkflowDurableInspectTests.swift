@@ -33,11 +33,13 @@ struct WorkflowDurableInspectTests {
         #expect(inspection.latest?.isCompleted == true)
         #expect(inspection.latest?.lastResult?.output == "two")
         #expect(inspection.signatureMatches)
-        #expect(inspection.checkpoints.allSatisfy(\.signatureMatches))
+        let allSignaturesMatch = inspection.checkpoints.allSatisfy(\.signatureMatches)
+        #expect(allSignaturesMatch)
 
         let running = inspection.checkpoints.filter { !$0.isCompleted }
         #expect(!running.isEmpty)
-        #expect(running.allSatisfy { $0.stepCursor != nil && $0.iterationCursor != nil })
+        let runningHaveCursors = running.allSatisfy { $0.stepCursor != nil && $0.iterationCursor != nil }
+        #expect(runningHaveCursors)
     }
 
     @Test("inspect(run:) reads another run from the same store")
@@ -141,7 +143,8 @@ struct WorkflowDurableInspectTests {
         let inspection = try await changed.inspect(run: run)
         #expect(!inspection.checkpoints.isEmpty)
         #expect(!inspection.signatureMatches)
-        #expect(inspection.checkpoints.allSatisfy { !$0.signatureMatches })
+        let allSignaturesMismatch = inspection.checkpoints.allSatisfy { !$0.signatureMatches }
+        #expect(allSignaturesMismatch)
     }
 
     @Test("inspect throws checkpointNotFound for an unknown run")
