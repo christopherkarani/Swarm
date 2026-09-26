@@ -151,6 +151,24 @@ enum PromptToolPromptBuilder {
 
 // MARK: - PromptToolParser
 
+/// Fail-closed parsing failure for a Swarm tool-call envelope.
+///
+/// Thrown when a candidate carries this request's nonce (so it is
+/// unambiguously a tool-call attempt) but a present field is malformed.
+/// Candidates without the envelope key, or with an absent, mistyped, or
+/// mismatched nonce, are ordinary model text and still yield nil.
+enum PromptToolParseError: Error, Sendable, Equatable, CustomStringConvertible {
+    /// A present envelope field has the wrong shape.
+    case malformedEnvelopeField(field: String, detail: String)
+
+    var description: String {
+        switch self {
+        case let .malformedEnvelopeField(field, detail):
+            "malformed tool-call envelope field '\(field)': \(detail)"
+        }
+    }
+}
+
 /// Parses Swarm `swarm_tool_call` envelopes from model response text.
 enum PromptToolParser {
     /// Parses tool calls from a model's text response.
@@ -159,15 +177,17 @@ enum PromptToolParser {
     ///   - availableTools: The tools that were made available to the model.
     ///   - context: The request-scoped envelope context expected in a valid tool call.
     /// - Returns: Parsed tool calls if a valid tool call is found, nil otherwise.
+    /// - Throws: ``PromptToolParseError`` when an authenticated envelope
+    ///   (matching nonce) carries a present-but-malformed field.
     static func parseToolCalls(
         from content: String,
         availableTools: [ToolSchema],
         context: PromptToolCallingContext
-    ) -> [InferenceResponse.ParsedToolCall]? {
+    ) throws -> [InferenceResponse.ParsedToolCall]? {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Fast path for the intended exact-JSON response shape.
-        if let toolCalls = parseToolCallsFromExactEnvelope(
+        if let toolCalls = try parseToolCallsFromExactEnvelope(
             trimmed,
             availableTools: availableTools,
             context: context
@@ -178,22 +198,34 @@ enum PromptToolParser {
         // Recover a single valid Swarm envelope from common wrappers such as prose or markdown fences.
         let candidates = extractJSONObjectCandidates(from: content)
         var parsedCandidates: [[InferenceResponse.ParsedToolCall]] = []
+        var firstFieldError: PromptToolParseError?
 
         for candidate in candidates {
-            guard let toolCalls = parseToolCallsFromExactEnvelope(
-                candidate,
-                availableTools: availableTools,
-                context: context
-            ) else {
-                continue
-            }
-            parsedCandidates.append(toolCalls)
-            guard parsedCandidates.count < 2 else {
-                return nil
+            do {
+                guard let toolCalls = try parseToolCallsFromExactEnvelope(
+                    candidate,
+                    availableTools: availableTools,
+                    context: context
+                ) else {
+                    continue
+                }
+                parsedCandidates.append(toolCalls)
+            } catch let error as PromptToolParseError {
+                if firstFieldError == nil {
+                    firstFieldError = error
+                }
             }
         }
 
-        return parsedCandidates.first
+        // An authenticated-but-malformed envelope fails closed even when a
+        // valid (or ambiguous) envelope is also present.
+        if let firstFieldError {
+            throw firstFieldError
+        }
+        if parsedCandidates.count == 1 {
+            return parsedCandidates.first
+        }
+        return nil
     }
 
     /// Debug: traces why a candidate failed to parse as a valid tool call.
@@ -229,59 +261,84 @@ enum PromptToolParser {
     }
 
     /// Parses an exact JSON object string into Swarm tool calls when it matches the expected envelope.
+    ///
+    /// Missing envelope keys yield nil (ordinary model text). Once the
+    /// nonce matches, the envelope is authenticated and present-but-malformed
+    /// `tool`/`arguments`/`id` fields throw instead of being dropped.
+    /// - Throws: ``PromptToolParseError`` for an authenticated envelope
+    ///   with a present-but-malformed field.
     private static func parseToolCallsFromExactEnvelope(
         _ candidate: String,
         availableTools: [ToolSchema],
         context: PromptToolCallingContext
-    ) -> [InferenceResponse.ParsedToolCall]? {
+    ) throws -> [InferenceResponse.ParsedToolCall]? {
         let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.first == "{", trimmed.last == "}" else {
             return nil
         }
 
-        guard let data = trimmed.data(using: .utf8) else {
+        guard let data = trimmed.data(using: .utf8),
+              let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
             return nil
         }
 
-        do {
-            guard let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return nil
-            }
-
-            guard let envelope = jsonObject[PromptToolCallingContext.envelopeKey] as? [String: Any] else {
-                return nil
-            }
-
-            guard let nonce = envelope["nonce"] as? String, nonce == context.nonce else {
-                return nil
-            }
-
-            let toolName = envelope["tool"] as? String
-            guard let toolName = toolName?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-                return nil
-            }
-
-            guard availableTools.contains(where: { $0.name == toolName }) else {
-                return nil
-            }
-
-            var arguments: [String: SendableValue] = [:]
-            if let argsObject = envelope["arguments"] as? [String: Any] {
-                for (key, value) in argsObject {
-                    arguments[key] = SendableValue.fromJSONValue(value)
-                }
-            }
-
-            let callId = envelope["id"] as? String
-
-            return [InferenceResponse.ParsedToolCall(
-                id: callId,
-                name: toolName,
-                arguments: arguments
-            )]
-        } catch {
+        // Absent or non-object envelopes cannot carry our nonce, so they are
+        // ordinary model text rather than tool-call attempts.
+        guard let envelope = jsonObject[PromptToolCallingContext.envelopeKey] as? [String: Any] else {
             return nil
         }
+
+        guard let nonce = envelope["nonce"] as? String, nonce == context.nonce else {
+            return nil
+        }
+
+        guard let rawTool = envelope["tool"], !(rawTool is NSNull) else {
+            return nil
+        }
+        guard let rawToolName = rawTool as? String else {
+            throw PromptToolParseError.malformedEnvelopeField(
+                field: "tool",
+                detail: "expected a string tool name"
+            )
+        }
+        let toolName = rawToolName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard availableTools.contains(where: { $0.name == toolName }) else {
+            return nil
+        }
+
+        var arguments: [String: SendableValue] = [:]
+        if let rawArguments = envelope["arguments"], !(rawArguments is NSNull) {
+            guard let argsObject = rawArguments as? [String: Any] else {
+                throw PromptToolParseError.malformedEnvelopeField(
+                    field: "arguments",
+                    detail: "expected an object mapping argument names to values"
+                )
+            }
+            for (key, value) in argsObject {
+                arguments[key] = SendableValue.fromJSONValue(value)
+            }
+        }
+
+        let callId: String?
+        if let rawID = envelope["id"], !(rawID is NSNull) {
+            guard let idString = rawID as? String else {
+                throw PromptToolParseError.malformedEnvelopeField(
+                    field: "id",
+                    detail: "expected a string call id"
+                )
+            }
+            callId = idString
+        } else {
+            callId = nil
+        }
+
+        return [InferenceResponse.ParsedToolCall(
+            id: callId,
+            name: toolName,
+            arguments: arguments
+        )]
     }
 
     /// Extracts top-level JSON object substrings while respecting JSON string escaping.
@@ -353,7 +410,7 @@ enum PromptToolCallingEmulation {
         )
 
         let generatedText = try await generateText(promptToGenerate, options)
-        return makeInferenceResponse(from: generatedText, availableTools: tools, context: context)
+        return try makeInferenceResponse(from: generatedText, availableTools: tools, context: context)
     }
 
     /// Generates a tool-aware response without flattening role-tagged history.
@@ -383,15 +440,17 @@ enum PromptToolCallingEmulation {
         }
 
         let generatedText = try await generateText(outgoing, options)
-        return makeInferenceResponse(from: generatedText, availableTools: tools, context: context)
+        return try makeInferenceResponse(from: generatedText, availableTools: tools, context: context)
     }
 
     /// Maps generated text into Swarm's structured inference response shape.
+    /// - Throws: ``PromptToolParseError`` when the text carries an
+    ///   authenticated envelope with a present-but-malformed field.
     static func makeInferenceResponse(
         from generatedText: String,
         availableTools: [ToolSchema],
         context: PromptToolCallingContext
-    ) -> InferenceResponse {
+    ) throws -> InferenceResponse {
         guard !availableTools.isEmpty else {
             return InferenceResponse(
                 content: generatedText,
@@ -400,7 +459,7 @@ enum PromptToolCallingEmulation {
             )
         }
 
-        if let parsedToolCalls = PromptToolParser.parseToolCalls(
+        if let parsedToolCalls = try PromptToolParser.parseToolCalls(
             from: generatedText,
             availableTools: availableTools,
             context: context

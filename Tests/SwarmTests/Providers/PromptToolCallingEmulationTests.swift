@@ -13,7 +13,7 @@ import Testing
 @Suite("Prompt tool prompt builder")
 struct PromptToolPromptTests {
     @Test("Tool prompt includes tool definitions")
-    func toolPromptIncludesDefinitions() {
+    func toolPromptIncludesDefinitions() throws {
         let tool = ToolSchema(
             name: "calculator",
             description: "Performs mathematical calculations",
@@ -38,7 +38,7 @@ struct PromptToolPromptTests {
     }
     
     @Test("Tool prompt includes JSON format instructions")
-    func toolPromptIncludesJSONFormat() {
+    func toolPromptIncludesJSONFormat() throws {
         let tool = ToolSchema(name: "test", description: "Test tool", parameters: [])
         let prompt = PromptToolPromptBuilder.buildToolPrompt(
             basePrompt: "Hello",
@@ -55,7 +55,7 @@ struct PromptToolPromptTests {
     }
     
     @Test("Tool prompt with multiple tools")
-    func toolPromptWithMultipleTools() {
+    func toolPromptWithMultipleTools() throws {
         let calculator = ToolSchema(
             name: "calculator",
             description: "Calculate",
@@ -85,7 +85,7 @@ struct PromptToolPromptTests {
     }
     
     @Test("Tool prompt with no tools returns base prompt")
-    func toolPromptWithNoTools() {
+    func toolPromptWithNoTools() throws {
         let basePrompt = "Hello, how are you?"
         let prompt = PromptToolPromptBuilder.buildToolPrompt(
             basePrompt: basePrompt,
@@ -97,7 +97,7 @@ struct PromptToolPromptTests {
     }
     
     @Test("Tool prompt with complex parameter types")
-    func toolPromptWithComplexTypes() {
+    func toolPromptWithComplexTypes() throws {
         let tool = ToolSchema(
             name: "complex",
             description: "Complex tool",
@@ -147,13 +147,13 @@ struct PromptToolCallingEmulationTests {
     }
 
     @Test("Valid tool output maps to tool calls with toolCall finish reason")
-    func validToolOutputMapsToToolCalls() {
+    func validToolOutputMapsToToolCalls() throws {
         let tools = [
             ToolSchema(name: "lookup", description: "Look up information", parameters: []),
         ]
         let context = PromptToolCallingContext(nonce: "nonce-123")
 
-        let response = PromptToolCallingEmulation.makeInferenceResponse(
+        let response = try PromptToolCallingEmulation.makeInferenceResponse(
             from: #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":{"query":"swift"}}}"#,
             availableTools: tools,
             context: context
@@ -167,13 +167,13 @@ struct PromptToolCallingEmulationTests {
     }
 
     @Test("Malformed tool output fails safely as plain content")
-    func malformedToolOutputFailsSafely() {
+    func malformedToolOutputFailsSafely() throws {
         let tools = [
             ToolSchema(name: "lookup", description: "Look up information", parameters: []),
         ]
         let context = PromptToolCallingContext(nonce: "nonce-123")
 
-        let response = PromptToolCallingEmulation.makeInferenceResponse(
+        let response = try PromptToolCallingEmulation.makeInferenceResponse(
             from: #"{"tool":"lookup","arguments":{"query":"swift""#,
             availableTools: tools,
             context: context
@@ -185,13 +185,13 @@ struct PromptToolCallingEmulationTests {
     }
 
     @Test("Plain non-tool output fails safely as completed content")
-    func plainOutputFailsSafely() {
+    func plainOutputFailsSafely() throws {
         let tools = [
             ToolSchema(name: "lookup", description: "Look up information", parameters: []),
         ]
         let context = PromptToolCallingContext(nonce: "nonce-123")
 
-        let response = PromptToolCallingEmulation.makeInferenceResponse(
+        let response = try PromptToolCallingEmulation.makeInferenceResponse(
             from: "Here is the answer without a tool.",
             availableTools: tools,
             context: context
@@ -210,14 +210,14 @@ struct PromptToolParserTests {
     private let context = PromptToolCallingContext(nonce: "nonce-123")
 
     @Test("Parse valid JSON tool call")
-    func parseValidJSONToolCall() {
+    func parseValidJSONToolCall() throws {
         let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"calculator","arguments":{"expression":"2+2"}}}"#
         
         let availableTools = [
             ToolSchema(name: "calculator", description: "Calc", parameters: [])
         ]
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -230,14 +230,14 @@ struct PromptToolParserTests {
     }
     
     @Test("Return nil for plain JSON without Swarm envelope")
-    func plainJSONWithoutEnvelopeIsRejected() {
+    func plainJSONWithoutEnvelopeIsRejected() throws {
         let response = #"{"tool":"weather","arguments":{"city":"London"}}"#
         
         let availableTools = [
             ToolSchema(name: "weather", description: "Weather", parameters: [])
         ]
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -247,14 +247,14 @@ struct PromptToolParserTests {
     }
     
     @Test("Parse tool call with call ID")
-    func parseToolCallWithCallId() {
+    func parseToolCallWithCallId() throws {
         let response = #"{"swarm_tool_call":{"nonce":"nonce-123","id":"call_123","tool":"search","arguments":{"query":"Swift"}}}"#
         
         let availableTools = [
             ToolSchema(name: "search", description: "Search", parameters: [])
         ]
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -264,7 +264,7 @@ struct PromptToolParserTests {
     }
 
     @Test("Parse wrapped tool call with surrounding prose")
-    func parseWrappedToolCallWithProse() {
+    func parseWrappedToolCallWithProse() throws {
         let response = """
         I'll use the lookup tool.
         {"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":{"query":"Swift"}}}
@@ -274,7 +274,7 @@ struct PromptToolParserTests {
             ToolSchema(name: "lookup", description: "Lookup", parameters: [])
         ]
 
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -286,7 +286,7 @@ struct PromptToolParserTests {
     }
 
     @Test("Parse wrapped tool call inside markdown fence")
-    func parseWrappedToolCallInsideMarkdownFence() {
+    func parseWrappedToolCallInsideMarkdownFence() throws {
         let response = """
         ```json
         {"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":{"query":"Swift"}}}
@@ -297,7 +297,7 @@ struct PromptToolParserTests {
             ToolSchema(name: "lookup", description: "Lookup", parameters: [])
         ]
 
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -308,14 +308,14 @@ struct PromptToolParserTests {
     }
     
     @Test("Parse tool call with various argument types")
-    func parseToolCallWithVariousTypes() {
+    func parseToolCallWithVariousTypes() throws {
         let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"test","arguments":{"str":"hello","num":42,"float":3.14,"bool":true,"null":null}}}"#
         
         let availableTools = [
             ToolSchema(name: "test", description: "Test", parameters: [])
         ]
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -327,14 +327,14 @@ struct PromptToolParserTests {
     }
     
     @Test("Parse tool call with nested arguments")
-    func parseToolCallWithNestedArguments() {
+    func parseToolCallWithNestedArguments() throws {
         let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"createUser","arguments":{"user":{"name":"Alice","age":30}}}}"#
         
         let availableTools = [
             ToolSchema(name: "createUser", description: "Create user", parameters: [])
         ]
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -346,14 +346,14 @@ struct PromptToolParserTests {
     }
     
     @Test("Parse tool call with array arguments")
-    func parseToolCallWithArrayArguments() {
+    func parseToolCallWithArrayArguments() throws {
         let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"search","arguments":{"tags":["swift","ai","ios"]}}}"#
         
         let availableTools = [
             ToolSchema(name: "search", description: "Search", parameters: [])
         ]
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -365,10 +365,10 @@ struct PromptToolParserTests {
     }
     
     @Test("Return nil for response without JSON")
-    func returnNilForResponseWithoutJSON() {
+    func returnNilForResponseWithoutJSON() throws {
         let response = "This is just a regular response without any tool calls."
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: [ToolSchema(name: "tool", description: "Tool", parameters: [])],
             context: context
@@ -378,14 +378,14 @@ struct PromptToolParserTests {
     }
     
     @Test("Return nil for unknown tool name")
-    func returnNilForUnknownToolName() {
+    func returnNilForUnknownToolName() throws {
         let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"unknownTool","arguments":{}}}"#
         
         let availableTools = [
             ToolSchema(name: "knownTool", description: "Known", parameters: [])
         ]
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -395,12 +395,12 @@ struct PromptToolParserTests {
     }
     
     @Test("Return nil for invalid JSON")
-    func returnNilForInvalidJSON() {
+    func returnNilForInvalidJSON() throws {
         let response = """
         {"tool": "test", "arguments": {invalid json
         """
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: [ToolSchema(name: "test", description: "Test", parameters: [])],
             context: context
@@ -410,10 +410,10 @@ struct PromptToolParserTests {
     }
     
     @Test("Return nil for JSON without tool name")
-    func returnNilForJSONWithoutToolName() {
+    func returnNilForJSONWithoutToolName() throws {
         let response = #"{"swarm_tool_call":{"nonce":"nonce-123","arguments":{"x":1}}}"#
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: [ToolSchema(name: "test", description: "Test", parameters: [])],
             context: context
@@ -423,10 +423,10 @@ struct PromptToolParserTests {
     }
     
     @Test("Return nil for envelope with wrong nonce")
-    func returnNilForWrongNonce() {
+    func returnNilForWrongNonce() throws {
         let response = #"{"swarm_tool_call":{"nonce":"different","tool":"getTime","arguments":{}}}"#
 
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: [ToolSchema(name: "getTime", description: "Get time", parameters: [])],
             context: context
@@ -436,7 +436,7 @@ struct PromptToolParserTests {
     }
 
     @Test("Return nil for multiple wrapped tool envelopes")
-    func returnNilForMultipleWrappedToolEnvelopes() {
+    func returnNilForMultipleWrappedToolEnvelopes() throws {
         let response = """
         First:
         {"swarm_tool_call":{"nonce":"nonce-123","tool":"getTime","arguments":{}}}
@@ -444,7 +444,7 @@ struct PromptToolParserTests {
         {"swarm_tool_call":{"nonce":"nonce-123","tool":"getTime","arguments":{}}}
         """
 
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: [ToolSchema(name: "getTime", description: "Get time", parameters: [])],
             context: context
@@ -454,14 +454,14 @@ struct PromptToolParserTests {
     }
 
     @Test("Parse tool call with empty arguments")
-    func parseToolCallWithEmptyArguments() {
+    func parseToolCallWithEmptyArguments() throws {
         let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"getTime","arguments":{}}}"#
         
         let availableTools = [
             ToolSchema(name: "getTime", description: "Get time", parameters: [])
         ]
         
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: response,
             availableTools: availableTools,
             context: context
@@ -479,13 +479,177 @@ struct PromptToolCallingIntegrationTests {
     @Test("generateWithToolCalls returns content when no tools provided")
     func generateWithToolCallsNoTools() async throws {
         // Parser-only check: text-only backends do not use Apple's session.
-        let toolCalls = PromptToolParser.parseToolCalls(
+        let toolCalls = try PromptToolParser.parseToolCalls(
             from: "Just a normal response",
             availableTools: [],
             context: PromptToolCallingContext(nonce: "nonce-123")
         )
         
         #expect(toolCalls == nil)
+    }
+}
+
+// MARK: - Fail-Closed Envelope Tests (AC-005)
+
+@Suite("Prompt tool call parser fail-closed")
+struct PromptToolParserFailClosedTests {
+    private let context = PromptToolCallingContext(nonce: "nonce-123")
+    private let tools = [ToolSchema(name: "lookup", description: "Lookup", parameters: [])]
+
+    @Test("Mistyped tool field throws naming the field")
+    func mistypedToolFieldThrows() throws {
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":123,"arguments":{}}}"#
+
+        #expect(throws: PromptToolParseError.malformedEnvelopeField(
+            field: "tool",
+            detail: "expected a string tool name"
+        )) {
+            _ = try PromptToolParser.parseToolCalls(
+                from: response,
+                availableTools: tools,
+                context: context
+            )
+        }
+    }
+
+    @Test("Mistyped arguments field throws naming the field")
+    func mistypedArgumentsFieldThrows() throws {
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":"oops"}}"#
+
+        #expect(throws: PromptToolParseError.malformedEnvelopeField(
+            field: "arguments",
+            detail: "expected an object mapping argument names to values"
+        )) {
+            _ = try PromptToolParser.parseToolCalls(
+                from: response,
+                availableTools: tools,
+                context: context
+            )
+        }
+    }
+
+    @Test("Mistyped id field throws naming the field")
+    func mistypedIDFieldThrows() throws {
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","id":42,"tool":"lookup","arguments":{}}}"#
+
+        #expect(throws: PromptToolParseError.malformedEnvelopeField(
+            field: "id",
+            detail: "expected a string call id"
+        )) {
+            _ = try PromptToolParser.parseToolCalls(
+                from: response,
+                availableTools: tools,
+                context: context
+            )
+        }
+    }
+
+    @Test("Prose-wrapped malformed envelope throws")
+    func wrappedMalformedEnvelopeThrows() throws {
+        let response = """
+        Using the tool now.
+        {"swarm_tool_call":{"nonce":"nonce-123","tool":["lookup"],"arguments":{}}}
+        """
+
+        #expect(throws: PromptToolParseError.self) {
+            _ = try PromptToolParser.parseToolCalls(
+                from: response,
+                availableTools: tools,
+                context: context
+            )
+        }
+    }
+
+    @Test("Valid envelope alongside malformed envelope throws instead of dropping the broken one")
+    func validPlusMalformedThrows() throws {
+        let valid = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":{}}}"#
+        let malformed = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":123,"arguments":{}}}"#
+
+        for response in ["\(valid)\n\(malformed)", "\(malformed)\n\(valid)"] {
+            #expect(throws: PromptToolParseError.self) {
+                _ = try PromptToolParser.parseToolCalls(
+                    from: response,
+                    availableTools: tools,
+                    context: context
+                )
+            }
+        }
+    }
+
+    @Test("Ambiguous valid envelopes alongside a malformed envelope throw in either order")
+    func ambiguousValidPlusMalformedThrows() throws {
+        let valid = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":{}}}"#
+        let malformed = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":123,"arguments":{}}}"#
+
+        for response in ["\(valid)\n\(valid)\n\(malformed)", "\(malformed)\n\(valid)\n\(valid)"] {
+            #expect(throws: PromptToolParseError.self) {
+                _ = try PromptToolParser.parseToolCalls(
+                    from: response,
+                    availableTools: tools,
+                    context: context
+                )
+            }
+        }
+    }
+
+    @Test("Mistyped nonce yields nil as unauthenticated text")
+    func mistypedNonceYieldsNil() throws {
+        let response = #"{"swarm_tool_call":{"nonce":123,"tool":"lookup","arguments":{}}}"#
+
+        let toolCalls = try PromptToolParser.parseToolCalls(
+            from: response,
+            availableTools: tools,
+            context: context
+        )
+        #expect(toolCalls == nil)
+    }
+
+    @Test("Non-object envelope value yields nil")
+    func nonObjectEnvelopeYieldsNil() throws {
+        let response = #"{"swarm_tool_call":"lookup"}"#
+
+        let toolCalls = try PromptToolParser.parseToolCalls(
+            from: response,
+            availableTools: tools,
+            context: context
+        )
+        #expect(toolCalls == nil)
+    }
+
+    @Test("Null tool reads as absent and yields nil")
+    func nullToolYieldsNil() throws {
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":null,"arguments":{}}}"#
+
+        let toolCalls = try PromptToolParser.parseToolCalls(
+            from: response,
+            availableTools: tools,
+            context: context
+        )
+        #expect(toolCalls == nil)
+    }
+
+    @Test("Null arguments read as absent and parse with empty arguments")
+    func nullArgumentsParseAsEmpty() throws {
+        let response = #"{"swarm_tool_call":{"nonce":"nonce-123","tool":"lookup","arguments":null}}"#
+
+        let toolCalls = try PromptToolParser.parseToolCalls(
+            from: response,
+            availableTools: tools,
+            context: context
+        )
+        #expect(toolCalls?.first?.name == "lookup")
+        #expect(toolCalls?.first?.arguments.isEmpty == true)
+    }
+
+    @Test("makeInferenceResponse propagates envelope field errors")
+    func responseMappingPropagatesFieldErrors() throws {
+        #expect(throws: PromptToolParseError.self) {
+            _ = try PromptToolCallingEmulation.makeInferenceResponse(
+                from: #"{"swarm_tool_call":{"nonce":"nonce-123","tool":123}}"#,
+                availableTools: tools,
+                context: context
+            )
+        }
     }
 }
 

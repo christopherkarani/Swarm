@@ -260,6 +260,83 @@ struct FoundationModelsStructuredSchemaMappingTests {
         #expect(result == .unsupported(.invalidReference("https://example.com/schema.json")))
     }
 
+    @Test("non-array required fails closed instead of empty")
+    func nonArrayRequiredFailsClosed() {
+        let schema = """
+        {
+          "type": "object",
+          "properties": { "city": { "type": "string" } },
+          "required": "city"
+        }
+        """
+        let result = FoundationModelsStructuredSchemaMapping.evaluate(
+            StructuredOutputRequest(format: .jsonSchema(name: "Place", schemaJSON: schema))
+        )
+        #expect(result == .unsupported(.invalidRequired(path: "$")))
+    }
+
+    @Test("nested non-array required fails closed with path")
+    func nestedNonArrayRequiredFailsClosed() {
+        let schema = """
+        {
+          "type": "object",
+          "properties": {
+            "address": {
+              "type": "object",
+              "properties": { "city": { "type": "string" } },
+              "required": { "city": true }
+            }
+          }
+        }
+        """
+        let result = FoundationModelsStructuredSchemaMapping.evaluate(
+            StructuredOutputRequest(format: .jsonSchema(name: "Person", schemaJSON: schema))
+        )
+        #expect(result == .unsupported(.invalidRequired(path: "$.properties.address")))
+    }
+
+    @Test("non-string required element fails closed")
+    func nonStringRequiredElementFailsClosed() {
+        let schema = """
+        {
+          "type": "object",
+          "properties": { "city": { "type": "string" } },
+          "required": ["city", 5]
+        }
+        """
+        let result = FoundationModelsStructuredSchemaMapping.evaluate(
+            StructuredOutputRequest(format: .jsonSchema(name: "Place", schemaJSON: schema))
+        )
+        #expect(result == .unsupported(.invalidRequired(path: "$")))
+    }
+
+    @Test("null required fails closed")
+    func nullRequiredFailsClosed() {
+        let schema = """
+        {
+          "type": "object",
+          "properties": { "city": { "type": "string" } },
+          "required": null
+        }
+        """
+        let result = FoundationModelsStructuredSchemaMapping.evaluate(
+            StructuredOutputRequest(format: .jsonSchema(name: "Place", schemaJSON: schema))
+        )
+        #expect(result == .unsupported(.invalidRequired(path: "$")))
+    }
+
+    @Test("absent required leaves every property optional")
+    func absentRequiredLeavesOptional() throws {
+        let schema = """
+        {
+          "type": "object",
+          "properties": { "city": { "type": "string" } }
+        }
+        """
+        let mapped = try #require(mappedSchema(name: "Place", json: schema))
+        #expect(mapped.properties.first?.isOptional == true)
+    }
+
     @Test("mixed-type enum is unsupported")
     func mixedEnumIsUnsupported() {
         let schema = """

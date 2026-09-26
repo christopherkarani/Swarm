@@ -86,6 +86,7 @@ enum FoundationModelsStructuredSchemaMapping: Sendable, Equatable {
         case invalidReference(String)
         case additionalProperties(path: String)
         case emptyProperties(path: String)
+        case invalidRequired(path: String)
 
         var description: String {
             switch self {
@@ -109,6 +110,8 @@ enum FoundationModelsStructuredSchemaMapping: Sendable, Equatable {
                 "additionalProperties at \(path) enables free-form keys that GenerationSchema cannot express"
             case let .emptyProperties(path):
                 "object at \(path) has no properties; GenerationSchema cannot express a free-form object"
+            case let .invalidRequired(path):
+                "required at \(path) must be an array of strings"
             }
         }
     }
@@ -271,7 +274,7 @@ private struct Parser {
             throw FoundationModelsStructuredSchemaMapping.Reason.emptyProperties(path: path)
         }
 
-        let required = Set((node["required"] as? [Any] ?? []).compactMap { $0 as? String })
+        let required = try parseRequired(node["required"], path: path)
         var properties: [FoundationModelsMappedProperty] = []
         properties.reserveCapacity(propertiesNode.count)
         for key in propertiesNode.keys.sorted() {
@@ -377,6 +380,27 @@ private struct Parser {
             minItems: intValue(node["minItems"]),
             maxItems: intValue(node["maxItems"])
         )
+    }
+
+    /// Parses `required`: absent yields no required keys; a present value
+    /// must be an array of strings, otherwise mapping fails closed instead
+    /// of silently treating every property as optional.
+    private func parseRequired(_ raw: Any?, path: String) throws -> Set<String> {
+        guard let raw else {
+            return []
+        }
+        guard let array = raw as? [Any] else {
+            throw FoundationModelsStructuredSchemaMapping.Reason.invalidRequired(path: path)
+        }
+        var result = Set<String>()
+        result.reserveCapacity(array.count)
+        for element in array {
+            guard let name = element as? String else {
+                throw FoundationModelsStructuredSchemaMapping.Reason.invalidRequired(path: path)
+            }
+            result.insert(name)
+        }
+        return result
     }
 
     private func parseStringEnum(_ raw: Any, path: String) throws -> FoundationModelsMappedType {

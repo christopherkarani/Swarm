@@ -370,7 +370,7 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
     public func execute() async throws -> String {
         #if SWARM_INTEGRATIONS
         let envelope = try await WebToolRuntime.shared.execute(
-            request: legacyRequest(),
+            request: try legacyRequest(),
             configuration: resolvedConfiguration,
             secretStore: secretStore
         )
@@ -393,15 +393,16 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
 
     #if SWARM_INTEGRATIONS
     private func parseRequest(arguments: [String: SendableValue]) throws -> WebToolRequest {
-        let rawMode = arguments["mode"]?.stringValue ?? mode
-        let parsedMode = Mode(rawValue: rawMode.lowercased()) ?? .search
-        let rawDetail: String
+        let parsedMode = try parseMode(arguments["mode"], fallback: mode)
+        let parsedDetail: Detail
         if arguments["includeRawContent"]?.boolValue == true {
-            rawDetail = Detail.raw.rawValue
+            parsedDetail = .raw
         } else {
-            rawDetail = arguments["detail"]?.stringValue ?? (includeRawContent ? Detail.raw.rawValue : detail)
+            parsedDetail = try parseDetail(
+                arguments["detail"],
+                fallback: includeRawContent ? Detail.raw.rawValue : detail
+            )
         }
-        let parsedDetail = Detail(rawValue: rawDetail.lowercased()) ?? .compact
 
         return WebToolRequest(
             mode: parsedMode,
@@ -420,11 +421,9 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
         )
     }
 
-    private func legacyRequest() -> WebToolRequest {
-        let parsedMode = Mode(rawValue: mode.lowercased()) ?? .search
-        let parsedDetail = includeRawContent
-            ? Detail.raw
-            : (Detail(rawValue: detail.lowercased()) ?? .compact)
+    private func legacyRequest() throws -> WebToolRequest {
+        let parsedMode = try resolveMode(mode)
+        let parsedDetail = try includeRawContent ? Detail.raw : resolveDetail(detail)
 
         return WebToolRequest(
             mode: parsedMode,
@@ -441,6 +440,68 @@ public struct WebSearchTool: AnyJSONTool, Sendable {
             sectionIDs: sectionIDs,
             bundleID: nonEmpty(bundleID)
         )
+    }
+
+    /// Resolves `mode` from an explicit argument or the legacy property.
+    ///
+    /// Absent, null, or blank values take the documented default; unknown values
+    /// throw before any network call is made.
+    private func parseMode(_ value: SendableValue?, fallback: String) throws -> Mode {
+        guard let value, !value.isNull else {
+            return try resolveMode(fallback)
+        }
+        guard let raw = value.stringValue else {
+            throw AgentError.invalidToolArguments(
+                toolName: name,
+                reason: "websearch 'mode' must be a string"
+            )
+        }
+        return try resolveMode(raw)
+    }
+
+    private func resolveMode(_ raw: String) throws -> Mode {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return .search
+        }
+        guard let mode = Mode(rawValue: trimmed.lowercased()) else {
+            throw AgentError.invalidToolArguments(
+                toolName: name,
+                reason: "unknown websearch mode '\(trimmed)'; expected one of: \(Mode.allCases.map(\.rawValue).joined(separator: ", "))"
+            )
+        }
+        return mode
+    }
+
+    /// Resolves `detail` from an explicit argument or the legacy property.
+    ///
+    /// Absent, null, or blank values take the documented default; unknown values
+    /// throw before any network call is made.
+    private func parseDetail(_ value: SendableValue?, fallback: String) throws -> Detail {
+        guard let value, !value.isNull else {
+            return try resolveDetail(fallback)
+        }
+        guard let raw = value.stringValue else {
+            throw AgentError.invalidToolArguments(
+                toolName: name,
+                reason: "websearch 'detail' must be a string"
+            )
+        }
+        return try resolveDetail(raw)
+    }
+
+    private func resolveDetail(_ raw: String) throws -> Detail {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return .compact
+        }
+        guard let detail = Detail(rawValue: trimmed.lowercased()) else {
+            throw AgentError.invalidToolArguments(
+                toolName: name,
+                reason: "unknown websearch detail '\(trimmed)'; expected one of: \(Detail.allCases.map(\.rawValue).joined(separator: ", "))"
+            )
+        }
+        return detail
     }
 
     private func formatLegacy(_ envelope: WebSearchEnvelope) -> String {

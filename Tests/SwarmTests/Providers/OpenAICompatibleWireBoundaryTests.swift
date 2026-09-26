@@ -503,48 +503,40 @@ struct OpenAICompatibleWireBoundaryTests {
         #expect(chunk.choices.first?.message?.content == nil)
     }
 
-    @Test("Wrong-typed choice fields degrade per field")
-    func wrongTypedChoiceFieldsDegrade() throws {
-        let chunk = try requireChunk(
+    @Test("Wrong-typed choice fields are malformed with field context")
+    func wrongTypedChoiceFieldsAreMalformed() throws {
+        let payload = try requireMalformed(
             #"{"choices":[{"index":"zero","delta":{"content":"hi"},"finish_reason":7}]}"#
         )
-        let choice = try #require(chunk.choices.first)
-        #expect(choice.index == 0)
-        #expect(choice.finishReason == nil)
-        #expect(choice.delta?.content == "hi")
+        #expect(payload.contains("'choices[0].finish_reason'"))
     }
 
-    @Test("Wrong-typed tool-call fields degrade per field")
-    func wrongTypedToolCallFieldsDegrade() throws {
-        let chunk = try requireChunk(
+    @Test("Wrong-typed tool-call fields are malformed with field context")
+    func wrongTypedToolCallFieldsAreMalformed() throws {
+        let payload = try requireMalformed(
             #"{"choices":[{"delta":{"tool_calls":[{"index":"x","id":7,"function":{"name":"f","arguments":{"a":1}}}]}}]}"#
         )
-        let call = try #require(chunk.choices.first?.delta?.toolCalls.first)
-        #expect(call.index == 0)
-        #expect(call.id == nil)
-        #expect(call.name == "f")
-        #expect(call.arguments == "")
+        #expect(payload.contains("'choices[0].delta.tool_calls[0].id'"))
     }
 
-    @Test("Wrong-typed message degrades to nil while the chunk survives")
-    func wrongTypedMessageIsNil() throws {
-        let chunk = try requireChunk(
+    @Test("Wrong-typed message is malformed with field context")
+    func wrongTypedMessageIsMalformed() throws {
+        let payload = try requireMalformed(
             #"{"choices":[{"index":0,"message":"oops","delta":{"content":"hi"}}]}"#
         )
-        #expect(chunk.choices.first?.message == nil)
-        #expect(chunk.choices.first?.delta?.content == "hi")
+        #expect(payload.contains("'choices[0].message'"))
     }
 
-    @Test("Wrong-typed choices degrade to an empty turn")
-    func wrongTypedChoicesAreEmpty() throws {
-        let chunk = try requireChunk(#"{"choices":"nope"}"#)
-        #expect(chunk.choices.isEmpty)
+    @Test("Wrong-typed choices are malformed with field context")
+    func wrongTypedChoicesAreMalformed() throws {
+        let payload = try requireMalformed(#"{"choices":"nope"}"#)
+        #expect(payload.contains("'choices'"))
     }
 
-    @Test("Non-object choice element degrades the turn to empty")
-    func nonObjectChoiceElementEmptiesTurn() throws {
-        let chunk = try requireChunk(#"{"choices":[{"index":0},42]}"#)
-        #expect(chunk.choices.isEmpty)
+    @Test("Non-object choice element is malformed with field context")
+    func nonObjectChoiceElementIsMalformed() throws {
+        let payload = try requireMalformed(#"{"choices":[{"index":0},42]}"#)
+        #expect(payload.contains("'choices[1]'"))
     }
 
     @Test("Double choice index falls back to the offset")
@@ -738,6 +730,16 @@ struct OpenAICompatibleWireBoundaryTests {
             throw FixtureError.expectedChunk
         }
         return chunk
+    }
+
+    private func requireMalformed(_ json: String) throws -> String {
+        let events = parse(lines: ["data: \(json)", ""])
+        let event = try #require(events.first)
+        guard case let .malformed(payload) = event else {
+            Issue.record("expected malformed, got \(event)")
+            throw FixtureError.expectedChunk
+        }
+        return payload
     }
 
     private func assertBodyEquals(_ body: Data?, expected: String) throws {
