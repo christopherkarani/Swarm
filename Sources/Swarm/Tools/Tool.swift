@@ -806,7 +806,7 @@ extension Bool: ToolArgumentValue {
 /// `ToolArguments` provides a type-safe interface for accessing the raw
 /// `[String: SendableValue]` dictionary passed to tool execution.
 /// ``require(_:as:)`` and ``optional(_:as:)`` are generic over
-/// ``ToolArgumentValue`` only (`String`, `Int`, `Double`, `Bool`).
+/// ``ToolArgumentValue`` only (built in: `String`, `Int`, `Double`, and `Bool`).
 ///
 /// ## Usage
 ///
