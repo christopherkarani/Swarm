@@ -50,7 +50,7 @@ Add Swarm with Swift Package Manager:
 dependencies: [
     .package(
         url: "https://github.com/christopherkarani/Swarm.git",
-        from: "0.6.2"
+        from: "0.6.5"
     )
 ]
 ```
@@ -64,21 +64,21 @@ optional surfaces:
 // Durable graph, ContextCore/Wax memory, Membrane, web helpers
 .package(
     url: "https://github.com/christopherkarani/Swarm.git",
-    from: "0.6.2",
+    from: "0.6.5",
     traits: ["Integrations"]
 )
 
 // MCP server adapter (SwarmMCP + MCP Swift SDK). Also enables Macros.
 .package(
     url: "https://github.com/christopherkarani/Swarm.git",
-    from: "0.6.2",
+    from: "0.6.5",
     traits: ["MCP"]
 )
 
 // OpenTelemetry wrappers (SwarmOpenTelemetry). Also enables Macros.
 .package(
     url: "https://github.com/christopherkarani/Swarm.git",
-    from: "0.6.2",
+    from: "0.6.5",
     traits: ["OpenTelemetry"]
 )
 ```

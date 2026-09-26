@@ -22,9 +22,9 @@ struct V2SurfaceAuditTests {
 
     // MARK: - Version
 
-    @Test("Swarm.version is 0.6.2")
+    @Test("Swarm.version is 0.6.5")
     func versionIsV2() {
-        #expect(Swarm.version == "0.6.2")
+        #expect(Swarm.version == "0.6.5")
     }
 
     @Test("Deprecated inferred(from:) remains a public forwarding compatibility shim")
