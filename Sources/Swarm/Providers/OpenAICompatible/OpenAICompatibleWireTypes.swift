@@ -209,6 +209,14 @@ enum OpenAICompatibleWire: Sendable {
             return value
         }
         if let double = try? container.decodeIfPresent(Double.self, forKey: key) {
+            // `Int(_:)` traps out of range; degrade like any other mistyped
+            // count instead of crashing on absurd server payloads.
+            guard double.isFinite,
+                  double < Double(Int.max),
+                  double > Double(Int.min)
+            else {
+                return nil
+            }
             return Int(double)
         }
         return nil

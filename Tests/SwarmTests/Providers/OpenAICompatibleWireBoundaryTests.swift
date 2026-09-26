@@ -580,6 +580,18 @@ struct OpenAICompatibleWireBoundaryTests {
         #expect(chunk.usage == TokenUsage(inputTokens: 11, outputTokens: 1))
     }
 
+    @Test("Usage degrades out-of-range counts instead of trapping")
+    func usageDegradesOutOfRangeDoubles() throws {
+        let chunk = try requireChunk(
+            #"{"usage":{"prompt_tokens":1e30,"completion_tokens":-1e30}}"#
+        )
+        #expect(chunk.usage == nil)
+        let partial = try requireChunk(
+            #"{"usage":{"prompt_tokens":1e30,"completion_tokens":4}}"#
+        )
+        #expect(partial.usage == TokenUsage(inputTokens: 0, outputTokens: 4))
+    }
+
     @Test("Error without a message uses the default text")
     func errorWithoutMessageUsesDefault() throws {
         let chunk = try requireChunk(#"{"error":{"code":500}}"#)
