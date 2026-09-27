@@ -154,6 +154,35 @@ struct OpenAICompatibleTypedWireBoundaryTests {
         #expect(actual == expected)
     }
 
+    @Test("Request body carries reasoning effort from options")
+    func requestBodyCarriesReasoningEffort() throws {
+        let body: OpenAICompatibleWire.Request = try OpenAICompatibleCodec.requestBody(
+            configuration: .init(baseURL: endpoint, model: "gpt-test"),
+            messages: [.user("hi")],
+            tools: [],
+            options: .default.reasoning(ReasoningConfig(effort: .medium)),
+            stream: false,
+            structuredOutput: nil
+        )
+        #expect(body.reasoningEffort == "medium")
+    }
+
+    @Test("Request body omits reasoning effort when unset")
+    func requestBodyOmitsReasoningEffort() throws {
+        let body: OpenAICompatibleWire.Request = try OpenAICompatibleCodec.requestBody(
+            configuration: .init(baseURL: endpoint, model: "gpt-test"),
+            messages: [.user("hi")],
+            tools: [],
+            options: .default,
+            stream: false,
+            structuredOutput: nil
+        )
+        #expect(body.reasoningEffort == nil)
+        let data = try OpenAICompatibleWire.encode(body)
+        let json = String(decoding: data, as: UTF8.self)
+        #expect(!json.contains("reasoning_effort"))
+    }
+
     @Test("Encoded message carries signatures only when present")
     func encodedMessageWire() {
         let message = InferenceMessage(

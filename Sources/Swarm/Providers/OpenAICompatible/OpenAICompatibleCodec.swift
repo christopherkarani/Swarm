@@ -109,7 +109,8 @@ enum OpenAICompatibleCodec: Sendable {
                 configuration: configuration,
                 tools: tools,
                 structuredOutput: structuredOutput
-            )
+            ),
+            reasoningEffort: options.reasoning?.effort?.rawValue
         )
     }
 
