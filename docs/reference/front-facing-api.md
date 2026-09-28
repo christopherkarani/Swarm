@@ -676,6 +676,62 @@ match. `JobSession.window` always renders from `store.records()` with a
 case-insensitive substring of kind or text; the store does not implement
 `window`.
 
+### Job as product (JobTask, JobProduct, delegation)
+
+Tasks add an expected-output contract to the brief; the product convenience
+returns results keyed by task name plus a summary merged with
+`Workflow.MergeStrategy`. `fanOut` and both conveniences forward an optional
+`AgentObserver` to every child `agent.run`.
+
+```swift
+public struct JobTask: Sendable {
+    public let name: String
+    public let agent: any AgentRuntime
+    public let brief: String
+    public let expectedOutput: String
+    public init(name: String, agent: some AgentRuntime, brief: String, expectedOutput: String = "")
+}
+
+public struct JobProduct: Sendable, Equatable {
+    public let results: [String: AgentResult]
+    public let summary: String
+    public init(results: [String: AgentResult], summary: String)
+}
+
+public struct JobAssignment: Sendable {
+    public let name: String
+    public let agent: any AgentRuntime
+    public let notesQuery: String
+    public let expectedOutput: String
+    public init(name: String, agent: some AgentRuntime, notesQuery: String, expectedOutput: String = "")
+}
+
+public extension Job {
+    func run(
+        _ input: String,
+        tasks: [JobTask],
+        merge: Workflow.MergeStrategy = .structured,
+        observer: (any AgentObserver)? = nil
+    ) async throws -> JobProduct
+    func delegate(
+        _ input: String,
+        manager: some AgentRuntime,
+        assignments: [JobAssignment],
+        merge: Workflow.MergeStrategy = .structured,
+        observer: (any AgentObserver)? = nil,
+        tokenLimit: Int = 4000,
+        prepare: @Sendable (JobSession) async throws -> Void = { _ in }
+    ) async throws -> JobProduct
+}
+```
+
+`Job.delegate` is the manager-delegation recipe: the manager drafts one
+brief per assignment from the shared notes, then a single fan-out runs every
+helper. The one-fan-out gate still holds per run; for multi-round work,
+reuse the same `Job` or store so rounds share the notes box, and decide each
+round's N after seeing the previous round's product. See
+[Job as Product](/guide/job-as-product).
+
 ## 8) InputGuard and OutputGuard
 
 Concrete guardrails with static factories. Used as init parameters on `Agent`.

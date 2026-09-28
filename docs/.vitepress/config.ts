@@ -79,6 +79,7 @@ export default defineConfig({
             { text: 'Agent Workspace', link: '/guide/agent-workspace' },
             { text: 'OpenTelemetry Tracing', link: '/guide/opentelemetry-tracing' },
             { text: 'Why Swarm', link: '/guide/why-swarm' },
+            { text: 'Job as Product', link: '/guide/job-as-product' },
           ]
         },
         {

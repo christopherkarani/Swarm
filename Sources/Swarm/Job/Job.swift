@@ -113,8 +113,12 @@ public struct JobSession: Sendable {
     /// Empty list, empty names, and duplicate names fail before any helper
     /// runs and do not consume the one fan-out. A second call fails with
     /// ``JobError/fanOutAlreadyUsed``. Helper output is not written into the
-    /// notes box.
-    public func fanOut(_ children: [JobChild]) async throws -> [JobChildResult] {
+    /// notes box. `observer`, when set, is forwarded to every child
+    /// `agent.run` call.
+    public func fanOut(
+        _ children: [JobChild],
+        observer: (any AgentObserver)? = nil
+    ) async throws -> [JobChildResult] {
         let prepared = try JobFanOutPreparation.prepare(children)
         try await fanOutGate.claim()
 
@@ -123,11 +127,12 @@ public struct JobSession: Sendable {
             returning: [(String, AgentResult)].self
         ) { group in
             for item in prepared {
+                let observer = observer
                 group.addTask {
                     let result = try await item.child.agent.run(
                         item.child.brief,
                         session: nil,
-                        observer: nil
+                        observer: observer
                     )
                     return (item.name, result)
                 }

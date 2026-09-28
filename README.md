@@ -110,6 +110,13 @@ after an earlier step.
 | Last agent's answer becomes the next agent's input | `Workflow` |
 | Shared notes, different briefs, N decided after a step | `Job` |
 
+Job-as-product adds tasks with an expected-output contract
+(`JobTask`), results keyed by task name plus a merged summary
+(`Job.run(_:tasks:merge:observer:)`), observer forwarding into helpers,
+and a manager-delegation recipe (`Job.delegate`, where a manager drafts
+briefs from notes before one fan-out). See
+[Job as Product](docs/guide/job-as-product.md).
+
 Add memory, guardrails, retries, fallbacks, streaming, tracing, MCP, and
 optional checkpoint/resume as your application grows.
 
