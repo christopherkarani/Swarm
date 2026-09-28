@@ -505,8 +505,9 @@ With checkpoint/resume configured (or `resumeFrom` set), lean builds warn at
 `WorkflowCheckpointing.inMemory()` / `.fileSystem(directory:)`,
 `.durable.configured(id:store:)`, and `.durable.checkpoint` / `.checkpointing`,
 then throw `WorkflowError.durableRuntimeUnavailable` with the rebuild remedy.
-`DurableWorkflow.execute` / `resume` always throw that error on lean builds
-because both identity and store are required. Without deprecated checkpoint
+`DurableWorkflow.execute` / `resume` / `inspect` / fork-`resume` always throw
+that error on lean builds because both identity and store are required.
+Without deprecated checkpoint
 configuration, bare `Workflow.Durable.execute` still runs as a non-durable
 workflow. Query `WorkflowCheckpointing.isAvailable` or
 `Workflow.Durable.isAvailable` before opting in.
@@ -521,6 +522,33 @@ public struct WorkflowCheckpointID: Hashable, Sendable, RawRepresentable, Codabl
 public struct DurableWorkflow: Sendable {
     public func execute(_ input: String) async throws -> AgentResult
     public func resume(_ input: String, from checkpointID: WorkflowCheckpointID) async throws -> AgentResult
+    public func inspect() async throws -> DurableWorkflowRunInspection
+    public func inspect(run: WorkflowCheckpointID) async throws -> DurableWorkflowRunInspection
+    public func resume(_ input: String, from checkpointID: WorkflowCheckpointID, forkingFrom sourceCheckpointID: String) async throws -> AgentResult
+}
+
+public enum DurableWorkflowPhase: Sendable, Equatable {
+    case running(stepCursor: Int, iterationCursor: Int, lastResult: AgentResult?)
+    case completed(AgentResult)
+}
+
+public struct DurableWorkflowCheckpointSnapshot: Sendable, Equatable {
+    public let checkpointID: String
+    public let stepIndex: Int
+    public let phase: DurableWorkflowPhase
+    public let signatureMatches: Bool
+    public var isCompleted: Bool { get }
+    public var stepCursor: Int? { get }
+    public var iterationCursor: Int? { get }
+    public var lastResult: AgentResult? { get }
+}
+
+public struct DurableWorkflowRunInspection: Sendable, Equatable {
+    public let run: WorkflowCheckpointID
+    public let checkpoints: [DurableWorkflowCheckpointSnapshot]
+    public var latest: DurableWorkflowCheckpointSnapshot? { get }
+    public var isCompleted: Bool { get }
+    public var signatureMatches: Bool { get }
 }
 
 public extension Workflow {
@@ -562,6 +590,16 @@ WorkflowCheckpointRetention.default // keep-latest 16 per run
 File-backed stores prune to keep-latest-N per run and load through a directory
 manifest. Resume identity is step kind + position + explicit `signature:` —
 not `fileID:line`. See [Durable Execution](/guide/durable-execution).
+
+### Inspecting and forking durable runs
+
+`inspect()` returns the run's checkpoints oldest first with cursors, results,
+and per-checkpoint signature-match flags; `inspect(run:)` reads another run
+from the same store. Both throw `checkpointNotFound` for runs without
+decodable checkpoints and `durableRuntimeUnavailable` on lean builds.
+`resume(_:from:forkingFrom:)` seeds a new run from an older checkpoint ID taken
+from inspection history, then resumes it; the source run is untouched and the
+target run must be new.
 
 ## 7b) Job
 

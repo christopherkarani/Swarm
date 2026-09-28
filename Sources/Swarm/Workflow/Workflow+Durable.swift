@@ -127,6 +127,45 @@ extension Workflow {
         #endif
     }
 
+    func executeDurableFork(
+        input: String,
+        sourceRun: WorkflowCheckpointID,
+        sourceCheckpointID: String,
+        targetRun: WorkflowCheckpointID,
+        checkpointing: WorkflowCheckpointing,
+        policy: Workflow.Durable.CheckpointPolicy
+    ) async throws -> AgentResult {
+        #if SWARM_INTEGRATIONS
+        let history = try await checkpointing.history(for: sourceRun.rawValue)
+        guard history.contains(where: { $0.id.rawValue == sourceCheckpointID }) else {
+            throw WorkflowError.checkpointNotFound(id: sourceRun.rawValue)
+        }
+        if try await checkpointing.containsCheckpoint(for: targetRun.rawValue) {
+            throw WorkflowError.invalidWorkflow(
+                reason: "Cannot fork into run '\(targetRun.rawValue)' because it already has checkpoints"
+            )
+        }
+
+        WorkflowDurableIdentity.warnIfUsingImplicitIdentity(self)
+
+        let fork = WorkflowDurableFork(
+            workflow: self,
+            checkpointing: checkpointing,
+            sourceRun: sourceRun,
+            sourceCheckpointID: sourceCheckpointID,
+            targetRun: targetRun,
+            policy: policy
+        )
+        return try await executeWithTimeout {
+            try await fork.run(startInput: input)
+        }
+        #else
+        throw WorkflowError.durableRuntimeUnavailable(
+            reason: IntegrationsTrait.requirementMessage(for: "Durable workflow fork")
+        )
+        #endif
+    }
+
     func executeDurable(_ input: String, resumeFrom checkpointID: String?) async throws -> AgentResult {
         #if SWARM_INTEGRATIONS
         guard let checkpoint = advancedConfiguration.checkpoint else {
