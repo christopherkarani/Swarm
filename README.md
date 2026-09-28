@@ -231,7 +231,7 @@ await Swarm.configure(provider: myProvider)
 | [Secret Storage](docs/guide/secret-storage.md) | Keychain-backed API keys, redaction, checkpoint file permissions |
 | [Foundation Models](docs/guide/foundation-models.md) | Capture and native session modes |
 | [Voice](docs/guide/voice.md) | Turn-based `VoiceSession` around an existing Agent |
-| [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics |
+| [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics, run inspection, fork-from-checkpoint |
 | [OpenTelemetry Tracing](docs/guide/opentelemetry-tracing.md) | Traces and propagation |
 | [Front-Facing API](docs/reference/front-facing-api.md) | Public API overview |
 | [API Catalog](docs/reference/api-catalog.md) | Complete symbol reference |

@@ -136,3 +136,50 @@ permissions and the full migration notes.
 Agent session history, memory backends, and in-flight tool calls are **not**
 part of a workflow checkpoint. Rebuild those independently, or keep step bodies
 idempotent so a re-run is safe.
+
+## Inspecting run history
+
+`DurableWorkflow.inspect()` reads a run's checkpoint history without executing.
+Snapshots arrive oldest first (newest last) with step cursors, results, and a
+per-checkpoint signature-match flag. `inspect(run:)` reads another run from the
+same store, comparing its checkpoints against your current workflow definition —
+handy for spotting definition drift before a resume fails:
+
+```swift
+let durable = Workflow()
+    .step(firstAgent)
+    .step(secondAgent)
+    .durable
+    .configured(id: WorkflowCheckpointID("etl-run"), store: store, policy: .everyStep)
+
+let inspection = try await durable.inspect()
+for snapshot in inspection.checkpoints {
+    print(snapshot.stepIndex, snapshot.phase, snapshot.signatureMatches)
+}
+if !inspection.signatureMatches {
+    // The workflow definition changed since this run checkpointed.
+}
+```
+
+Inspection throws `checkpointNotFound` when a run has no decodable checkpoints
+and `durableRuntimeUnavailable` on lean builds, exactly like `execute`.
+
+## Forking from a checkpoint
+
+`resume(_:from:forkingFrom:)` seeds a new run from an older checkpoint of the
+current run, then resumes it. Pick the fork point from `inspect()` history; the
+source run is left untouched:
+
+```swift
+let history = try await durable.inspect()
+let forkPoint = history.checkpoints.first(where: { !$0.isCompleted })!
+let result = try await durable.resume(
+    "retry-from-step-2",
+    from: WorkflowCheckpointID("etl-run-retry"),
+    forkingFrom: forkPoint.checkpointID
+)
+```
+
+The target run must not have checkpoints yet, otherwise the fork throws
+`invalidWorkflow`. Like `execute`, forking throws `durableRuntimeUnavailable`
+on lean builds.

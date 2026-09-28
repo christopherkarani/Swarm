@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 262 (269 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2434
+- Source files scanned: 263 (270 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2457
 
 ## 1. Swarm (entry point)
 
@@ -2663,6 +2663,34 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | struct | public | DurableWorkflow | `public struct DurableWorkflow` |
 | — | func | public | DurableWorkflow.execute(_:) | `public func execute(_ input: String) async throws -> AgentResult` |
 | — | func | public | DurableWorkflow.resume(_:from:) | `public func resume(_ input: String, from checkpointID: WorkflowCheckpointID) async throws -> AgentResult` |
+| — | func | public | DurableWorkflow.inspect() | `public func inspect() async throws -> DurableWorkflowRunInspection` |
+| — | func | public | DurableWorkflow.inspect(run:) | `public func inspect(run: WorkflowCheckpointID) async throws -> DurableWorkflowRunInspection` |
+| — | func | public | DurableWorkflow.resume(_:from:forkingFrom:) | `public func resume(_ input: String, from checkpointID: WorkflowCheckpointID, forkingFrom sourceCheckpointID: String) async throws -> AgentResult` |
+
+### Workflow/DurableWorkflowInspection.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| — | enum | public | DurableWorkflowPhase | `public enum DurableWorkflowPhase` |
+| — | case | public | DurableWorkflowPhase.running(stepCursor:iterationCursor:lastResult:) | `public case running(stepCursor: Int, iterationCursor: Int, lastResult: AgentResult?)` |
+| — | case | public | DurableWorkflowPhase.completed | `public case completed(AgentResult)` |
+| — | struct | public | DurableWorkflowCheckpointSnapshot | `public struct DurableWorkflowCheckpointSnapshot` |
+| — | var | public | DurableWorkflowCheckpointSnapshot.checkpointID | `public let checkpointID: String` |
+| — | var | public | DurableWorkflowCheckpointSnapshot.stepIndex | `public let stepIndex: Int` |
+| — | var | public | DurableWorkflowCheckpointSnapshot.phase | `public let phase: DurableWorkflowPhase` |
+| — | var | public | DurableWorkflowCheckpointSnapshot.signatureMatches | `public let signatureMatches: Bool` |
+| — | func | public | DurableWorkflowCheckpointSnapshot.init(checkpointID:stepIndex:phase:signatureMatches:) | `public init(checkpointID: String, stepIndex: Int, phase: DurableWorkflowPhase, signatureMatches: Bool)` |
+| — | var | public | DurableWorkflowCheckpointSnapshot.isCompleted | `public var isCompleted: Bool { get }` |
+| — | var | public | DurableWorkflowCheckpointSnapshot.stepCursor | `public var stepCursor: Int? { get }` |
+| — | var | public | DurableWorkflowCheckpointSnapshot.iterationCursor | `public var iterationCursor: Int? { get }` |
+| — | var | public | DurableWorkflowCheckpointSnapshot.lastResult | `public var lastResult: AgentResult? { get }` |
+| — | struct | public | DurableWorkflowRunInspection | `public struct DurableWorkflowRunInspection` |
+| — | var | public | DurableWorkflowRunInspection.run | `public let run: WorkflowCheckpointID` |
+| — | var | public | DurableWorkflowRunInspection.checkpoints | `public let checkpoints: [DurableWorkflowCheckpointSnapshot]` |
+| — | func | public | DurableWorkflowRunInspection.init(run:checkpoints:) | `public init(run: WorkflowCheckpointID, checkpoints: [DurableWorkflowCheckpointSnapshot])` |
+| — | var | public | DurableWorkflowRunInspection.latest | `public var latest: DurableWorkflowCheckpointSnapshot? { get }` |
+| — | var | public | DurableWorkflowRunInspection.isCompleted | `public var isCompleted: Bool { get }` |
+| — | var | public | DurableWorkflowRunInspection.signatureMatches | `public var signatureMatches: Bool { get }` |
 
 ### Workflow/WorkflowCheckpointID.swift
 
