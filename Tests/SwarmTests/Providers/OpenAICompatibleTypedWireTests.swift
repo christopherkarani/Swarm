@@ -165,6 +165,35 @@ struct OpenAICompatibleTypedWireBoundaryTests {
             structuredOutput: nil
         )
         #expect(body.reasoningEffort == "medium")
+        let data = try OpenAICompatibleWire.encode(body)
+        let json = String(decoding: data, as: UTF8.self)
+        #expect(json.contains(#""reasoning_effort":"medium""#))
+    }
+
+    @Test(
+        "Request body maps every reasoning effort level",
+        arguments: zip(
+            [ReasoningEffort.low, .high, .minimal, .xhigh, .none],
+            ["low", "high", "minimal", "xhigh", nil] as [String?]
+        )
+    )
+    func requestBodyMapsEffortLevels(_ effort: ReasoningEffort, _ expected: String?) throws {
+        let body: OpenAICompatibleWire.Request = try OpenAICompatibleCodec.requestBody(
+            configuration: .init(baseURL: endpoint, model: "gpt-test"),
+            messages: [.user("hi")],
+            tools: [],
+            options: .default.reasoning(ReasoningConfig(effort: effort)),
+            stream: false,
+            structuredOutput: nil
+        )
+        #expect(body.reasoningEffort == expected)
+        let data = try OpenAICompatibleWire.encode(body)
+        let json = String(decoding: data, as: UTF8.self)
+        if let expected {
+            #expect(json.contains(#""reasoning_effort":"\#(expected)""#))
+        } else {
+            #expect(!json.contains("reasoning_effort"))
+        }
     }
 
     @Test("Request body omits reasoning effort when unset")
@@ -174,6 +203,25 @@ struct OpenAICompatibleTypedWireBoundaryTests {
             messages: [.user("hi")],
             tools: [],
             options: .default,
+            stream: false,
+            structuredOutput: nil
+        )
+        #expect(body.reasoningEffort == nil)
+        let data = try OpenAICompatibleWire.encode(body)
+        let json = String(decoding: data, as: UTF8.self)
+        #expect(!json.contains("reasoning_effort"))
+        #expect(
+            json == #"{"messages":[{"content":"hi","role":"user"}],"model":"gpt-test","temperature":1}"#
+        )
+    }
+
+    @Test("Request body omits reasoning effort when effort is nil")
+    func requestBodyOmitsNilEffort() throws {
+        let body: OpenAICompatibleWire.Request = try OpenAICompatibleCodec.requestBody(
+            configuration: .init(baseURL: endpoint, model: "gpt-test"),
+            messages: [.user("hi")],
+            tools: [],
+            options: .default.reasoning(ReasoningConfig(maxTokens: 1024)),
             stream: false,
             structuredOutput: nil
         )
