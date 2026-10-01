@@ -53,6 +53,42 @@ struct AgentErrorCauseTests {
         #expect(error.isRetryable == false)
     }
 
+    @Test("factory wraps a caught error with the instance as cause")
+    func factoryWrappedPreservesCause() {
+        let cause = Boom()
+        let error = ToolFailureCause.wrapped(toolName: "boom", error: cause)
+        guard case let .toolFailure(name, message, wrapped) = error else {
+            Issue.record("expected toolFailure")
+            return
+        }
+        #expect(name == "boom")
+        #expect(message == cause.localizedDescription)
+        #expect(wrapped as? Boom == cause)
+    }
+
+    @Test("factory nests an AgentError cause instead of passing it through")
+    func factoryWrappedNestsAgentError() {
+        let inner = AgentError.toolNotFound(name: "missing")
+        let error = ToolFailureCause.wrapped(toolName: "boom", error: inner)
+        guard case let .toolFailure(_, _, cause) = error else {
+            Issue.record("expected toolFailure")
+            return
+        }
+        #expect(cause as? AgentError == inner)
+    }
+
+    @Test("factory synthesizes message-only failures without a cause")
+    func factoryMessageOnly() {
+        let error = ToolFailureCause.messageOnly(toolName: "websearch", message: "boom")
+        guard case let .toolFailure(name, message, cause) = error else {
+            Issue.record("expected toolFailure")
+            return
+        }
+        #expect(name == "websearch")
+        #expect(message == "boom")
+        #expect(cause == nil)
+    }
+
     @Test("stopOnToolError keeps the underlying error reachable through the engine seam")
     func engineStopOnToolErrorPreservesCause() async throws {
         struct Marker: Error, Equatable {}
