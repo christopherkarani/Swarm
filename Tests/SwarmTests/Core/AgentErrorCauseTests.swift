@@ -77,6 +77,19 @@ struct AgentErrorCauseTests {
         #expect(cause as? AgentError == inner)
     }
 
+    @Test("factory wraps a caught error under an explicit message")
+    func factoryWrappedWithExplicitMessage() {
+        let cause = Boom()
+        let error = ToolFailureCause.wrapped(toolName: "boom", message: "fixed text", error: cause)
+        guard case let .toolFailure(name, message, wrapped) = error else {
+            Issue.record("expected toolFailure")
+            return
+        }
+        #expect(name == "boom")
+        #expect(message == "fixed text")
+        #expect(wrapped as? Boom == cause)
+    }
+
     @Test("factory synthesizes message-only failures without a cause")
     func factoryMessageOnly() {
         let error = ToolFailureCause.messageOnly(toolName: "websearch", message: "boom")

@@ -134,6 +134,50 @@ struct AgentHostToolBatchTests {
         #expect(await succeeding.callCount == 1)
     }
 
+    @Test("stopOnToolError batch throw keeps the tool error reachable as cause")
+    func stopOnToolErrorBatchThrowPreservesCause() async throws {
+        struct Marker: Error, Equatable, Sendable {}
+        let marker = Marker()
+        let failing = MockTool(name: "first") { _ in throw marker }
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(id: "call_first", name: "first", arguments: [:]),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+            InferenceResponse(content: "should not run", toolCalls: [], finishReason: .completed, usage: nil),
+        ])
+        let agent = try Agent(
+            tools: [failing],
+            configuration: Self.configuration.stopOnToolError(true),
+            inferenceProvider: provider
+        )
+
+        do {
+            _ = try await agent.run("use it")
+            Issue.record("Expected stopOnToolError to throw")
+        } catch let error as AgentError {
+            guard case let .toolFailure(toolName, message, cause) = error else {
+                Issue.record("Expected toolFailure, got \(error)")
+                return
+            }
+            #expect(toolName == "first")
+            #expect(message != nil)
+            let registryWrapper = try #require(cause as? AgentError)
+            guard case .toolFailure(_, _, let innerCause) = registryWrapper else {
+                Issue.record("Expected nested toolFailure, got \(registryWrapper)")
+                return
+            }
+            #expect(innerCause as? Marker == marker)
+        } catch {
+            Issue.record("Expected AgentError, got \(error)")
+        }
+    }
+
     @Test("Successful handoff skips later regular tools")
     func successfulHandoffSkipsLaterRegularTools() async throws {
         let search = SpyTool(name: "search", result: .string("hits"))

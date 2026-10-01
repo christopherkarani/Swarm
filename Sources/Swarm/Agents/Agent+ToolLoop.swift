@@ -735,7 +735,7 @@ struct AgentTurnRunner: Sendable {
             )
         }
 
-        var firstFailure: (toolName: String, message: String)?
+        var firstFailure: (toolName: String, message: String, error: (any Error)?)?
         for (parsedCall, outcome) in zip(calls, outcomes) {
             if outcome.result.isSuccess {
                 var toolOutputText = Agent.toolOutputText(for: outcome.result.output)
@@ -783,12 +783,19 @@ struct AgentTurnRunner: Sendable {
                     ))
                 }
                 if firstFailure == nil {
-                    firstFailure = (parsedCall.name, errorMessage)
+                    firstFailure = (parsedCall.name, errorMessage, outcome.caughtError)
                 }
             }
         }
 
         if agent.configuration.stopOnToolError, let firstFailure {
+            if let error = firstFailure.error {
+                throw ToolFailureCause.wrapped(
+                    toolName: firstFailure.toolName,
+                    message: firstFailure.message,
+                    error: error
+                )
+            }
             throw ToolFailureCause.messageOnly(
                 toolName: firstFailure.toolName,
                 message: firstFailure.message
