@@ -219,6 +219,84 @@ enum AgentTurnKernel: Sendable {
         }
     }
 
+    // MARK: - Turn steps (REQ-004 boundary)
+
+    /// Admission decision for one loop head. The runner passes its own
+    /// counters; the kernel admits the next iteration or rejects at the cap.
+    /// An explicit step value: no shared mutable state crosses the boundary.
+    enum AdmissionStep: Equatable, Sendable {
+        /// Iteration admitted; run inference for it.
+        case admitted(iteration: Int)
+        /// The cap was reached; the turn fails with this error.
+        case rejected(AgentError)
+    }
+
+    /// Post-inference decision for the current iteration.
+    enum InferenceStep: Equatable, Sendable {
+        /// The turn finished with assistant content.
+        case finish(content: String)
+        /// Host tool calls are pending; execute them, then admit the next
+        /// iteration at the loop head.
+        case executeTools
+        /// The turn failed.
+        case fail(AgentError)
+    }
+
+    /// Owned-loop inference-failure decision. Empty schemas may retry
+    /// transient failures (``ownedLoopInferenceRetryPolicy(mode:hasToolSchemas:)``
+    /// still governs retry timing inside `executeProviderInference`);
+    /// cancellation, timeout, and tools that already ran inside inference
+    /// fail closed.
+    enum OwnedLoopFailureStep: Equatable, Sendable {
+        /// Owned-loop inference may be retried (empty retryable failures only).
+        case retryInference
+        /// The turn failed.
+        case fail(AgentError)
+    }
+
+    /// Admits the next iteration. Pure: the runner owns the counters and
+    /// applies the admitted iteration to its own progress.
+    static func admissionStep(iteration: Int, maxIterations: Int) -> AdmissionStep {
+        guard iteration < maxIterations else {
+            return .rejected(.maxIterationsExceeded(iterations: iteration))
+        }
+        return .admitted(iteration: iteration + 1)
+    }
+
+    /// Interprets a finished model response for host vs owned-loop control
+    /// flow. A missing mode fails closed: the runner resolves the mode through
+    /// ``resolveMode(toolSchemasEmpty:providerOwnsToolLoop:streamsToolCalls:hasExecutionGate:)``
+    /// before reporting inference.
+    static func inferenceStep(mode: TurnMode?, response: InferenceResponse) -> InferenceStep {
+        guard let mode else {
+            return .fail(.internalError(reason: "Turn mode not resolved before inference"))
+        }
+        switch afterInference(mode: mode, response: response) {
+        case .finishAssistant(let content):
+            return .finish(content: content)
+        case .failMissingContent:
+            return .fail(.generationFailed(reason: "Model returned no content or tool calls"))
+        case .processHostToolCalls:
+            return .executeTools
+        }
+    }
+
+    /// Classifies an owned-loop inference failure. Empty schemas are
+    /// retry-safe (no host tools to replay), but only transient inference
+    /// failures may retry.
+    static func ownedLoopFailureStep(
+        mode: TurnMode?,
+        hasToolSchemas: Bool,
+        error: AgentError
+    ) -> OwnedLoopFailureStep {
+        // Cancellation and timeout fail closed so they cannot be classified
+        // as generationFailed.
+        if case .ownedLoopTools = mode, !hasToolSchemas, error.isRetryable {
+            return .retryInference
+        }
+        return .fail(error)
+    }
+
     /// How the host loop should treat one tool name.
     enum HostToolCallKind: Sendable, Equatable {
         case handoff
