@@ -681,7 +681,7 @@ struct AgentTurnRunner: Sendable {
                     )
                 )
                 if agent.configuration.stopOnToolError {
-                    throw AgentError.toolFailure(toolName: parsedCall.name, message: message, cause: error)
+                    throw ToolFailureCause.wrapped(toolName: parsedCall.name, error: error)
                 }
                 turnTranscript.appendToolResult(
                     toolName: parsedCall.name,

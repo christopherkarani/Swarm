@@ -119,7 +119,7 @@ struct ToolExecutionEngine: Sendable {
             )
 
             if stopOnToolError {
-                throw AgentError.toolFailure(toolName: toolName, message: errorMessage, cause: error)
+                throw ToolFailureCause.wrapped(toolName: toolName, error: error)
             }
 
             return Outcome(call: call, result: result, caughtError: error)
