@@ -151,6 +151,10 @@ struct AgentTurnKernelTests {
             AgentTurnKernel.admissionStep(iteration: 3, maxIterations: 3)
                 == .rejected(.maxIterationsExceeded(iterations: 3))
         )
+        #expect(
+            AgentTurnKernel.admissionStep(iteration: 5, maxIterations: 3)
+                == .rejected(.maxIterationsExceeded(iterations: 5))
+        )
     }
 
     @Test("The cap wins at the next loop head even though tool calls are pending")
@@ -246,6 +250,18 @@ struct AgentTurnKernelTests {
             AgentTurnKernel.ownedLoopFailureStep(
                 mode: .hostTools(streaming: false),
                 hasToolSchemas: true,
+                error: transient
+            ) == .fail(transient)
+        )
+    }
+
+    @Test("Owned-loop failure before mode resolution fails closed")
+    func ownedLoopInferenceFailureWithoutModeFails() {
+        let transient = AgentError.generationFailed(reason: "transient 503")
+        #expect(
+            AgentTurnKernel.ownedLoopFailureStep(
+                mode: nil,
+                hasToolSchemas: false,
                 error: transient
             ) == .fail(transient)
         )
