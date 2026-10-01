@@ -3,6 +3,7 @@
 //
 // Both flatten sites delegate to ConversationHistoryRenderer.
 
+import Foundation
 @testable import Swarm
 import Testing
 
