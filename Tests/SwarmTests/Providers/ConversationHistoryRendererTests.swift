@@ -82,6 +82,88 @@ struct ConversationHistoryRendererTests {
         #expect(flattened == expected)
     }
 
+    @Test("empty history renders empty in both styles")
+    func emptyHistoryRendersEmpty() {
+        for style in [ConversationHistoryRenderer.Style.bracketed, .plain] {
+            #expect(ConversationHistoryRenderer.render([], style: style) == "")
+            #expect(ConversationHistoryRenderer.lines(for: [], style: style) == [])
+        }
+    }
+
+    @Test("bracketed render joins multiple tool calls with commas")
+    func bracketedRenderJoinsMultipleToolCalls() {
+        let calls = [
+            InferenceMessage.ToolCall(name: "a", arguments: [:]),
+            InferenceMessage.ToolCall(name: "b", arguments: [:]),
+        ]
+        let silent = InferenceMessage.assistant("", toolCalls: calls)
+        let speaking = InferenceMessage.assistant("working", toolCalls: calls)
+
+        #expect(silent.flattenedPromptLine == "[Assistant]: Calling tool: a, Calling tool: b")
+        #expect(speaking.flattenedPromptLine ==
+            "[Assistant]: working\n[Assistant Tool Calls]: Calling tool: a, Calling tool: b")
+        #expect(ConversationHistoryRenderer.render([silent, speaking], style: .bracketed) == [
+            "[Assistant]: Calling tool: a, Calling tool: b",
+            "[Assistant]: working\n[Assistant Tool Calls]: Calling tool: a, Calling tool: b",
+        ].joined(separator: "\n\n"))
+    }
+
+    @Test("bracketed render keeps empty user and tool turns as blocks")
+    func bracketedRenderKeepsEmptyBlocks() {
+        let rendered = ConversationHistoryRenderer.render(
+            [.user(""), .tool(name: "search", content: "")],
+            style: .bracketed
+        )
+
+        #expect(rendered == ["[User]: ", "[Tool Result - search]: "].joined(separator: "\n\n"))
+    }
+
+    @Test("plain render skips empty user and content-free assistant turns")
+    func plainRenderSkipsEmptyUserAndSilentAssistant() {
+        let messages: [InferenceMessage] = [
+            .user(""),
+            .assistant(""),
+            .assistant("", toolCalls: [.init(name: "search", arguments: [:])]),
+        ]
+        let expected = [
+            "Assistant requested tool calls:",
+            "- search({})",
+        ]
+
+        #expect(ConversationHistoryRenderer.lines(for: messages, style: .plain) == expected)
+        #expect(ConversationHistoryRenderer.render(messages, style: .plain) ==
+            expected.joined(separator: "\n"))
+    }
+
+    @Test("plain tool line omits empty call ids")
+    func plainToolLineOmitsEmptyCallID() {
+        let message = InferenceMessage.tool(name: "search", content: "hit", toolCallID: "")
+
+        #expect(ConversationHistoryRenderer.lines(for: message, style: .plain) ==
+            ["Tool result (search): hit"])
+    }
+
+    @Test("plain tool arguments encode sorted JSON and fall back when not JSON")
+    func plainToolArgumentsEncodeSortedJSON() {
+        let sorted = InferenceMessage.assistant(
+            "",
+            toolCalls: [.init(name: "search", arguments: ["b": .int(2), "a": .string("x")])]
+        )
+        #expect(ConversationHistoryRenderer.lines(for: sorted, style: .plain) == [
+            "Assistant requested tool calls:",
+            #"- search({"a":"x","b":2})"#,
+        ])
+
+        let unencodable = InferenceMessage.assistant(
+            "",
+            toolCalls: [.init(name: "search", arguments: ["q": .double(.nan)])]
+        )
+        #expect(ConversationHistoryRenderer.lines(for: unencodable, style: .plain) == [
+            "Assistant requested tool calls:",
+            "- search({})",
+        ])
+    }
+
     @Test("both styles keep attachments off the text")
     func bothStylesIgnoreAttachments() {
         let attachment = InferenceMessage.Attachment(
