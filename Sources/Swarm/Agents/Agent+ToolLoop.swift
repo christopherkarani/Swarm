@@ -789,10 +789,9 @@ struct AgentTurnRunner: Sendable {
         }
 
         if agent.configuration.stopOnToolError, let firstFailure {
-            throw AgentError.toolFailure(
+            throw ToolFailureCause.messageOnly(
                 toolName: firstFailure.toolName,
-                message: firstFailure.message,
-                cause: nil
+                message: firstFailure.message
             )
         }
     }
