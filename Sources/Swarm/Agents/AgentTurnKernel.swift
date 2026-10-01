@@ -7,9 +7,10 @@ import Foundation
 
 /// Closed decisions for one Agent iteration.
 ///
-/// The kernel does not call providers, tools, observers, or clocks. `Agent`
-/// derives a ``TurnMode`` snapshot from the run, feeds ``TurnState`` /
-/// ``TurnAction`` values through ``transition(_:_:)``, then executes I/O.
+/// The kernel does not call providers, tools, observers, or clocks. The
+/// runner owns its loop-carried progress, reports explicit step inputs
+/// (counters, mode, response), and executes the effect each returned step
+/// names.
 enum AgentTurnKernel: Sendable {
     /// How a turn executes the tool loop (REQ-003).
     ///
@@ -101,122 +102,6 @@ enum AgentTurnKernel: Sendable {
             return .failMissingContent
         }
         return .finishAssistant(content: content)
-    }
-
-    // MARK: - Turn transition (REQ-004)
-
-    /// Pure control state for one tool-calling turn.
-    ///
-    /// `iteration` counts admitted iterations; `mode` is resolved per iteration
-    /// by ``resolveMode(toolSchemasEmpty:providerOwnsToolLoop:streamsToolCalls:hasExecutionGate:)``
-    /// and is `nil` between iterations (before the loop's per-iteration effects
-    /// have produced tool schemas).
-    struct TurnState: Equatable, Sendable {
-        /// Iterations admitted so far (0 at turn start).
-        var iteration: Int
-        /// Configured iteration cap.
-        var maxIterations: Int
-        /// Mode resolved for the current iteration, if any.
-        var mode: TurnMode?
-        /// Whether host-visible tool schemas are non-empty this iteration.
-        var hasToolSchemas: Bool
-
-        init(
-            iteration: Int,
-            maxIterations: Int,
-            mode: TurnMode? = nil,
-            hasToolSchemas: Bool = false
-        ) {
-            self.iteration = iteration
-            self.maxIterations = maxIterations
-            self.mode = mode
-            self.hasToolSchemas = hasToolSchemas
-        }
-    }
-
-    /// Facts the shell reports to the kernel after executing an effect.
-    ///
-    /// `AgentTurnRunner` feeds every action:
-    /// - ``TurnAction/startNextIteration`` admits the first iteration
-    /// - ``TurnAction/inferenceCompleted(_:)`` interprets the provider response
-    /// - ``TurnAction/toolsCompleted`` continues after host tools without a
-    ///   handoff (the sole admission for that tool round; the shell must not
-    ///   also feed ``TurnAction/startNextIteration``)
-    /// - ``TurnAction/ownedLoopInferenceFailed(_:)`` classifies owned-loop
-    ///   inference failures. Empty schemas retry only for retryable
-    ///   ``AgentError`` values (``TurnTransition/retryOwnedLoopInference``);
-    ///   cancellation, timeout, and tools that already ran inside inference
-    ///   fail closed. `executeProviderInference` still applies
-    ///   ``ownedLoopInferenceRetryPolicy(mode:hasToolSchemas:)`` so retry
-    ///   timing is unchanged.
-    enum TurnAction: Equatable, Sendable {
-        /// Loop head: request admission of the next iteration.
-        case startNextIteration
-        /// The provider returned a response for the current iteration.
-        case inferenceCompleted(InferenceResponse)
-        /// Host tools executed without a handoff; the loop continues.
-        case toolsCompleted
-        /// Owned-loop inference failed; `AgentError` is the underlying failure.
-        case ownedLoopInferenceFailed(AgentError)
-    }
-
-    /// The kernel's decision plus the state the shell carries forward.
-    enum TurnTransition: Equatable, Sendable {
-        /// Iteration admitted; run inference for it.
-        case performInference(TurnState)
-        /// Host tool calls are pending; execute them, then report
-        /// `.toolsCompleted`.
-        case executeTools(TurnState)
-        /// Owned-loop inference may be retried (empty retryable failures only;
-        /// cancellation, timeout, and tools already ran inside inference fail).
-        case retryOwnedLoopInference(TurnState)
-        /// The turn finished with assistant content.
-        case finish(content: String)
-        /// The turn failed.
-        case fail(AgentError)
-    }
-
-    /// Pure transition over the turn's control state. No effects: `Agent`
-    /// executes the effect each case names and feeds the next action back.
-    static func transition(_ state: TurnState, _ action: TurnAction) -> TurnTransition {
-        switch action {
-        case .startNextIteration:
-            guard state.iteration < state.maxIterations else {
-                return .fail(.maxIterationsExceeded(iterations: state.iteration))
-            }
-            var admitted = state
-            admitted.iteration += 1
-            admitted.mode = nil
-            return .performInference(admitted)
-
-        case .inferenceCompleted(let response):
-            guard let mode = state.mode else {
-                return .fail(.internalError(reason: "Turn mode not resolved before inference"))
-            }
-            switch afterInference(mode: mode, response: response) {
-            case .finishAssistant(let content):
-                return .finish(content: content)
-            case .failMissingContent:
-                return .fail(.generationFailed(reason: "Model returned no content or tool calls"))
-            case .processHostToolCalls:
-                return .executeTools(state)
-            }
-
-        case .toolsCompleted:
-            // The shell feeds this after host tools without a handoff. It is
-            // the sole continue-admission for that tool round; feeding
-            // `.startNextIteration` as well would double-count.
-            return transition(state, .startNextIteration)
-
-        case .ownedLoopInferenceFailed(let error):
-            // Empty schemas are retry-safe (no host tools to replay), but only
-            // transient inference failures may retry. Cancellation and timeout
-            // fail closed so they cannot be classified as generationFailed.
-            if case .ownedLoopTools = state.mode, !state.hasToolSchemas, error.isRetryable {
-                return .retryOwnedLoopInference(state)
-            }
-            return .fail(error)
-        }
     }
 
     // MARK: - Turn steps (REQ-004 boundary)
