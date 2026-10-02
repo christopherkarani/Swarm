@@ -7,10 +7,12 @@ import Foundation
 
 /// Renders structured turn history into prompt text.
 ///
-/// The two flatten sites delegate here: ``InferenceMessage/flattenPrompt(_:)``
-/// uses ``Style/bracketed`` for text-only backends and token counting, and
-/// Foundation Models fallback flattening uses ``Style/plain``. One driver
-/// loop; attachments stay off the text in both styles.
+/// The three flatten sites delegate here: ``InferenceMessage/flattenPrompt(_:)``
+/// uses ``Style/bracketed`` for text-only backends and token counting,
+/// Foundation Models fallback flattening uses ``Style/plain``, and
+/// `AgentTurnTranscript.Message/formatted` uses ``Style/bracketed`` for
+/// agent-loop history prompts. One driver loop; attachments stay off the
+/// text in both styles.
 package enum ConversationHistoryRenderer: Sendable {
     /// Label dialect of the rendered history.
     package enum Style: Sendable {
