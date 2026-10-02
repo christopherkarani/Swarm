@@ -143,6 +143,19 @@ struct ConversationHistoryRendererTests {
             ["Tool result (search): hit"])
     }
 
+    @Test("plain render keeps empty tool content as a bare result line")
+    func plainRenderKeepsEmptyToolContent() {
+        let messages: [InferenceMessage] = [
+            .user(""),
+            .tool(name: "search", content: ""),
+        ]
+
+        #expect(ConversationHistoryRenderer.lines(for: messages, style: .plain) ==
+            ["Tool result (search): "])
+        #expect(ConversationHistoryRenderer.render(messages, style: .plain) ==
+            "Tool result (search): ")
+    }
+
     @Test("plain tool arguments encode sorted JSON and fall back when not JSON")
     func plainToolArgumentsEncodeSortedJSON() {
         let sorted = InferenceMessage.assistant(
