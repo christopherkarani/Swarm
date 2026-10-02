@@ -699,7 +699,7 @@ struct AgentTurnRunner: Sendable {
                     )
                 )
                 if agent.configuration.stopOnToolError {
-                    throw AgentError.toolFailure(toolName: parsedCall.name, message: message, cause: error)
+                    throw ToolFailureCause.wrapped(toolName: parsedCall.name, error: error)
                 }
                 turnTranscript.appendToolResult(
                     toolName: parsedCall.name,
@@ -753,7 +753,7 @@ struct AgentTurnRunner: Sendable {
             )
         }
 
-        var firstFailure: (toolName: String, message: String)?
+        var firstFailure: (toolName: String, message: String, error: (any Error)?)?
         for (parsedCall, outcome) in zip(calls, outcomes) {
             if outcome.result.isSuccess {
                 var toolOutputText = Agent.toolOutputText(for: outcome.result.output)
@@ -801,16 +801,22 @@ struct AgentTurnRunner: Sendable {
                     ))
                 }
                 if firstFailure == nil {
-                    firstFailure = (parsedCall.name, errorMessage)
+                    firstFailure = (parsedCall.name, errorMessage, outcome.caughtError)
                 }
             }
         }
 
         if agent.configuration.stopOnToolError, let firstFailure {
-            throw AgentError.toolFailure(
+            if let error = firstFailure.error {
+                throw ToolFailureCause.wrapped(
+                    toolName: firstFailure.toolName,
+                    message: firstFailure.message,
+                    error: error
+                )
+            }
+            throw ToolFailureCause.messageOnly(
                 toolName: firstFailure.toolName,
-                message: firstFailure.message,
-                cause: nil
+                message: firstFailure.message
             )
         }
     }

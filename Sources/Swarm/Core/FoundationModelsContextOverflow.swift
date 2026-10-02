@@ -5,6 +5,16 @@ import Foundation
 /// Typed OS 26/27 errors are mapped in ``FoundationModelsErrorMapping``. This
 /// helper keeps a string fallback for hosts that only expose a description.
 enum FoundationModelsContextOverflow: Sendable {
+    /// Lowercased description needles identifying a context overflow.
+    ///
+    /// Shared with the ``FoundationModelsErrorMapping`` string-fallback cause
+    /// table; matching runs through ``AgentErrorCauseFactory``.
+    static let needles = [
+        "context size exceeded",
+        "exceededcontextwindowsize",
+        "exceeded context window",
+    ]
+
     static func matches(_ error: Error) -> Bool {
         #if canImport(FoundationModels)
         if FoundationModelsErrorMapping.isContextOverflow(error) {
@@ -18,8 +28,8 @@ enum FoundationModelsContextOverflow: Sendable {
         #if canImport(FoundationModels)
         return FoundationModelsErrorMapping.map(error)
         #else
-        if error is CancellationError {
-            return .cancelled
+        if let cancelled = AgentErrorCauseFactory.cancelledIfApplicable(error) {
+            return cancelled
         }
         if stringMatches(error) {
             return .contextWindowExceeded(tokenCount: 0, limit: 0)
@@ -29,9 +39,6 @@ enum FoundationModelsContextOverflow: Sendable {
     }
 
     static func stringMatches(_ error: Error) -> Bool {
-        let text = "\(error.localizedDescription) \(String(describing: error))".lowercased()
-        return text.contains("context size exceeded")
-            || text.contains("exceededcontextwindowsize")
-            || text.contains("exceeded context window")
+        AgentErrorCauseFactory.descriptionMatches(error, needles: needles)
     }
 }
