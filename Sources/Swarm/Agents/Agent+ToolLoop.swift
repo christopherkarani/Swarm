@@ -55,7 +55,7 @@ struct AgentTurnRequest: Sendable {
 /// Owns one tool-calling turn's decide-plus-execute ordering.
 ///
 /// The kernel (``AgentTurnKernel``) makes the pure decisions; the runner
-/// executes the effect each decision names and feeds the next action back.
+/// reports explicit step inputs and executes the effect each returned step names.
 /// Iteration admission, inference dispatch, host-tool execution, handoff
 /// transfer, transcript appends, and observer pairing all live here, behind
 /// the single ``run()`` seam. Host callbacks (options, resilience, timeout,
@@ -69,6 +69,30 @@ struct AgentTurnRunner: Sendable {
         case done(Agent.ToolLoopOutcome)
     }
 
+    /// Loop-carried progress for one turn, owned by the runner.
+    ///
+    /// The kernel never sees this value: each boundary call passes explicit
+    /// step inputs (counters, mode, response) and returns an explicit step
+    /// decision. `mode` and `hasToolSchemas` hold the current iteration's
+    /// resolution; ``admit(iteration:)`` clears them for the next one.
+    struct TurnProgress: Equatable, Sendable {
+        /// Iterations admitted so far (0 at turn start).
+        var iteration: Int
+        /// Configured iteration cap.
+        let maxIterations: Int
+        /// Mode resolved for the current iteration, if any.
+        var mode: AgentTurnKernel.TurnMode?
+        /// Whether host-visible tool schemas are non-empty this iteration.
+        var hasToolSchemas: Bool
+
+        /// Applies an admitted iteration and clears per-iteration resolution.
+        mutating func admit(iteration admitted: Int) {
+            iteration = admitted
+            mode = nil
+            hasToolSchemas = false
+        }
+    }
+
     // The seam is `init(agent:request:)` plus `run()`. The remaining members
     // are the module's internal seams: they cross the runner's files, so
     // Swift cannot scope them `private`, but no caller outside the turn uses
@@ -77,9 +101,8 @@ struct AgentTurnRunner: Sendable {
     let request: AgentTurnRequest
 
     var startTime = ContinuousClock.now
-    private var turnState: AgentTurnKernel.TurnState
+    private var turnProgress: TurnProgress
     private var loopDetector: ToolCallLoopDetector
-    private var pendingTurnAction = AgentTurnKernel.TurnAction.startNextIteration
     var turnTranscript = AgentTurnTranscript()
     private var inferenceOptions: InferenceOptions!
     private var systemMessage = ""
@@ -89,9 +112,11 @@ struct AgentTurnRunner: Sendable {
     init(agent: Agent, request: AgentTurnRequest) {
         self.agent = agent
         self.request = request
-        self.turnState = AgentTurnKernel.TurnState(
+        self.turnProgress = TurnProgress(
             iteration: 0,
-            maxIterations: agent.configuration.maxIterations
+            maxIterations: agent.configuration.maxIterations,
+            mode: nil,
+            hasToolSchemas: false
         )
         self.loopDetector = ToolCallLoopDetector(
             maxConsecutiveRepeats: agent.configuration.maxConsecutiveToolRepeats
@@ -113,24 +138,25 @@ struct AgentTurnRunner: Sendable {
 
     /// Admits one iteration through the kernel, then performs it.
     private mutating func runIteration() async throws -> IterationDecision {
-        // Kernel: admit before per-iteration effects. After host tools the
-        // runner feeds `.toolsCompleted` instead of `.startNextIteration`.
-        switch AgentTurnKernel.transition(turnState, pendingTurnAction) {
-        case .fail(let error):
+        // Kernel: admit before per-iteration effects. Every loop head admits
+        // exactly once, including after host tools.
+        switch AgentTurnKernel.admissionStep(
+            iteration: turnProgress.iteration,
+            maxIterations: turnProgress.maxIterations
+        ) {
+        case .rejected(let error):
             throw error
-        case .performInference(let admitted):
-            turnState = admitted
-        case .executeTools, .retryOwnedLoopInference, .finish:
-            throw AgentError.internalError(reason: "Unexpected admission transition")
+        case .admitted(let iteration):
+            turnProgress.admit(iteration: iteration)
         }
 
         _ = request.resultBuilder.incrementIteration()
-        await request.observer?.onIterationStart(context: nil, agent: agent, number: turnState.iteration)
+        await request.observer?.onIterationStart(context: nil, agent: agent, number: turnProgress.iteration)
 
         do {
             return try await performIteration()
         } catch {
-            await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnState.iteration)
+            await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnProgress.iteration)
             throw agent.normalizeCancellation(error)
         }
     }
@@ -178,8 +204,8 @@ struct AgentTurnRunner: Sendable {
             streamsToolCalls: useToolStreaming,
             hasExecutionGate: request.executionGate != nil
         )
-        turnState.mode = mode
-        turnState.hasToolSchemas = !toolSchemas.isEmpty
+        turnProgress.mode = mode
+        turnProgress.hasToolSchemas = !toolSchemas.isEmpty
 
         let toolExecutor: ToolCallExecutor?
         if case .ownedLoopTools = mode, let executionGate = request.executionGate {
@@ -216,7 +242,7 @@ struct AgentTurnRunner: Sendable {
                 content: response.content,
                 structuredOutput: response.structuredOutput
             )
-            await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnState.iteration)
+            await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnProgress.iteration)
             return .done(Agent.ToolLoopOutcome(
                 output: response.content,
                 structuredOutput: response.structuredOutput,
@@ -288,25 +314,22 @@ struct AgentTurnRunner: Sendable {
                     OwnedLoopHandoffRequest(name: pending.name, arguments: pending.arguments)
                 ))
             }
-            if case .ownedLoopTools = turnState.mode {
-                switch AgentTurnKernel.transition(
-                    turnState,
-                    .ownedLoopInferenceFailed(Self.ownedLoopInferenceFailure(from: error))
+            if case .ownedLoopTools = turnProgress.mode {
+                switch AgentTurnKernel.ownedLoopFailureStep(
+                    mode: turnProgress.mode,
+                    hasToolSchemas: turnProgress.hasToolSchemas,
+                    error: Self.ownedLoopInferenceFailure(from: error)
                 ) {
                 case .fail(let kernelError):
                     if error is CancellationError || error is AgentError {
                         throw kernelError
                     }
                     throw error
-                case .retryOwnedLoopInference:
+                case .retryInference:
                     // Empty schemas: executeProviderInference already
                     // applied ownedLoopInferenceRetryPolicy. Honor the
                     // kernel without admitting or replaying tools.
                     throw error
-                case .performInference, .executeTools, .finish:
-                    throw AgentError.internalError(
-                        reason: "Unexpected owned-loop failure transition"
-                    )
                 }
             }
             throw error
@@ -320,7 +343,7 @@ struct AgentTurnRunner: Sendable {
     private mutating func handleInferenceResponse(
         _ response: InferenceResponse
     ) async throws -> IterationDecision {
-        switch AgentTurnKernel.transition(turnState, .inferenceCompleted(response)) {
+        switch AgentTurnKernel.inferenceStep(mode: turnProgress.mode, response: response) {
         case .fail(let error):
             throw error
 
@@ -337,15 +360,14 @@ struct AgentTurnRunner: Sendable {
                     structuredOutput: finalResponse.structuredOutput
                 )
             )
-            await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnState.iteration)
+            await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnProgress.iteration)
             return .done(Agent.ToolLoopOutcome(
                 output: finalResponse.content,
                 structuredOutput: finalResponse.structuredOutput,
                 transcriptMessages: turnTranscript.memoryMessages
             ))
 
-        case .executeTools(let toolsState):
-            turnState = toolsState
+        case .executeTools:
             if let loop = loopDetector.observe(response.toolCalls) {
                 throw AgentError.toolCallLoopDetected(
                     toolNames: loop.toolNames,
@@ -354,19 +376,15 @@ struct AgentTurnRunner: Sendable {
             }
             let handoffResult = try await processToolCallsWithHandoffs(response)
             if let handoffOutput = handoffResult {
-                await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnState.iteration)
+                await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnProgress.iteration)
                 return .done(Agent.ToolLoopOutcome(
                     output: handoffOutput.content,
                     structuredOutput: handoffOutput.structuredOutput,
                     transcriptMessages: turnTranscript.memoryMessages
                 ))
             }
-            await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnState.iteration)
-            pendingTurnAction = .toolsCompleted
+            await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnProgress.iteration)
             return .continueTurn
-
-        case .performInference, .retryOwnedLoopInference:
-            throw AgentError.internalError(reason: "Unexpected inference transition")
         }
     }
 
@@ -554,7 +572,7 @@ struct AgentTurnRunner: Sendable {
         _ handoffRequest: OwnedLoopHandoffRequest
     ) async throws -> Agent.ToolLoopOutcome {
         let handoffOutcome = try await completeOwnedLoopHandoff(handoffRequest)
-        await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnState.iteration)
+        await request.observer?.onIterationEnd(context: nil, agent: agent, number: turnProgress.iteration)
         return handoffOutcome
     }
 
