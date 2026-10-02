@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Swarm
 
@@ -111,6 +112,43 @@ struct AgentErrorCauseTests {
         #expect(name == "websearch")
         #expect(message == "boom")
         #expect(cause == nil)
+    }
+
+    @Test("stopOnToolError engine throw message equals the recorded transcript error")
+    func engineThrowMatchesTranscriptMessage() async throws {
+        struct Marker: Error, Equatable, Sendable, LocalizedError {
+            let message: String
+            var errorDescription: String? { message }
+        }
+        let registry = ToolRegistry()
+        try await registry.register(MockErrorTool(name: "boom", error: Marker(message: "engine boom")))
+        let agent = ParallelTestMockAgent()
+        let builder = AgentResult.Builder()
+
+        do {
+            _ = try await ToolExecutionEngine().execute(
+                toolName: "boom",
+                arguments: [:],
+                registry: registry,
+                agent: agent,
+                context: nil,
+                resultBuilder: builder,
+                observer: nil,
+                tracing: nil,
+                stopOnToolError: true
+            )
+            Issue.record("expected toolFailure")
+        } catch let error as AgentError {
+            guard case let .toolFailure(toolName, message, _) = error else {
+                Issue.record("expected toolFailure, got \(error)")
+                return
+            }
+            #expect(toolName == "boom")
+            #expect(message == "Tool 'boom' failed: engine boom")
+            let recorded = builder.build().toolResults.compactMap(\.errorMessage)
+            #expect(recorded == ["Tool 'boom' failed: engine boom"])
+            #expect(message == recorded.first)
+        }
     }
 
     @Test("stopOnToolError keeps the underlying error reachable through the engine seam")
