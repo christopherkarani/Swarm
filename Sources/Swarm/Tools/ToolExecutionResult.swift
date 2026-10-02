@@ -213,8 +213,8 @@ public struct ToolExecutionResult: Sendable {
     ///
     /// When ``underlyingError`` is present (the Engine still has the thrown
     /// instance), that error is stored so callers can inspect type and cause.
-    /// String-only ``ToolResult`` failures synthesize ``AgentError/toolFailure``
-    /// with no cause.
+    /// String-only ``ToolResult`` failures synthesize a message-only
+    /// ``AgentError/toolFailure`` via ``ToolFailureCause``.
     static func from(
         call: ToolCall,
         result: ToolResult,
@@ -229,10 +229,9 @@ public struct ToolExecutionResult: Sendable {
                 duration: result.duration
             )
         case let .failure(message):
-            let error = underlyingError ?? AgentError.toolFailure(
+            let error = underlyingError ?? ToolFailureCause.messageOnly(
                 toolName: call.toolName,
-                message: message,
-                cause: nil
+                message: message
             )
             return .failure(
                 toolName: call.toolName,
