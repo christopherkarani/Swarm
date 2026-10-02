@@ -165,6 +165,14 @@ struct AgentTurnKernelTests {
         )
     }
 
+    @Test("Zero cap rejects before the first iteration")
+    func admissionWithZeroCapRejects() {
+        #expect(
+            AgentTurnKernel.admissionStep(iteration: 0, maxIterations: 0)
+                == .rejected(.maxIterationsExceeded(iterations: 0))
+        )
+    }
+
     @Test("The cap wins at the next loop head even though tool calls are pending")
     func admissionAfterToolsRespectsCap() {
         // Edge from the spec: the failing admission happens at the next loop
@@ -223,6 +231,17 @@ struct AgentTurnKernelTests {
         #expect(
             AgentTurnKernel.inferenceStep(
                 mode: .hostTools(streaming: false),
+                response: empty
+            ) == .fail(.generationFailed(reason: "Model returned no content or tool calls"))
+        )
+    }
+
+    @Test("Owned-loop inference step without content fails closed")
+    func ownedLoopInferenceStepWithoutContentFails() {
+        let empty = InferenceResponse(content: nil, toolCalls: [], finishReason: .completed)
+        #expect(
+            AgentTurnKernel.inferenceStep(
+                mode: .ownedLoopTools(streaming: false),
                 response: empty
             ) == .fail(.generationFailed(reason: "Model returned no content or tool calls"))
         )
