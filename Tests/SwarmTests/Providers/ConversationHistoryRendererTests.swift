@@ -60,10 +60,6 @@ struct ConversationHistoryRendererTests {
     func flattenPromptDelegatesToRenderer() {
         #expect(InferenceMessage.flattenPrompt(mixedHistory) ==
             ConversationHistoryRenderer.render(mixedHistory, style: .bracketed))
-        for message in mixedHistory {
-            #expect(message.flattenedPromptLine ==
-                ConversationHistoryRenderer.lines(for: message, style: .bracketed).joined(separator: "\n"))
-        }
     }
 
     @Test("Foundation Models flatten delegates to the plain renderer")
@@ -99,9 +95,10 @@ struct ConversationHistoryRendererTests {
         let silent = InferenceMessage.assistant("", toolCalls: calls)
         let speaking = InferenceMessage.assistant("working", toolCalls: calls)
 
-        #expect(silent.flattenedPromptLine == "[Assistant]: Calling tool: a, Calling tool: b")
-        #expect(speaking.flattenedPromptLine ==
-            "[Assistant]: working\n[Assistant Tool Calls]: Calling tool: a, Calling tool: b")
+        #expect(ConversationHistoryRenderer.lines(for: silent, style: .bracketed) ==
+            ["[Assistant]: Calling tool: a, Calling tool: b"])
+        #expect(ConversationHistoryRenderer.lines(for: speaking, style: .bracketed) ==
+            ["[Assistant]: working\n[Assistant Tool Calls]: Calling tool: a, Calling tool: b"])
         #expect(ConversationHistoryRenderer.render([silent, speaking], style: .bracketed) == [
             "[Assistant]: Calling tool: a, Calling tool: b",
             "[Assistant]: working\n[Assistant Tool Calls]: Calling tool: a, Calling tool: b",

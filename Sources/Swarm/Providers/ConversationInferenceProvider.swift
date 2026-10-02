@@ -326,10 +326,6 @@ extension InferenceMessage.ToolCall {
 }
 
 extension InferenceMessage {
-    package var flattenedPromptLine: String {
-        ConversationHistoryRenderer.lines(for: self, style: .bracketed).joined(separator: "\n")
-    }
-
     /// Labeled serialization used by ``TextOnlyConversationInferenceProviderAdapter``.
     ///
     /// Role-capable providers must consume ``InferenceMessage`` arrays directly.
