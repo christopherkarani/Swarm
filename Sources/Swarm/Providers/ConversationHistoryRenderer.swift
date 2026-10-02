@@ -33,7 +33,12 @@ package enum ConversationHistoryRenderer: Sendable {
 
     /// Rendered lines for `messages` in `style`.
     package static func lines(for messages: [InferenceMessage], style: Style) -> [String] {
-        messages.flatMap { lines(for: $0, style: style) }
+        var rendered: [String] = []
+        rendered.reserveCapacity(messages.count)
+        for message in messages {
+            rendered.append(contentsOf: lines(for: message, style: style))
+        }
+        return rendered
     }
 
     /// Rendered lines for one message in `style`. Attachments never
