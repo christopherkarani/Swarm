@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 263 (270 including `Internal/GraphRuntime/`)
+- Source files scanned: 264 (271 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2457
 
 ## 1. Swarm (entry point)
