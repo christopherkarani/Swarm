@@ -62,6 +62,32 @@ struct AgentToolLoopCharacterizationTests {
         #expect(result.iterationCount == 3)
     }
 
+    @Test("Multi-round turn admits once per loop head with paired observer events")
+    func multiRoundAdmitsOncePerLoopHeadWithObserverPairing() async throws {
+        let tool = SpyTool(name: "step", result: .string("ok"))
+        let provider = await MockInferenceProvider()
+        await provider.configureToolCallingSequence(
+            toolCalls: [("step", [:]), ("step", [:])],
+            finalAnswer: "done"
+        )
+        let observer = IterationPairingObserver()
+        let agent = try Agent(
+            tools: [tool],
+            configuration: Self.loopConfiguration.maxIterations(3),
+            inferenceProvider: provider
+        )
+
+        let result = try await agent.run("two steps", observer: observer)
+
+        #expect(result.output == "done")
+        // Every loop head admits exactly once: admitted iterations, observer
+        // pairs, and inference calls all line up 1:1:1.
+        #expect(result.iterationCount == 3)
+        #expect(await provider.recordedInferenceCallCount == 3)
+        #expect(await observer.started == [1, 2, 3])
+        #expect(await observer.ended == [1, 2, 3])
+    }
+
     @Test("Iteration cap throws maxIterationsExceeded with the configured count")
     func iterationCapThrowsMaxIterationsExceeded() async throws {
         let tool = SpyTool(name: "noop", result: .string("ok"))
@@ -191,6 +217,20 @@ struct AgentToolLoopCharacterizationTests {
         }
         #expect(result.output == "done streaming")
         #expect(await tool.callCount == 1)
+    }
+}
+
+/// Records iteration start/end numbers to pin admit-once observer pairing.
+private actor IterationPairingObserver: AgentObserver {
+    private(set) var started: [Int] = []
+    private(set) var ended: [Int] = []
+
+    func onIterationStart(context _: AgentContext?, agent _: any AgentRuntime, number: Int) async {
+        started.append(number)
+    }
+
+    func onIterationEnd(context _: AgentContext?, agent _: any AgentRuntime, number: Int) async {
+        ended.append(number)
     }
 }
 
