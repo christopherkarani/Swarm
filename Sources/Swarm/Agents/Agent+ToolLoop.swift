@@ -55,7 +55,7 @@ struct AgentTurnRequest: Sendable {
 /// Owns one tool-calling turn's decide-plus-execute ordering.
 ///
 /// The kernel (``AgentTurnKernel``) makes the pure decisions; the runner
-/// executes the effect each decision names and reports the next step back.
+/// reports explicit step inputs and executes the effect each returned step names.
 /// Iteration admission, inference dispatch, host-tool execution, handoff
 /// transfer, transcript appends, and observer pairing all live here, behind
 /// the single ``run()`` seam. Host callbacks (options, resilience, timeout,
