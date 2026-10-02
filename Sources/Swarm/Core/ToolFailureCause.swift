@@ -7,15 +7,36 @@ import Foundation
 
 /// Maps turn-path tool failures to `AgentError` with a preserved cause.
 ///
-/// The turn loop, tool engine, tool registry, event stream, and result
-/// mapping previously constructed ``AgentError/toolFailure(toolName:message:cause:)``
-/// inline at each site. This factory is the single mapping point so message
-/// derivation and cause preservation stay consistent.
+/// Scope: the agent turn path only — the call sites that wrap a caught tool
+/// error (or synthesize a message-only failure) while executing a turn:
+/// `AgentTurnRunner` (single-call and batch throws), `ToolExecutionEngine`,
+/// `ToolRegistry.execute`, `ToolExecutionResult.from`, and the event-stream
+/// observer. These sites previously constructed
+/// ``AgentError/toolFailure(toolName:message:cause:)`` inline; this factory
+/// is their single mapping point so message derivation and cause preservation
+/// stay consistent.
+///
+/// Out of scope — these origins construct `AgentError` directly and must not
+/// route through this factory:
+/// - Inference-path provider mapping (``AgentErrorCauseFactory`` plus the
+///   Foundation Models / OpenAI-compatible cause tables).
+/// - Individual tool implementations synthesizing their own failures
+///   (for example web search and built-in tools).
+/// - Typed tool bridging (`AnyJSONToolAdapter`) and legacy parallel-executor
+///   composite errors (`ParallelToolExecutor`).
+/// - Provider-owned tool loops (`FoundationModelsNativeSession`) and the
+///   internal graph runtime (`GraphAgent`).
 ///
 /// The factory always wraps: an `AgentError` passed to
 /// ``wrapped(toolName:error:)`` is preserved as `cause` inside a new
 /// `toolFailure`. The engine seam relies on this nesting to keep both the
 /// registry mapping and the original error reachable.
+///
+/// Cancellation is deliberately not special-cased here: turn-path failures
+/// identify the failing tool, so the cause is always preserved, and direct
+/// `ToolRegistry` callers already see raw cancellation via its pre-wrap
+/// rethrow. Cooperative cancellation on the inference path maps to
+/// `.cancelled` in ``AgentErrorCauseFactory`` instead.
 enum ToolFailureCause: Sendable {
     /// Wraps a caught error, keeping the instance reachable as `cause`.
     ///

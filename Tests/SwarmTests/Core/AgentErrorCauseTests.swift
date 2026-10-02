@@ -90,6 +90,17 @@ struct AgentErrorCauseTests {
         #expect(wrapped as? Boom == cause)
     }
 
+    @Test("factory preserves CancellationError as cause by design (no cancellation guard)")
+    func factoryPreservesCancellationAsCause() {
+        let error = ToolFailureCause.wrapped(toolName: "boom", error: CancellationError())
+        guard case let .toolFailure(name, _, cause) = error else {
+            Issue.record("expected toolFailure")
+            return
+        }
+        #expect(name == "boom")
+        #expect(cause is CancellationError)
+    }
+
     @Test("factory synthesizes message-only failures without a cause")
     func factoryMessageOnly() {
         let error = ToolFailureCause.messageOnly(toolName: "websearch", message: "boom")
