@@ -145,6 +145,14 @@ struct AgentTurnKernelTests {
         )
     }
 
+    @Test("Turn start admits the first iteration")
+    func admissionAtTurnStartAdmitsFirstIteration() {
+        #expect(
+            AgentTurnKernel.admissionStep(iteration: 0, maxIterations: 3)
+                == .admitted(iteration: 1)
+        )
+    }
+
     @Test("Admission at the cap rejects with maxIterationsExceeded")
     func admissionAtCapRejects() {
         #expect(
