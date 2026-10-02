@@ -1,7 +1,10 @@
 // ConversationHistoryRendererTests.swift
 // SwarmTests
 //
-// Both flatten sites delegate to ConversationHistoryRenderer.
+// All flatten sites delegate to ConversationHistoryRenderer. The mixed-history
+// goldens below were captured from main (`InferenceMessage.flattenPrompt` and
+// `FoundationModelsPromptFlattening.flatten`) so old-vs-new equivalence is
+// pinned by literal, not by comparing the new code against itself.
 
 import Foundation
 @testable import Swarm
@@ -24,11 +27,9 @@ struct ConversationHistoryRendererTests {
         ]
     }
 
-    @Test("bracketed render pins every role shape")
-    func bracketedRenderPinsRoleShapes() {
-        let rendered = ConversationHistoryRenderer.render(mixedHistory, style: .bracketed)
-
-        #expect(rendered == [
+    /// `flattenPrompt(mixedHistory)` on main.
+    private var bracketedMixedGolden: String {
+        [
             "[System]: Be brief.",
             "[System]: ",
             "[User]: look up",
@@ -36,14 +37,12 @@ struct ConversationHistoryRendererTests {
             "[Assistant]: done\n[Assistant Tool Calls]: Calling tool: other",
             "[Tool Result - search]: hit",
             "[Tool Result - other]: ok",
-        ].joined(separator: "\n\n"))
+        ].joined(separator: "\n\n")
     }
 
-    @Test("plain render skips empty turns and keeps call ids")
-    func plainRenderSkipsEmptyTurns() {
-        let rendered = ConversationHistoryRenderer.render(mixedHistory, style: .plain)
-
-        #expect(rendered == [
+    /// `flatten(mixedHistory, tools: [], options: .default)` on main.
+    private var plainMixedGolden: String {
+        [
             "System: Be brief.",
             "User: look up",
             "Assistant requested tool calls:",
@@ -53,29 +52,37 @@ struct ConversationHistoryRendererTests {
             "Assistant: done",
             "Tool result (search) [id=1]: hit",
             "Tool result (other): ok",
-        ].joined(separator: "\n"))
+        ].joined(separator: "\n")
     }
 
-    @Test("flattenPrompt delegates to the bracketed renderer")
-    func flattenPromptDelegatesToRenderer() {
-        #expect(InferenceMessage.flattenPrompt(mixedHistory) ==
-            ConversationHistoryRenderer.render(mixedHistory, style: .bracketed))
+    @Test("bracketed render pins every role shape")
+    func bracketedRenderPinsRoleShapes() {
+        let rendered = ConversationHistoryRenderer.render(mixedHistory, style: .bracketed)
+
+        #expect(rendered == bracketedMixedGolden)
     }
 
-    @Test("Foundation Models flatten delegates to the plain renderer")
-    func foundationModelsFlattenDelegatesToRenderer() {
+    @Test("plain render skips empty turns and keeps call ids")
+    func plainRenderSkipsEmptyTurns() {
+        let rendered = ConversationHistoryRenderer.render(mixedHistory, style: .plain)
+
+        #expect(rendered == plainMixedGolden)
+    }
+
+    @Test("flattenPrompt matches the main-branch golden")
+    func flattenPromptMatchesMainGolden() {
+        #expect(InferenceMessage.flattenPrompt(mixedHistory) == bracketedMixedGolden)
+    }
+
+    @Test("Foundation Models flatten matches the main-branch golden")
+    func foundationModelsFlattenMatchesMainGolden() {
         let flattened = FoundationModelsPromptFlattening.flatten(
             messages: mixedHistory,
             tools: [],
             options: .default
         )
-        let expected = FoundationModelsPromptFlattening.appendTurnSuffixes(
-            to: ConversationHistoryRenderer.render(mixedHistory, style: .plain),
-            tools: [],
-            options: .default
-        )
 
-        #expect(flattened == expected)
+        #expect(flattened == plainMixedGolden)
     }
 
     @Test("empty history renders empty in both styles")
