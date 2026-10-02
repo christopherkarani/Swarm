@@ -226,7 +226,7 @@ struct AgentHostToolBatchTests {
             }
             #expect(toolName == "second")
             #expect(message == "Tool 'second' failed: second boom")
-            #expect(cause as? AgentError != nil)
+            #expect(cause is AgentError)
         } catch {
             Issue.record("Expected AgentError, got \(error)")
         }
