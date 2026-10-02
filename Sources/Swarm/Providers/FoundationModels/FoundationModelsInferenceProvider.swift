@@ -702,7 +702,8 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     }
 
     /// Capture turn: rehydrate `Transcript` when history is representable,
-    /// otherwise flatten into a `Prompt`.
+    /// otherwise flatten into a `Prompt`. ``FoundationModelsTranscriptSeed``
+    /// owns that choice; this only builds the session.
     ///
     /// `images` carries the pending turn's image sidecars; callers send them
     /// via ``multimodalPrompt(text:images:)`` on OS 27.
@@ -713,26 +714,20 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
         instructions: String?,
         options: InferenceOptions
     ) -> (session: LanguageModelSession, prompt: String, images: [PendingImage]) {
-        let seed = FoundationModelsTranscriptSeed.seed(
+        switch FoundationModelsTranscriptSeed.resolve(
             messages: messages,
-            instructions: instructions
-        )
-        if seed.canRehydrate {
-            let prompt = FoundationModelsPromptFlattening.appendTurnSuffixes(
-                to: seed.pendingPrompt,
-                tools: flattenTools,
-                options: options
-            )
-            if let transcript = FoundationModelsTranscriptSeed.makeTranscript(from: seed.seedEntries) {
-                return (makeSession(tools: tools, transcript: transcript), prompt, seed.pendingImages)
+            instructions: instructions,
+            tools: flattenTools,
+            options: options
+        ) {
+        case let .rehydrate(entries, prompt, images):
+            if let transcript = FoundationModelsTranscriptSeed.makeTranscript(from: entries) {
+                return (makeSession(tools: tools, transcript: transcript), prompt, images)
             }
-            return (makeSession(tools: tools, instructions: instructions), prompt, seed.pendingImages)
+            return (makeSession(tools: tools, instructions: instructions), prompt, images)
+        case let .flatten(prompt, images):
+            return (makeSession(tools: tools, instructions: instructions), prompt, images)
         }
-        return (
-            makeSession(tools: tools, instructions: instructions),
-            flattenPrompt(messages: messages, tools: flattenTools, options: options),
-            seed.pendingImages
-        )
     }
 
     /// Multimodal `Prompt` for a pending turn, or nil for the text path.

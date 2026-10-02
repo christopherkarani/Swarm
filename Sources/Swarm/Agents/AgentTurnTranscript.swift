@@ -13,19 +13,8 @@ struct AgentTurnTranscript: Sendable, Equatable {
         case toolResult(toolName: String, result: String, toolCallID: String? = nil)
 
         var formatted: String {
-            switch self {
-            case let .system(content):
-                return "[System]: \(content)"
-            case let .user(content):
-                return "[User]: \(content)"
-            case let .assistant(content, toolCalls):
-                if toolCalls.isEmpty { return "[Assistant]: \(content)" }
-                let summary = toolCalls.map { "Calling tool: \($0.name)" }.joined(separator: ", ")
-                if content.isEmpty { return "[Assistant]: \(summary)" }
-                return "[Assistant]: \(content)\n[Assistant Tool Calls]: \(summary)"
-            case let .toolResult(toolName, result, _):
-                return "[Tool Result - \(toolName)]: \(result)"
-            }
+            ConversationHistoryRenderer.lines(for: inferenceMessage, style: .bracketed)
+                .joined(separator: "\n")
         }
 
         var inferenceMessage: InferenceMessage {
