@@ -177,6 +177,8 @@ struct AgentTurnKernelTests {
     func admissionAfterToolsRespectsCap() {
         // Edge from the spec: the failing admission happens at the next loop
         // head. Every head admits exactly once, including after host tools.
+        // See also `AgentTurnRunner.runIteration` and the multi-round
+        // admit-once characterization test for the paired observer ordering.
         #expect(
             AgentTurnKernel.admissionStep(iteration: 2, maxIterations: 3)
                 == .admitted(iteration: 3)
