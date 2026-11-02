@@ -32,23 +32,29 @@ import FoundationNetworking
 ///
 /// - `export` only enqueues. Reaching ``OTLPHTTPExporterConfiguration/maxBatchSize``
 ///   starts a background flush; the synchronous `export` never waits on the
-///   network.
+///   network. At most one size-triggered flush runs at a time: it posts
+///   batches of at most `maxBatchSize` spans one after another and stops at
+///   the first failure, so a struggling collector sees one connection.
 /// - The queue holds at most ``OTLPHTTPExporterConfiguration/maxQueueSize``
-///   spans. When full, the oldest spans are dropped and counted in
-///   ``droppedSpanCount``.
+///   spans, not counting batches already being posted. When full, the oldest
+///   spans are dropped and counted in ``droppedSpanCount``.
 /// - A batch that fails transiently (5xx or network error, after
 ///   ``OTLPHTTPExporterConfiguration/maxRetries``) is requeued for the next
 ///   flush, up to ``OTLPHTTPExporterConfiguration/maxExportAttempts`` flushes
 ///   per span; spans that exhaust it, or that the collector rejects with 4xx,
 ///   are dropped and counted.
+/// - `flush` and `shutdown` first wait for POSTs already in flight, then post
+///   whatever is still queued (including spans those POSTs requeued).
 /// - The synchronous `flush`/`shutdown` required by `SpanExporter` wait for
-///   the POST for at most `explicitTimeout` (default
+///   that work for at most `explicitTimeout` (default
 ///   ``OTLPHTTPExporterConfiguration/syncTimeout``) and return `.failure` on
 ///   timeout; the POST keeps running in the background and requeues on
 ///   failure. Prefer the `async` overloads from Swift concurrency code: the
 ///   synchronous ones block their calling thread for up to that timeout.
+/// - After `shutdown` completes, nothing flushes again: spans still queued,
+///   requeued, or exported later are dropped and counted.
 ///
-/// Queue, timer, and counter state are guarded by `lock`. `@unchecked Sendable`
+/// Queue, timer, in-flight, and counter state are guarded by `lock`. `@unchecked Sendable`
 /// is required because `SpanExporter` is a non-`Sendable` class protocol
 /// invoked from the SDK's export queue.
 ///
@@ -87,20 +93,20 @@ public final class OTLPHTTPTraceExporter: SpanExporter, @unchecked Sendable {
         lock.withLock { pending.count }
     }
 
-    /// Enqueues spans without blocking; a full batch starts a background flush.
+    /// Enqueues spans without blocking; a full batch starts a background flush
+    /// unless one is already running.
     public func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode {
         if enqueue(spans) {
-            Task { [self] in
-                _ = await flush(explicitTimeout: explicitTimeout)
-            }
+            _ = track { [self] in await drainBatches(explicitTimeout: explicitTimeout) }
         }
         return .success
     }
 
-    /// Enqueues spans; a full batch is flushed before returning.
+    /// Enqueues spans; when this call starts the size-triggered flush, it
+    /// awaits that flush before returning.
     public func export(spans: [SpanData], explicitTimeout: TimeInterval?) async -> SpanExporterResultCode {
         if enqueue(spans) {
-            return await flush(explicitTimeout: explicitTimeout)
+            return await track { [self] in await drainBatches(explicitTimeout: explicitTimeout) }.value
         }
         return .success
     }
@@ -112,13 +118,56 @@ public final class OTLPHTTPTraceExporter: SpanExporter, @unchecked Sendable {
     /// Blocks the calling thread, so prefer the `async` overload from Swift
     /// concurrency code.
     public func flush(explicitTimeout: TimeInterval?) -> SpanExporterResultCode {
-        let batch = drain()
-        guard !batch.isEmpty else { return .success }
+        waitBounded(explicitTimeout: explicitTimeout) { [self] in
+            await flushAll(explicitTimeout: explicitTimeout)
+        }
+    }
+
+    /// Awaits POSTs already in flight, then flushes queued spans, awaiting the
+    /// POST (including retries).
+    public func flush(explicitTimeout: TimeInterval?) async -> SpanExporterResultCode {
+        await flushAll(explicitTimeout: explicitTimeout)
+    }
+
+    /// Stops the flush timer and flushes, bounded like ``flush(explicitTimeout:)``.
+    public func shutdown(explicitTimeout: TimeInterval?) {
+        stopTimer()
+        _ = waitBounded(explicitTimeout: explicitTimeout) { [self] in
+            await finalFlush(explicitTimeout: explicitTimeout)
+            return .success
+        }
+    }
+
+    /// Stops the flush timer and awaits a final flush.
+    public func shutdown(explicitTimeout: TimeInterval?) async {
+        stopTimer()
+        await finalFlush(explicitTimeout: explicitTimeout)
+    }
+
+    private let session: URLSession
+    private let lock = NSLock()
+    private var pending: [QueuedSpan] = []
+    private var dropped = 0
+    private var flushTask: Task<Void, Never>?
+    /// Every running POST task, so `flush`/`shutdown` can await them.
+    private var inFlight: [UUID: Task<SpanExporterResultCode, Never>] = [:]
+    /// Whether the size-triggered flush loop is running.
+    private var isFlushing = false
+    /// Set once `shutdown` finished its final flush; nothing flushes afterwards.
+    private var isShutDown = false
+
+    /// Runs `operation` on a `Task` and blocks for at most `explicitTimeout`
+    /// (default ``OTLPHTTPExporterConfiguration/syncTimeout``).
+    /// - Returns: The operation's result, or `.failure` on timeout.
+    private func waitBounded(
+        explicitTimeout: TimeInterval?,
+        _ operation: @escaping @Sendable () async -> SpanExporterResultCode
+    ) -> SpanExporterResultCode {
         let timeout = explicitTimeout ?? configuration.syncTimeout
         let box = ExportResultBox()
         let semaphore = DispatchSemaphore(value: 0)
-        Task { [self] in
-            box.set(await send(batch, explicitTimeout: explicitTimeout))
+        Task {
+            box.set(await operation())
             semaphore.signal()
         }
         // DispatchTime arithmetic traps on non-finite intervals; cap at one day.
@@ -129,30 +178,71 @@ public final class OTLPHTTPTraceExporter: SpanExporter, @unchecked Sendable {
         return box.value
     }
 
-    /// Flushes queued spans, awaiting the POST (including retries).
-    public func flush(explicitTimeout: TimeInterval?) async -> SpanExporterResultCode {
+    /// Starts `operation` on a `Task` registered in `inFlight` until it ends.
+    private func track(
+        _ operation: @escaping @Sendable () async -> SpanExporterResultCode
+    ) -> Task<SpanExporterResultCode, Never> {
+        let id = UUID()
+        return lock.withLock {
+            // Registered before `lock` is released, so the task's own removal
+            // (which takes `lock`) always runs after this insertion.
+            let task = Task { [self] in
+                let result = await operation()
+                lock.withLock { inFlight[id] = nil }
+                return result
+            }
+            inFlight[id] = task
+            return task
+        }
+    }
+
+    /// Awaits every POST in flight when called.
+    private func awaitInFlight() async {
+        let tasks = lock.withLock { Array(inFlight.values) }
+        for task in tasks {
+            _ = await task.value
+        }
+    }
+
+    /// Awaits in-flight POSTs, then posts everything still queued.
+    private func flushAll(explicitTimeout: TimeInterval?) async -> SpanExporterResultCode {
+        await awaitInFlight()
         let batch = drain()
         guard !batch.isEmpty else { return .success }
-        return await send(batch, explicitTimeout: explicitTimeout)
+        return await track { [self] in await send(batch, explicitTimeout: explicitTimeout) }.value
     }
 
-    /// Stops the flush timer and flushes, bounded like ``flush(explicitTimeout:)``.
-    public func shutdown(explicitTimeout: TimeInterval?) {
-        stopTimer()
-        _ = flush(explicitTimeout: explicitTimeout)
+    /// Flushes, then marks the exporter shut down and drops anything left
+    /// (for example spans requeued by a final POST that failed).
+    private func finalFlush(explicitTimeout: TimeInterval?) async {
+        _ = await flushAll(explicitTimeout: explicitTimeout)
+        await awaitInFlight()
+        lock.withLock {
+            isShutDown = true
+            dropped += pending.count
+            pending = []
+        }
     }
 
-    /// Stops the flush timer and awaits a final flush.
-    public func shutdown(explicitTimeout: TimeInterval?) async {
-        stopTimer()
-        _ = await flush(explicitTimeout: explicitTimeout)
+    /// The size-triggered flush loop. Posts batches of at most `maxBatchSize`
+    /// one at a time while a full batch is queued, stopping at the first
+    /// failure so a failing collector is not hammered.
+    private func drainBatches(explicitTimeout: TimeInterval?) async -> SpanExporterResultCode {
+        var result = SpanExporterResultCode.success
+        while true {
+            let batch: [QueuedSpan]? = lock.withLock {
+                guard result == .success, !isShutDown, pending.count >= configuration.maxBatchSize else {
+                    isFlushing = false
+                    return nil
+                }
+                let batch = Array(pending.prefix(configuration.maxBatchSize))
+                pending.removeFirst(batch.count)
+                return batch
+            }
+            guard let batch else { return result }
+            result = await send(batch, explicitTimeout: explicitTimeout)
+        }
     }
-
-    private let session: URLSession
-    private let lock = NSLock()
-    private var pending: [QueuedSpan] = []
-    private var dropped = 0
-    private var flushTask: Task<Void, Never>?
 
     private func startTimer() {
         let delay = configuration.scheduleDelay
@@ -175,19 +265,35 @@ public final class OTLPHTTPTraceExporter: SpanExporter, @unchecked Sendable {
         task?.cancel()
     }
 
-    /// Appends spans, dropping the oldest beyond `maxQueueSize`.
-    /// - Returns: Whether the queue reached `maxBatchSize`.
+    /// Appends spans, dropping the oldest beyond `maxQueueSize`. After
+    /// shutdown the spans are dropped instead.
+    /// - Returns: Whether the caller must start the size-triggered flush: the
+    ///   queue reached `maxBatchSize` and no flush loop was running (this call
+    ///   claimed it).
     private func enqueue(_ spans: [SpanData]) -> Bool {
         lock.withLock {
+            guard !isShutDown else {
+                dropped += spans.count
+                return false
+            }
             pending.append(contentsOf: spans.map { QueuedSpan(span: $0, failedExports: 0) })
             trimToCapacity()
-            return pending.count >= configuration.maxBatchSize
+            guard pending.count >= configuration.maxBatchSize, !isFlushing else {
+                return false
+            }
+            isFlushing = true
+            return true
         }
     }
 
-    /// Requeues a transiently failed batch ahead of newer spans.
+    /// Requeues a transiently failed batch ahead of newer spans. After
+    /// shutdown nothing would flush them again, so they are dropped instead.
     private func requeue(_ batch: [QueuedSpan]) {
         lock.withLock {
+            guard !isShutDown else {
+                dropped += batch.count
+                return
+            }
             var retained: [QueuedSpan] = []
             for item in batch {
                 let next = QueuedSpan(span: item.span, failedExports: item.failedExports + 1)
