@@ -21,6 +21,10 @@ import FoundationNetworking
 ///   ``scheduleDelay``, whichever comes first
 /// - Retry: one retry with ``retryBackoff`` on 5xx and network failures;
 ///   4xx responses are not retried
+/// - Queue: at most ``maxQueueSize`` spans; the oldest are dropped when full
+/// - Requeue: a batch that still fails transiently is retried on up to
+///   ``maxExportAttempts`` flushes before its spans are dropped
+/// - Synchronous `flush`/`shutdown`: wait at most ``syncTimeout``
 ///
 /// ```swift
 /// let exporter = OTLPHTTPTraceExporter(
@@ -60,6 +64,19 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
     /// Delay before a retry. Default: 200 milliseconds.
     public var retryBackoff: Duration
 
+    /// Maximum spans held for export. When full, the oldest spans are dropped
+    /// and counted in ``OTLPHTTPTraceExporter/droppedSpanCount``. Default: `2048`.
+    public var maxQueueSize: Int
+
+    /// Flushes a span may take part in before it is dropped after transient
+    /// failures (each flush already includes ``maxRetries`` POST retries).
+    /// Default: `3`.
+    public var maxExportAttempts: Int
+
+    /// Longest the synchronous `flush`/`shutdown` wait for the POST when the
+    /// caller passes no explicit timeout, in seconds. Default: `10`.
+    public var syncTimeout: TimeInterval
+
     /// Creates an exporter configuration.
     ///
     /// - Parameters:
@@ -71,6 +88,9 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
     ///   - scheduleDelay: Timer-based flush interval. Default: 5 seconds
     ///   - maxRetries: Retry count after the first attempt. Default: `1`
     ///   - retryBackoff: Delay between retries. Default: 200 milliseconds
+    ///   - maxQueueSize: Queue capacity before dropping oldest spans. Default: `2048`
+    ///   - maxExportAttempts: Flushes per span before dropping it. Default: `3`
+    ///   - syncTimeout: Default wait for synchronous flush, in seconds. Default: `10`
     public init(
         endpoint: URL = defaultEndpoint,
         headers: [String: String] = [:],
@@ -78,7 +98,10 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
         maxBatchSize: Int = 64,
         scheduleDelay: Duration = .seconds(5),
         maxRetries: Int = 1,
-        retryBackoff: Duration = .milliseconds(200)
+        retryBackoff: Duration = .milliseconds(200),
+        maxQueueSize: Int = 2048,
+        maxExportAttempts: Int = 3,
+        syncTimeout: TimeInterval = 10
     ) {
         self.endpoint = endpoint
         self.headers = headers
@@ -87,6 +110,9 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
         self.scheduleDelay = scheduleDelay > .zero ? scheduleDelay : .seconds(5)
         self.maxRetries = max(0, maxRetries)
         self.retryBackoff = retryBackoff >= .zero ? retryBackoff : .milliseconds(200)
+        self.maxQueueSize = max(1, maxQueueSize)
+        self.maxExportAttempts = max(1, maxExportAttempts)
+        self.syncTimeout = Self.validSyncTimeout(syncTimeout)
     }
 
     /// Sets the OTLP/HTTP traces endpoint.
@@ -143,6 +169,37 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
         var copy = self
         copy.retryBackoff = value >= .zero ? value : .milliseconds(200)
         return copy
+    }
+}
+
+public extension OTLPHTTPExporterConfiguration {
+    /// Sets the queue capacity; the oldest spans are dropped beyond it.
+    @discardableResult
+    func maxQueueSize(_ value: Int) -> OTLPHTTPExporterConfiguration {
+        var copy = self
+        copy.maxQueueSize = max(1, value)
+        return copy
+    }
+
+    /// Sets how many flushes a span may take part in before it is dropped.
+    @discardableResult
+    func maxExportAttempts(_ value: Int) -> OTLPHTTPExporterConfiguration {
+        var copy = self
+        copy.maxExportAttempts = max(1, value)
+        return copy
+    }
+
+    /// Sets the default wait for synchronous `flush`/`shutdown`, in seconds.
+    @discardableResult
+    func syncTimeout(_ value: TimeInterval) -> OTLPHTTPExporterConfiguration {
+        var copy = self
+        copy.syncTimeout = Self.validSyncTimeout(value)
+        return copy
+    }
+
+    /// Finite, non-negative timeouts pass through; anything else uses the default.
+    internal static func validSyncTimeout(_ value: TimeInterval) -> TimeInterval {
+        value.isFinite && value >= 0 ? value : 10
     }
 }
 

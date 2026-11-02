@@ -10,7 +10,8 @@ import Swarm
 import FoundationNetworking
 #endif
 
-@Suite("OTLP/HTTP JSON exporter")
+// Serialized: every test shares `OTLPRecordingURLProtocol`'s static state.
+@Suite("OTLP/HTTP JSON exporter", .serialized)
 struct OTLPHTTPTraceExporterTests {
     @Test("Exports OTLP JSON with Swarm span attributes and resource overlay")
     func exportsOTLPJSONPayloadShape() async throws {
@@ -38,7 +39,7 @@ struct OTLPHTTPTraceExporterTests {
         defer { exporter.shutdown() }
 
         OTLPRecordingURLProtocol.enqueue(status: 200)
-        let result = await exporter.export(spans: [span])
+        let result = await exporter.export(spans: [span], explicitTimeout: nil)
         #expect(result == .success)
 
         let request = try #require(OTLPRecordingURLProtocol.requests.first)
@@ -94,10 +95,10 @@ struct OTLPHTTPTraceExporterTests {
         defer { exporter.shutdown() }
 
         OTLPRecordingURLProtocol.enqueue(status: 200)
-        _ = await exporter.export(spans: [first])
+        _ = await exporter.export(spans: [first], explicitTimeout: nil)
         #expect(OTLPRecordingURLProtocol.requests.isEmpty)
 
-        _ = await exporter.export(spans: [second])
+        _ = await exporter.export(spans: [second], explicitTimeout: nil)
         #expect(OTLPRecordingURLProtocol.requests.count == 1)
 
         let payload = try #require(OTLPRecordingURLProtocol.bodies.first)
@@ -123,7 +124,7 @@ struct OTLPHTTPTraceExporterTests {
         OTLPRecordingURLProtocol.enqueue(status: 500)
         OTLPRecordingURLProtocol.enqueue(status: 200)
 
-        let result = await exporter.export(spans: [span])
+        let result = await exporter.export(spans: [span], explicitTimeout: nil)
         #expect(result == .success)
         #expect(OTLPRecordingURLProtocol.requests.count == 2)
     }
@@ -145,7 +146,7 @@ struct OTLPHTTPTraceExporterTests {
 
         OTLPRecordingURLProtocol.enqueue(status: 400)
 
-        let result = await exporter.export(spans: [span])
+        let result = await exporter.export(spans: [span], explicitTimeout: nil)
         #expect(result == .failure)
         #expect(OTLPRecordingURLProtocol.requests.count == 1)
     }
