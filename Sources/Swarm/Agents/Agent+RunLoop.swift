@@ -254,15 +254,20 @@ extension Agent {
             // Store turn in session for conversation persistence
             // Session is the source of truth for conversation history
             if let session {
-                try await session.addItems([userMessage] + toolLoopOutcome.transcriptMessages)
+                // Validate before writing so a rejected turn is never stored
+                // (a retry would duplicate it), and describe only this turn's
+                // items instead of re-reading the whole session every run.
+                // `swarm.transcript.hash` is the hash of the items this turn appended.
+                let turnItems = [userMessage] + toolLoopOutcome.transcriptMessages
+                let turnTranscript = SwarmTranscript(memoryMessages: turnItems)
+                try turnTranscript.validateReplayCompatibility()
+                try await session.addItems(turnItems)
 
-                let persistedTranscript = SwarmTranscript(memoryMessages: try await session.getAllItems())
-                try persistedTranscript.validateReplayCompatibility()
                 _ = resultBuilder.setMetadata(
                     Self.transcriptSchemaVersionMetadataKey,
-                    .string(persistedTranscript.schemaVersion.rawValue)
+                    .string(turnTranscript.schemaVersion.rawValue)
                 )
-                if let transcriptHash = try? persistedTranscript.transcriptHash() {
+                if let transcriptHash = try? turnTranscript.transcriptHash() {
                     _ = resultBuilder.setMetadata(Self.transcriptHashMetadataKey, .string(transcriptHash))
                 }
             } else if let activeMemory, dependencies.shouldPersistNoSessionTurnToDefaultMemory {
