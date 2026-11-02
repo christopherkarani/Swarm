@@ -252,11 +252,7 @@ public actor ToolRegistry {
             } else if let guardrailError = error as? GuardrailError {
                 throw guardrailError
             } else {
-                throw AgentError.toolFailure(
-                    toolName: name,
-                    message: error.localizedDescription,
-                    cause: error
-                )
+                throw ToolFailureCause.wrapped(toolName: name, error: error)
             }
         }
     }

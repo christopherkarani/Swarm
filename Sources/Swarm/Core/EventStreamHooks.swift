@@ -122,7 +122,7 @@ internal struct EventStreamObserver: AgentObserver {
         let errorMessage = result.errorMessage ?? "Unknown error"
         continuation.yield(.tool(.failed(
             call: call,
-            error: .toolFailure(toolName: call.toolName, message: errorMessage, cause: nil)
+            error: ToolFailureCause.messageOnly(toolName: call.toolName, message: errorMessage)
         )))
     }
 }

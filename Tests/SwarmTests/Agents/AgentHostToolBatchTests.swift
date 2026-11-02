@@ -134,6 +134,105 @@ struct AgentHostToolBatchTests {
         #expect(await succeeding.callCount == 1)
     }
 
+    @Test("stopOnToolError batch throw pins the first failure message and keeps its cause")
+    func stopOnToolErrorBatchThrowPinsFirstFailure() async throws {
+        struct Marker: Error, Equatable, Sendable, LocalizedError {
+            let message: String
+            var errorDescription: String? { message }
+        }
+        let firstMarker = Marker(message: "first boom")
+        let secondMarker = Marker(message: "second boom")
+        let first = MockTool(name: "first") { _ in throw firstMarker }
+        let second = MockTool(name: "second") { _ in throw secondMarker }
+        let third = SpyTool(name: "third", result: .string("ok"))
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(id: "call_first", name: "first", arguments: [:]),
+                    InferenceResponse.ParsedToolCall(id: "call_second", name: "second", arguments: [:]),
+                    InferenceResponse.ParsedToolCall(id: "call_third", name: "third", arguments: [:]),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+            InferenceResponse(content: "should not run", toolCalls: [], finishReason: .completed, usage: nil),
+        ])
+        let agent = try Agent(
+            tools: [first, second, third],
+            configuration: Self.configuration.stopOnToolError(true),
+            inferenceProvider: provider
+        )
+
+        do {
+            _ = try await agent.run("use them")
+            Issue.record("Expected stopOnToolError to throw")
+        } catch let error as AgentError {
+            guard case let .toolFailure(toolName, message, cause) = error else {
+                Issue.record("Expected toolFailure, got \(error)")
+                return
+            }
+            #expect(toolName == "first")
+            #expect(message == "Tool 'first' failed: first boom")
+            let registryWrapper = try #require(cause as? AgentError)
+            guard case let .toolFailure(innerName, innerMessage, innerCause) = registryWrapper else {
+                Issue.record("Expected nested toolFailure, got \(registryWrapper)")
+                return
+            }
+            #expect(innerName == "first")
+            #expect(innerMessage == "first boom")
+            #expect(innerCause as? Marker == firstMarker)
+        } catch {
+            Issue.record("Expected AgentError, got \(error)")
+        }
+        #expect(await third.callCount == 1)
+    }
+
+    @Test("stopOnToolError batch throw names the first failure when the leader succeeds")
+    func stopOnToolErrorBatchThrowSkipsSuccesses() async throws {
+        struct Marker: Error, Equatable, Sendable, LocalizedError {
+            let message: String
+            var errorDescription: String? { message }
+        }
+        let first = SpyTool(name: "first", result: .string("ok"))
+        let second = MockTool(name: "second") { _ in throw Marker(message: "second boom") }
+        let provider = MockInferenceProvider()
+        await provider.setToolCallResponses([
+            InferenceResponse(
+                content: nil,
+                toolCalls: [
+                    InferenceResponse.ParsedToolCall(id: "call_first", name: "first", arguments: [:]),
+                    InferenceResponse.ParsedToolCall(id: "call_second", name: "second", arguments: [:]),
+                ],
+                finishReason: .toolCall,
+                usage: nil
+            ),
+            InferenceResponse(content: "should not run", toolCalls: [], finishReason: .completed, usage: nil),
+        ])
+        let agent = try Agent(
+            tools: [first, second],
+            configuration: Self.configuration.stopOnToolError(true),
+            inferenceProvider: provider
+        )
+
+        do {
+            _ = try await agent.run("use them")
+            Issue.record("Expected stopOnToolError to throw")
+        } catch let error as AgentError {
+            guard case let .toolFailure(toolName, message, cause) = error else {
+                Issue.record("Expected toolFailure, got \(error)")
+                return
+            }
+            #expect(toolName == "second")
+            #expect(message == "Tool 'second' failed: second boom")
+            #expect(cause is AgentError)
+        } catch {
+            Issue.record("Expected AgentError, got \(error)")
+        }
+        #expect(await first.callCount == 1)
+    }
+
     @Test("Successful handoff skips later regular tools")
     func successfulHandoffSkipsLaterRegularTools() async throws {
         let search = SpyTool(name: "search", result: .string("hits"))
