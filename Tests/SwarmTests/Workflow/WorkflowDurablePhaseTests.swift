@@ -25,7 +25,7 @@ struct WorkflowDurablePhaseTests {
         let checkpointing = WorkflowCheckpointing.fileSystem(directory: directory)
         let workflow = makeLinearWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-roundtrip")
 
-        let first = try await workflow.durable.execute("start")
+        let first = try await workflow.execute("start")
         #expect(first.output == "C")
 
         let store = WorkflowFileCheckpointStore(directory: directory)
@@ -45,7 +45,7 @@ struct WorkflowDurablePhaseTests {
         #expect(snapshot.output == "C")
         #expect(try WorkflowCheckpointCodec<WorkflowDurablePhase>().encode(phase) == phaseData)
 
-        let resumed = try await workflow.durable.execute("ignored", resumeFrom: "wf-roundtrip")
+        let resumed = try await workflow.resume("ignored", from: WorkflowCheckpointID("wf-roundtrip"))
         #expect(resumed.output == "C")
 
         // Resuming a completed run must end at the router without re-running steps.
@@ -67,7 +67,7 @@ struct WorkflowDurablePhaseTests {
         try await WorkflowDurableFaultInjection.$controller.withValue(controller) {
             do {
                 _ = try await makeLinearWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-midrun")
-                    .durable.execute("start")
+                    .execute("start")
                 Issue.record("expected injected fault")
             } catch let fault as WorkflowDurableInjectedFault {
                 #expect(fault.point == .afterCheckpointWrite)
@@ -91,7 +91,7 @@ struct WorkflowDurablePhaseTests {
         #expect(lastResult?.output == "A")
 
         let resumed = try await makeLinearWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-midrun")
-            .durable.execute("ignored", resumeFrom: "wf-midrun")
+            .resume("ignored", from: WorkflowCheckpointID("wf-midrun"))
         #expect(resumed.output == "C")
 
         let counts = await log.counts
@@ -107,9 +107,14 @@ struct WorkflowDurablePhaseTests {
         let backend = WorkflowInMemoryCheckpointStore()
         let checkpointing = WorkflowCheckpointing(backend: backend)
         let log = ExecutionLog()
-        let workflow = makeTwoStepWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-legacy-done")
+        let steps = makeTwoStepSteps(log: log)
+        let workflow = steps.durable.configured(
+            id: WorkflowCheckpointID("wf-legacy-done"),
+            store: checkpointing,
+            policy: .everyStep
+        )
 
-        let fixture = legacyCheckpoint(threadID: "wf-legacy-done", signature: workflow.workflowSignature) {
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-done", signature: steps.workflowSignature) {
             $0["workflow.completed"] = encodedJSON(true)
             $0["workflow.stepCursor"] = encodedJSON(0)
             $0["workflow.iterationCursor"] = encodedJSON(0)
@@ -118,7 +123,7 @@ struct WorkflowDurablePhaseTests {
         }
         try await backend.save(fixture)
 
-        let result = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-done")
+        let result = try await workflow.resume("ignored", from: WorkflowCheckpointID("wf-legacy-done"))
         // Spec section 9 edge case: {"completed": true, "stepCursor": 0} decodes
         // to .completed — never .running — so no step executes again and the
         // synthesized snapshot falls back to the persisted current input.
@@ -153,9 +158,14 @@ struct WorkflowDurablePhaseTests {
         let backend = WorkflowInMemoryCheckpointStore()
         let checkpointing = WorkflowCheckpointing(backend: backend)
         let log = ExecutionLog()
-        let workflow = makeTwoStepWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-legacy-done-cursors")
+        let steps = makeTwoStepSteps(log: log)
+        let workflow = steps.durable.configured(
+            id: WorkflowCheckpointID("wf-legacy-done-cursors"),
+            store: checkpointing,
+            policy: .everyStep
+        )
 
-        let fixture = legacyCheckpoint(threadID: "wf-legacy-done-cursors", signature: workflow.workflowSignature) {
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-done-cursors", signature: steps.workflowSignature) {
             $0["workflow.completed"] = encodedJSON(true)
             $0["workflow.stepCursor"] = encodedJSON(1)
             $0["workflow.iterationCursor"] = encodedJSON(1)
@@ -164,7 +174,7 @@ struct WorkflowDurablePhaseTests {
         }
         try await backend.save(fixture)
 
-        let result = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-done-cursors")
+        let result = try await workflow.resume("ignored", from: WorkflowCheckpointID("wf-legacy-done-cursors"))
         // Completion wins over residual cursors: the fold must never produce
         // .running, and the persisted snapshot — not the input-text fallback —
         // becomes the result.
@@ -180,9 +190,14 @@ struct WorkflowDurablePhaseTests {
         let backend = WorkflowInMemoryCheckpointStore()
         let checkpointing = WorkflowCheckpointing(backend: backend)
         let log = ExecutionLog()
-        let workflow = makeTwoStepWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-legacy-running")
+        let steps = makeTwoStepSteps(log: log)
+        let workflow = steps.durable.configured(
+            id: WorkflowCheckpointID("wf-legacy-running"),
+            store: checkpointing,
+            policy: .everyStep
+        )
 
-        let fixture = legacyCheckpoint(threadID: "wf-legacy-running", signature: workflow.workflowSignature) {
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-running", signature: steps.workflowSignature) {
             $0["workflow.completed"] = encodedJSON(false)
             $0["workflow.stepCursor"] = encodedJSON(1)
             $0["workflow.iterationCursor"] = encodedJSON(0)
@@ -191,7 +206,7 @@ struct WorkflowDurablePhaseTests {
         }
         try await backend.save(fixture)
 
-        let result = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-running")
+        let result = try await workflow.resume("ignored", from: WorkflowCheckpointID("wf-legacy-running"))
         #expect(result.output == "B-out")
 
         let counts = await log.counts
@@ -205,9 +220,14 @@ struct WorkflowDurablePhaseTests {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let checkpointing = WorkflowCheckpointing.fileSystem(directory: directory)
-        let workflow = makeTwoStepWorkflow(checkpointing: checkpointing, checkpointID: "wf-legacy-file")
+        let steps = makeTwoStepSteps()
+        let workflow = steps.durable.configured(
+            id: WorkflowCheckpointID("wf-legacy-file"),
+            store: checkpointing,
+            policy: .everyStep
+        )
 
-        let fixture = legacyCheckpoint(threadID: "wf-legacy-file", signature: workflow.workflowSignature) {
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-file", signature: steps.workflowSignature) {
             $0["workflow.completed"] = encodedJSON(false)
             $0["workflow.stepCursor"] = encodedJSON(0)
             $0["workflow.iterationCursor"] = encodedJSON(0)
@@ -231,7 +251,7 @@ struct WorkflowDurablePhaseTests {
         try JSONEncoder().encode(manifest)
             .write(to: directory.appendingPathComponent(WorkflowFileCheckpointStore.manifestFileName))
 
-        let result = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-file")
+        let result = try await workflow.resume("ignored", from: WorkflowCheckpointID("wf-legacy-file"))
         #expect(result.output == "B-out")
     }
 
@@ -239,15 +259,20 @@ struct WorkflowDurablePhaseTests {
     func unknownFormatPassesThroughToVersionMismatch() async throws {
         let backend = WorkflowInMemoryCheckpointStore()
         let checkpointing = WorkflowCheckpointing(backend: backend)
-        let workflow = makeTwoStepWorkflow(checkpointing: checkpointing, checkpointID: "wf-unknown-format")
+        let steps = makeTwoStepSteps()
+        let workflow = steps.durable.configured(
+            id: WorkflowCheckpointID("wf-unknown-format"),
+            store: checkpointing,
+            policy: .everyStep
+        )
 
         // Mismatched schema versions but no legacy discriminator channel: the
         // migrator must not guess at an unknown layout.
-        let fixture = legacyCheckpoint(threadID: "wf-unknown-format", signature: workflow.workflowSignature) { _ in }
+        let fixture = legacyCheckpoint(threadID: "wf-unknown-format", signature: steps.workflowSignature) { _ in }
         try await backend.save(fixture)
 
         do {
-            _ = try await workflow.durable.execute("ignored", resumeFrom: "wf-unknown-format")
+            _ = try await workflow.resume("ignored", from: WorkflowCheckpointID("wf-unknown-format"))
             Issue.record("expected version mismatch")
         } catch let error as HiveRuntimeError {
             guard case .checkpointVersionMismatch(let expectedSchema, _, let foundSchema, _) = error else {
@@ -264,9 +289,14 @@ struct WorkflowDurablePhaseTests {
         let backend = WorkflowInMemoryCheckpointStore()
         let checkpointing = WorkflowCheckpointing(backend: backend)
         let log = ExecutionLog()
-        let workflow = makeTwoStepWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-legacy-corrupt")
+        let steps = makeTwoStepSteps(log: log)
+        let workflow = steps.durable.configured(
+            id: WorkflowCheckpointID("wf-legacy-corrupt"),
+            store: checkpointing,
+            policy: .everyStep
+        )
 
-        let fixture = legacyCheckpoint(threadID: "wf-legacy-corrupt", signature: workflow.workflowSignature) {
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-corrupt", signature: steps.workflowSignature) {
             $0["workflow.completed"] = encodedJSON(false)
             $0["workflow.lastResult"] = Data("not-json".utf8)
             $0["workflow.currentInput"] = encodedJSON("seed")
@@ -274,7 +304,7 @@ struct WorkflowDurablePhaseTests {
         try await backend.save(fixture)
 
         do {
-            _ = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-corrupt")
+            _ = try await workflow.resume("ignored", from: WorkflowCheckpointID("wf-legacy-corrupt"))
             Issue.record("expected decode failure")
         } catch is DecodingError {
             // Expected: present-but-undecodable legacy entries fail loudly.
@@ -289,9 +319,14 @@ struct WorkflowDurablePhaseTests {
         let backend = WorkflowInMemoryCheckpointStore()
         let checkpointing = WorkflowCheckpointing(backend: backend)
         let log = ExecutionLog()
-        let workflow = makeTwoStepWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-legacy-negative-step")
+        let steps = makeTwoStepSteps(log: log)
+        let workflow = steps.durable.configured(
+            id: WorkflowCheckpointID("wf-legacy-negative-step"),
+            store: checkpointing,
+            policy: .everyStep
+        )
 
-        let fixture = legacyCheckpoint(threadID: "wf-legacy-negative-step", signature: workflow.workflowSignature) {
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-negative-step", signature: steps.workflowSignature) {
             $0["workflow.completed"] = encodedJSON(false)
             $0["workflow.stepCursor"] = encodedJSON(-1)
             $0["workflow.iterationCursor"] = encodedJSON(0)
@@ -301,7 +336,7 @@ struct WorkflowDurablePhaseTests {
         try await backend.save(fixture)
 
         do {
-            _ = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-negative-step")
+            _ = try await workflow.resume("ignored", from: WorkflowCheckpointID("wf-legacy-negative-step"))
             Issue.record("expected invalid-workflow error")
         } catch let error as WorkflowError {
             guard case .invalidWorkflow(let reason) = error else {
@@ -322,9 +357,14 @@ struct WorkflowDurablePhaseTests {
         let backend = WorkflowInMemoryCheckpointStore()
         let checkpointing = WorkflowCheckpointing(backend: backend)
         let log = ExecutionLog()
-        let workflow = makeTwoStepWorkflow(log: log, checkpointing: checkpointing, checkpointID: "wf-legacy-negative-iteration")
+        let steps = makeTwoStepSteps(log: log)
+        let workflow = steps.durable.configured(
+            id: WorkflowCheckpointID("wf-legacy-negative-iteration"),
+            store: checkpointing,
+            policy: .everyStep
+        )
 
-        let fixture = legacyCheckpoint(threadID: "wf-legacy-negative-iteration", signature: workflow.workflowSignature) {
+        let fixture = legacyCheckpoint(threadID: "wf-legacy-negative-iteration", signature: steps.workflowSignature) {
             $0["workflow.completed"] = encodedJSON(false)
             $0["workflow.stepCursor"] = encodedJSON(0)
             $0["workflow.iterationCursor"] = encodedJSON(-3)
@@ -334,7 +374,7 @@ struct WorkflowDurablePhaseTests {
         try await backend.save(fixture)
 
         do {
-            _ = try await workflow.durable.execute("ignored", resumeFrom: "wf-legacy-negative-iteration")
+            _ = try await workflow.resume("ignored", from: WorkflowCheckpointID("wf-legacy-negative-iteration"))
             Issue.record("expected invalid-workflow error")
         } catch let error as WorkflowError {
             guard case .invalidWorkflow(let reason) = error else {
@@ -362,11 +402,9 @@ struct WorkflowDurablePhaseTests {
                 return result.metadata["pass"] == .string("done")
             }
             .durable
-            .checkpoint(id: "wf-repeat-fidelity", policy: .onCompletion)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-repeat-fidelity"), store: checkpointing, policy: .onCompletion)
 
-        let result = try await workflow.durable.execute("start")
+        let result = try await workflow.execute("start")
 
         // Pass 1 observes "no" and iterates; pass 2 observes "done" and stops.
         // If the mid-run result were reconstructed from the input text alone,
@@ -392,10 +430,7 @@ struct WorkflowDurablePhaseTests {
                         return result.metadata["pass"] == .string("done")
                     }
                     .durable
-                    .checkpoint(id: "wf-repeat-resume", policy: .everyStep)
-                    .durable
-                    .checkpointing(checkpointing)
-                    .durable
+                    .configured(id: WorkflowCheckpointID("wf-repeat-resume"), store: checkpointing, policy: .everyStep)
                     .execute("start")
                 Issue.record("expected injected fault")
             } catch let fault as WorkflowDurableInjectedFault {
@@ -414,11 +449,8 @@ struct WorkflowDurablePhaseTests {
                 return result.metadata["pass"] == .string("done")
             }
             .durable
-            .checkpoint(id: "wf-repeat-resume", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
-            .durable
-            .execute("ignored", resumeFrom: "wf-repeat-resume")
+            .configured(id: WorkflowCheckpointID("wf-repeat-resume"), store: checkpointing, policy: .everyStep)
+            .resume("ignored", from: WorkflowCheckpointID("wf-repeat-resume"))
 
         // The first boundary observation must come from the decoded snapshot's
         // metadata ("no"). A fallback AgentResult(currentInput) carries no
@@ -528,29 +560,19 @@ struct WorkflowDurablePhaseTests {
         log: ExecutionLog? = nil,
         checkpointing: WorkflowCheckpointing,
         checkpointID: String
-    ) -> Workflow {
+    ) -> DurableWorkflow {
         Workflow()
             .step(CountingAgent(label: "A", log: log))
             .step(CountingAgent(label: "B", log: log))
             .step(CountingAgent(label: "C", log: log))
             .durable
-            .checkpoint(id: checkpointID, policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID(checkpointID), store: checkpointing, policy: .everyStep)
     }
 
-    private func makeTwoStepWorkflow(
-        log: ExecutionLog? = nil,
-        checkpointing: WorkflowCheckpointing,
-        checkpointID: String
-    ) -> Workflow {
+    private func makeTwoStepSteps(log: ExecutionLog? = nil) -> Workflow {
         Workflow()
             .step(CountingAgent(label: "A", log: log, response: "A-out"))
             .step(CountingAgent(label: "B", log: log, response: "B-out"))
-            .durable
-            .checkpoint(id: checkpointID, policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
     }
 
     /// Builds a checkpoint pinned to the pre-phase-enum six-channel layout.

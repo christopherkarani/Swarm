@@ -531,21 +531,6 @@ extension AgentConfiguration {
         return copy
     }
 
-    // MARK: Foundation Models Execution
-
-    /// Ignored. Construct a provider-owned tool loop adapter instead of setting this flag.
-    ///
-    /// - Parameter value: Previously selected the Foundation Models tool loop. Ignored.
-    /// - Returns: A new configuration with the stored (ignored) flag.
-    @available(*, deprecated, message: "Choose a provider-owned tool loop by constructing the InferenceProvider adapter. This flag is ignored.")
-    @discardableResult public func foundationModelsExecution(
-        _ value: FoundationModelsExecutionMode
-    ) -> AgentConfiguration {
-        var copy = self
-        copy.foundationModelsExecution = value
-        return copy
-    }
-
     // MARK: Resilience Settings
 
     /// Sets retry, circuit-breaker, and rate-limit policies for provider inference.

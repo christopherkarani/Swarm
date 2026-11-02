@@ -14,13 +14,3 @@ public enum HiveVersion {
         ]
     }
 }
-
-// MARK: - Deprecated Module-Specific Version Types
-
-/// Deprecated: Use `HiveVersion.core` instead.
-@available(*, deprecated, renamed: "HiveVersion")
-public enum HiveCoreVersion {
-    /// Deprecated: Use `HiveVersion.core` instead.
-    @available(*, deprecated, renamed: "HiveVersion.core")
-    public static let string = HiveVersion.core
-}

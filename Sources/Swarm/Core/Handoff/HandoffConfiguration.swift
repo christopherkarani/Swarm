@@ -258,31 +258,6 @@ public struct HandoffConfiguration<Target: AgentRuntime>: Sendable {
         self.when = when
         self.history = history
     }
-
-    /// Creates a new handoff configuration using a boolean history flag.
-    ///
-    /// - Parameters:
-    ///   - nestHandoffHistory: When `true`, maps to ``HandoffHistory/nested``; otherwise ``HandoffHistory/none``.
-    @available(*, deprecated, message: "Use history: HandoffHistory instead")
-    public init(
-        targetAgent: Target,
-        toolNameOverride: String? = nil,
-        toolDescription: String? = nil,
-        onTransfer: OnTransferCallback? = nil,
-        transform: TransformCallback? = nil,
-        when: WhenCallback? = nil,
-        nestHandoffHistory: Bool
-    ) {
-        self.init(
-            targetAgent: targetAgent,
-            toolNameOverride: toolNameOverride,
-            toolDescription: toolDescription,
-            onTransfer: onTransfer,
-            transform: transform,
-            when: when,
-            history: nestHandoffHistory ? .nested : .none
-        )
-    }
 }
 
 // MARK: - HandoffConfiguration + Computed Properties

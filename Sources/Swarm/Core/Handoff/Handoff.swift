@@ -119,15 +119,6 @@ public struct HandoffResult: Sendable, Equatable {
     }
 }
 
-// MARK: - HandoffReceiver
-
-/// Historical refinement for agents that customized handoff handling.
-///
-/// Handoff dispatch now lives on ``AgentRuntime/handleHandoff(_:context:session:observer:)``.
-/// Override that requirement instead of conforming to this protocol.
-@available(*, deprecated, message: "Use AgentRuntime.handleHandoff(_:context:session:observer:) instead.")
-public protocol HandoffReceiver: AgentRuntime {}
-
 // MARK: - HandoffCoordinator
 
 /// Coordinates agent handoffs in a multi-agent system.

@@ -21,8 +21,9 @@ let result = try await durable.execute("Create this week's report")
 let again = try await durable.resume("Create this week's report", from: WorkflowCheckpointID("weekly-report"))
 ```
 
-The deprecated `checkpoint` / `checkpointing` / `execute(_:resumeFrom:)` builders remain
-available for existing call sites. Prefer ``DurableWorkflow`` for new code.
+`configured(id:store:policy:)` is the only durable entry point; the 0.6
+`checkpoint` / `checkpointing` / `execute(_:resumeFrom:)` builders were removed in
+0.7.0 (see [the 0.7.0 migration guide](../migration/0.7.0.md)).
 
 This page is the contract for what resume does — and what it does not do.
 

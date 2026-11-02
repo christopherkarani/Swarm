@@ -832,12 +832,10 @@ private func runDurableScenario(context: CapabilityScenarioContext) async throws
         .step(agent)
         .repeatUntil(maxIterations: 5) { $0.output == "done" }
         .durable
-        .checkpoint(id: "showcase-durable", policy: .everyStep)
-        .durable
-        .checkpointing(checkpointing)
+        .configured(id: WorkflowCheckpointID("showcase-durable"), store: checkpointing, policy: .everyStep)
 
-    _ = try await workflow.durable.execute("start")
-    let resumed = try await workflow.durable.execute("ignored", resumeFrom: "showcase-durable")
+    _ = try await workflow.execute("start")
+    let resumed = try await workflow.resume("ignored", from: WorkflowCheckpointID("showcase-durable"))
 
     try ensure(resumed.output == "done", "Expected resume to continue from the checkpoint.")
 

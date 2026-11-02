@@ -9,12 +9,6 @@ import Testing
 @Suite("FoundationModels Execution Mode", .ephemeralDefaultStores)
 struct FoundationModelsExecutionModeTests {
 
-    @Test("Capture remains the stored AgentConfiguration default")
-    func captureIsDefault() {
-        #expect(AgentConfiguration.default.foundationModelsExecution == .capture)
-        #expect(AgentConfiguration().foundationModelsExecution == .capture)
-    }
-
     @Test("Non-FM providers keep the Swarm tool loop")
     func nonFMProvidersKeepSwarmToolLoop() async throws {
         let spy = MockTool(

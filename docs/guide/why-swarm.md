@@ -31,10 +31,11 @@ let result = try await Workflow()
     .step(fetchAgent)
     .step(analyzeAgent)
     .durable
-    .checkpoint(id: "weekly-report", policy: .everyStep)
-    .durable
-    .checkpointing(.fileSystem(directory: checkpointsURL))
-    .durable
+    .configured(
+        id: WorkflowCheckpointID("weekly-report"),
+        store: .fileSystem(directory: checkpointsURL),
+        policy: .everyStep
+    )
     .execute("Create this week report")
 ```
 

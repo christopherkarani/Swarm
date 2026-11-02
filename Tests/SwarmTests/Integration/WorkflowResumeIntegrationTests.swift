@@ -14,12 +14,10 @@ struct WorkflowResumeIntegrationTests {
             .step(MockAgentRuntime(responseFactory: { counter.next() }))
             .repeatUntil(maxIterations: 10) { $0.output == "done" }
             .durable
-            .checkpoint(id: "repeat-resume", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("repeat-resume"), store: checkpointing, policy: .everyStep)
 
-        _ = try await workflow.durable.execute("start")
-        let resumed = try await workflow.durable.execute("ignored", resumeFrom: "repeat-resume")
+        _ = try await workflow.execute("start")
+        let resumed = try await workflow.resume("ignored", from: WorkflowCheckpointID("repeat-resume"))
         #expect(resumed.output == "done")
     }
 
@@ -30,22 +28,18 @@ struct WorkflowResumeIntegrationTests {
         let first = Workflow()
             .step(MockAgentRuntime(response: "first"))
             .durable
-            .checkpoint(id: "definition-check", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("definition-check"), store: checkpointing, policy: .everyStep)
 
-        _ = try await first.durable.execute("input")
+        _ = try await first.execute("input")
 
         let second = Workflow()
             .step(MockAgentRuntime(response: "first"))
             .step(MockAgentRuntime(response: "second"))
             .durable
-            .checkpoint(id: "definition-check", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("definition-check"), store: checkpointing, policy: .everyStep)
 
         await #expect(throws: WorkflowError.self) {
-            _ = try await second.durable.execute("input", resumeFrom: "definition-check")
+            _ = try await second.resume("input", from: WorkflowCheckpointID("definition-check"))
         }
     }
 }

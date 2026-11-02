@@ -139,7 +139,7 @@ private actor WitnessLifecycleMemory: Memory {
     }
 }
 
-private actor StaticMacroContextMemory: Memory, MemorySessionImportPolicy {
+private actor StaticMacroContextMemory: Memory {
     nonisolated let allowsAutomaticSessionSeeding = false
 
     private let contextText: String

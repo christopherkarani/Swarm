@@ -5,84 +5,6 @@
 
 import Foundation
 
-// MARK: - AgentContextKey
-
-/// Predefined keys for common agent context values.
-///
-/// Use typed ``ContextKey`` orchestration statics such as
-/// ``ContextKey/originalInput``. These string keys remain for source
-/// compatibility.
-///
-/// Example:
-/// ```swift
-/// await context.set(.originalInput, "User query")
-/// if let input = await context.get(.originalInput) {
-///     print("Original: \(input)")
-/// }
-/// ```
-@available(*, deprecated, message: "Use typed ContextKey orchestration statics such as ContextKey.originalInput.")
-public enum AgentContextKey: String, Sendable {
-    /// The original input that started orchestration.
-    case originalInput = "original_input"
-
-    /// The output from the previous agent in the chain.
-    case previousOutput = "previous_output"
-
-    /// The name of the current executing agent.
-    case currentAgentName = "current_agent_name"
-
-    /// The execution path (list of agent names).
-    case executionPath = "execution_path"
-
-    /// The start time of orchestration.
-    case startTime = "start_time"
-
-    /// General metadata storage.
-    case metadata
-}
-
-// MARK: - AgentContextProviding
-
-/// A protocol for providing typed context to agents and tools.
-///
-/// - Deprecated: Store typed values with ``ContextKey`` instead. Define a
-///   `ContextKey<Value>` for your value type and use
-///   ``AgentContext/setTyped(_:value:)`` /
-///   ``AgentContext/getTyped(_:)``, which pair keys and values at compile
-///   time. This protocol remains functional over the unified context store
-///   until the documented 0.7.0 breaking boundary.
-///
-/// - Migration hazard: `ContextKey<Value>` writes live in a namespace
-///   separate from untyped string storage. Values written through the typed
-///   API are no longer visible to raw reads such as
-///   ``AgentContext/get(_:)`` or string-keyed snapshot entries, so any code
-///   still reading a migrated value by its raw string must switch to
-///   ``AgentContext/getTyped(_:)`` with the same key name.
-///
-/// - Example:
-/// ```swift
-/// struct UserContext: Codable, Sendable {
-///     let userId: String
-///     let isAdmin: Bool
-/// }
-///
-/// extension UserContext: AgentContextProviding {
-///     static let contextKey = "user_context"
-/// }
-///
-/// await context.setTyped(UserContext(userId: "123", isAdmin: true))
-/// let user = await context.typed(UserContext.self)
-/// ```
-@available(
-    *,
-    deprecated,
-    message: "Use ContextKey<Value> with setTyped(_:value:)/getTyped(_:) instead; this protocol will be removed in 0.7.0."
-)
-public protocol AgentContextProviding: Sendable {
-    /// The key used to identify this context in the legacy typed storage.
-    static var contextKey: String { get }
-}
-
 // MARK: - AgentContext
 
 /// Thread-safe shared context for multi-agent orchestration.
@@ -202,16 +124,6 @@ public actor AgentContext {
         values[key]
     }
 
-    /// Retrieves a value by predefined context key.
-    ///
-    /// - Parameter key: The context key to look up.
-    /// - Returns: The stored value, or nil if not found.
-    @available(*, deprecated, message: "Use typed ContextKey accessors such as get(.originalInput).")
-    @_disfavoredOverload
-    public func get(_ key: AgentContextKey) -> SendableValue? {
-        snapshot[key.rawValue]
-    }
-
     /// Stores a value by string key.
     ///
     /// - Parameters:
@@ -223,51 +135,6 @@ public actor AgentContext {
         // matching slot so `get(.originalInput)` cannot keep serving init's
         // seed after this name has been overwritten.
         clearTypedOrchestrationSlot(named: key)
-    }
-
-    /// Stores a value by predefined context key.
-    ///
-    /// - Parameters:
-    ///   - key: The context key to store under.
-    ///   - value: The value to store.
-    @available(*, deprecated, message: "Use typed ContextKey accessors such as set(.originalInput, _).")
-    @_disfavoredOverload
-    public func set(_ key: AgentContextKey, value: SendableValue) {
-        switch key {
-        case .originalInput:
-            if let string = value.stringValue {
-                set(ContextKey<String>.originalInput, string)
-                return
-            }
-        case .previousOutput:
-            if let string = value.stringValue {
-                set(ContextKey<String>.previousOutput, string)
-                return
-            }
-        case .currentAgentName:
-            if let string = value.stringValue {
-                set(ContextKey<String>.currentAgentName, string)
-                return
-            }
-        case .executionPath:
-            if let elements = value.arrayValue {
-                let path = elements.compactMap(\.stringValue)
-                if path.count == elements.count {
-                    set(ContextKey<[String]>.executionPath, path)
-                    return
-                }
-            }
-        case .startTime:
-            if let timestamp = value.doubleValue {
-                set(ContextKey<Date>.startTime, Date(timeIntervalSince1970: timestamp))
-                return
-            }
-        case .metadata:
-            break
-        }
-
-        values[key.rawValue] = value
-        clearTypedOrchestrationSlot(named: key.rawValue)
     }
 
     /// Removes a value by string key.
@@ -437,47 +304,6 @@ public actor AgentContext {
         return newContext
     }
 
-    // MARK: - Typed Context (deprecated shim)
-
-    /// Stores a typed context object.
-    ///
-    /// The context is stored in legacy typed storage keyed by its concrete
-    /// type and `contextKey`, and can be retrieved using `typed(_:)`.
-    ///
-    /// - Parameter context: The typed context to store.
-    @available(*, deprecated, message: "Use ContextKey<Value> with setTyped(_:value:) instead; this overload will be removed in 0.7.0.")
-    public func setTyped<T: AgentContextProviding>(_ context: T) {
-        slots.setProvided(context)
-    }
-
-    /// Retrieves a typed context object.
-    ///
-    /// - Parameter type: The type of context to retrieve.
-    /// - Returns: The stored context, or nil if not found.
-    @available(*, deprecated, message: "Use ContextKey<Value> with getTyped(_:) instead; this overload will be removed in 0.7.0.")
-    public func typed<T: AgentContextProviding>(_: T.Type) -> T? {
-        slots.provided(of: T.self)
-    }
-
-    /// Removes a typed context.
-    ///
-    /// - Parameter type: The type of context to remove.
-    /// - Returns: The removed context, or nil if not found.
-    @available(*, deprecated, message: "Use ContextKey<Value> with removeTyped(_:) instead; this overload will be removed in 0.7.0.")
-    @discardableResult
-    public func removeTyped<T: AgentContextProviding>(_: T.Type) -> T? {
-        slots.removeProvided(of: T.self)
-    }
-
-    /// Returns true if a typed context of the given type is stored.
-    ///
-    /// - Parameter type: The type to check for.
-    /// - Returns: Whether a context of this type exists.
-    @available(*, deprecated, message: "Use ContextKey<Value> with hasTyped(_:) instead; this overload will be removed in 0.7.0.")
-    public func hasTyped<T: AgentContextProviding>(_: T.Type) -> Bool {
-        slots.containsProvided(of: T.self)
-    }
-
     // MARK: - Slot Storage Bridge (package-internal)
 
     /// Stores an encoded payload in the slot identified by `key`.
@@ -561,8 +387,8 @@ public actor AgentContext {
     /// List of agent names that have executed.
     private var executionPath: [String]
 
-    /// Unified typed slot storage used by `ContextKey<Value>` accessors and
-    /// the deprecated `AgentContextProviding` shim. See `ContextSlotStore`.
+    /// Unified typed slot storage used by `ContextKey<Value>` accessors.
+    /// See `ContextSlotStore`.
     private var slots: ContextSlotStore
 }
 
