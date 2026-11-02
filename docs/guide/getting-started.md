@@ -29,7 +29,7 @@ Enable Integrations when you need any of:
 |------------|----------------------------|----------------------------------|
 | Default agent memory | `SlidingWindowMemory` | ContextCore + Wax `DefaultAgentMemory` |
 | Durable Hive checkpoint/resume | Configuration type-checks; factories warn immediately; execute with checkpoint/resume configured throws | Full durable engine |
-| Membrane adapters | No-op / unavailable backends | Real Membrane session adapters (`import Swarm`; do not take a `SwarmMembrane` dependency — that product is deprecated and will be removed in 0.7.0) |
+| Membrane adapters | No-op / unavailable backends | Real Membrane session adapters (`import Swarm`) |
 | Web helpers (`websearch`, page fetch/HTML parse) | Not injected / gated | Full web tool support |
 
 ```swift
@@ -458,28 +458,29 @@ Durable Hive checkpoint/resume requires the **`Integrations`** SwiftPM trait
 
 Without Integrations:
 
-- `.durable.checkpoint` / `.checkpointing` and `WorkflowCheckpointing.*` still
+- `.durable.configured(id:store:policy:)` and `WorkflowCheckpointing.*` still
   type-check (configuration-only APIs) and emit a once-per-process warning
   naming the missing trait and the rebuild remedy
   (`--traits Integrations` / `traits: ["Integrations"]`).
-- `execute` / `.durable.execute` **throws** `WorkflowError.durableRuntimeUnavailable`
-  when checkpointing is configured or `resumeFrom` is non-nil, with the same
-  remedy in the error message.
-- Bare workflow `run` / `execute` **without** durable configuration still runs as
-  a non-durable workflow.
+- `DurableWorkflow.execute` / `resume` **throw**
+  `WorkflowError.durableRuntimeUnavailable`, with the same remedy in the error
+  message.
+- Bare workflow `run` **without** durable configuration still runs as a
+  non-durable workflow.
 
 ```swift
 // Requires Integrations trait for checkpoint/resume at execute time.
-// Lean builds warn at `.checkpoint` / `.checkpointing` and throw on execute.
+// Lean builds warn at `.configured` and throw on execute.
 let result = try await Workflow()
     .step(fetchAgent)
     .step(analyzeAgent)
     .durable
-    .checkpoint(id: "report-v1", policy: .everyStep)
-    .durable
-    .checkpointing(.fileSystem(directory: checkpointsURL))
-    .durable
-    .execute("Summarize the WWDC session", resumeFrom: nil)
+    .configured(
+        id: WorkflowCheckpointID("report-v1"),
+        store: .fileSystem(directory: checkpointsURL),
+        policy: .everyStep
+    )
+    .execute("Summarize the WWDC session")
 ```
 
 See [Durable Execution](./durable-execution.md) for step-granularity semantics

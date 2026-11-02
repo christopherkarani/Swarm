@@ -145,16 +145,6 @@ struct AgentHandoffIdentityTests {
         }
     }
 
-    @Test("Builder assignment of two Agent targets throws duplicateHandoffToolName")
-    func builderAssignmentOfTwoAgentsThrows() throws {
-        let billing = try Agent("billing")
-        let support = try Agent("support")
-
-        #expect(throws: AgentError.duplicateHandoffToolName(name: "handoff_to_agent")) {
-            _ = try Agent.Builder().handoffs(billing, support)
-        }
-    }
-
     @Test("Handoff identity errors are Equatable, described, and not retryable")
     func handoffIdentityErrorsAreDescribedAndNotRetryable() {
         let duplicate = AgentError.duplicateHandoffToolName(name: "handoff_to_agent")

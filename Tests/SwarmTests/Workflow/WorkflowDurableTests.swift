@@ -35,12 +35,10 @@ struct WorkflowDurableTests {
                 .step(WorkflowRecordingAgent(log: durableLog))
                 .repeatUntil(maxIterations: maxIterations) { _ in false }
                 .durable
-                .checkpoint(id: "wf-parity-\(maxIterations)", policy: .everyStep)
-                .durable
-                .checkpointing(checkpointing)
+                .configured(id: WorkflowCheckpointID("wf-parity-\(maxIterations)"), store: checkpointing, policy: .everyStep)
 
             let directResult = try await direct.run("start")
-            let durableResult = try await durable.durable.execute("start")
+            let durableResult = try await durable.execute("start")
 
             #expect(directResult == durableResult)
             #expect(await directLog.inputs == ["start"] + Array(repeating: "result", count: maxIterations - 1))
@@ -68,50 +66,20 @@ struct WorkflowDurableTests {
         let durableAgentLog = WorkflowInvocationLog()
         let durableEmpty = Workflow()
             .durable
-            .checkpoint(id: "wf-empty", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-empty"), store: checkpointing, policy: .everyStep)
         await #expect(throws: WorkflowError.self) {
-            _ = try await durableEmpty.durable.execute("ignored")
+            _ = try await durableEmpty.execute("ignored")
         }
 
         let durableRepeating = Workflow()
             .step(WorkflowRecordingAgent(log: durableAgentLog))
             .repeatUntil(maxIterations: 0) { _ in false }
             .durable
-            .checkpoint(id: "wf-zero-repeat", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-zero-repeat"), store: checkpointing, policy: .everyStep)
         await #expect(throws: WorkflowError.self) {
-            _ = try await durableRepeating.durable.execute("ignored")
+            _ = try await durableRepeating.execute("ignored")
         }
         #expect(await durableAgentLog.inputs.isEmpty)
-    }
-
-    @Test("durable checkpoint requires explicit checkpoint store")
-    func checkpointRequiresStore() async throws {
-        let workflow = Workflow()
-            .step(MockAgentRuntime(response: "ok"))
-            .durable
-            .checkpoint(id: "wf-1")
-
-        await #expect(throws: WorkflowError.checkpointStoreRequired) {
-            _ = try await workflow.durable.execute("hello")
-        }
-    }
-
-    @Test("deprecated resume without checkpoint configuration still rejects")
-    func resumeWithoutCheckpointConfigurationThrows() async throws {
-        let workflow = Workflow()
-            .step(MockAgentRuntime(response: "ok"))
-
-        await #expect(
-            throws: WorkflowError.invalidWorkflow(
-                reason: "Cannot resume a workflow without durable checkpoint configuration"
-            )
-        ) {
-            _ = try await workflow.durable.execute("start", resumeFrom: "wf-none")
-        }
     }
 
     @Test("durable runtime unavailable uses Swarm-owned error naming")
@@ -127,31 +95,12 @@ struct WorkflowDurableTests {
         let workflow = Workflow()
             .step(MockAgentRuntime(response: "done"))
             .durable
-            .checkpoint(id: "wf-resume", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-resume"), store: checkpointing, policy: .everyStep)
 
-        let first = try await workflow.durable.execute("start")
+        let first = try await workflow.execute("start")
         #expect(first.output == "done")
 
-        let resumed = try await workflow.durable.execute("ignored", resumeFrom: "wf-resume")
-        #expect(resumed.output == "done")
-    }
-
-    @Test("deprecated durable run forwards execution and resume")
-    func deprecatedRunForwardsExecutionAndResume() async throws {
-        let checkpointing = WorkflowCheckpointing.inMemory()
-        let workflow = Workflow()
-            .step(MockAgentRuntime(response: "done"))
-            .durable
-            .checkpoint(id: "wf-run-compatibility", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
-
-        let first = try await workflow.durable.run("start")
-        #expect(first.output == "done")
-
-        let resumed = try await workflow.durable.run("ignored", resumeFrom: "wf-run-compatibility")
+        let resumed = try await workflow.resume("ignored", from: WorkflowCheckpointID("wf-resume"))
         #expect(resumed.output == "done")
     }
 
@@ -161,12 +110,10 @@ struct WorkflowDurableTests {
         let workflow = Workflow()
             .step(MockAgentRuntime(response: "ok"))
             .durable
-            .checkpoint(id: "wf-known", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-known"), store: checkpointing, policy: .everyStep)
 
         await #expect(throws: WorkflowError.self) {
-            _ = try await workflow.durable.execute("start", resumeFrom: "wf-missing")
+            _ = try await workflow.resume("start", from: WorkflowCheckpointID("wf-missing"))
         }
     }
 
@@ -177,22 +124,18 @@ struct WorkflowDurableTests {
         let original = Workflow()
             .step(MockAgentRuntime(response: "a"))
             .durable
-            .checkpoint(id: "wf-mismatch", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-mismatch"), store: checkpointing, policy: .everyStep)
 
-        _ = try await original.durable.execute("start")
+        _ = try await original.execute("start")
 
         let changed = Workflow()
             .step(MockAgentRuntime(response: "a"))
             .step(MockAgentRuntime(response: "b"))
             .durable
-            .checkpoint(id: "wf-mismatch", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-mismatch"), store: checkpointing, policy: .everyStep)
 
         await #expect(throws: WorkflowError.self) {
-            _ = try await changed.durable.execute("resume", resumeFrom: "wf-mismatch")
+            _ = try await changed.resume("resume", from: WorkflowCheckpointID("wf-mismatch"))
         }
     }
 
@@ -206,11 +149,9 @@ struct WorkflowDurableTests {
                 configuration: AgentConfiguration(name: "Worker", maxIterations: 1, temperature: 0.1)
             ))
             .durable
-            .checkpoint(id: "wf-agent-config-mismatch", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-agent-config-mismatch"), store: checkpointing, policy: .everyStep)
 
-        _ = try await original.durable.execute("start")
+        _ = try await original.execute("start")
 
         let changed = Workflow()
             .step(MockAgentRuntime(
@@ -218,12 +159,10 @@ struct WorkflowDurableTests {
                 configuration: AgentConfiguration(name: "Worker", maxIterations: 5, temperature: 0.1)
             ))
             .durable
-            .checkpoint(id: "wf-agent-config-mismatch", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-agent-config-mismatch"), store: checkpointing, policy: .everyStep)
 
         await #expect(throws: WorkflowError.self) {
-            _ = try await changed.durable.execute("resume", resumeFrom: "wf-agent-config-mismatch")
+            _ = try await changed.resume("resume", from: WorkflowCheckpointID("wf-agent-config-mismatch"))
         }
     }
 
@@ -235,12 +174,10 @@ struct WorkflowDurableTests {
             .step(MockAgentRuntime(response: "seed"))
             .route({ _ in nil as (any AgentRuntime)? }, signature: "route-v1")
             .durable
-            .checkpoint(id: "wf-route-closure-mismatch", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-route-closure-mismatch"), store: checkpointing, policy: .everyStep)
 
         await #expect(throws: WorkflowError.self) {
-            _ = try await original.durable.execute("start")
+            _ = try await original.execute("start")
         }
         #expect(try await checkpointing.containsCheckpoint(for: "wf-route-closure-mismatch"))
 
@@ -248,12 +185,10 @@ struct WorkflowDurableTests {
             .step(MockAgentRuntime(response: "seed"))
             .route({ _ in MockAgentRuntime(response: "changed-route") }, signature: "route-v2")
             .durable
-            .checkpoint(id: "wf-route-closure-mismatch", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-route-closure-mismatch"), store: checkpointing, policy: .everyStep)
 
         await #expect(throws: WorkflowError.self) {
-            _ = try await changed.durable.execute("resume", resumeFrom: "wf-route-closure-mismatch")
+            _ = try await changed.resume("resume", from: WorkflowCheckpointID("wf-route-closure-mismatch"))
         }
     }
 
@@ -268,11 +203,9 @@ struct WorkflowDurableTests {
                 customMergeSignature: "merge-v1"
             )
             .durable
-            .checkpoint(id: "wf-custom-merge-mismatch", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-custom-merge-mismatch"), store: checkpointing, policy: .everyStep)
 
-        _ = try await original.durable.execute("start")
+        _ = try await original.execute("start")
 
         let changed = Workflow()
             .parallel(
@@ -281,12 +214,10 @@ struct WorkflowDurableTests {
                 customMergeSignature: "merge-v2"
             )
             .durable
-            .checkpoint(id: "wf-custom-merge-mismatch", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-custom-merge-mismatch"), store: checkpointing, policy: .everyStep)
 
         await #expect(throws: WorkflowError.self) {
-            _ = try await changed.durable.execute("resume", resumeFrom: "wf-custom-merge-mismatch")
+            _ = try await changed.resume("resume", from: WorkflowCheckpointID("wf-custom-merge-mismatch"))
         }
     }
 
@@ -299,7 +230,7 @@ struct WorkflowDurableTests {
             signature: "repeat-predicate:v1"
         ) { _ in false }
 
-        _ = try await original.durable.execute("start")
+        _ = try await original.execute("start")
 
         let changed = repeatClosureIdentityWorkflow(
             checkpointing: checkpointing,
@@ -307,7 +238,7 @@ struct WorkflowDurableTests {
         ) { _ in true }
 
         await #expect(throws: WorkflowError.self) {
-            _ = try await changed.durable.execute("resume", resumeFrom: "wf-repeat-closure-mismatch")
+            _ = try await changed.resume("resume", from: WorkflowCheckpointID("wf-repeat-closure-mismatch"))
         }
     }
 
@@ -319,26 +250,13 @@ struct WorkflowDurableTests {
             .step(MockAgentRuntime(response: "seed"))
             .route { _ in MockAgentRuntime(response: "routed") }
             .durable
-            .checkpoint(id: "wf-implicit-identity", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("wf-implicit-identity"), store: checkpointing, policy: .everyStep)
 
-        _ = try await workflow.durable.execute("start")
+        _ = try await workflow.execute("start")
         #expect(WorkflowDurableIdentityTesting.warningCount == 1)
 
-        _ = try await workflow.durable.execute("again")
+        _ = try await workflow.execute("again")
         #expect(WorkflowDurableIdentityTesting.warningCount == 1)
-    }
-
-    @Test("durable fallback executes backup after retries exhausted")
-    func fallbackUsesBackup() async throws {
-        let result = try await Workflow()
-            .durable
-            .fallback(primary: FailingAgent(), to: MockAgentRuntime(response: "backup"), retries: 2)
-            .run("input")
-
-        #expect(result.output == "backup")
-        #expect(result.metadata["workflow.fallback.used"] == .bool(true))
     }
 
     @Test("Workflow.fallback is the preferred fallback builder")
@@ -349,29 +267,6 @@ struct WorkflowDurableTests {
 
         #expect(result.output == "backup")
         #expect(result.metadata["workflow.fallback.used"] == .bool(true))
-    }
-
-    @Test("configured durable workflow execute matches legacy checkpoint path")
-    func configuredExecuteMatchesLegacyPath() async throws {
-        let checkpointing = WorkflowCheckpointing.inMemory()
-        let workflow = Workflow()
-            .step(MockAgentRuntime(response: "done"))
-
-        let legacy = try await workflow
-            .durable
-            .checkpoint(id: "wf-configured-execute", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
-            .durable
-            .execute("start")
-
-        let configured = try await workflow
-            .durable
-            .configured(id: WorkflowCheckpointID("wf-configured-execute-v2"), store: checkpointing, policy: .everyStep)
-            .execute("start")
-
-        #expect(legacy.output == "done")
-        #expect(configured.output == "done")
     }
 
     @Test("configured durable workflow resume uses dedicated entry point")
@@ -450,14 +345,12 @@ private func repeatClosureIdentityWorkflow(
     checkpointing: WorkflowCheckpointing,
     signature: String,
     condition: @escaping @Sendable (AgentResult) -> Bool
-) -> Workflow {
+) -> DurableWorkflow {
     Workflow()
         .step(MockAgentRuntime(response: "draft"))
         .repeatUntil(maxIterations: 1, condition, signature: signature)
         .durable
-        .checkpoint(id: "wf-repeat-closure-mismatch", policy: .everyStep)
-        .durable
-        .checkpointing(checkpointing)
+        .configured(id: WorkflowCheckpointID("wf-repeat-closure-mismatch"), store: checkpointing, policy: .everyStep)
 }
 
 private actor FailingAgent: AgentRuntime {

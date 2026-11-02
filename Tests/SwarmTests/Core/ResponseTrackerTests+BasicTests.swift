@@ -153,7 +153,7 @@ struct ResponseTrackerBasicTests {
             timestamp: timestamp,
             metadata: ["key": .string("value"), "number": .int(42)],
             toolCalls: [
-                ToolCallRecord(
+                ToolCallRecord.success(
                     toolName: "test_tool",
                     arguments: ["arg": .string("val")],
                     result: .bool(true),

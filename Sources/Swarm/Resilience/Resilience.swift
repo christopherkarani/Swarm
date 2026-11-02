@@ -12,17 +12,3 @@
 
 // Export Foundation's TimeInterval for resilience API signatures.
 @_exported import struct Foundation.TimeInterval
-
-/// Deprecated compatibility alias for ``RetryPolicy``.
-///
-/// Use ``RetryPolicy`` in new code. This alias remains available until a
-/// documented breaking release.
-@available(*, deprecated, renamed: "RetryPolicy")
-public typealias Retry = RetryPolicy
-
-/// Deprecated compatibility alias for ``FallbackChain``.
-///
-/// Use ``FallbackChain`` in new code. This alias remains available until a
-/// documented breaking release.
-@available(*, deprecated, renamed: "FallbackChain")
-public typealias Fallback = FallbackChain

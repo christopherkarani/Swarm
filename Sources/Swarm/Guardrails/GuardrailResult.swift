@@ -105,33 +105,6 @@ public enum GuardrailResult: Sendable, Equatable {
             metadata
         }
     }
-
-    /// Creates a result from the historical boolean stored-property shape.
-    ///
-    /// Prefer ``passed(message:outputInfo:metadata:)`` or
-    /// ``tripwire(message:outputInfo:metadata:)``. A tripwire with a nil message
-    /// is stored as `"Tripwire triggered"`.
-    @available(*, deprecated, message: "Use GuardrailResult.passed(...) or .tripwire(message:)")
-    public init(
-        tripwireTriggered: Bool,
-        outputInfo: SendableValue? = nil,
-        message: String? = nil,
-        metadata: [String: SendableValue] = [:]
-    ) {
-        if tripwireTriggered {
-            self = .tripwire(
-                message: message ?? "Tripwire triggered",
-                outputInfo: outputInfo,
-                metadata: metadata
-            )
-        } else {
-            self = .passed(
-                message: message,
-                outputInfo: outputInfo,
-                metadata: metadata
-            )
-        }
-    }
 }
 
 // MARK: CustomDebugStringConvertible

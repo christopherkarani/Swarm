@@ -79,7 +79,7 @@ struct AgentHandoffRuntimeTests {
             when: { context, _ in
                 context.originalInput.contains("route")
             },
-            nestHandoffHistory: true
+            history: .nested
         )
         let agent = try Agent(
             tools: [],
@@ -108,8 +108,8 @@ struct AgentHandoffRuntimeTests {
         #expect(snapshots.count == 1)
         let snapshot = try #require(snapshots.first)
         #expect(snapshot["transfer_seen"] == .string("please route this"))
-        #expect(snapshot[AgentContextKey.originalInput.rawValue] == .string("callback-updated-original-input"))
-        #expect(snapshot[AgentContextKey.executionPath.rawValue] == .array([.string("source-agent")]))
+        #expect(snapshot[ContextKey<String>.originalInput.name] == .string("callback-updated-original-input"))
+        #expect(snapshot[ContextKey<[String]>.executionPath.name] == .array([.string("source-agent")]))
 
         let nestedMessages = await target.contextMessages
         #expect(nestedMessages.count == 1)
@@ -372,7 +372,7 @@ struct AgentHandoffRuntimeTests {
         let handoff = HandoffConfiguration(
             targetAgent: target,
             toolNameOverride: "handoff_to_target",
-            nestHandoffHistory: true
+            history: .nested
         )
         let source = try Agent(
             tools: [MockTool(name: "lookup_tool", result: .string("lookup result"))],

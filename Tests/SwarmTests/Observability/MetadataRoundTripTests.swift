@@ -79,7 +79,6 @@ struct MetadataRoundTripTests {
     @Test("workflow fallback writes typed metadata readable through raw strings")
     func workflowFallbackMetadataRoundTrip() async throws {
         let result = try await Workflow()
-            .durable
             .fallback(primary: AlwaysFailingAgent(), to: MockAgentRuntime(response: "backup"), retries: 1)
             .run("input")
 

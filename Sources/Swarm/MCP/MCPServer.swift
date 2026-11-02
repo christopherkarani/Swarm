@@ -300,11 +300,3 @@ public extension MCPServerConnection {
         }
     }
 }
-
-/// Deprecated name for ``MCPServerConnection``.
-///
-/// The historical `MCPServer` name described a *client* connection and was
-/// easy to confuse with an MCP server process. New code should conform to
-/// and refer to ``MCPServerConnection``.
-@available(*, deprecated, renamed: "MCPServerConnection")
-public typealias MCPServer = MCPServerConnection

@@ -35,7 +35,7 @@ struct HandoffBehaviorTests {
             when: { context, _ in
                 await context.get("enabled")?.boolValue == true
             },
-            nestHandoffHistory: true
+            history: .nested
         )
 
         #expect(await configuration.when?(context, target) == true)
@@ -128,21 +128,6 @@ struct HandoffBehaviorTests {
         #expect(erased.history == .summarized(maxTokens: 80))
         #expect(erased.nestHandoffHistory == true)
         #expect(erased.transform == nil)
-    }
-
-    @Test("Deprecated nestHandoffHistory true maps to nested, never summarized")
-    func deprecatedBooleanInitMapsTrueToNested() {
-        let target = MockAgentRuntime(
-            instructions: "deprecated-target",
-            configuration: AgentConfiguration(name: "deprecated-target", defaultTracingEnabled: false)
-        )
-        let typed = HandoffConfiguration(targetAgent: target, nestHandoffHistory: true)
-        let erased = AnyHandoffConfiguration(targetAgent: target, nestHandoffHistory: true)
-        let disabled = AnyHandoffConfiguration(targetAgent: target, nestHandoffHistory: false)
-
-        #expect(typed.history == .nested)
-        #expect(erased.history == .nested)
-        #expect(disabled.history == .none)
     }
 
     @Test("Typed and erased effectiveToolName share HandoffToolName derivation")

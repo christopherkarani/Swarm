@@ -28,7 +28,7 @@ public struct WorkflowCheckpointing: Sendable {
     /// Whether durable checkpoint stores are linked in this build.
     ///
     /// Lean builds still type-check these factories so workflow graphs compile, but
-    /// ``Workflow/Durable/execute(_:resumeFrom:)`` throws until you rebuild with
+    /// ``DurableWorkflow/execute(_:)`` throws until you rebuild with
     /// `--traits Integrations` (or add `traits: ["Integrations"]` to the Swarm
     /// package dependency).
     public static var isAvailable: Bool {

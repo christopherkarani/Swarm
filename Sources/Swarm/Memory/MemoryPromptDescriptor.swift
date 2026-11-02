@@ -38,32 +38,3 @@ public extension Memory {
     /// generic "Relevant Context from Memory" heading with no guidance text.
     nonisolated var memoryPromptMetadata: MemoryPromptMetadata? { nil }
 }
-
-/// Optional prompt metadata for memory-backed context.
-///
-/// Prompt metadata is now a defaulted requirement on ``Memory``; return it from
-/// ``Memory/memoryPromptMetadata`` instead of conforming to this protocol.
-@available(*, deprecated, message: "Return MemoryPromptMetadata from your Memory conformance's memoryPromptMetadata instead.")
-public protocol MemoryPromptDescriptor: Sendable {
-    /// The label/title to display above memory context in prompts.
-    var memoryPromptTitle: String { get }
-
-    /// Optional guidance text to instruct how memory should be used.
-    var memoryPromptGuidance: String? { get }
-
-    /// Whether this memory should be treated as primary or secondary context.
-    var memoryPriority: MemoryPriorityHint { get }
-}
-
-public extension Memory where Self: MemoryPromptDescriptor {
-    /// Bridges deprecated ``MemoryPromptDescriptor`` conformances onto the
-    /// defaulted ``Memory/memoryPromptMetadata`` requirement so existing
-    /// conformers keep their prompt labels without source changes.
-    nonisolated var memoryPromptMetadata: MemoryPromptMetadata? {
-        MemoryPromptMetadata(
-            title: memoryPromptTitle,
-            guidance: memoryPromptGuidance,
-            priority: memoryPriority
-        )
-    }
-}

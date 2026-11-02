@@ -61,8 +61,11 @@ struct IntegrationsTraitGateTests {
         _ = WorkflowCheckpointing.inMemory()
         let workflow = Workflow()
             .step(MockAgentRuntime(response: "ok"))
-            .durable.checkpoint(id: "lean-trap")
-            .durable.checkpointing(.fileSystem(directory: FileManager.default.temporaryDirectory))
+            .durable
+            .configured(
+                id: WorkflowCheckpointID("lean-trap"),
+                store: .fileSystem(directory: FileManager.default.temporaryDirectory)
+            )
 
         #if SWARM_INTEGRATIONS
         #expect(IntegrationsTraitTesting.warnings.isEmpty)
@@ -76,7 +79,7 @@ struct IntegrationsTraitGateTests {
         )
 
         do {
-            _ = try await workflow.durable.execute("hello")
+            _ = try await workflow.execute("hello")
             Issue.record("durable execute should throw on lean builds when checkpointing is configured")
         } catch let error as WorkflowError {
             let description = error.localizedDescription

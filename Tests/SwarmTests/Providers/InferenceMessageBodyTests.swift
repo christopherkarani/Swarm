@@ -6,18 +6,6 @@ import Testing
 struct InferenceMessageBodyTests {
     private let call = InferenceMessage.ToolCall(id: "1", name: "calc", arguments: [:])
 
-    @Test("Deprecated user init drops leftover toolCalls")
-    func deprecatedUserInitDropsToolCalls() {
-        let illegal = InferenceMessage(role: .user, content: "hi", toolCalls: [call])
-
-        #expect(illegal.body == .user("hi"))
-        #expect(illegal.role == .user)
-        #expect(illegal.content == "hi")
-        #expect(illegal.toolCalls.isEmpty)
-        #expect(illegal.name == nil)
-        #expect(illegal.toolCallID == nil)
-    }
-
     @Test("Assistant body projects role, content, and tool calls")
     func assistantBodyProjectsAccessors() {
         let message = InferenceMessage(body: .assistant("ok", toolCalls: [call]))
@@ -41,14 +29,6 @@ struct InferenceMessageBodyTests {
         #expect(message.toolCalls.isEmpty)
     }
 
-    @Test("Deprecated tool init with a nil name maps to tool")
-    func deprecatedToolInitNilNameMapsToTool() {
-        let message = InferenceMessage(role: .tool, content: "4", name: nil, toolCallID: "x")
-
-        #expect(message.body == .tool(name: "tool", content: "4", toolCallID: "x"))
-        #expect(message.name == "tool")
-    }
-
     @Test("Factories construct through body")
     func factoriesConstructThroughBody() {
         #expect(InferenceMessage.system("s").body == .system("s"))
@@ -60,49 +40,9 @@ struct InferenceMessageBodyTests {
         )
     }
 
-    @Test("Deprecated system and assistant inits drop extra payloads")
-    func deprecatedInitDropsExtraPayloads() {
-        let system = InferenceMessage(
-            role: .system,
-            content: "stay",
-            name: "ignored",
-            toolCallID: "x",
-            toolCalls: [call]
-        )
-        #expect(system.body == .system("stay"))
-        #expect(system.name == nil)
-        #expect(system.toolCallID == nil)
-        #expect(system.toolCalls.isEmpty)
-
-        let assistant = InferenceMessage(
-            role: .assistant,
-            content: "ok",
-            name: "ignored",
-            toolCallID: "x",
-            toolCalls: [call]
-        )
-        #expect(assistant.body == .assistant("ok", toolCalls: [call]))
-        #expect(assistant.name == nil)
-        #expect(assistant.toolCallID == nil)
-
-        let tool = InferenceMessage(
-            role: .tool,
-            content: "4",
-            name: "calc",
-            toolCallID: "x",
-            toolCalls: [call]
-        )
-        #expect(tool.body == .tool(name: "calc", content: "4", toolCallID: "x"))
-        #expect(tool.toolCalls.isEmpty)
-    }
-
-    @Test("Replacing content on a user message with leftover toolCalls keeps a user body")
+    @Test("Replacing content on a user message keeps a user body")
     func envelopeReplaceKeepsUserBodyWithoutToolCalls() async {
-        let last = InferenceMessage(
-            role: .user,
-            content: String(repeating: "u", count: 40),
-            toolCalls: [call]
-        )
+        let last = InferenceMessage.user(String(repeating: "u", count: 40))
         let budget = 20
 
         let fitted = await ContextWindow.fit(
@@ -127,15 +67,9 @@ struct InferenceMessageBodyTests {
         #expect(fitted[0].content.count < last.content.count)
     }
 
-    @Test("Replacing content on a system message with leftover toolCalls keeps a system body")
+    @Test("Replacing content on a system message keeps a system body")
     func envelopeReplaceKeepsSystemBodyWithoutToolCalls() async {
-        let last = InferenceMessage(
-            role: .system,
-            content: String(repeating: "s", count: 40),
-            name: "ignored",
-            toolCallID: "x",
-            toolCalls: [call]
-        )
+        let last = InferenceMessage.system(String(repeating: "s", count: 40))
         let budget = 20
 
         let fitted = await ContextWindow.fit(
@@ -158,32 +92,14 @@ struct InferenceMessageBodyTests {
         #expect(fitted[0].toolCallID == nil)
     }
 
-    @Test("Stubbing older tool results keeps a tool body without leftover toolCalls")
+    @Test("Stubbing older tool results keeps a tool body without toolCalls")
     func envelopeStubKeepsToolBodyWithoutToolCalls() async {
         let padding = String(repeating: "p", count: 800)
         let messages: [InferenceMessage] = [
             .system("Stay."),
-            InferenceMessage(
-                role: .tool,
-                content: "old-search \(padding)",
-                name: "websearch",
-                toolCallID: "a",
-                toolCalls: [call]
-            ),
-            InferenceMessage(
-                role: .tool,
-                content: "old-page \(padding)",
-                name: "fetch_url",
-                toolCallID: "b",
-                toolCalls: [call]
-            ),
-            InferenceMessage(
-                role: .tool,
-                content: "old-calc \(padding)",
-                name: "calc",
-                toolCallID: "z",
-                toolCalls: [call]
-            ),
+            .tool(name: "websearch", content: "old-search \(padding)", toolCallID: "a"),
+            .tool(name: "fetch_url", content: "old-page \(padding)", toolCallID: "b"),
+            .tool(name: "calc", content: "old-calc \(padding)", toolCallID: "z"),
             .tool(name: "websearch", content: "recent-search", toolCallID: "c"),
             .tool(name: "fetch_url", content: "recent-page", toolCallID: "d"),
             .user("needle-latest"),
@@ -234,10 +150,9 @@ struct InferenceMessageBodyTests {
         #expect(fitted[0].content.count < last.content.count)
     }
 
-    @Test("Transcript init switches on body and cannot revive leftover toolCalls")
+    @Test("Transcript init switches on body")
     func transcriptInitSwitchesOnBody() {
-        let leftoverUser = InferenceMessage(role: .user, content: "hi", toolCalls: [call])
-        let userMessage = AgentTurnTranscript.Message(leftoverUser)
+        let userMessage = AgentTurnTranscript.Message(.user("hi"))
         #expect(userMessage.inferenceMessage.body == .user("hi"))
         #expect(userMessage.inferenceMessage.toolCalls.isEmpty)
 

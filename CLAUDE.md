@@ -62,7 +62,6 @@ Swarm/
 │   ├── ContextCore/               # In-tree ContextCore façade (Integrations)
 │   ├── SwarmMacros/               # Compiler plugin (@Tool, @Parameter,
 │   │                              #   @Traceable, #Prompt, builders)
-│   ├── SwarmMembrane/             # Deprecated hollow re-export (remove in 0.7.0)
 │   ├── SwarmMCP/                  # MCP server adapter product
 │   ├── SwarmCapabilityShowcase/        # Executable: deterministic showcase CLI
 │   ├── SwarmCapabilityShowcaseSupport/ # Library backing the showcase
@@ -224,8 +223,8 @@ swift package plugin --allow-writing-to-package-directory swiftformat
   `.route { ... }`, `.repeatUntil`, `.timeout`.
 - Durable execution lives in `Workflow+Durable.swift` and
   `WorkflowDurableEngine.swift`. Use
-  `.durable.checkpoint(id:policy:)` and `.durable.checkpointing(...)` to enable
-  resume-from-checkpoint behavior.
+  `.durable.configured(id:store:policy:)` to get a `DurableWorkflow`, then
+  `execute(_:)` / `resume(_:from:)` for resume-from-checkpoint behavior.
 - The `Internal/GraphRuntime` directory is the compiled DAG runtime — treat it
   as an implementation detail.
 

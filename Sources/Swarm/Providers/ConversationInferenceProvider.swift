@@ -58,21 +58,7 @@ public extension InferenceProviderCapabilities {
         capabilities.insert(.conversationMessages)
         return capabilities
     }
-
-    /// Use ``resolved(for:)``.
-    ///
-    /// This deprecated forwarding helper remains available for source
-    /// compatibility until a future breaking boundary is explicitly
-    /// documented.
-    @available(*, deprecated, message: "Use resolved(for:)")
-    static func inferred(from provider: any InferenceProvider) -> Self {
-        resolved(for: provider)
-    }
 }
-
-/// Optional protocol for providers that can report which advanced features they actually support.
-@available(*, deprecated, message: "Declare capabilities on InferenceProvider")
-public protocol CapabilityReportingInferenceProvider: InferenceProvider {}
 
 /// A provider-facing conversation message used by structured inference integrations.
 ///
@@ -238,44 +224,6 @@ public struct InferenceMessage: Sendable, Equatable {
         self.attachments = attachments
     }
 
-    /// Creates a message from independent role and payload fields.
-    ///
-    /// Mapping: ``Role/system`` becomes ``Body/system(_:)`` and drops `name`,
-    /// `toolCallID`, and `toolCalls`. ``Role/user`` becomes ``Body/user(_:)``
-    /// and drops the same extra fields. ``Role/assistant`` becomes
-    /// ``Body/assistant(_:toolCalls:)`` and drops `name` and `toolCallID`.
-    /// ``Role/tool`` becomes ``Body/tool(name:content:toolCallID:)`` using
-    /// `name ?? "tool"` and drops `toolCalls`.
-    ///
-    /// - Parameters:
-    ///   - role: Historical role used to choose the body case.
-    ///   - content: Text stored on that case.
-    ///   - name: Tool name. Used only for ``Role/tool``; absent values become `"tool"`.
-    ///   - toolCallID: Provider call id. Used only for ``Role/tool``.
-    ///   - toolCalls: Native tool calls. Used only for ``Role/assistant``.
-    ///   - attachments: Optional audio or image sidecars. Stored as-is.
-    @available(*, deprecated, message: "Use init(body:) or the role factories.")
-    public init(
-        role: Role,
-        content: String,
-        name: String? = nil,
-        toolCallID: String? = nil,
-        toolCalls: [ToolCall] = [],
-        attachments: [Attachment] = []
-    ) {
-        switch role {
-        case .system:
-            body = .system(content)
-        case .user:
-            body = .user(content)
-        case .assistant:
-            body = .assistant(content, toolCalls: toolCalls)
-        case .tool:
-            body = .tool(name: name ?? "tool", content: content, toolCallID: toolCallID)
-        }
-        self.attachments = attachments
-    }
-
     public static func system(_ content: String, attachments: [Attachment] = []) -> InferenceMessage {
         InferenceMessage(body: .system(content), attachments: attachments)
     }
@@ -301,18 +249,6 @@ public struct InferenceMessage: Sendable, Equatable {
         InferenceMessage(body: .tool(name: name, content: content, toolCallID: toolCallID), attachments: attachments)
     }
 }
-
-/// Optional protocol for providers that can consume structured conversation history directly.
-@available(*, deprecated, renamed: "InferenceProvider")
-public protocol ConversationInferenceProvider: InferenceProvider {}
-
-/// Structured conversation streaming for plain text responses.
-@available(*, deprecated, renamed: "InferenceProvider")
-public protocol StreamingConversationInferenceProvider: ConversationInferenceProvider {}
-
-/// Structured conversation streaming for tool-call capable providers.
-@available(*, deprecated, renamed: "InferenceProvider")
-public protocol ToolCallStreamingConversationInferenceProvider: ConversationInferenceProvider {}
 
 extension InferenceMessage.ToolCall {
     init(_ parsed: InferenceResponse.ParsedToolCall) {
