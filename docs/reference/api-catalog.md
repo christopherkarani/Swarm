@@ -2819,7 +2819,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | class | public | StdioMCPServer | `public actor StdioMCPServer` |
 | — | var | public | StdioMCPServer.defaultEnvironmentAllowlist | `public static let defaultEnvironmentAllowlist: Set<String>` |
 | — | var | public | StdioMCPServer.defaultSandboxPATH | `public static let defaultSandboxPATH: String` |
-| — | func | public | StdioMCPServer.init(command:arguments:environment:inheritedEnvironmentKeys:workingDirectory:allowedWorkingDirectoryRoot:name:timeout:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, inheritedEnvironmentKeys: Set<String> = [], workingDirectory: URL? = nil, allowedWorkingDirectoryRoot: URL? = nil, name: String, timeout: TimeInterval = 30.0) throws` |
+| — | var | public | StdioMCPServer.defaultMaxMessageSize | `public static let defaultMaxMessageSize: Int` |
+| — | func | public | StdioMCPServer.init(command:arguments:environment:inheritedEnvironmentKeys:workingDirectory:allowedWorkingDirectoryRoot:name:timeout:maxMessageSize:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, inheritedEnvironmentKeys: Set<String> = [], workingDirectory: URL? = nil, allowedWorkingDirectoryRoot: URL? = nil, name: String, timeout: TimeInterval = 30.0, maxMessageSize: Int = StdioMCPServer.defaultMaxMessageSize) throws` |
 | — | func | public | StdioMCPServer.callToolRaw(name:arguments:) | `public func callToolRaw(name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
 
 ### MCP/MCPCapabilities.swift
