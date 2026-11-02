@@ -56,7 +56,7 @@ extension WorkflowDurableEngine {
         let claim = WorkflowApprovalClaim(token: UUID().uuidString, claimedAt: now)
         claimedRequest.claim = claim
         let claimed = checkpoint.replacing(
-            id: HiveCheckpointID("\(checkpoint.id.rawValue):claim:\(claim.token)"),
+            id: WorkflowApprovalClaimCheckpointID.claim(after: checkpoint.id),
             interruption: HiveInterrupt(id: interruption.id, payload: try claimedRequest.encoded())
         )
         do {
@@ -82,10 +82,54 @@ extension WorkflowDurableEngine {
         guard let interruption = claimed.interruption,
               let payload = try? request.encoded() else { return }
         let released = claimed.replacing(
-            id: HiveCheckpointID("\(claimed.id.rawValue):released"),
+            id: WorkflowApprovalClaimCheckpointID.release(of: claimed.id),
             interruption: HiveInterrupt(id: interruption.id, payload: payload)
         )
-        try? await store.save(released, expectedLatestID: claimed.id)
+        do {
+            try await store.save(released, expectedLatestID: claimed.id)
+        } catch {
+            Log.orchestration.warning(
+                "Could not release durable approval claim on '\(checkpointID)'; it expires after its lease: \(error)"
+            )
+        }
+    }
+}
+
+/// Fixed-length checkpoint IDs for approval claims and their releases.
+///
+/// Every ID is derived from the paused Hive checkpoint ID (the part before the
+/// first `:`) plus a zero-padded claim sequence, so repeated failed resumes
+/// never grow the ID (file stores put it in the file name). At one step index
+/// the IDs sort in save order: `base` < `base:c00000001` <
+/// `base:c00000001r` < `base:c00000002`.
+enum WorkflowApprovalClaimCheckpointID {
+    private static let sequenceDigits = 8
+
+    /// The ID for the next claim after `current` (a pause, claim, or release).
+    static func claim(after current: HiveCheckpointID) -> HiveCheckpointID {
+        let parsed = parse(current)
+        return HiveCheckpointID("\(parsed.base):c\(padded(parsed.sequence + 1))")
+    }
+
+    /// The ID for releasing the claim saved as `claimed`.
+    static func release(of claimed: HiveCheckpointID) -> HiveCheckpointID {
+        let parsed = parse(claimed)
+        return HiveCheckpointID("\(parsed.base):c\(padded(parsed.sequence))r")
+    }
+
+    private static func parse(_ id: HiveCheckpointID) -> (base: Substring, sequence: Int) {
+        let raw = id.rawValue
+        guard let separator = raw.firstIndex(of: ":") else { return (raw[...], 0) }
+        var suffix = raw[raw.index(after: separator)...]
+        guard suffix.first == "c" else { return (raw[..<separator], 0) }
+        suffix = suffix.dropFirst()
+        if suffix.last == "r" { suffix = suffix.dropLast() }
+        return (raw[..<separator], Int(suffix) ?? 0)
+    }
+
+    private static func padded(_ sequence: Int) -> String {
+        let digits = String(sequence)
+        return String(repeating: "0", count: max(0, sequenceDigits - digits.count)) + digits
     }
 }
 

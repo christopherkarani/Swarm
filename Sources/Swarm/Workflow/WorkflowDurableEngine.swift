@@ -170,12 +170,9 @@ struct WorkflowDurableEngine: Sendable {
     /// `.reject` commits the terminal ``WorkflowDurablePhase/rejected(toolName:reason:)``
     /// phase and fails the run with
     /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing.
-    /// A later decision on a rejected run reports the same rejection.
-    ///
-    /// Concurrent resumes of the same run do not both execute: the in-process
-    /// guard rejects a second resume through the same store, and the
-    /// compare-and-swap claim (`claimApproval`) rejects a second process.
-    /// Losers throw ``WorkflowResumeConflict``.
+    /// A later decision on a rejected run reports the same rejection. Concurrent
+    /// resumes do not both execute: the in-process guard and the compare-and-swap
+    /// claim (`claimApproval`) make the losers throw ``WorkflowResumeConflict``.
     func resumeApproval(decision: WorkflowApprovalDecision) async throws -> AgentResult {
         if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
             throw error
