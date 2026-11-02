@@ -4,7 +4,8 @@ import Foundation
 ///
 /// Mirrors the checkpointed run state: either the run is mid-flight
 /// (`running`, with its cursors and most recent step result) or it has
-/// terminated (`completed`, carrying the final result).
+/// terminated (`completed`, carrying the final result, or `rejected`, after a
+/// human rejected a paused tool approval).
 public enum DurableWorkflowPhase: Sendable, Equatable {
     /// The run is still executing. `stepCursor` indexes the next step to run;
     /// `iterationCursor` counts completed passes of a repeating workflow;
@@ -13,6 +14,9 @@ public enum DurableWorkflowPhase: Sendable, Equatable {
     case running(stepCursor: Int, iterationCursor: Int, lastResult: AgentResult?)
     /// The run has finished. Carries the workflow's final result.
     case completed(AgentResult)
+    /// The run was terminated by a human rejecting the paused approval for
+    /// `toolName`. Terminal: resuming reports the rejection.
+    case rejected(toolName: String, reason: String)
 }
 
 /// Point-in-time view of one checkpoint in a durable run's history.
@@ -70,13 +74,16 @@ public struct DurableWorkflowCheckpointSnapshot: Sendable, Equatable {
 
     /// Most recent step result, or the final result when the run completed.
     ///
-    /// `nil` only before the first step of a running workflow commits.
+    /// `nil` before the first step of a running workflow commits, and for a
+    /// rejected run.
     public var lastResult: AgentResult? {
         switch phase {
         case .running(_, _, let lastResult):
             return lastResult
         case .completed(let result):
             return result
+        case .rejected:
+            return nil
         }
     }
 }
@@ -191,6 +198,8 @@ enum DurableWorkflowInspector {
             )
         case .completed(let snapshot):
             return .completed(snapshot.agentResult)
+        case .rejected(let toolName, let reason):
+            return .rejected(toolName: toolName, reason: reason)
         }
     }
 }

@@ -587,6 +587,38 @@ WorkflowCheckpointing.fileSystem(directory: URL, retention: WorkflowCheckpointRe
 WorkflowCheckpointRetention.default // keep-latest 16 per run
 ```
 
+### Durable tool approvals
+
+A tool with `ToolExecutionSemantics(approvalRequirement: .always)` pauses a
+durable run instead of executing. `execute` throws `WorkflowApprovalRequired`;
+`resume(decision:from:)` continues from the same or a fresh process sharing the
+checkpoint store. `.approve` replays the paused step and lets the approved call
+through when the replay regenerates the same call (otherwise it pauses again
+with the new call); `.reject` checkpoints a terminal rejection and fails with
+`WorkflowError.humanApprovalRejected` without executing. No edited-arguments
+resume, no approval timeout. Pauses surface on the `AgentEvent` stream as
+`AgentEvent.Tool.approvalRequested` via
+`AgentObserver.onToolApprovalRequested`.
+
+```swift
+public struct WorkflowApprovalRequired: Error, Sendable, Equatable {
+    public let toolName: String
+    public let arguments: [String: SendableValue]
+    public let stepCursor: Int
+    public let checkpointID: WorkflowCheckpointID
+    public let interruptID: String
+}
+
+public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable {
+    case approve
+    case reject
+}
+
+public struct DurableWorkflow: Sendable {
+    public func resume(decision: WorkflowApprovalDecision, from checkpointID: WorkflowCheckpointID) async throws -> AgentResult
+}
+```
+
 File-backed stores prune to keep-latest-N per run and load through a directory
 manifest. Resume identity is step kind + position + explicit `signature:` —
 not `fileID:line`. See [Durable Execution](/guide/durable-execution).

@@ -430,6 +430,9 @@ extension FoundationModelsInferenceProvider {
         } catch let request as OwnedLoopHandoffRequest {
             await store.discard(lease)
             throw request
+        } catch let request as WorkflowToolApprovalRequest {
+            await store.discard(lease)
+            throw request
         } catch is CancellationError {
             await store.discard(lease)
             throw AgentError.cancelled
@@ -443,6 +446,9 @@ extension FoundationModelsInferenceProvider {
                 )
             }
             if let request = error.underlyingError as? OwnedLoopHandoffRequest {
+                throw request
+            }
+            if let request = error.underlyingError as? WorkflowToolApprovalRequest {
                 throw request
             }
             if error.underlyingError is CancellationError {

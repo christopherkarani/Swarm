@@ -93,6 +93,37 @@ public extension Workflow {
 }
 
 extension Workflow {
+    func executeDurableApprovalConfigured(
+        decision: WorkflowApprovalDecision,
+        checkpointID: WorkflowCheckpointID,
+        checkpointing: WorkflowCheckpointing,
+        policy: Workflow.Durable.CheckpointPolicy
+    ) async throws -> AgentResult {
+        #if SWARM_INTEGRATIONS
+        guard try await checkpointing.containsCheckpoint(for: checkpointID.rawValue) else {
+            throw WorkflowError.checkpointNotFound(id: checkpointID.rawValue)
+        }
+
+        WorkflowDurableIdentity.warnIfUsingImplicitIdentity(self)
+
+        let engine = WorkflowDurableEngine(
+            workflow: self,
+            checkpointing: checkpointing,
+            checkpointID: checkpointID.rawValue,
+            policy: policy,
+            resume: true
+        )
+
+        return try await executeWithTimeout {
+            try await engine.resumeApproval(decision: decision)
+        }
+        #else
+        throw WorkflowError.durableRuntimeUnavailable(
+            reason: IntegrationsTrait.requirementMessage(for: "Durable workflow approval resume")
+        )
+        #endif
+    }
+
     func executeDurableConfigured(
         input: String,
         checkpointID: WorkflowCheckpointID,

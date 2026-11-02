@@ -238,6 +238,9 @@ public actor ToolRegistry {
             }
 
             return result
+        } catch let request as WorkflowToolApprovalRequest {
+            // A nested agent paused for durable approval: not a tool failure.
+            throw request
         } catch {
             // Notify observer for any error (guardrail, execution, or otherwise)
             if let agent, let observer {

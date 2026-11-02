@@ -116,6 +116,17 @@ public protocol AgentObserver: Sendable {
     ///     ``ToolResult/callId``.
     func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async
 
+    /// Called when a durable run pauses for human approval of a tool call.
+    ///
+    /// The tool has not executed. Fires instead of ``onToolStart(context:agent:call:)``
+    /// for the paused call.
+    ///
+    /// - Parameters:
+    ///   - context: Optional agent context for orchestration scenarios.
+    ///   - agent: The agent that requested the tool.
+    ///   - call: The paused tool call.
+    func onToolApprovalRequested(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async
+
     /// Called when an LLM inference begins.
     ///
     /// `[InferenceMessage]` is the source of truth for the transcript the
@@ -244,6 +255,9 @@ public extension AgentObserver {
     func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async {
         await onToolEnd(context: context, agent: agent, result: invocation.result)
     }
+
+    /// Default no-op implementation for tool approval requests.
+    func onToolApprovalRequested(context _: AgentContext?, agent _: any AgentRuntime, call _: ToolCall) async {}
 
     /// Default no-op implementation for LLM start.
     func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async {}
@@ -422,6 +436,16 @@ package struct CompositeObserver: AgentObserver {
             for hook in observers {
                 group.addTask {
                     await hook.onToolEnd(context: context, agent: agent, invocation: invocation)
+                }
+            }
+        }
+    }
+
+    package func onToolApprovalRequested(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async {
+        await withTaskGroup(of: Void.self) { group in
+            for hook in observers {
+                group.addTask {
+                    await hook.onToolApprovalRequested(context: context, agent: agent, call: call)
                 }
             }
         }
@@ -635,6 +659,15 @@ public struct LoggingObserver: AgentObserver {
         Log.agents.info(
             "Tool execution \(status)\(contextId) - name: \(invocation.call.toolName), duration: \(invocation.result.duration)"
         )
+    }
+
+    public func onToolApprovalRequested(context: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async {
+        let contextId = if let context {
+            " [context: \(context.executionId)]"
+        } else {
+            ""
+        }
+        Log.agents.info("Tool approval requested\(contextId) - name: \(call.toolName)")
     }
 
     public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [InferenceMessage]) async {

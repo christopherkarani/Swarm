@@ -56,6 +56,46 @@ public struct DurableWorkflow: Sendable {
         )
     }
 
+    /// Delivers a human approval decision to a run paused on ``WorkflowApprovalRequired``.
+    ///
+    /// The pending approval is read back from the checkpoint thread, so the
+    /// call works from a fresh process as long as the checkpoint store is
+    /// shared. `.approve` replays the paused step and lets the approved call
+    /// through when the replay regenerates the same tool name and arguments;
+    /// a different regenerated call, or another approval-required tool, pauses
+    /// again. `.reject` checkpoints a terminal rejection and fails with
+    /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing;
+    /// later decisions on the run report the same rejection.
+    ///
+    /// Deliver each decision once. Concurrent decisions for one run in the same
+    /// process are serialized (the first wins); decisions from separate
+    /// processes sharing a store are not coordinated.
+    ///
+    /// There is no timeout on the approval wait itself: the run stays paused
+    /// until this method is called.
+    ///
+    /// - Parameters:
+    ///   - decision: The human decision for the paused tool call.
+    ///   - checkpointID: The checkpoint thread holding the paused state.
+    /// - Returns: The workflow's final ``AgentResult``.
+    /// - Throws: ``WorkflowError/checkpointNotFound(id:)`` when no checkpoint exists,
+    ///   ``WorkflowError/invalidWorkflow(reason:)`` when no approval is paused,
+    ///   ``WorkflowError/humanApprovalRejected(prompt:reason:)`` on `.reject` or
+    ///   when the run was already rejected,
+    ///   ``WorkflowApprovalRequired`` when the resumed run pauses again,
+    ///   or ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
+    public func resume(
+        decision: WorkflowApprovalDecision,
+        from checkpointID: WorkflowCheckpointID
+    ) async throws -> AgentResult {
+        try await workflow.executeDurableApprovalConfigured(
+            decision: decision,
+            checkpointID: checkpointID,
+            checkpointing: checkpointing,
+            policy: policy
+        )
+    }
+
     /// Inspects this run's checkpoint history without executing.
     ///
     /// - Returns: The run's checkpoints ordered oldest first (newest last),

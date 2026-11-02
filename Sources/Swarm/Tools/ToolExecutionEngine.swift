@@ -66,6 +66,13 @@ struct ToolExecutionEngine: Sendable {
         stopOnToolError: Bool
     ) async throws -> Outcome {
         let call = ToolCall(providerCallId: providerCallId, toolName: toolName, arguments: arguments)
+        try await WorkflowDurableApprovalGate.check(
+            call: call,
+            registry: registry,
+            agent: agent,
+            context: context,
+            observer: observer
+        )
         _ = resultBuilder.addToolCall(call)
 
         await observer?.onToolStart(context: context, agent: agent, call: call)
@@ -97,6 +104,10 @@ struct ToolExecutionEngine: Sendable {
             )
 
             return Outcome(call: call, result: result, caughtError: nil)
+        } catch let request as WorkflowToolApprovalRequest {
+            // A nested agent paused for durable approval: propagate the pause
+            // instead of recording a tool failure.
+            throw request
         } catch {
             let measured = elapsedDuration(since: startTime)
             let errorMessage = (error as? AgentError)?.localizedDescription ?? error.localizedDescription

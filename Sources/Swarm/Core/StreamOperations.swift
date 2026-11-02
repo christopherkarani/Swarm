@@ -196,7 +196,8 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
             case .tool(.completed),
                  .tool(.failed),
                  .tool(.partial),
-                 .tool(.started):
+                 .tool(.started),
+                 .tool(.approvalRequested):
                 true
             default:
                 false
