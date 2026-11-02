@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 263 (270 including `Internal/GraphRuntime/`)
+- Source files scanned: 264 (271 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2434
 
 ## 1. Swarm (entry point)
@@ -2681,9 +2681,13 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 27 | var | public | WorkflowApprovalRequired.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
 | 30 | var | public | WorkflowApprovalRequired.interruptID | `public let interruptID: String` |
 | 33 | func | public | WorkflowApprovalRequired.init(toolName:arguments:stepCursor:checkpointID:interruptID:) | `public init(toolName: String, arguments: [String: SendableValue], stepCursor: Int, checkpointID: WorkflowCheckpointID, interruptID: String)` |
-| 67 | enum | public | WorkflowApprovalDecision | `public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable` |
-| 69 | case | public | WorkflowApprovalDecision.approve | `public case approve` |
-| 71 | case | public | WorkflowApprovalDecision.reject | `public case reject` |
+| 79 | struct | public | WorkflowResumeConflict | `public struct WorkflowResumeConflict: Error, Sendable, Equatable` |
+| 81 | var | public | WorkflowResumeConflict.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
+| 83 | var | public | WorkflowResumeConflict.reason | `public let reason: String` |
+| 86 | func | public | WorkflowResumeConflict.init(checkpointID:reason:) | `public init(checkpointID: WorkflowCheckpointID, reason: String)` |
+| 104 | enum | public | WorkflowApprovalDecision | `public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable` |
+| 106 | case | public | WorkflowApprovalDecision.approve | `public case approve` |
+| 108 | case | public | WorkflowApprovalDecision.reject | `public case reject` |
 
 ### Workflow/WorkflowCheckpointID.swift
 

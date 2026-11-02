@@ -60,6 +60,41 @@ extension WorkflowApprovalRequired: CustomDebugStringConvertible {
     }
 }
 
+/// Another caller is already resuming this durable run.
+///
+/// Thrown by ``DurableWorkflow/resume(decision:from:)`` (and by
+/// ``DurableWorkflow/resume(_:from:)``) instead of executing when a concurrent
+/// resume of the same checkpoint holds the run:
+///
+/// - **Same process:** a second resume of a checkpoint that this process is
+///   already resuming through the same checkpoint store fails immediately.
+/// - **Across processes:** an approval resume first claims the pause with a
+///   compare-and-swap save on the checkpoint store. The loser of that race, or
+///   a resume that finds a live claim, fails with this error. A claim left by
+///   a crashed process expires after a lease (10 minutes), after which the
+///   pause can be resumed again.
+///
+/// The caller that receives this error has not executed the paused tool.
+/// Retry later, or inspect the run instead of resuming it twice.
+public struct WorkflowResumeConflict: Error, Sendable, Equatable {
+    /// Checkpoint thread being resumed concurrently.
+    public let checkpointID: WorkflowCheckpointID
+    /// Human-readable explanation of the conflict.
+    public let reason: String
+
+    /// Creates a resume-conflict error.
+    public init(checkpointID: WorkflowCheckpointID, reason: String) {
+        self.checkpointID = checkpointID
+        self.reason = reason
+    }
+}
+
+extension WorkflowResumeConflict: LocalizedError {
+    public var errorDescription: String? {
+        "Durable workflow '\(checkpointID.rawValue)' is already being resumed: \(reason)"
+    }
+}
+
 /// Human decision for a paused durable tool approval.
 ///
 /// Pass to ``DurableWorkflow/resume(decision:from:)``. There is no
@@ -160,6 +195,9 @@ struct WorkflowApprovalRequestEnvelope: Sendable, Equatable, Codable {
     var arguments: [String: SendableValue]
     var stepCursor: Int
     var approved: [WorkflowApprovedCall] = []
+    /// Set while a resume holds the pause; absent in payloads written before
+    /// claims existed, which decode as unclaimed.
+    var claim: WorkflowApprovalClaim?
 
     func encoded() throws -> String {
         let data = try JSONEncoder().encode(self)
@@ -186,6 +224,23 @@ struct WorkflowApprovalRequestEnvelope: Sendable, Equatable, Codable {
             )
         }
         return envelope
+    }
+}
+
+/// A resume's hold on a paused approval, recorded in the interrupt payload.
+///
+/// Written with a compare-and-swap checkpoint save before the resumed step
+/// runs, so only one resume (in any process) executes the approved call.
+struct WorkflowApprovalClaim: Sendable, Equatable, Codable {
+    /// How long a claim blocks other resumes. Bounds the wait after a crash
+    /// mid-resume; a resume that outlives it can be taken over.
+    static let lease: TimeInterval = 600
+
+    var token: String
+    var claimedAt: Date
+
+    func isLive(at now: Date) -> Bool {
+        now.timeIntervalSince(claimedAt) < Self.lease
     }
 }
 

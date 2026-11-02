@@ -71,6 +71,10 @@ public struct DurableWorkflow: Sendable {
     /// execution of the exact call; an identical second call in the same step
     /// pauses again.
     ///
+    /// Only one concurrent resume of a checkpoint executes. Others, in this
+    /// process or in another process sharing the checkpoint store, throw
+    /// ``WorkflowResumeConflict`` without executing.
+    ///
     /// There is no timeout on the approval wait itself: the run stays paused
     /// until this method is called.
     ///
@@ -82,6 +86,7 @@ public struct DurableWorkflow: Sendable {
     ///   ``WorkflowError/invalidWorkflow(reason:)`` when no approval is paused,
     ///   ``WorkflowError/humanApprovalRejected(prompt:reason:)`` on `.reject`,
     ///   ``WorkflowApprovalRequired`` when the resumed run pauses again,
+    ///   ``WorkflowResumeConflict`` when another resume holds the run,
     ///   or ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
     public func resume(
         decision: WorkflowApprovalDecision,

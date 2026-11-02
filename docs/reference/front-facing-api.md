@@ -568,7 +568,9 @@ checkpoint store. `.approve` executes the paused call and continues (pausing
 again on the next approval-required tool); `.reject` fails with
 `WorkflowError.humanApprovalRejected` without executing and is committed as a
 terminal state, so the call cannot be approved later. Each approval covers one
-execution of the exact call. No edited-arguments resume, no approval timeout. Pauses surface on the `AgentEvent` stream as
+execution of the exact call. Concurrent resumes of one checkpoint (same process
+or another process sharing the store) execute once; the loser throws
+`WorkflowResumeConflict`. No edited-arguments resume, no approval timeout. Pauses surface on the `AgentEvent` stream as
 `AgentEvent.Tool.approvalRequested` via
 `AgentObserver.onToolApprovalRequested`.
 

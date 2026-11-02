@@ -126,6 +126,13 @@ struct WorkflowDurableEngine: Sendable {
         if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
             throw error
         }
+        guard resume else { return try await runHoldingGuard(startInput: startInput) }
+        return try await withResumeGuard {
+            try await runHoldingGuard(startInput: startInput)
+        }
+    }
+
+    private func runHoldingGuard(startInput: String) async throws -> AgentResult {
         if let controller = WorkflowDurableFaultInjection.controller {
             await controller.beginAttempt()
         }
@@ -158,10 +165,21 @@ struct WorkflowDurableEngine: Sendable {
     /// `.reject` commits the terminal ``WorkflowDurablePhase/rejected(toolName:reason:)``
     /// phase, which resolves the interrupt, and fails the run with
     /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing.
+    ///
+    /// Concurrent resumes of the same run do not both execute: the in-process
+    /// guard rejects a second resume through the same store, and the
+    /// compare-and-swap claim (`claimApproval`) rejects a second process.
+    /// Losers throw ``WorkflowResumeConflict``.
     func resumeApproval(decision: WorkflowApprovalDecision) async throws -> AgentResult {
         if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
             throw error
         }
+        return try await withResumeGuard {
+            try await resumeApprovalHoldingGuard(decision: decision)
+        }
+    }
+
+    private func resumeApprovalHoldingGuard(decision: WorkflowApprovalDecision) async throws -> AgentResult {
         if let controller = WorkflowDurableFaultInjection.controller {
             await controller.beginAttempt()
         }
@@ -175,6 +193,12 @@ struct WorkflowDurableEngine: Sendable {
             throw WorkflowError.invalidWorkflow(reason: "No paused tool approval for checkpoint '\(checkpointID)'")
         }
         let request = try WorkflowApprovalRequestEnvelope.decoded(from: interruption.payload)
+        let claimed = try await claimApproval(
+            checkpoint,
+            interruption: interruption,
+            request: request,
+            store: components.store
+        )
         var approved = request.approved
         if decision == .approve {
             approved.append(WorkflowApprovedCall(toolName: request.toolName, arguments: request.arguments))
@@ -186,14 +210,18 @@ struct WorkflowDurableEngine: Sendable {
             approved: approved
         ).encoded()
 
-        let handle = await components.runtime.resume(
-            threadID: components.threadID,
-            interruptID: interruption.id,
-            payload: resumePayload,
-            options: runOptions(for: policy)
-        )
-
-        return try await finish(try await handle.outcome.value, components: components)
+        do {
+            let handle = await components.runtime.resume(
+                threadID: components.threadID,
+                interruptID: interruption.id,
+                payload: resumePayload,
+                options: runOptions(for: policy)
+            )
+            return try await finish(try await handle.outcome.value, components: components)
+        } catch {
+            await releaseClaim(claimed, request: request, store: components.store)
+            throw error
+        }
     }
 
     /// Maps a run outcome to the caller's result, persisting terminal state first.
@@ -665,6 +693,19 @@ actor WorkflowFaultInjectingCheckpointStore: HiveCheckpointStore {
         }
     }
 
+    func save(
+        _ checkpoint: HiveCheckpoint<WorkflowDurableSchema>,
+        expectedLatestID: HiveCheckpointID?
+    ) async throws {
+        if let controller = WorkflowDurableFaultInjection.controller {
+            try await controller.consumeBeforeWrite()
+        }
+        try await inner.save(checkpoint, expectedLatestID: expectedLatestID)
+        if let controller = WorkflowDurableFaultInjection.controller {
+            try await controller.consumeAfterWrite()
+        }
+    }
+
     func loadLatest(threadID: HiveThreadID) async throws -> HiveCheckpoint<WorkflowDurableSchema>? {
         try await inner.loadLatest(threadID: threadID)
     }
@@ -695,6 +736,10 @@ private struct WorkflowLegacyMigratingCheckpointStore: HiveCheckpointStore {
 
     func save(_ checkpoint: HiveCheckpoint<Schema>) async throws {
         try await inner.save(checkpoint)
+    }
+
+    func save(_ checkpoint: HiveCheckpoint<Schema>, expectedLatestID: HiveCheckpointID?) async throws {
+        try await inner.save(checkpoint, expectedLatestID: expectedLatestID)
     }
 
     func loadLatest(threadID: HiveThreadID) async throws -> HiveCheckpoint<Schema>? {
