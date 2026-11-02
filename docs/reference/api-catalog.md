@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 266 (273 including `Internal/GraphRuntime/`)
+- Source files scanned: 267 (274 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2457
 
 ## 1. Swarm (entry point)
@@ -2680,6 +2680,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | enum | public | DurableWorkflowPhase | `public enum DurableWorkflowPhase` |
 | — | case | public | DurableWorkflowPhase.running(stepCursor:iterationCursor:lastResult:) | `public case running(stepCursor: Int, iterationCursor: Int, lastResult: AgentResult?)` |
 | — | case | public | DurableWorkflowPhase.completed | `public case completed(AgentResult)` |
+| — | case | public | DurableWorkflowPhase.rejected(toolName:reason:) | `public case rejected(toolName: String, reason: String)` |
 | — | struct | public | DurableWorkflowCheckpointSnapshot | `public struct DurableWorkflowCheckpointSnapshot` |
 | — | var | public | DurableWorkflowCheckpointSnapshot.checkpointID | `public let checkpointID: String` |
 | — | var | public | DurableWorkflowCheckpointSnapshot.stepIndex | `public let stepIndex: Int` |

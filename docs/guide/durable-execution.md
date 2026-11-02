@@ -202,14 +202,30 @@ do {
 let result = try await durable.resume(decision: .approve, from: checkpointID)
 ```
 
-`.approve` executes the paused call and continues the run; `.reject` fails with
-`WorkflowError.humanApprovalRejected` without executing. There is no
-edited-arguments resume: approval runs the call exactly as requested. A resumed
-step that reaches another approval-required tool pauses again with its own
+`.approve` replays the paused step and lets the approved call through;
+`.reject` checkpoints a terminal rejection and fails with
+`WorkflowError.humanApprovalRejected` without executing. A rejection is final:
+a later `.approve`, `.reject`, or `resume(_:from:)` on that run reports the same
+`humanApprovalRejected`. There is no edited-arguments resume. A resumed step
+that reaches another approval-required tool pauses again with its own
 `WorkflowApprovalRequired`.
 
-Replay semantics still apply: the resumed run replays the paused step from its
-start, so already-approved tools in that step may execute again, and direct
-(non-durable) runs never pause. Observe pauses on the `AgentEvent` stream via
+Approval binds to the exact call, not to the step. The resumed run replays the
+paused step from its start, inference included, and the approved call runs
+only if the replay regenerates the same tool name and arguments (compared after
+the checkpoint's JSON round-trip, so `2.0` and `2` match). If a
+non-deterministic model regenerates different arguments or picks another tool,
+nothing runs and the run pauses again with a new `WorkflowApprovalRequired`
+carrying the new call. Other tools the step called before the pause execute
+again on replay, so keep them idempotent. Direct (non-durable) runs never pause.
+
+Deliver each decision once. Concurrent decisions for one run in the same
+process are serialized: the first wins and later ones see its outcome (a
+completed run reports no pending approval). Decisions from different processes
+sharing a store are not coordinated.
+
+Pauses propagate through `.fallback` steps (no retry or fallback on a pause),
+agents used as tools (`asTool()`), and provider-owned tool loops such as
+Foundation Models native sessions. Observe pauses on the `AgentEvent` stream via
 `AgentEvent.Tool.approvalRequested` (or
 `AgentObserver.onToolApprovalRequested`).

@@ -104,6 +104,10 @@ struct ToolExecutionEngine: Sendable {
             )
 
             return Outcome(call: call, result: result, caughtError: nil)
+        } catch let request as WorkflowToolApprovalRequest {
+            // A nested agent paused for durable approval: propagate the pause
+            // instead of recording a tool failure.
+            throw request
         } catch {
             let measured = elapsedDuration(since: startTime)
             let errorMessage = (error as? AgentError)?.localizedDescription ?? error.localizedDescription

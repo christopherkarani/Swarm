@@ -540,6 +540,10 @@ struct AgentTurnRunner: Sendable {
         let handoffNames = Set(agent._handoffs.map(\.effectiveToolName))
         let stopOnToolError = agent.configuration.stopOnToolError
         let engine = ToolExecutionEngine()
+        // Providers may run tools on tasks that do not inherit this task's
+        // locals (e.g. Apple's session loop), so carry the durable approval
+        // gate explicitly into each tool call.
+        let approvalGate = WorkflowDurableApprovalGate.allowed
         return ToolCallExecutor { name, arguments in
             guard executionGate.isActive else {
                 throw CancellationError()
@@ -549,17 +553,19 @@ struct AgentTurnRunner: Sendable {
                 executionGate.deactivate()
                 throw OwnedLoopHandoffRequest(name: name, arguments: arguments)
             }
-            let outcome = try await engine.execute(
-                toolName: name,
-                arguments: arguments,
-                registry: toolRegistry,
-                agent: agent,
-                context: executionContext,
-                resultBuilder: resultBuilder,
-                observer: observer,
-                tracing: tracing,
-                stopOnToolError: stopOnToolError
-            )
+            let outcome = try await WorkflowDurableApprovalGate.$allowed.withValue(approvalGate) {
+                try await engine.execute(
+                    toolName: name,
+                    arguments: arguments,
+                    registry: toolRegistry,
+                    agent: agent,
+                    context: executionContext,
+                    resultBuilder: resultBuilder,
+                    observer: observer,
+                    tracing: tracing,
+                    stopOnToolError: stopOnToolError
+                )
+            }
             if outcome.result.isSuccess {
                 return outcome.result.output
             }
