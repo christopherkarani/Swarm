@@ -469,16 +469,19 @@ private final class DeliveryURLProtocol: URLProtocol, @unchecked Sendable {
         let url = request.url ?? URL(string: "http://localhost")!
         DispatchQueue.global().async { [self] in
             _ = parked?.wait(timeout: .now() + 30)
+            // Leave `active` before answering: once the client sees the
+            // response the exporter may start its next POST, which must not
+            // count as overlapping this one.
             let status = Self.lock.withLock {
                 Self.recordedBodies.append(body)
                 Self.responses += 1
+                Self.active -= 1
                 return Self.statuses.isEmpty ? 200 : Self.statuses.removeFirst()
             }
             let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: Data())
             client?.urlProtocolDidFinishLoading(self)
-            Self.lock.withLock { Self.active -= 1 }
         }
     }
 

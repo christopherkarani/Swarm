@@ -44,7 +44,11 @@ import FoundationNetworking
 ///   per span; spans that exhaust it, or that the collector rejects with 4xx,
 ///   are dropped and counted.
 /// - `flush` and `shutdown` first wait for POSTs already in flight, then post
-///   whatever is still queued (including spans those POSTs requeued).
+///   whatever is still queued (including spans those POSTs requeued). The
+///   size-triggered flush keeps posting while a full batch is queued, so
+///   under sustained load the `async` `flush`/`shutdown` (and the `async`
+///   `export` that started that flush) can wait for as long as producers keep
+///   the queue full; they have no timeout of their own.
 /// - The synchronous `flush`/`shutdown` required by `SpanExporter` wait for
 ///   that work for at most `explicitTimeout` (default
 ///   ``OTLPHTTPExporterConfiguration/syncTimeout``) and return `.failure` on
@@ -182,18 +186,23 @@ public final class OTLPHTTPTraceExporter: SpanExporter, @unchecked Sendable {
     private func track(
         _ operation: @escaping @Sendable () async -> SpanExporterResultCode
     ) -> Task<SpanExporterResultCode, Never> {
+        lock.withLock { startTracked(operation) }
+    }
+
+    /// Starts `operation` on a `Task` registered in `inFlight`. Caller holds
+    /// `lock`, so the task's own removal (which takes `lock`) always runs
+    /// after this insertion.
+    private func startTracked(
+        _ operation: @escaping @Sendable () async -> SpanExporterResultCode
+    ) -> Task<SpanExporterResultCode, Never> {
         let id = UUID()
-        return lock.withLock {
-            // Registered before `lock` is released, so the task's own removal
-            // (which takes `lock`) always runs after this insertion.
-            let task = Task { [self] in
-                let result = await operation()
-                lock.withLock { inFlight[id] = nil }
-                return result
-            }
-            inFlight[id] = task
-            return task
+        let task = Task { [self] in
+            let result = await operation()
+            lock.withLock { inFlight[id] = nil }
+            return result
         }
+        inFlight[id] = task
+        return task
     }
 
     /// Awaits every POST in flight when called.
@@ -207,9 +216,15 @@ public final class OTLPHTTPTraceExporter: SpanExporter, @unchecked Sendable {
     /// Awaits in-flight POSTs, then posts everything still queued.
     private func flushAll(explicitTimeout: TimeInterval?) async -> SpanExporterResultCode {
         await awaitInFlight()
-        let batch = drain()
-        guard !batch.isEmpty else { return .success }
-        return await track { [self] in await send(batch, explicitTimeout: explicitTimeout) }.value
+        // Drain and register under one `lock` hold, so a concurrent flush's
+        // `awaitInFlight` never misses spans that left `pending`.
+        let task: Task<SpanExporterResultCode, Never>? = lock.withLock {
+            let batch = pending
+            guard !batch.isEmpty else { return nil }
+            pending = []
+            return startTracked { [self] in await send(batch, explicitTimeout: explicitTimeout) }
+        }
+        return await task?.value ?? .success
     }
 
     /// Flushes, then marks the exporter shut down and drops anything left
@@ -314,14 +329,6 @@ public final class OTLPHTTPTraceExporter: SpanExporter, @unchecked Sendable {
         guard overflow > 0 else { return }
         pending.removeFirst(overflow)
         dropped += overflow
-    }
-
-    private func drain() -> [QueuedSpan] {
-        lock.withLock {
-            let batch = pending
-            pending = []
-            return batch
-        }
     }
 
     private func recordDropped(_ count: Int) {

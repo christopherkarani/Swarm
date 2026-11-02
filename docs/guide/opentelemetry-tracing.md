@@ -117,8 +117,9 @@ errors) retry once by default; HTTP 4xx is not retried.
 - `flush` and `shutdown` wait for POSTs already in flight before sending what
   is left. The synchronous versions (used by `forceFlush()` and
   `tracerProvider.shutdown()`) give up after `syncTimeout` (10 seconds by
-  default) and return `.failure`. After shutdown, spans that could not be
-  delivered are dropped and counted.
+  default) and return `.failure`. The `async` versions have no timeout: under
+  sustained load they wait as long as producers keep a full batch queued.
+  After shutdown, spans that could not be delivered are dropped and counted.
 
 ## Local collector
 
