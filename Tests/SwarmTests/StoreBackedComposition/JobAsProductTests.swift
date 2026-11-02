@@ -121,7 +121,7 @@ struct JobAsProductTests {
 
     @Test("manager delegation drafts briefs from notes then fans out once")
     func managerDelegationDraftsBriefsThenFansOut() async throws {
-        let manager = MockAgentRuntime(response: "drafted brief")
+        let manager = CapturingAgentRuntime(response: "drafted brief")
         let helper = CapturingAgentRuntime(response: "section")
 
         let product = try await Job().delegate(
@@ -134,37 +134,43 @@ struct JobAsProductTests {
             await session.ingest(JobRecord(kind: "note", text: "alpha body"))
         }
 
+        let managerInput = try #require(await manager.inputs.first)
+        #expect(managerInput.contains("alpha body"))
         let input = try #require(await helper.inputs.first)
         #expect(input.contains("drafted brief"))
         #expect(input.contains("text"))
         #expect(product.results["alpha"]?.output == "section")
     }
 
-    @Test("manager delegation uses one fan-out per run")
-    func managerDelegationKeepsOneFanOut() async {
-        let manager = MockAgentRuntime(response: "brief")
-        let helper = MockAgentRuntime(response: "section")
-        let job = Job()
-        do {
-            _ = try await job.delegate(
-                "topic",
-                manager: manager,
-                assignments: [JobAssignment(name: "alpha", agent: helper, notesQuery: "alpha")]
-            )
-        } catch {
-            Issue.record("unexpected error: \(error)")
-            return
+    @Test("manager delegation drafts one brief per assignment and runs one fan-out")
+    func managerDelegationKeepsOneFanOut() async throws {
+        let manager = CapturingAgentRuntime(response: "brief")
+        let helperA = CapturingAgentRuntime(response: "section-a")
+        let helperB = CapturingAgentRuntime(response: "section-b")
+
+        let product = try await Job().delegate(
+            "topic",
+            manager: manager,
+            assignments: [
+                JobAssignment(name: "alpha", agent: helperA, notesQuery: "alpha"),
+                JobAssignment(name: "beta", agent: helperB, notesQuery: "beta"),
+            ],
+            merge: .indexed
+        ) { session in
+            await session.ingest(JobRecord(kind: "note", text: "alpha body"))
+            await session.ingest(JobRecord(kind: "note", text: "beta body"))
         }
-        // A second delegated run on a fresh job still works; the gate is per-run.
-        do {
-            _ = try await Job().delegate(
-                "topic",
-                manager: manager,
-                assignments: [JobAssignment(name: "alpha", agent: helper, notesQuery: "alpha")]
-            )
-        } catch {
-            Issue.record("unexpected error: \(error)")
-        }
+
+        let managerInputs = await manager.inputs
+        #expect(managerInputs.count == 2)
+        #expect(managerInputs.contains { $0.contains("alpha body") })
+        #expect(managerInputs.contains { $0.contains("beta body") })
+        #expect(await helperA.inputs.count == 1)
+        #expect(await helperB.inputs.count == 1)
+        #expect(product.results["alpha"]?.output == "section-a")
+        #expect(product.results["beta"]?.output == "section-b")
+        #expect(product.results.count == 2)
+        #expect(product.summary == "[0]: section-a\n[1]: section-b")
     }
 }
 
