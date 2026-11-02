@@ -50,29 +50,22 @@ struct AgentConfigurationPostInitClampTests {
         #expect(config.timeout == .seconds(60))
     }
 
-    @Test("Writing an out-of-range temperature falls back to 1.0")
-    func outOfRangeTemperatureFallsBackToDefault() {
-        var config = AgentConfiguration.default
-
-        config.temperature = 99.0
-        #expect(config.temperature == 1.0)
-
-        config.temperature = -0.5
-        #expect(config.temperature == 1.0)
-
-        config.temperature = .infinity
-        #expect(config.temperature == 1.0)
+    @Test("Writing an out-of-range temperature clamps through ModelSettings")
+    func outOfRangeTemperatureClamps() {
+        #expect(AgentConfiguration.default.temperature(99.0).modelSettings.temperature == 2.0)
+        #expect(AgentConfiguration.default.temperature(-0.5).modelSettings.temperature == 0.0)
+        #expect(AgentConfiguration.default.temperature(.nan).modelSettings.temperature == nil)
     }
 
     @Test("Boundary temperatures survive writes unchanged")
     func boundaryTemperaturesSurvive() {
         var config = AgentConfiguration.default
 
-        config.temperature = 0.0
-        #expect(config.temperature == 0.0)
+        config.modelSettings.temperature = 0.0
+        #expect(config.modelSettings.temperature == 0.0)
 
-        config.temperature = 2.0
-        #expect(config.temperature == 2.0)
+        config.modelSettings.temperature = 2.0
+        #expect(config.modelSettings.temperature == 2.0)
     }
 
     @Test("Coerced writes leave other fields untouched")
@@ -82,7 +75,7 @@ struct AgentConfigurationPostInitClampTests {
 
         #expect(config.maxIterations == 1)
         #expect(config.timeout == .seconds(60))
-        #expect(config.temperature == 1.0)
+        #expect(config.modelSettings == ModelSettings())
         #expect(config.enableStreaming == true)
         #expect(config.name == "Agent")
     }

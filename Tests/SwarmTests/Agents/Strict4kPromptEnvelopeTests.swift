@@ -119,7 +119,7 @@ struct Strict4kPromptEnvelopeTests {
 private func strict4kConfig() -> AgentConfiguration {
     AgentConfiguration(
         name: "strict4k-test",
-        contextMode: .strict4k,
+        contextProfile: .strict4k,
         defaultTracingEnabled: false
     )
 }

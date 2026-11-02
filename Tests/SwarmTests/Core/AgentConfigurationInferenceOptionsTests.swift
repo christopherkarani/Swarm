@@ -40,25 +40,70 @@ struct AgentConfigurationInferenceOptionsTests {
         #expect(options.providerSettings?["openai:custom"] == .string("value"))
     }
 
-    @Test("Fallback inference options use base config when model settings are absent")
-    func fallbackInferenceOptions() {
+    @Test("Sampling builders write modelSettings, the single source for inference options")
+    func samplingBuildersWriteModelSettings() {
         let config = AgentConfiguration.default
             .temperature(0.5)
             .maxTokens(123)
             .stopSequences(["STOP"])
             .parallelToolCalls(true)
-            .previousResponseId("resp_123")
+
+        #expect(config.modelSettings == ModelSettings(temperature: 0.5, maxTokens: 123, stopSequences: ["STOP"]))
 
         let options = config.inferenceOptions
         #expect(options.temperature == 0.5)
         #expect(options.maxTokens == 123)
         #expect(options.stopSequences == ["STOP"])
         #expect(options.parallelToolCalls == true)
-        #expect(options.previousResponseId == "resp_123")
+        #expect(options.previousResponseId == nil)
         #expect(options.seed == nil)
         #expect(options.truncation == nil)
         #expect(options.verbosity == nil)
         #expect(options.providerSettings == nil)
+    }
+
+    @Test("modelSettings(_:) keeps earlier sampling builders the incoming value leaves unset")
+    func modelSettingsKeepsEarlierSamplingBuilders() {
+        let config = AgentConfiguration.default
+            .temperature(0.2)
+            .maxTokens(500)
+            .stopSequences(["END"])
+            .modelSettings(ModelSettings().toolChoice(.required))
+
+        #expect(config.modelSettings.temperature == 0.2)
+        #expect(config.modelSettings.maxTokens == 500)
+        #expect(config.modelSettings.stopSequences == ["END"])
+        #expect(config.modelSettings.toolChoice == .required)
+
+        let options = config.inferenceOptions
+        #expect(options.temperature == 0.2)
+        #expect(options.maxTokens == 500)
+        #expect(options.stopSequences == ["END"])
+    }
+
+    @Test("modelSettings(_:) sampling fields win over earlier sampling builders")
+    func modelSettingsSamplingFieldsWin() {
+        let config = AgentConfiguration.default
+            .temperature(0.2)
+            .modelSettings(.creative)
+
+        #expect(config.modelSettings.temperature == ModelSettings.creative.temperature)
+        #expect(config.modelSettings.topP == ModelSettings.creative.topP)
+    }
+
+    @Test("modelSettings(_:) keeps sampling fields from an earlier modelSettings(_:) call")
+    func modelSettingsKeepsEarlierModelSettingsSampling() {
+        let config = AgentConfiguration.default
+            .modelSettings(.creative)
+            .modelSettings(ModelSettings().toolChoice(.required))
+
+        #expect(config.modelSettings.temperature == ModelSettings.creative.temperature)
+        #expect(config.modelSettings.topP == nil)
+        #expect(config.modelSettings.toolChoice == .required)
+
+        let cleared = config.modelSettings(ModelSettings())
+        #expect(cleared.modelSettings.temperature == ModelSettings.creative.temperature)
+        #expect(cleared.modelSettings.toolChoice == nil)
     }
 
     @Test("ModelSettings reasoning config propagates to InferenceOptions")
@@ -93,15 +138,22 @@ struct AgentConfigurationInferenceOptionsTests {
         #expect(ReasoningEffort.none.rawValue == "none")
     }
 
-    @Test("Context mode strict4k overrides adaptive profile")
-    func strict4kContextModeUsesStrictProfile() {
+    @Test("Unset model settings fall back to InferenceOptions defaults")
+    func unsetModelSettingsUseInferenceDefaults() {
+        let options = AgentConfiguration.default.inferenceOptions
+        #expect(options.temperature == InferenceOptions.default.temperature)
+        #expect(options.maxTokens == nil)
+        #expect(options.stopSequences.isEmpty)
+    }
+
+    @Test("contextProfile is the single context knob")
+    func strict4kProfileIsUsedDirectly() {
         let config = AgentConfiguration.default
             .contextProfile(.heavy(maxContextTokens: 8192))
-            .contextMode(.strict4k)
+            .contextProfile(.strict4k)
 
-        let effective = config.effectiveContextProfile
-        #expect(effective.preset == .strict4k)
-        #expect(effective.maxTotalContextTokens == 4096)
-        #expect(effective.maxContextTokens == 3412)
+        #expect(config.contextProfile.preset == .strict4k)
+        #expect(config.contextProfile.maxTotalContextTokens == 4096)
+        #expect(config.contextProfile.maxContextTokens == 3412)
     }
 }

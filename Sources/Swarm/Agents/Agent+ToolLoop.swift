@@ -174,7 +174,7 @@ struct AgentTurnRunner: Sendable {
                 let plan = try await membraneAdapter.plan(
                     prompt: historyPrompt,
                     toolSchemas: unplannedSchemas,
-                    profile: agent.configuration.effectiveContextProfile
+                    profile: agent.configuration.contextProfile
                 )
                 plannedSchemas = MembraneInternalTools.sortedSchemas(plan.toolSchemas)
                 _ = request.resultBuilder.setMetadata("membrane.mode", .string(plan.mode))
@@ -188,14 +188,14 @@ struct AgentTurnRunner: Sendable {
         let toolSchemas: [ToolSchema] = {
             var schemas = MembraneInternalTools.sortedSchemas(plannedSchemas)
             // For strict4k, strip tool descriptions to save ~120 tokens.
-            if agent.configuration.effectiveContextProfile.preset == .strict4k {
+            if agent.configuration.contextProfile.preset == .strict4k {
                 schemas = schemas.map { ToolSchema(name: $0.name, description: $0.name, parameters: $0.parameters) }
             }
             return schemas
         }()
         let structuredMessages: [InferenceMessage] = await PromptEnvelope.enforce(
             messages: turnTranscript.inferenceMessages,
-            profile: agent.configuration.effectiveContextProfile
+            profile: agent.configuration.contextProfile
         )
         // REQ-003: the turn mode is derived in exactly one place.
         let mode = try AgentTurnKernel.resolveMode(
@@ -407,7 +407,7 @@ struct AgentTurnRunner: Sendable {
         let memoryHooks = request.dependencies.memoryHooks
         var memoryContext = ""
         if let memory = request.dependencies.memory {
-            let contextProfile = agent.configuration.effectiveContextProfile
+            let contextProfile = agent.configuration.contextProfile
             let tokenLimit = contextProfile.memoryTokenLimit
             let input = request.input
             let startTime = startTime
@@ -765,7 +765,7 @@ struct AgentTurnRunner: Sendable {
                             try await membraneAdapter.transformToolResult(
                                 toolName: parsedCall.name,
                                 output: currentToolOutput,
-                                profile: agent.configuration.effectiveContextProfile
+                                profile: agent.configuration.contextProfile
                             )
                         }
                         toolOutputText = transformed.textForConversation

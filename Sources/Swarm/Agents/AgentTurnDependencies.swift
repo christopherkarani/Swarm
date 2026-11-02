@@ -321,7 +321,7 @@ enum AgentTurnDependencyResolver {
     /// Assembles per-run inference options from configuration and an already-read response id.
     ///
     /// Previous-response continuation applies only to providers advertising
-    /// `.responseContinuation`; an explicit configured ID wins over
+    /// `.responseContinuation`; an explicit per-run ID wins over
     /// `latestResponseID`. The shell awaits ``ResponseTracker``; this function
     /// does not.
     static func inferenceOptions(
@@ -337,7 +337,7 @@ enum AgentTurnDependencyResolver {
             return options
         }
 
-        if let explicit = configuration.previousResponseId?.trimmingCharacters(in: .whitespacesAndNewlines),
+        if let explicit = configuration.pinnedPreviousResponseId?.trimmingCharacters(in: .whitespacesAndNewlines),
            !explicit.isEmpty {
             options.previousResponseId = explicit
             return options

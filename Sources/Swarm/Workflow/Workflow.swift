@@ -826,18 +826,33 @@ private func workflowAgentSignature(_ agent: any AgentRuntime) -> String {
     ].joined(separator: ";")
 }
 
-private func workflowConfigurationSignature(_ configuration: AgentConfiguration) -> String {
+/// Durable identity for an agent configuration.
+///
+/// The component keys and their encodings are frozen at the 0.6 layout so
+/// checkpoints written before the 0.7 configuration consolidation still match:
+/// sampling fields are projected out of ``AgentConfiguration/modelSettings``
+/// into the legacy `temperature` / `maxTokens` / `stopSequences` slots (with
+/// the 0.6 defaults), the residual settings fill the legacy optional
+/// `modelSettings` slot, and the removed `contextMode` knob is pinned to its
+/// 0.6 default. Changing any string here invalidates existing checkpoints.
+func workflowConfigurationSignature(_ configuration: AgentConfiguration) -> String {
     let timeout = configuration.timeout.components
+    let settings = configuration.modelSettings
+    var residualSettings = settings
+    residualSettings.temperature = nil
+    residualSettings.maxTokens = nil
+    residualSettings.stopSequences = nil
+    let legacyModelSettings: ModelSettings? = residualSettings == ModelSettings() ? nil : residualSettings
     let parts = [
         "name=\(workflowSignatureComponent(configuration.name))",
         "maxIterations=\(configuration.maxIterations)",
         "timeout=\(timeout.seconds):\(timeout.attoseconds)",
-        "temperature=\(configuration.temperature)",
-        "maxTokens=\(configuration.maxTokens.map(String.init) ?? "nil")",
-        "stopSequences=\(workflowSignatureComponent(String(reflecting: configuration.stopSequences)))",
-        "modelSettings=\(workflowSignatureComponent(String(reflecting: configuration.modelSettings)))",
+        "temperature=\(settings.temperature ?? 1.0)",
+        "maxTokens=\(settings.maxTokens.map(String.init) ?? "nil")",
+        "stopSequences=\(workflowSignatureComponent(String(reflecting: settings.stopSequences ?? [])))",
+        "modelSettings=\(workflowSignatureComponent(String(reflecting: legacyModelSettings)))",
         "contextProfile=\(workflowSignatureComponent(String(reflecting: configuration.contextProfile)))",
-        "contextMode=\(workflowSignatureComponent(String(reflecting: configuration.contextMode)))",
+        "contextMode=\(workflowSignatureComponent("Swarm.ContextMode.adaptive"))",
         "inferencePolicy=\(workflowSignatureComponent(String(reflecting: configuration.inferencePolicy)))",
         "enableStreaming=\(configuration.enableStreaming)",
         "includeToolCallDetails=\(configuration.includeToolCallDetails)",
@@ -845,7 +860,7 @@ private func workflowConfigurationSignature(_ configuration: AgentConfiguration)
         "includeReasoning=\(configuration.includeReasoning)",
         "sessionHistoryLimit=\(configuration.sessionHistoryLimit.map(String.init) ?? "nil")",
         "parallelToolCalls=\(configuration.parallelToolCalls)",
-        "previousResponseId=\(workflowSignatureComponent(configuration.previousResponseId ?? "nil"))",
+        "previousResponseId=\(workflowSignatureComponent(configuration.pinnedPreviousResponseId ?? "nil"))",
         "autoPreviousResponseId=\(configuration.autoPreviousResponseId)",
         "defaultTracingEnabled=\(configuration.defaultTracingEnabled)",
         "graphRunOptionsOverride=\(workflowSignatureComponent(String(reflecting: configuration.graphRunOptionsOverride)))",

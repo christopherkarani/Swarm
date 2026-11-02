@@ -12,7 +12,7 @@ struct InferenceProviderCapabilityDispatchTests {
         let provider = TokenPropertyProvider(counter: providerCounter)
         let agent = try Agent(
             instructions: "Reply briefly.",
-            configuration: AgentConfiguration(contextMode: .strict4k, defaultTracingEnabled: false),
+            configuration: AgentConfiguration(contextProfile: .strict4k, defaultTracingEnabled: false),
             inferenceProvider: provider
         ).promptTokenCounter(environmentCounter)
 
@@ -28,7 +28,7 @@ struct InferenceProviderCapabilityDispatchTests {
         let provider = TextStubProvider()
         let agent = try Agent(
             instructions: "Reply briefly.",
-            configuration: AgentConfiguration(contextMode: .strict4k, defaultTracingEnabled: false),
+            configuration: AgentConfiguration(contextProfile: .strict4k, defaultTracingEnabled: false),
             inferenceProvider: provider
         ).promptTokenCounter(environmentCounter)
 

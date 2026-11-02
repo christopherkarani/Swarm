@@ -665,6 +665,18 @@ public extension Agent {
         return copy
     }
 
+    /// Returns a copy that continues from `previousResponseId` for one run.
+    ///
+    /// Backs ``runWithResponse(_:continuing:session:observer:)``; the copy shares
+    /// this agent's run registry, so ``cancel()`` still reaches the run. The ID
+    /// is trimmed, and a blank ID pins nothing.
+    internal func pinningPreviousResponseId(_ previousResponseId: String?) -> Agent {
+        var copy = self
+        let trimmed = previousResponseId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        copy.configuration.pinnedPreviousResponseId = trimmed?.isEmpty == false ? trimmed : nil
+        return copy
+    }
+
     /// Sets handoff agents for multi-agent orchestration.
     ///
     /// Two ``Agent`` values without overrides share `handoff_to_agent` and throw.

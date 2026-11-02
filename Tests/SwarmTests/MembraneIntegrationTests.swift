@@ -22,7 +22,7 @@ struct MembraneIntegrationTests {
             instructions: longBlock("instructions", lines: 220),
             configuration: AgentConfiguration(
                 name: "strict4k-membrane",
-                contextMode: .strict4k,
+                contextProfile: .strict4k,
                 defaultTracingEnabled: false
             ),
             inferenceProvider: provider,
@@ -74,7 +74,7 @@ struct MembraneIntegrationTests {
             instructions: "Runtime flags test",
             configuration: AgentConfiguration(
                 name: "membrane-runtime-flags",
-                contextMode: .strict4k,
+                contextProfile: .strict4k,
                 defaultTracingEnabled: false
             ),
             inferenceProvider: provider,
@@ -117,7 +117,7 @@ struct MembraneIntegrationTests {
             instructions: "Fallback test",
             configuration: AgentConfiguration(
                 name: "membrane-fallback",
-                contextMode: .strict4k,
+                contextProfile: .strict4k,
                 defaultTracingEnabled: false
             ),
             inferenceProvider: provider,

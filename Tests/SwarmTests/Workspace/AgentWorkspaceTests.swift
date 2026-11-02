@@ -10,7 +10,7 @@ struct AgentWorkspaceTests {
         let memory = PolicyAwareMemoryStub(context: "skill-snippet")
         let agent = try Agent(
             "You are helpful.",
-            configuration: AgentConfiguration(name: "policy-aware", contextMode: .strict4k, defaultTracingEnabled: false),
+            configuration: AgentConfiguration(name: "policy-aware", contextProfile: .strict4k, defaultTracingEnabled: false),
             memory: memory,
             inferenceProvider: provider
         )

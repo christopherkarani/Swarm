@@ -133,12 +133,15 @@ extension AgentConfiguration {
     ///     .temperature(0.2)
     /// ```
     ///
+    /// Writes ``ModelSettings/temperature`` on ``modelSettings``; values are
+    /// clamped to `0.0...2.0`, and NaN resets to the provider default.
+    ///
     /// - Parameter value: Temperature between 0.0 and 2.0
     /// - Returns: A new configuration with the updated temperature
-    /// - SeeAlso: ``temperature``, ``maxTokens(_:)``, ``modelSettings(_:)``
+    /// - SeeAlso: ``modelSettings``, ``maxTokens(_:)``
     @discardableResult public func temperature(_ value: Double) -> AgentConfiguration {
         var copy = self
-        copy.temperature = value
+        copy.modelSettings.temperature = value
         return copy
     }
 
@@ -160,12 +163,14 @@ extension AgentConfiguration {
     ///     .maxTokens(500)  // Keep responses concise
     /// ```
     ///
+    /// Writes ``ModelSettings/maxTokens`` on ``modelSettings``.
+    ///
     /// - Parameter value: Maximum tokens per response, or nil for model default
     /// - Returns: A new configuration with the updated token limit
-    /// - SeeAlso: ``maxTokens``, ``temperature(_:)``, ``contextProfile(_:)``
+    /// - SeeAlso: ``modelSettings``, ``temperature(_:)``, ``contextProfile(_:)``
     @discardableResult public func maxTokens(_ value: Int?) -> AgentConfiguration {
         var copy = self
-        copy.maxTokens = value
+        copy.modelSettings.maxTokens = value
         return copy
     }
 
@@ -185,21 +190,26 @@ extension AgentConfiguration {
     ///     .stopSequences(["END", "<|end|>"])
     /// ```
     ///
+    /// Writes ``ModelSettings/stopSequences`` on ``modelSettings``.
+    ///
     /// - Parameter value: Array of stop sequences
     /// - Returns: A new configuration with the updated stop sequences
-    /// - SeeAlso: ``stopSequences``
+    /// - SeeAlso: ``modelSettings``
     @discardableResult public func stopSequences(_ value: [String]) -> AgentConfiguration {
         var copy = self
-        copy.stopSequences = value
+        copy.modelSettings.stopSequences = value
         return copy
     }
 
-    /// Sets extended model settings for fine-grained control.
+    /// Replaces the model settings used for every inference call.
     ///
-    /// When set, values in `modelSettings` take precedence over individual
-    /// properties like `temperature`, `maxTokens`, and `stopSequences`.
-    /// This enables advanced configuration options not exposed as top-level
-    /// properties.
+    /// ``modelSettings`` is the single source for sampling parameters. Non-`nil`
+    /// `temperature`, `maxTokens`, and `stopSequences` in `value` win; `nil`
+    /// ones keep whatever value ``modelSettings`` already holds, whether it was
+    /// set by ``temperature(_:)``, ``maxTokens(_:)``, ``stopSequences(_:)``, or
+    /// an earlier `modelSettings(_:)` call. Passing `ModelSettings()` therefore
+    /// does not clear earlier sampling values. Every other field is replaced
+    /// by `value`.
     ///
     /// ## Example
     /// ```swift
@@ -210,12 +220,16 @@ extension AgentConfiguration {
     ///     )
     /// ```
     ///
-    /// - Parameter value: Extended model settings, or nil to use individual properties
+    /// - Parameter value: Model settings; `ModelSettings()` uses provider defaults
     /// - Returns: A new configuration with the updated model settings
     /// - SeeAlso: ``modelSettings``, ``temperature(_:)``, ``maxTokens(_:)``
-    @discardableResult public func modelSettings(_ value: ModelSettings?) -> AgentConfiguration {
+    @discardableResult public func modelSettings(_ value: ModelSettings) -> AgentConfiguration {
+        var merged = value
+        merged.temperature = value.temperature ?? modelSettings.temperature
+        merged.maxTokens = value.maxTokens ?? modelSettings.maxTokens
+        merged.stopSequences = value.stopSequences ?? modelSettings.stopSequences
         var copy = self
-        copy.modelSettings = value
+        copy.modelSettings = merged
         return copy
     }
 
@@ -239,33 +253,10 @@ extension AgentConfiguration {
     ///
     /// - Parameter value: The context budgeting profile
     /// - Returns: A new configuration with the updated context profile
-    /// - SeeAlso: ``contextProfile``, ``contextMode(_:)``
+    /// - SeeAlso: ``contextProfile``
     @discardableResult public func contextProfile(_ value: ContextProfile) -> AgentConfiguration {
         var copy = self
         copy.contextProfile = value
-        return copy
-    }
-
-    /// Sets the context envelope mode for prompt construction.
-    ///
-    /// Controls how the context window is managed:
-    /// - ``ContextMode/adaptive``: Uses the configured `contextProfile`
-    /// - ``ContextMode/strict4k``: Forces `ContextProfile.strict4k` regardless of profile
-    ///
-    /// Default: `.adaptive`
-    ///
-    /// ## Example
-    /// ```swift
-    /// let config = AgentConfiguration.default
-    ///     .contextMode(.strict4k)
-    /// ```
-    ///
-    /// - Parameter value: The context envelope mode
-    /// - Returns: A new configuration with the updated context mode
-    /// - SeeAlso: ``contextMode``, ``contextProfile(_:)``
-    @discardableResult public func contextMode(_ value: ContextMode) -> AgentConfiguration {
-        var copy = self
-        copy.contextMode = value
         return copy
     }
 
@@ -442,28 +433,6 @@ extension AgentConfiguration {
 
     // MARK: Response Tracking Settings
 
-    /// Sets the previous response ID for conversation continuation.
-    ///
-    /// Set this to continue a conversation from a specific response.
-    /// The ID must be from a previous run in the same session.
-    ///
-    /// - Note: Usually set automatically when `autoPreviousResponseId` is enabled
-    ///
-    /// ## Example
-    /// ```swift
-    /// let config = AgentConfiguration.default
-    ///     .previousResponseId("resp_123abc")
-    /// ```
-    ///
-    /// - Parameter value: Previous response ID, or nil to start fresh
-    /// - Returns: A new configuration with the updated response ID
-    /// - SeeAlso: ``previousResponseId``, ``autoPreviousResponseId(_:)``
-    @discardableResult public func previousResponseId(_ value: String?) -> AgentConfiguration {
-        var copy = self
-        copy.previousResponseId = value
-        return copy
-    }
-
     /// Sets whether to automatically populate previous response ID.
     ///
     /// When enabled, the agent automatically tracks response IDs from each
@@ -479,7 +448,7 @@ extension AgentConfiguration {
     ///
     /// - Parameter value: true to enable automatic response ID tracking
     /// - Returns: A new configuration with the updated auto-tracking setting
-    /// - SeeAlso: ``autoPreviousResponseId``, ``previousResponseId(_:)``
+    /// - SeeAlso: ``autoPreviousResponseId``, ``Agent/runWithResponse(_:continuing:session:observer:)``
     @discardableResult public func autoPreviousResponseId(_ value: Bool) -> AgentConfiguration {
         var copy = self
         copy.autoPreviousResponseId = value

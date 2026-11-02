@@ -228,6 +228,28 @@ executes regular capture-path calls concurrently while preserving their input
 order in `AgentResult.toolCalls` and `AgentResult.toolResults`. Handoffs and
 membrane-internal calls remain ordered.
 
+Each concern has one source of truth:
+
+- **Sampling** lives in `modelSettings: ModelSettings` (non-optional; unset
+  fields fall back to provider defaults). `.temperature(_:)`, `.maxTokens(_:)`,
+  and `.stopSequences(_:)` are shorthands that write into `modelSettings`.
+- **Context budget** lives in `contextProfile` (use `.strict4k` for the 4K
+  Foundation Models window). There is no separate context mode.
+- **Response continuation** is per run:
+  `agent.runWithResponse(_:continuing:)` sends one previous response ID to
+  providers advertising `.responseContinuation`;
+  `autoPreviousResponseId(true)` chains IDs per session.
+
+```swift
+let config = AgentConfiguration.default
+    .modelSettings(.precise.toolChoice(.required))
+    .maxTokens(500)
+    .contextProfile(.strict4k)
+
+let first = try await agent.runWithResponse("Plan a trip to Lisbon")
+let next = try await agent.runWithResponse("Make it 3 days", continuing: first.responseId)
+```
+
 `includeToolCallDetails` and `includeReasoning` are retained compatibility
 settings and currently have no effect. Tool details are always represented by
 `AgentResult.toolCalls` / `AgentResult.toolResults`; provider-emitted reasoning
