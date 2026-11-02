@@ -39,6 +39,11 @@ enum WorkflowDurablePhase: Codable, Sendable, Equatable {
     case running(stepCursor: Int, iterationCursor: Int, lastResult: WorkflowResultSnapshot?)
     /// The run has finished. Carries the workflow's final result.
     case completed(WorkflowResultSnapshot)
+    /// The run ended because a human rejected a paused tool call.
+    ///
+    /// Terminal like ``completed(_:)``: committing it resolves the pending
+    /// approval interrupt, so the rejected call can never be approved later.
+    case rejected(toolName: String, reason: String)
 }
 
 struct WorkflowDurableSchema: HiveSchema {
@@ -142,12 +147,7 @@ struct WorkflowDurableEngine: Sendable {
             options: runOptions(for: policy)
         )
 
-        let outcome = try await handle.outcome.value
-        let result = try extractResult(from: outcome)
-
-        try await flushIfNeeded(runtime: components.runtime, threadID: components.threadID)
-
-        return result
+        return try await finish(try await handle.outcome.value, components: components)
     }
 
     /// Delivers a human approval decision to a run paused on ``WorkflowApprovalRequired``.
@@ -155,7 +155,8 @@ struct WorkflowDurableEngine: Sendable {
     /// The pending interrupt is read back from the latest checkpoint, so the
     /// caller only names the checkpoint thread. `.approve` carries the approved
     /// call (plus earlier approvals in the pause chain) into the resumed step;
-    /// `.reject` fails the run with
+    /// `.reject` commits the terminal ``WorkflowDurablePhase/rejected(toolName:reason:)``
+    /// phase, which resolves the interrupt, and fails the run with
     /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing.
     func resumeApproval(decision: WorkflowApprovalDecision) async throws -> AgentResult {
         if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
@@ -192,12 +193,26 @@ struct WorkflowDurableEngine: Sendable {
             options: runOptions(for: policy)
         )
 
-        let outcome = try await handle.outcome.value
-        let result = try extractResult(from: outcome)
+        return try await finish(try await handle.outcome.value, components: components)
+    }
 
-        try await flushIfNeeded(runtime: components.runtime, threadID: components.threadID)
-
-        return result
+    /// Maps a run outcome to the caller's result, persisting terminal state first.
+    ///
+    /// Terminal outcomes are flushed before the result (or the terminal
+    /// rejection error) is surfaced, so an `.onCompletion` run commits a
+    /// rejection exactly like a completion.
+    private func finish(
+        _ outcome: HiveRunOutcome<WorkflowDurableSchema>,
+        components: WorkflowDurableRuntimeComponents
+    ) async throws -> AgentResult {
+        let result = Result { try extractResult(from: outcome) }
+        switch outcome {
+        case .finished, .cancelled:
+            try await flushIfNeeded(runtime: components.runtime, threadID: components.threadID)
+        case .interrupted, .outOfSteps:
+            break
+        }
+        return try result.get()
     }
 
     private func makeRuntimeComponents() throws -> WorkflowDurableRuntimeComponents {
@@ -311,6 +326,8 @@ struct WorkflowDurableEngine: Sendable {
             switch phase {
             case .completed(let snapshot):
                 return snapshot.agentResult
+            case .rejected(let toolName, let reason):
+                throw WorkflowError.humanApprovalRejected(prompt: toolName, reason: reason)
             case .running(_, _, let lastResult):
                 if let lastResult {
                     return lastResult.agentResult
@@ -329,6 +346,8 @@ struct WorkflowDurableEngine: Sendable {
             switch phase {
             case .completed(let snapshot):
                 return snapshot.agentResult
+            case .rejected(let toolName, let reason):
+                throw WorkflowError.humanApprovalRejected(prompt: toolName, reason: reason)
             case .running(_, _, let lastResult):
                 if let lastResult {
                     return lastResult.agentResult
@@ -357,10 +376,12 @@ enum WorkflowDurableRouting: Sendable {
     static func route(for phaseResult: Result<WorkflowDurablePhase, Error>) -> Route {
         switch phaseResult {
         case .success(let phase):
-            if case .completed = phase {
+            switch phase {
+            case .completed, .rejected:
                 return .end
+            case .running:
+                return .to([WorkflowNodeID.execute])
             }
-            return .to([WorkflowNodeID.execute])
         case .failure(let error):
             if let runtimeError = error as? HiveRuntimeError,
                case .storeValueMissing = runtimeError {
@@ -409,9 +430,16 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
         if let controller = WorkflowDurableFaultInjection.controller {
             await controller.markWorkflowStepStarted()
         }
-        let allowedCalls = try approvalGateAllowing(resumePayload: input.run.resume?.payload)
+        let allowedCalls: [WorkflowApprovedCall]
+        switch try approvalResolution(resumePayload: input.run.resume?.payload) {
+        case .rejected(let toolName, let reason):
+            return rejectedOutput(toolName: toolName, reason: reason)
+        case .allowing(let calls):
+            allowedCalls = calls
+        }
+        let ledger = WorkflowApprovalLedger(approved: allowedCalls)
         do {
-            let result = try await WorkflowDurableApprovalGate.$allowed.withValue(allowedCalls) {
+            let result = try await WorkflowDurableApprovalGate.$ledger.withValue(ledger) {
                 try await input.context.workflow.execute(step: step, withInput: progress.currentInput)
             }
             let nextDecision = WorkflowTransition.afterStep(
@@ -454,23 +482,42 @@ private func progressValue(from decision: WorkflowTransition.Decision) throws ->
     }
 }
 
+/// How a step execution resolves the human decision it was resumed with.
+private enum WorkflowApprovalResolution {
+    /// Run the step with these approvals (empty for a fresh step).
+    case allowing([WorkflowApprovedCall])
+    /// The human rejected the paused call; end the run without executing.
+    case rejected(toolName: String, reason: String)
+}
+
 /// Resolves the approval gate for one step execution.
 ///
 /// A fresh step arms the gate with no allowances. A Hive-resumed step carries
-/// the human decision: `.reject` fails without executing, `.approve` allows
-/// the calls approved so far in the pause chain.
-private func approvalGateAllowing(resumePayload: String?) throws -> [WorkflowApprovedCall] {
-    guard let resumePayload else { return [] }
+/// the human decision: `.reject` ends the run without executing, `.approve`
+/// allows the calls approved so far in the pause chain.
+private func approvalResolution(resumePayload: String?) throws -> WorkflowApprovalResolution {
+    guard let resumePayload else { return .allowing([]) }
     let decision = try WorkflowApprovalDecisionEnvelope.decoded(from: resumePayload)
     switch decision.decision {
     case .reject:
-        throw WorkflowError.humanApprovalRejected(
-            prompt: decision.toolName,
+        return .rejected(
+            toolName: decision.toolName,
             reason: "Operator rejected tool '\(decision.toolName)' at durable approval resume"
         )
     case .approve:
-        return decision.approved
+        return .allowing(decision.approved)
     }
+}
+
+/// Commits the terminal rejection phase.
+///
+/// Returning normally (instead of throwing) lets the runtime commit the
+/// resumed step, which clears the pending interrupt from the checkpoint.
+private func rejectedOutput(toolName: String, reason: String) -> HiveNodeOutput<WorkflowDurableSchema> {
+    HiveNodeOutput(
+        writes: [AnyHiveWrite(WorkflowDurableSchema.phaseKey, .rejected(toolName: toolName, reason: reason))],
+        next: .end
+    )
 }
 
 /// Builds the pause output for an approval request.

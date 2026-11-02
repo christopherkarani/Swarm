@@ -161,6 +161,16 @@ edited-arguments resume: approval runs the call exactly as requested. A resumed
 step that reaches another approval-required tool pauses again with its own
 `WorkflowApprovalRequired`.
 
+Decisions are durable and one-shot:
+
+- A rejection is committed to the checkpoint as a terminal state. A later
+  `resume(decision: .approve, from:)` on that checkpoint throws (no paused
+  approval) instead of running the rejected call, and a plain `resume(_:from:)`
+  rethrows `WorkflowError.humanApprovalRejected`.
+- An approval authorizes one execution of the exact call (tool name and
+  arguments). If the step calls the same tool with the same arguments again,
+  that second call pauses for its own approval.
+
 Replay semantics still apply: the resumed run replays the paused step from its
 start, so already-approved tools in that step may execute again, and direct
 (non-durable) runs never pause. Observe pauses on the `AgentEvent` stream via

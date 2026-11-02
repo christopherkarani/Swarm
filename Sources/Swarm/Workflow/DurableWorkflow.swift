@@ -65,6 +65,12 @@ public struct DurableWorkflow: Sendable {
     /// `.reject` fails with
     /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing.
     ///
+    /// Decisions are durable and one-shot. A rejection is committed as a
+    /// terminal checkpoint state, so approving the same checkpoint afterwards
+    /// throws instead of running the rejected call. An approval covers one
+    /// execution of the exact call; an identical second call in the same step
+    /// pauses again.
+    ///
     /// There is no timeout on the approval wait itself: the run stays paused
     /// until this method is called.
     ///

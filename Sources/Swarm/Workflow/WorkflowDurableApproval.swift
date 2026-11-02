@@ -7,8 +7,9 @@ import Foundation
 /// reports `requiresApproval`. The tool has not executed. Inspect
 /// ``toolName``/``arguments``, then continue with
 /// ``DurableWorkflow/resume(decision:from:)``: ``WorkflowApprovalDecision/approve``
-/// executes the tool and continues the run, ``WorkflowApprovalDecision/reject``
-/// fails with ``WorkflowError/humanApprovalRejected(prompt:reason:)``.
+/// executes the tool once and continues the run, ``WorkflowApprovalDecision/reject``
+/// ends the run durably and fails with
+/// ``WorkflowError/humanApprovalRejected(prompt:reason:)``.
 ///
 /// The pause survives process restarts: the checkpoint holds the paused step
 /// cursor, and a fresh process can resume from the same checkpoint store.
@@ -63,7 +64,8 @@ extension WorkflowApprovalRequired: CustomDebugStringConvertible {
 ///
 /// Pass to ``DurableWorkflow/resume(decision:from:)``. There is no
 /// edited-arguments resume: `.approve` executes the paused call exactly as
-/// requested, `.reject` fails the run.
+/// requested, once; `.reject` ends the run durably, so the rejected call can
+/// never be approved afterwards.
 public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable {
     /// Execute the paused tool call and continue the run.
     case approve
@@ -91,14 +93,37 @@ struct WorkflowToolApprovalRequest: Error, Sendable {
     let arguments: [String: SendableValue]
 }
 
+/// Approvals available to one durable step execution, each usable once.
+///
+/// A human approval authorizes exactly one execution of the approved call.
+/// Approving `delete_vm(id: vm-1)` does not let the step run that call a second
+/// time: the second identical call consumes nothing and pauses for its own
+/// approval. Approvals are matched by tool name and exact arguments, as a
+/// multiset, so the order in which a replay reaches them does not matter.
+actor WorkflowApprovalLedger {
+    private var remaining: [WorkflowApprovedCall]
+
+    init(approved: [WorkflowApprovedCall]) {
+        remaining = approved
+    }
+
+    /// Consumes one matching approval. Returns `false` when none is left.
+    func consume(_ call: WorkflowApprovedCall) -> Bool {
+        guard let index = remaining.firstIndex(of: call) else { return false }
+        remaining.remove(at: index)
+        return true
+    }
+}
+
 /// Task-local gate that pauses durable runs on approval-required tools.
 ///
 /// `nil` (the default) disables the gate, so direct `Agent.run` and direct
 /// workflow execution are unaffected. The durable workflow node arms it around
-/// step execution: `[]` pauses on every approval-required tool, and an
-/// approved resume arms it with the calls approved so far in the pause chain.
+/// step execution with a fresh ``WorkflowApprovalLedger``: empty pauses on
+/// every approval-required tool, and an approved resume holds the calls
+/// approved so far in the pause chain, each consumable once.
 enum WorkflowDurableApprovalGate {
-    @TaskLocal static var allowed: [WorkflowApprovedCall]?
+    @TaskLocal static var ledger: WorkflowApprovalLedger?
 
     static func check(
         call: ToolCall,
@@ -107,11 +132,11 @@ enum WorkflowDurableApprovalGate {
         context: AgentContext?,
         observer: (any AgentObserver)?
     ) async throws {
-        guard let allowed else { return }
+        guard let ledger else { return }
         guard let tool = await registry.tool(named: call.toolName) else { return }
         guard tool.executionSemantics.runtimePolicy().requiresApproval else { return }
         let candidate = WorkflowApprovedCall(toolName: call.toolName, arguments: call.arguments)
-        guard !allowed.contains(candidate) else { return }
+        guard await !ledger.consume(candidate) else { return }
         await observer?.onToolApprovalRequested(context: context, agent: agent, call: call)
         throw WorkflowToolApprovalRequest(toolName: call.toolName, arguments: call.arguments)
     }

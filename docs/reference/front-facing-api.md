@@ -566,8 +566,9 @@ durable run instead of executing. `execute` throws `WorkflowApprovalRequired`;
 `resume(decision:from:)` continues from the same or a fresh process sharing the
 checkpoint store. `.approve` executes the paused call and continues (pausing
 again on the next approval-required tool); `.reject` fails with
-`WorkflowError.humanApprovalRejected` without executing. No edited-arguments
-resume, no approval timeout. Pauses surface on the `AgentEvent` stream as
+`WorkflowError.humanApprovalRejected` without executing and is committed as a
+terminal state, so the call cannot be approved later. Each approval covers one
+execution of the exact call. No edited-arguments resume, no approval timeout. Pauses surface on the `AgentEvent` stream as
 `AgentEvent.Tool.approvalRequested` via
 `AgentObserver.onToolApprovalRequested`.
 
