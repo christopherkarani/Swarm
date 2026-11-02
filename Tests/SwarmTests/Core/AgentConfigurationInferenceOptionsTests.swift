@@ -91,6 +91,21 @@ struct AgentConfigurationInferenceOptionsTests {
         #expect(config.modelSettings.topP == ModelSettings.creative.topP)
     }
 
+    @Test("modelSettings(_:) keeps sampling fields from an earlier modelSettings(_:) call")
+    func modelSettingsKeepsEarlierModelSettingsSampling() {
+        let config = AgentConfiguration.default
+            .modelSettings(.creative)
+            .modelSettings(ModelSettings().toolChoice(.required))
+
+        #expect(config.modelSettings.temperature == ModelSettings.creative.temperature)
+        #expect(config.modelSettings.topP == nil)
+        #expect(config.modelSettings.toolChoice == .required)
+
+        let cleared = config.modelSettings(ModelSettings())
+        #expect(cleared.modelSettings.temperature == ModelSettings.creative.temperature)
+        #expect(cleared.modelSettings.toolChoice == nil)
+    }
+
     @Test("ModelSettings reasoning config propagates to InferenceOptions")
     func reasoningConfigPropagation() {
         let reasoning = ReasoningConfig(effort: .low, maxTokens: 4096, exclude: true)

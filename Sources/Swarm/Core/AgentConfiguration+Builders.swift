@@ -205,9 +205,11 @@ extension AgentConfiguration {
     ///
     /// ``modelSettings`` is the single source for sampling parameters. Non-`nil`
     /// `temperature`, `maxTokens`, and `stopSequences` in `value` win; `nil`
-    /// ones keep values set earlier with ``temperature(_:)``,
-    /// ``maxTokens(_:)``, or ``stopSequences(_:)``. Every other field is
-    /// replaced by `value`.
+    /// ones keep whatever value ``modelSettings`` already holds, whether it was
+    /// set by ``temperature(_:)``, ``maxTokens(_:)``, ``stopSequences(_:)``, or
+    /// an earlier `modelSettings(_:)` call. Passing `ModelSettings()` therefore
+    /// does not clear earlier sampling values. Every other field is replaced
+    /// by `value`.
     ///
     /// ## Example
     /// ```swift
