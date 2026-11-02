@@ -12,7 +12,7 @@ struct AgentHandoffIdentityTests {
         #expect(throws: AgentError.duplicateHandoffToolName(name: "handoff_to_agent")) {
             _ = try Agent(
                 instructions: "triage",
-                handoffAgents: [billing, support]
+                handoffs: [billing.asHandoff(), support.asHandoff()]
             )
         }
     }

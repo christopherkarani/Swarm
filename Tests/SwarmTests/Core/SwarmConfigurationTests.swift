@@ -99,7 +99,7 @@ struct SwarmConfigurationTests {
             await Swarm.configure(provider: defaultMock)
 
             let handoffTarget = try Agent(instructions: "handoff target", inferenceProvider: handoffProvider)
-            let agent = try Agent(instructions: "route", handoffAgents: [handoffTarget])
+            let agent = try Agent(instructions: "route", handoffs: [handoffTarget.asHandoff()])
 
             let result = try await agent.run("transfer me")
             #expect(result.output == "from handoff-default")

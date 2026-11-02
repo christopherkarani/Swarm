@@ -119,7 +119,7 @@ struct FullAPIScenarioTests {
         let mock = MockInferenceProvider()
         await mock.setResponses(["routed to billing"])
         let billing = try Agent(instructions: "Billing", inferenceProvider: mock)
-        let triage = try Agent(instructions: "Triage", inferenceProvider: mock, handoffAgents: [billing])
+        let triage = try Agent(instructions: "Triage", inferenceProvider: mock, handoffs: [billing.asHandoff()])
         let result = try await triage.run("refund please")
         #expect(result.output.contains("billing") || result.output.contains("routed"))
     }

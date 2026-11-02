@@ -190,37 +190,37 @@ final class APIAuditTests: XCTestCase {
         }
     }
 
-    // MARK: - Agent Name Convenience Init Tests
+    // MARK: - Agent Name via Configuration Tests
 
-    func testAgentNameConvenienceInit() async throws {
-        let agent = try Agent(name: "TestAgent", instructions: "You are helpful.")
+    func testAgentNameFromConfiguration() async throws {
+        let agent = try Agent("You are helpful.", configuration: .default.name("TestAgent"))
         let name = agent.configuration.name
         XCTAssertEqual(name, "TestAgent")
     }
 
-    func testAgentNameConvenienceInitPreservesInstructions() async throws {
-        let agent = try Agent(name: "Helper", instructions: "Be concise.")
+    func testAgentNameFromConfigurationPreservesInstructions() async throws {
+        let agent = try Agent("Be concise.", configuration: .default.name("Helper"))
         let instructions = agent.instructions
         XCTAssertEqual(instructions, "Be concise.")
     }
 
     func testAgentNameAccessedViaRuntimeProperty() async throws {
-        let agent = try Agent(name: "RuntimeName", instructions: "test")
+        let agent = try Agent("test", configuration: .default.name("RuntimeName"))
         let name = agent.name
         XCTAssertEqual(name, "RuntimeName")
     }
 
-    // MARK: - Agent handoffAgents Init Tests
+    // MARK: - Agent asHandoff() Tests
 
-    func testAgentHandoffAgentsInit() async throws {
-        let billing = try Agent(name: "Billing", instructions: "Handle billing")
-        let support = try Agent(name: "Support", instructions: "Handle support")
+    func testAgentDefaultHandoffsRejectDuplicateToolNames() async throws {
+        let billing = try Agent("Handle billing", configuration: .default.name("Billing"))
+        let support = try Agent("Handle support", configuration: .default.name("Support"))
 
         XCTAssertThrowsError(
             try Agent(
-                name: "Triage",
-                instructions: "Route requests",
-                handoffAgents: [billing, support]
+                "Route requests",
+                configuration: .default.name("Triage"),
+                handoffs: [billing.asHandoff(), support.asHandoff()]
             )
         ) { error in
             XCTAssertEqual(
@@ -230,12 +230,12 @@ final class APIAuditTests: XCTestCase {
         }
     }
 
-    func testAgentHandoffAgentsTargetsCorrectAgents() async throws {
-        let billing = try Agent(name: "Billing", instructions: "Handle billing")
+    func testAgentDefaultHandoffsTargetCorrectAgents() async throws {
+        let billing = try Agent("Handle billing", configuration: .default.name("Billing"))
         let triage = try Agent(
-            name: "Triage",
-            instructions: "Route requests",
-            handoffAgents: [billing]
+            "Route requests",
+            configuration: .default.name("Triage"),
+            handoffs: [billing.asHandoff()]
         )
 
         let handoffs = triage.handoffs
@@ -246,7 +246,7 @@ final class APIAuditTests: XCTestCase {
     // MARK: - Agent.Builder Compatibility Tests
 
     func testAgentBuilderHandoffToAddsSingleTarget() async throws {
-        let billing = try Agent(name: "Billing", instructions: "Handle billing")
+        let billing = try Agent("Handle billing", configuration: .default.name("Billing"))
 
         let triage = try Agent.Builder()
             .instructions("Route requests")
@@ -258,9 +258,9 @@ final class APIAuditTests: XCTestCase {
     }
 
     func testAgentBuilderVariadicHandoffsAddsAllTargets() async throws {
-        let billing = try Agent(name: "Billing", instructions: "Handle billing")
-        let support = try Agent(name: "Support", instructions: "Handle support")
-        let sales = try Agent(name: "Sales", instructions: "Handle sales")
+        let billing = try Agent("Handle billing", configuration: .default.name("Billing"))
+        let support = try Agent("Handle support", configuration: .default.name("Support"))
+        let sales = try Agent("Handle sales", configuration: .default.name("Sales"))
 
         XCTAssertThrowsError(
             try Agent.Builder()
@@ -276,9 +276,9 @@ final class APIAuditTests: XCTestCase {
     }
 
     func testAgentBuilderHandoffsWithUniqueOverridesAddsAllTargets() async throws {
-        let billing = try Agent(name: "Billing", instructions: "Handle billing")
-        let support = try Agent(name: "Support", instructions: "Handle support")
-        let sales = try Agent(name: "Sales", instructions: "Handle sales")
+        let billing = try Agent("Handle billing", configuration: .default.name("Billing"))
+        let support = try Agent("Handle support", configuration: .default.name("Support"))
+        let sales = try Agent("Handle sales", configuration: .default.name("Sales"))
 
         let triage = try Agent.Builder()
             .instructions("Route requests")
@@ -296,7 +296,7 @@ final class APIAuditTests: XCTestCase {
     }
 
     func testAgentBuilderHandoffOptionsMapToConfiguration() async throws {
-        let billing = try Agent(name: "Billing", instructions: "Handle billing")
+        let billing = try Agent("Handle billing", configuration: .default.name("Billing"))
 
         let triage = try Agent.Builder()
             .instructions("Route requests")
@@ -320,8 +320,8 @@ final class APIAuditTests: XCTestCase {
 
     func testAgentToolCreation() async throws {
         let innerAgent = try Agent(
-            name: "Researcher",
-            instructions: "Research topics",
+            "Research topics",
+            configuration: .default.name("Researcher"),
             inferenceProvider: MockInferenceProvider()
         )
 
@@ -335,8 +335,8 @@ final class APIAuditTests: XCTestCase {
 
     func testAgentToolCustomNameAndDescription() async throws {
         let innerAgent = try Agent(
-            name: "Worker",
-            instructions: "Work",
+            "Work",
+            configuration: .default.name("Worker"),
             inferenceProvider: MockInferenceProvider()
         )
 
@@ -352,8 +352,8 @@ final class APIAuditTests: XCTestCase {
 
     func testAgentAsToolExtension() async throws {
         let agent = try Agent(
-            name: "Helper",
-            instructions: "Help users",
+            "Help users",
+            configuration: .default.name("Helper"),
             inferenceProvider: MockInferenceProvider()
         )
 
@@ -364,8 +364,8 @@ final class APIAuditTests: XCTestCase {
 
     func testAgentAsToolWithCustomParams() async throws {
         let agent = try Agent(
-            name: "Helper",
-            instructions: "Help users",
+            "Help users",
+            configuration: .default.name("Helper"),
             inferenceProvider: MockInferenceProvider()
         )
 
@@ -379,8 +379,8 @@ final class APIAuditTests: XCTestCase {
         await mock.setResponses(["Final Answer: done"])
 
         let innerAgent = try Agent(
-            name: "Worker",
-            instructions: "Work",
+            "Work",
+            configuration: .default.name("Worker"),
             inferenceProvider: mock
         )
 
@@ -422,8 +422,8 @@ final class APIAuditTests: XCTestCase {
 
     func testAgentAsHandoffReturnsCorrectTarget() async throws {
         let agent = try Agent(
-            name: "Billing",
-            instructions: "Handle billing",
+            "Handle billing",
+            configuration: .default.name("Billing"),
             inferenceProvider: MockInferenceProvider()
         )
 
@@ -433,8 +433,8 @@ final class APIAuditTests: XCTestCase {
 
     func testAgentAsHandoffWithCustomConfiguration() async throws {
         let agent = try Agent(
-            name: "Support",
-            instructions: "Handle support",
+            "Handle support",
+            configuration: .default.name("Support"),
             inferenceProvider: MockInferenceProvider()
         )
 
@@ -449,8 +449,8 @@ final class APIAuditTests: XCTestCase {
 
     func testAgentAsHandoffDefaultsNilOverrides() async throws {
         let agent = try Agent(
-            name: "Worker",
-            instructions: "Work",
+            "Work",
+            configuration: .default.name("Worker"),
             inferenceProvider: MockInferenceProvider()
         )
 

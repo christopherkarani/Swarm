@@ -52,7 +52,7 @@ struct AgentModifiersTests {
     @Test("canonical init with explicit provider overload")
     func initWithProvider() throws {
         let provider = MockInferenceProvider()
-        let agent = try Agent("You are helpful", provider: provider)
+        let agent = try Agent("You are helpful", inferenceProvider: provider)
         #expect(agent.instructions == "You are helpful")
         #expect(agent.inferenceProvider != nil)
     }
@@ -60,7 +60,7 @@ struct AgentModifiersTests {
     @Test("canonical init with provider and tool builder")
     func initWithProviderAndTools() throws {
         let provider = MockInferenceProvider()
-        let agent = try Agent("You are helpful", provider: provider) {
+        let agent = try Agent("You are helpful", inferenceProvider: provider) {
             PingTool()
         }
         #expect(agent.tools.count == 1)
@@ -312,8 +312,8 @@ struct AgentModifiersTests {
         let provider1 = MockInferenceProvider(responses: ["hello from run"])
         let provider2 = MockInferenceProvider(responses: ["hello from run"])
 
-        let agentRun = try Agent("test", provider: provider1)
-        let agentCaF = try Agent("test", provider: provider2)
+        let agentRun = try Agent("test", inferenceProvider: provider1)
+        let agentCaF = try Agent("test", inferenceProvider: provider2)
 
         let viaRun = try await agentRun.run("say hello")
         let viaCaF = try await agentCaF("say hello")
