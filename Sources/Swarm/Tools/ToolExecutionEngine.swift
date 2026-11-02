@@ -74,12 +74,14 @@ struct ToolExecutionEngine: Sendable {
 
         let startTime = clock.nowNanoseconds()
         do {
+            // No observer: the registry would report every tool error through
+            // `onError` (a run failure). Tool failures are reported below via
+            // `onToolEnd`; only a run that actually fails calls `onError`.
             let output = try await registry.execute(
                 toolNamed: toolName,
                 arguments: arguments,
                 agent: agent,
-                context: context,
-                observer: observer
+                context: context
             )
 
             let measured = elapsedDuration(since: startTime)
