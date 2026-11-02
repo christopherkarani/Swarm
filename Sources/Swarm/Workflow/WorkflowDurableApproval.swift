@@ -104,9 +104,10 @@ extension WorkflowResumeConflict: LocalizedError {
 /// it was resumed with resets the count. After ``maxAttempts`` minus one
 /// consecutive approve-resumes that end in such a pause, the next `.approve`
 /// throws this error before the step runs, so nothing executes and the run
-/// stays paused on its last request. Retrying `.approve` throws again: resolve
-/// the pause with `.reject`, or fix the step so that its replay is
-/// deterministic.
+/// stays paused on its last request. The refusal is stored with the paused
+/// run, so every later `.approve` on it throws again, even after the step is
+/// changed: resolve this run with `.reject`. Making the step deterministic only
+/// helps future runs.
 public struct WorkflowApprovalReplayDiverged: Error, Sendable, Equatable {
     /// Diverging approve-resumes in a row, counting the refused one, that
     /// trigger this error.
@@ -131,7 +132,7 @@ extension WorkflowApprovalReplayDiverged: LocalizedError {
     public var errorDescription: String? {
         "Durable workflow '\(checkpointID.rawValue)' refused to approve '\(toolName)': \(attempts) approves "
             + "in a row would replay without reaching the approved call; reject the pending approval "
-            + "or make the step deterministic"
+            + "to end this run"
     }
 }
 
@@ -199,10 +200,18 @@ enum WorkflowJournaledOutcome: Sendable, Equatable, Codable {
 struct WorkflowJournaledCall: Sendable, Equatable, Codable {
     var call: WorkflowApprovedCall
     var outcome: WorkflowJournaledOutcome
-    /// `true` when the call ran inside another tool call (an agent used as a
-    /// tool) that never finished, so only a re-run of that outer call replays
-    /// it. `nil` for top-level calls and in older payloads.
-    var nested: Bool?
+    /// The tool calls enclosing this one, outermost first, when it ran inside
+    /// another tool call (an agent used as a tool) that never finished. Only a
+    /// re-run of that same chain of calls replays it. `nil` for top-level calls.
+    var parents: [WorkflowApprovedCall]?
+}
+
+/// Journal scope of the tool call whose body is running.
+struct WorkflowJournalScope: Sendable {
+    /// Identifies this execution of the call.
+    let id: UUID
+    /// The enclosing tool calls, outermost first, ending with this call.
+    let path: [WorkflowApprovedCall]
 }
 
 /// Per-step-execution approval and replay state for durable runs.
@@ -225,9 +234,10 @@ struct WorkflowJournaledCall: Sendable, Equatable, Codable {
 /// on its own.
 ///
 /// **Nested calls belong to their outer call.** Calls made inside a tool call
-/// (an agent used as a tool) are recorded under that call's scope. When the
-/// outer call finishes, its own entry replaces them, so a replayed outer call
-/// leaves nothing behind for unrelated later calls to match.
+/// (an agent used as a tool) are recorded under that call's scope, together
+/// with the chain of calls enclosing them, and replay only inside the same
+/// chain. When the outer call finishes, its own entry replaces them, so a
+/// replayed outer call leaves nothing behind for unrelated later calls to match.
 actor WorkflowApprovalLedger {
     /// A journal entry carried in from an earlier execution of this step.
     private struct PriorEntry {
@@ -273,15 +283,15 @@ actor WorkflowApprovalLedger {
 
     /// Consumes and returns the recorded outcome of a matching earlier execution.
     ///
-    /// A top-level call (`scope == nil`) matches only top-level entries, and a
-    /// nested call only nested ones.
-    func replay(_ call: WorkflowApprovedCall, scope: UUID?) -> WorkflowJournaledOutcome? {
-        let isNested = scope != nil
+    /// A call matches only entries recorded under the same chain of enclosing
+    /// calls: a top-level call (`scope == nil`) only top-level entries.
+    func replay(_ call: WorkflowApprovedCall, scope: WorkflowJournalScope?) -> WorkflowJournaledOutcome? {
+        let parents = scope?.path ?? []
         guard let index = prior.firstIndex(where: {
-            !$0.isReplayed && $0.journaled.call == call && ($0.journaled.nested ?? false) == isNested
+            !$0.isReplayed && $0.journaled.call == call && ($0.journaled.parents ?? []) == parents
         }) else { return nil }
         prior[index].isReplayed = true
-        prior[index].replayScope = scope
+        prior[index].replayScope = scope?.id
         return prior[index].journaled.outcome
     }
 
@@ -294,13 +304,13 @@ actor WorkflowApprovalLedger {
     func record(
         _ call: WorkflowApprovedCall,
         outcome: WorkflowJournaledOutcome,
-        scope: UUID?,
+        scope: WorkflowJournalScope?,
         ownScope: UUID
     ) {
         prior.removeAll { $0.isReplayed && $0.replayScope == ownScope }
         recorded.removeAll { $0.scope == ownScope }
-        let journaled = WorkflowJournaledCall(call: call, outcome: outcome, nested: scope == nil ? nil : true)
-        recorded.append(RecordedEntry(journaled: journaled, scope: scope))
+        let journaled = WorkflowJournaledCall(call: call, outcome: outcome, parents: scope?.path)
+        recorded.append(RecordedEntry(journaled: journaled, scope: scope?.id))
     }
 
     /// Approvals not yet consumed.
@@ -324,7 +334,12 @@ actor WorkflowApprovalLedger {
 enum WorkflowDurableApprovalGate {
     @TaskLocal static var ledger: WorkflowApprovalLedger?
     /// Scope of the tool call whose body is running; `nil` at top level.
-    @TaskLocal static var scope: UUID?
+    @TaskLocal static var scope: WorkflowJournalScope?
+
+    /// A new scope for running `call`'s body inside the current scope.
+    static func childScope(for call: ToolCall) -> WorkflowJournalScope {
+        WorkflowJournalScope(id: UUID(), path: (scope?.path ?? []) + [normalized(call)])
+    }
 
     /// Pauses on an approval-required call that has no unused approval.
     ///
@@ -359,9 +374,9 @@ enum WorkflowDurableApprovalGate {
     /// Journals an executed call so a replay of this step does not execute it again.
     ///
     /// - Parameter ownScope: The scope the call's body ran under.
-    static func record(call: ToolCall, outcome: WorkflowJournaledOutcome, ownScope: UUID) async {
+    static func record(call: ToolCall, outcome: WorkflowJournaledOutcome, ownScope: WorkflowJournalScope) async {
         guard let ledger else { return }
-        await ledger.record(normalized(call), outcome: outcome, scope: scope, ownScope: ownScope)
+        await ledger.record(normalized(call), outcome: outcome, scope: scope, ownScope: ownScope.id)
     }
 
     private static func normalized(_ call: ToolCall) -> WorkflowApprovedCall {

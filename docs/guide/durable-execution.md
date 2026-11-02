@@ -251,18 +251,20 @@ execute twice:
   so a repeated identical call runs, or pauses, on its own.
 - Cancelled calls are not journaled, and neither are handoffs or Membrane
   internal tools.
-- Calls made inside an agent used as a tool belong to that outer call. Once
-  the outer call finishes, its own journal entry replaces them, so a later
-  top-level call with the same name and arguments still runs.
+- Calls made inside an agent used as a tool belong to that outer call: they
+  replay only inside a re-run of the same outer call (same name and
+  arguments). Once the outer call finishes, its own journal entry replaces
+  them, so a later call with the same name and arguments still runs.
 - An approval counts as used only once its call is journaled. A call
   cancelled after taking its approval (for example a parallel sibling of a
   call that paused) keeps its approval for the next replay.
 - If replays keep pausing on other calls and never reach the call that was
   just approved (the model keeps asking for something different), the third
   such approve in a row throws `WorkflowApprovalReplayDiverged` before the
-  step runs. Nothing is executed, retrying the approve throws again, and the
-  run stays paused: reject it, or make the step deterministic. A resume that
-  runs the call it approved resets the count.
+  step runs. Nothing is executed, and the run stays paused. Every later
+  approve on that run throws again, even after the step is changed, so end it
+  with `.reject`; making the step deterministic only helps future runs. A
+  resume that runs the call it approved resets the count.
 
 Pauses propagate through `.fallback` steps (no retry or fallback on a pause),
 agents used as tools (`asTool()`), and provider-owned tool loops such as

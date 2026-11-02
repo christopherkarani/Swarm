@@ -239,60 +239,145 @@ struct WorkflowDurableApprovalReplayTests {
     @Test("an approved call cancelled by a sibling's pause keeps its approval")
     func cancelledApprovedCallKeepsApproval() async throws {
         let slowRuns = ApprovalToolCounter()
-        let fastRuns = ApprovalToolCounter()
-        let provider = await MockInferenceProvider()
-        let script: () async -> Void = {
-            await provider.setToolCallResponses([
-                InferenceResponse(
-                    content: nil,
-                    toolCalls: [
-                        InferenceResponse.ParsedToolCall(id: "call_a", name: "slow_a", arguments: ["x": .string("x")]),
-                        InferenceResponse.ParsedToolCall(id: "call_b", name: "fast_b", arguments: ["y": .string("y")]),
-                    ],
-                    finishReason: .toolCall,
-                    usage: nil
-                ),
+        let confirmRuns = ApprovalToolCounter()
+        let waits = ApprovalToolCounter()
+        // Released once slow_a's body runs, that is, after slow_a took its approval.
+        let slowStarted = ApprovalToolGate()
+        let outerProvider = await MockInferenceProvider()
+        let innerProvider = await MockInferenceProvider()
+        let slowCall = InferenceResponse.ParsedToolCall(id: "call_a", name: "slow_a", arguments: ["x": .string("x")])
+        let fastCall = InferenceResponse.ParsedToolCall(
+            id: "call_b",
+            name: "fast_b",
+            arguments: ["input": .string("y")]
+        )
+        let script: ([InferenceResponse.ParsedToolCall]) async -> Void = { calls in
+            await outerProvider.setToolCallResponses([
+                InferenceResponse(content: nil, toolCalls: calls, finishReason: .toolCall, usage: nil),
                 InferenceResponse(content: "done", toolCalls: [], finishReason: .completed, usage: nil),
             ])
+            await innerProvider.configureToolCallingSequence(
+                toolCalls: [("wait_a", ["q": .string("y")]), ("confirm_b", ["y": .string("y")])],
+                finalAnswer: "b-ok"
+            )
         }
         let slow = FunctionTool(
             name: "slow_a",
             description: "Slow approval-gated tool",
             executionSemantics: ToolExecutionSemantics(approvalRequirement: .always)
         ) { _ in
-            try await Task.sleep(for: .milliseconds(200))
+            await slowStarted.release()
+            try await Task.sleep(for: .seconds(1))
             await slowRuns.increment()
             return .string("a-ok")
         }
+        let waitForSlow = FunctionTool(name: "wait_a", description: "Waits until slow_a runs") { _ in
+            await waits.increment()
+            await slowStarted.enter()
+            return .string("waited")
+        }
+        // fast_b pauses (through its nested agent) only after slow_a took its
+        // approval, so the pause always cancels an approved, running slow_a.
+        let inner = try makeApprovalTestAgent(
+            tools: [waitForSlow, makeApprovalCountingTool(name: "confirm_b", counter: confirmRuns)],
+            provider: innerProvider
+        )
         let agent = try Agent(
-            tools: [slow, makeApprovalCountingTool(name: "fast_b", counter: fastRuns)],
+            tools: [slow, inner.asTool(name: "fast_b", description: "Approval-gated nested work")],
             configuration: AgentConfiguration.default
                 .enableStreaming(false)
                 .timeout(.seconds(30))
                 .defaultTracingEnabled(false)
                 .parallelToolCalls(true),
-            inferenceProvider: provider
+            inferenceProvider: outerProvider
         )
         let checkpointID = WorkflowCheckpointID("approval-replay-cancelled-sibling")
         let workflow = makeDurableWorkflow(agent: agent, checkpointID: checkpointID)
 
-        await script()
+        await script([slowCall])
+        do {
+            _ = try await workflow.execute("go")
+            Issue.record("expected a pause on slow_a")
+        } catch let pause as WorkflowApprovalRequired {
+            #expect(pause.toolName == "slow_a")
+        }
+
+        // Approving slow_a: the replay runs slow_a and fast_b side by side, and
+        // fast_b pauses on confirm_b, cancelling slow_a mid-run.
+        await script([slowCall, fastCall])
+        do {
+            _ = try await workflow.resume(decision: .approve, from: checkpointID)
+            Issue.record("expected a pause on confirm_b")
+        } catch let pause as WorkflowApprovalRequired {
+            #expect(pause.toolName == "confirm_b")
+        }
+        #expect(await slowRuns.count == 0)
+
+        // slow_a kept its approval, so approving confirm_b finishes the step.
+        await script([slowCall, fastCall])
+        let result = try await workflow.resume(decision: .approve, from: checkpointID)
+        #expect(result.output == "done")
+        #expect(await slowRuns.count == 1)
+        #expect(await confirmRuns.count == 1)
+        #expect(await waits.count == 1)
+    }
+
+    @Test("a nested call is not answered by another outer call's leftover entry")
+    func nestedEntriesBelongToTheirOuterCall() async throws {
+        let sends = ApprovalToolCounter()
+        let deletes = ApprovalToolCounter()
+        let providerA = await MockInferenceProvider()
+        let providerB = await MockInferenceProvider()
+        let outerProvider = await MockInferenceProvider()
+        let researchA = try makeApprovalTestAgent(
+            tools: [
+                makeUngatedCountingTool(name: "send_email", counter: sends),
+                makeApprovalCountingTool(name: "delete_vm", counter: deletes),
+            ],
+            provider: providerA
+        )
+        let researchB = try makeApprovalTestAgent(
+            tools: [makeUngatedCountingTool(name: "send_email", counter: sends)],
+            provider: providerB
+        )
+        let outer = try makeApprovalTestAgent(
+            tools: [
+                researchA.asTool(name: "research_a", description: "Researches with A"),
+                researchB.asTool(name: "research_b", description: "Researches with B"),
+            ],
+            provider: outerProvider
+        )
+        let checkpointID = WorkflowCheckpointID("approval-replay-nested-owner")
+        let workflow = makeDurableWorkflow(agent: outer, checkpointID: checkpointID)
+
+        // research_a sends an email, then pauses on delete_vm inside its agent.
+        await providerA.configureToolCallingSequence(
+            toolCalls: [("send_email", ["to": .string("a")]), ("delete_vm", ["id": .string("vm-1")])],
+            finalAnswer: "a-done"
+        )
+        await outerProvider.configureToolCallingSequence(
+            toolCalls: [("research_a", ["input": .string("q")])],
+            finalAnswer: "done"
+        )
         await #expect(throws: WorkflowApprovalRequired.self) {
             _ = try await workflow.execute("go")
         }
-        var output: String?
-        var resumes = 0
-        while output == nil, resumes < 4 {
-            resumes += 1
-            await script()
-            do {
-                output = try await workflow.resume(decision: .approve, from: checkpointID).output
-            } catch is WorkflowApprovalRequired {}
-        }
-        #expect(output == "done")
-        #expect(resumes == 2)
-        #expect(await slowRuns.count == 1)
-        #expect(await fastRuns.count == 1)
+        #expect(await sends.count == 1)
+
+        // The replay diverges to research_b, whose agent sends the same email.
+        await providerB.configureToolCallingSequence(
+            toolCalls: [("send_email", ["to": .string("a")])],
+            finalAnswer: "b-done"
+        )
+        await outerProvider.configureToolCallingSequence(
+            toolCalls: [("research_b", ["input": .string("q")])],
+            finalAnswer: "done"
+        )
+        let result = try await workflow.resume(decision: .approve, from: checkpointID)
+        #expect(result.output == "done")
+        // research_b's send is its own call, not research_a's journaled one.
+        #expect(await sends.count == 2)
+        #expect(await deletes.count == 0)
     }
 
     @Test("calls made inside an agent used as a tool do not answer later top-level calls")

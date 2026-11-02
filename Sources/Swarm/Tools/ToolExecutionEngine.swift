@@ -93,7 +93,7 @@ struct ToolExecutionEngine: Sendable {
 
         // Calls a nested agent makes inside this tool are journaled under this
         // scope, so this call's own entry replaces them once it finishes.
-        let journalScope = UUID()
+        let journalScope = WorkflowDurableApprovalGate.childScope(for: call)
         let startTime = clock.nowNanoseconds()
         do {
             let output = try await WorkflowDurableApprovalGate.$scope.withValue(journalScope) {
