@@ -326,38 +326,12 @@ extension InferenceMessage.ToolCall {
 }
 
 extension InferenceMessage {
-    package var flattenedPromptLine: String {
-        switch role {
-        case .system:
-            return "[System]: \(content)"
-        case .user:
-            return "[User]: \(content)"
-        case .assistant:
-            if toolCalls.isEmpty {
-                return "[Assistant]: \(content)"
-            }
-
-            let summary = toolCalls
-                .map { "Calling tool: \($0.name)" }
-                .joined(separator: ", ")
-
-            if content.isEmpty {
-                return "[Assistant]: \(summary)"
-            }
-
-            return "[Assistant]: \(content)\n[Assistant Tool Calls]: \(summary)"
-        case .tool:
-            let label = name ?? "tool"
-            return "[Tool Result - \(label)]: \(content)"
-        }
-    }
-
     /// Labeled serialization used by ``TextOnlyConversationInferenceProviderAdapter``.
     ///
     /// Role-capable providers must consume ``InferenceMessage`` arrays directly.
     /// Flattening with role labels is reserved for text-only backends.
     package static func flattenPrompt(_ messages: [InferenceMessage]) -> String {
-        messages.map(\.flattenedPromptLine).joined(separator: "\n\n")
+        ConversationHistoryRenderer.render(messages, style: .bracketed)
     }
 }
 

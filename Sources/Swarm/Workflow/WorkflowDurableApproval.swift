@@ -7,8 +7,9 @@ import Foundation
 /// reports `requiresApproval`. The tool has not executed. Inspect
 /// ``toolName``/``arguments``, then continue with
 /// ``DurableWorkflow/resume(decision:from:)``: ``WorkflowApprovalDecision/approve``
-/// executes the tool and continues the run, ``WorkflowApprovalDecision/reject``
-/// fails with ``WorkflowError/humanApprovalRejected(prompt:reason:)``.
+/// replays the step and lets this call through,
+/// ``WorkflowApprovalDecision/reject`` fails with
+/// ``WorkflowError/humanApprovalRejected(prompt:reason:)``.
 ///
 /// The pause survives process restarts: the checkpoint holds the paused step
 /// cursor, and a fresh process can resume from the same checkpoint store.
@@ -62,12 +63,19 @@ extension WorkflowApprovalRequired: CustomDebugStringConvertible {
 /// Human decision for a paused durable tool approval.
 ///
 /// Pass to ``DurableWorkflow/resume(decision:from:)``. There is no
-/// edited-arguments resume: `.approve` executes the paused call exactly as
-/// requested, `.reject` fails the run.
+/// edited-arguments resume.
 public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable {
-    /// Execute the paused tool call and continue the run.
+    /// Approve the paused call and continue the run.
+    ///
+    /// The resumed run replays the paused step from its start, inference
+    /// included. The approved call executes only if the replay regenerates the
+    /// same tool name and arguments; otherwise the run pauses again with a new
+    /// ``WorkflowApprovalRequired`` carrying the regenerated call.
     case approve
     /// Fail the run with ``WorkflowError/humanApprovalRejected(prompt:reason:)``.
+    ///
+    /// The rejection is checkpointed and final: later decisions or resumes on
+    /// the run report the same error without executing.
     case reject
 }
 
@@ -79,6 +87,18 @@ public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable {
 struct WorkflowApprovedCall: Sendable, Equatable, Hashable, Codable {
     var toolName: String
     var arguments: [String: SendableValue]
+
+    /// Builds a call whose arguments went through the same JSON round-trip as
+    /// the checkpointed envelopes, so a live call compares equal to its stored
+    /// approval (for example `.double(2.0)` decodes back as `.int(2)`).
+    static func normalized(toolName: String, arguments: [String: SendableValue]) -> Self {
+        guard let data = try? JSONEncoder().encode(arguments),
+              let decoded = try? JSONDecoder().decode([String: SendableValue].self, from: data)
+        else {
+            return Self(toolName: toolName, arguments: arguments)
+        }
+        return Self(toolName: toolName, arguments: decoded)
+    }
 }
 
 /// Throw-and-replay carrier from the tool gate to the durable workflow node.
@@ -110,7 +130,7 @@ enum WorkflowDurableApprovalGate {
         guard let allowed else { return }
         guard let tool = await registry.tool(named: call.toolName) else { return }
         guard tool.executionSemantics.runtimePolicy().requiresApproval else { return }
-        let candidate = WorkflowApprovedCall(toolName: call.toolName, arguments: call.arguments)
+        let candidate = WorkflowApprovedCall.normalized(toolName: call.toolName, arguments: call.arguments)
         guard !allowed.contains(candidate) else { return }
         await observer?.onToolApprovalRequested(context: context, agent: agent, call: call)
         throw WorkflowToolApprovalRequest(toolName: call.toolName, arguments: call.arguments)
@@ -118,6 +138,53 @@ enum WorkflowDurableApprovalGate {
 }
 
 #if SWARM_INTEGRATIONS
+
+/// In-process mutual exclusion for approval decisions on one checkpoint thread.
+///
+/// Serializes "read pending interrupt → resume → commit" so two concurrent
+/// decisions for the same run cannot both observe the same pending interrupt.
+/// The second caller sees the committed outcome instead. It does not span
+/// processes: deliver each decision once per checkpoint across processes.
+actor WorkflowDurableDecisionLock {
+    static let shared = WorkflowDurableDecisionLock()
+
+    private var held: Set<String> = []
+    private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+
+    nonisolated func withLock<T: Sendable>(
+        _ key: String,
+        _ body: () async throws -> T
+    ) async throws -> T {
+        await acquire(key)
+        do {
+            let value = try await body()
+            await release(key)
+            return value
+        } catch {
+            await release(key)
+            throw error
+        }
+    }
+
+    private func acquire(_ key: String) async {
+        guard held.contains(key) else {
+            held.insert(key)
+            return
+        }
+        // Ownership is handed over by `release`, so the key stays held.
+        await withCheckedContinuation { waiters[key, default: []].append($0) }
+    }
+
+    private func release(_ key: String) {
+        guard var queue = waiters[key], !queue.isEmpty else {
+            held.remove(key)
+            return
+        }
+        let next = queue.removeFirst()
+        waiters[key] = queue.isEmpty ? nil : queue
+        next.resume()
+    }
+}
 
 /// Versioned JSON envelope for a durable approval interrupt payload.
 ///

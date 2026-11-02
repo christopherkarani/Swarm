@@ -4,10 +4,20 @@ import Testing
 
 @Suite("Foundation Models context overflow")
 struct FoundationModelsContextOverflowTests {
-    @Test func matchesAppleContextSizeExceeded() {
-        #expect(FoundationModelsContextOverflow.matches(FakeError("model context size exceeded")))
-        #expect(FoundationModelsContextOverflow.matches(FakeError("ExceededContextWindowSize")))
+    @Test("Overflow needles match; unrelated text does not")
+    func needleTable() {
+        for needle in FoundationModelsContextOverflow.needles {
+            #expect(
+                FoundationModelsContextOverflow.matches(FakeError("host wrapper: \(needle)!")),
+                "needle \(needle)"
+            )
+            #expect(
+                FoundationModelsContextOverflow.matches(FakeError("HOST: \(needle.uppercased())")),
+                "needle \(needle) matches case-insensitively"
+            )
+        }
         #expect(FoundationModelsContextOverflow.matches(FakeError("boom")) == false)
+        #expect(FoundationModelsContextOverflow.matches(FakeError("")) == false)
     }
 
     @Test func mapsOverflowToContextWindowExceeded() {

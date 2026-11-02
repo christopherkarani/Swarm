@@ -15,40 +15,9 @@ enum FoundationModelsPromptFlattening: Sendable {
         tools: [ToolSchema],
         options: InferenceOptions
     ) -> String {
-        var lines: [String] = []
-        lines.reserveCapacity(messages.count)
-
         // Attachments stay off the prompt string. OS 26 ignores them; do not
         // flatten PCM or image bytes into text.
-        for message in messages {
-            switch message.role {
-            case .system:
-                guard !message.content.isEmpty else { continue }
-                lines.append("System: \(message.content)")
-            case .user:
-                guard !message.content.isEmpty else { continue }
-                lines.append("User: \(message.content)")
-            case .assistant:
-                if !message.toolCalls.isEmpty {
-                    lines.append("Assistant requested tool calls:")
-                    for call in message.toolCalls {
-                        lines.append("- \(call.name)(\(encodeArguments(call.arguments)))")
-                    }
-                }
-                if !message.content.isEmpty {
-                    lines.append("Assistant: \(message.content)")
-                }
-            case .tool:
-                let prefix = message.name.map { "Tool result (\($0))" } ?? "Tool result"
-                if let callID = message.toolCallID, !callID.isEmpty {
-                    lines.append("\(prefix) [id=\(callID)]: \(message.content)")
-                } else {
-                    lines.append("\(prefix): \(message.content)")
-                }
-            }
-        }
-
-        let prompt = lines.joined(separator: "\n")
+        let prompt = ConversationHistoryRenderer.render(messages, style: .plain)
         return appendTurnSuffixes(to: prompt, tools: tools, options: options)
     }
 
@@ -91,17 +60,4 @@ enum FoundationModelsPromptFlattening: Sendable {
         return true
     }
 
-    private static func encodeArguments(_ arguments: [String: SendableValue]) -> String {
-        var object: [String: Any] = [:]
-        for (key, value) in arguments {
-            object[key] = value.toJSONObject()
-        }
-        guard JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
-              let string = String(data: data, encoding: .utf8)
-        else {
-            return "{}"
-        }
-        return string
-    }
 }
