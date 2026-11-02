@@ -100,6 +100,44 @@ private func expectOneWinnerOneConflict(_ outcomes: [Result<AgentResult, any Err
     #expect(conflicts == 1)
 }
 
+/// Makes a fresh temporary checkpoint directory for one test.
+private func makeTemporaryCheckpointDirectory(_ label: String) throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("swarm-\(label)-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory
+}
+
+/// Longest file name in `directory`, in UTF-8 bytes.
+private func longestFileNameBytes(in directory: URL) throws -> Int {
+    try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        .map(\.utf8.count)
+        .max() ?? 0
+}
+
+/// Releases every waiting task at once when the last participant arrives.
+actor StartBarrier {
+    private let participants: Int
+    private var arrived = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(participants: Int) {
+        self.participants = participants
+    }
+
+    func arriveAndWait() async {
+        arrived += 1
+        guard arrived < participants else {
+            for waiter in waiters {
+                waiter.resume()
+            }
+            waiters.removeAll()
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+}
+
 @Suite("Concurrent durable approval resumes", .ephemeralDefaultStores)
 struct WorkflowDurableApprovalConcurrencyTests {
     @Test("two concurrent approves in one process execute the tool once")
@@ -207,14 +245,99 @@ struct WorkflowDurableApprovalConcurrencyTests {
         #expect(result.output == "done")
         #expect(await counter.count == 1)
     }
+
+    @Test("repeated failed resumes on the file store keep checkpoint file names short")
+    func repeatedFailedResumesKeepFileNamesShort() async throws {
+        let directory = try makeTemporaryCheckpointDirectory("approval-claim-ids")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let counter = ApprovalToolCounter()
+        let tool = makeApprovalCountingTool(name: "delete_vm", counter: counter)
+        let provider = await MockInferenceProvider()
+        let script: () async -> Void = {
+            await provider.configureToolCallingSequence(
+                toolCalls: [("delete_vm", ["id": .string("vm-1")])],
+                finalAnswer: "done"
+            )
+        }
+        await script()
+        let agent = try makeApprovalTestAgent(tools: [tool], provider: provider)
+        let checkpointID = WorkflowCheckpointID("approval-concurrent-in-process")
+        let workflow = Workflow()
+            .step(agent)
+            .durable
+            .configured(id: checkpointID, store: .fileSystem(directory: directory), policy: .everyStep)
+
+        await #expect(throws: WorkflowApprovalRequired.self) {
+            _ = try await workflow.execute("go")
+        }
+
+        await provider.setError(AgentError.generationFailed(reason: "transient"))
+        for attempt in 1...6 {
+            await script()
+            do {
+                _ = try await workflow.resume(decision: .approve, from: checkpointID)
+                Issue.record("attempt \(attempt) unexpectedly succeeded")
+            } catch let error as AgentError {
+                #expect(error == .generationFailed(reason: "transient"), "attempt \(attempt)")
+            } catch {
+                Issue.record("attempt \(attempt) failed with \(error) instead of the injected error")
+            }
+        }
+
+        await provider.setError(nil)
+        await script()
+        let result = try await workflow.resume(decision: .approve, from: checkpointID)
+        #expect(result.output == "done")
+        #expect(await counter.count == 1)
+        #expect(try longestFileNameBytes(in: directory) <= 255)
+    }
+
+    @Test("an approval resume works with a long checkpoint ID on the file store")
+    func longCheckpointIDApprovalResume() async throws {
+        let directory = try makeTemporaryCheckpointDirectory("approval-long-id")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let counter = ApprovalToolCounter()
+        let tool = makeApprovalCountingTool(name: "delete_vm", counter: counter)
+        let provider = await MockInferenceProvider()
+        await provider.configureToolCallingSequence(
+            toolCalls: [("delete_vm", ["id": .string("vm-1")])],
+            finalAnswer: "done"
+        )
+        let agent = try makeApprovalTestAgent(tools: [tool], provider: provider)
+        let rawID = "tenant-\(UUID().uuidString)-conversation-\(UUID().uuidString)-approval-request-0001"
+        #expect(rawID.count >= 115)
+        let checkpointID = WorkflowCheckpointID(rawID)
+        let workflow = Workflow()
+            .step(agent)
+            .durable
+            .configured(id: checkpointID, store: .fileSystem(directory: directory), policy: .everyStep)
+
+        await #expect(throws: WorkflowApprovalRequired.self) {
+            _ = try await workflow.execute("go")
+        }
+        // The resumed step replays inference, so script the same call again.
+        await provider.configureToolCallingSequence(
+            toolCalls: [("delete_vm", ["id": .string("vm-1")])],
+            finalAnswer: "done"
+        )
+        let result = try await workflow.resume(decision: .approve, from: checkpointID)
+        #expect(result.output == "done")
+        #expect(await counter.count == 1)
+    }
 }
 
 @Suite("Checkpoint store compare-and-swap")
 struct WorkflowCheckpointStoreCompareAndSwapTests {
-    private static func checkpoint(_ id: String, step: Int) -> HiveCheckpoint<WorkflowDurableSchema> {
+    private static func checkpoint(
+        _ id: String,
+        step: Int,
+        thread: String = "cas-thread"
+    ) -> HiveCheckpoint<WorkflowDurableSchema> {
         HiveCheckpoint(
             id: HiveCheckpointID(id),
-            threadID: HiveThreadID("cas-thread"),
+            threadID: HiveThreadID(thread),
             runID: HiveRunID(UUID()),
             stepIndex: step,
             schemaVersion: "schema",
@@ -239,6 +362,23 @@ struct WorkflowCheckpointStoreCompareAndSwapTests {
         #expect(latest?.id == HiveCheckpointID("c2"))
     }
 
+    @Test("claim checkpoint IDs keep a fixed length and sort in save order")
+    func claimCheckpointIDsSortInSaveOrder() {
+        let base = HiveCheckpointID(String(repeating: "ab", count: 32))
+        var ids = [base]
+        for _ in 0..<12 {
+            let claimed = WorkflowApprovalClaimCheckpointID.claim(after: ids[ids.count - 1])
+            ids.append(claimed)
+            ids.append(WorkflowApprovalClaimCheckpointID.release(of: claimed))
+        }
+        let raw = ids.map(\.rawValue)
+        #expect(raw == raw.sorted())
+        #expect(Set(raw).count == raw.count)
+        #expect(raw.dropFirst().allSatisfy { $0.count <= base.rawValue.count + 11 })
+        #expect(raw[1] == "\(base.rawValue):c00000001")
+        #expect(raw[2] == "\(base.rawValue):c00000001r")
+    }
+
     @Test("in-memory store rejects a stale expected checkpoint")
     func inMemoryCompareAndSwap() async throws {
         let store = WorkflowInMemoryCheckpointStore()
@@ -254,6 +394,53 @@ struct WorkflowCheckpointStoreCompareAndSwapTests {
             first: WorkflowFileCheckpointStore(directory: directory).runtimeStore,
             second: WorkflowFileCheckpointStore(directory: directory).runtimeStore
         )
+    }
+
+    @Test("file stores sharing a directory let exactly one concurrent swap win")
+    func fileCompareAndSwapUnderContention() async throws {
+        let directory = try makeTemporaryCheckpointDirectory("cas-contention")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let stores = (0..<8).map { _ in WorkflowFileCheckpointStore(directory: directory).runtimeStore }
+
+        // Several rounds, each on a fresh thread, so a missing lock loses at least one race.
+        for round in 0..<10 {
+            let thread = "cas-round-\(round)"
+            try await stores[0].save(Self.checkpoint("c1", step: 1, thread: thread), expectedLatestID: nil)
+            let winners = await Self.raceCompareAndSwap(stores: stores, thread: thread)
+            #expect(winners.count == 1, "round \(round) winners: \(winners)")
+            let latest = try await stores[0].loadLatest(threadID: HiveThreadID(thread))
+            #expect(latest?.id.rawValue == winners.first, "round \(round)")
+        }
+    }
+
+    /// Releases every store's `save(_:expectedLatestID: "c1")` at once; returns the IDs that won.
+    private static func raceCompareAndSwap(
+        stores: [AnyHiveCheckpointStore<WorkflowDurableSchema>],
+        thread: String
+    ) async -> [String] {
+        let barrier = StartBarrier(participants: stores.count)
+        return await withTaskGroup(of: String?.self) { group in
+            for (index, store) in stores.enumerated() {
+                group.addTask {
+                    let candidate = checkpoint("c2-\(index)", step: 2, thread: thread)
+                    await barrier.arriveAndWait()
+                    do {
+                        try await store.save(candidate, expectedLatestID: HiveCheckpointID("c1"))
+                        return candidate.id.rawValue
+                    } catch is HiveCheckpointConflict {
+                        return nil
+                    } catch {
+                        Issue.record("unexpected save error: \(error)")
+                        return nil
+                    }
+                }
+            }
+            var winners: [String] = []
+            for await winner in group {
+                if let winner { winners.append(winner) }
+            }
+            return winners
+        }
     }
 }
 

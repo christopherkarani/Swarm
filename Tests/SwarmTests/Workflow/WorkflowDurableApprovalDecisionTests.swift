@@ -38,17 +38,18 @@ struct WorkflowDurableApprovalDecisionTests {
             _ = try await workflow.resume(decision: .reject, from: checkpointID)
         }
 
-        // The rejected pause is gone: approving the same checkpoint must fail
+        // The rejection is final: approving the same checkpoint reports it
         // instead of executing the rejected call.
         await script()
         do {
             let result = try await workflow.resume(decision: .approve, from: checkpointID)
             Issue.record("approve after reject must fail, got output \(result.output)")
         } catch let error as WorkflowError {
-            guard case .invalidWorkflow = error else {
-                Issue.record("expected invalidWorkflow (no paused approval), got \(error)")
+            guard case .humanApprovalRejected(let prompt, _) = error else {
+                Issue.record("expected humanApprovalRejected, got \(error)")
                 return
             }
+            #expect(prompt == "delete_vm")
         }
 
         // A plain resume reports the terminal rejection rather than re-running.

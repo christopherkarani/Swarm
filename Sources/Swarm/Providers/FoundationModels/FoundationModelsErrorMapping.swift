@@ -24,8 +24,8 @@ enum FoundationModelsErrorMapping: Sendable {
     }
 
     static func map(_ error: Error) -> AgentError {
-        if error is CancellationError {
-            return .cancelled
+        if let cancelled = AgentErrorCauseFactory.cancelledIfApplicable(error) {
+            return cancelled
         }
         if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *) {
             if let mapped = mapOS27(error) {
@@ -35,14 +35,32 @@ enum FoundationModelsErrorMapping: Sendable {
         if let generationError = error as? LanguageModelSession.GenerationError {
             return mapGenerationError(generationError)
         }
-        if FoundationModelsContextOverflow.stringMatches(error) {
-            return .contextWindowExceeded(tokenCount: 0, limit: 0)
-        }
-        if FoundationModelsQuotaLimit.stringMatches(error) {
-            return .rateLimitExceeded(retryAfter: nil)
+        if let fallback = stringCauseTable.first(where: {
+            AgentErrorCauseFactory.descriptionMatches(error, needles: $0.needles)
+        }) {
+            return fallback.make()
         }
         return .generationFailed(reason: error.localizedDescription)
     }
+
+    /// String-fallback cause table, consulted in order after typed mapping.
+    ///
+    /// Hosts that only surface a description (no typed error) match here.
+    /// The context row precedes the quota row: a description naming both an
+    /// overflow and a quota failure maps to ``AgentError/contextWindowExceeded``.
+    private struct StringCause: Sendable {
+        let needles: [String]
+        let make: @Sendable () -> AgentError
+    }
+
+    private static let stringCauseTable: [StringCause] = [
+        StringCause(needles: FoundationModelsContextOverflow.needles) {
+            .contextWindowExceeded(tokenCount: 0, limit: 0)
+        },
+        StringCause(needles: FoundationModelsQuotaLimit.needles) {
+            .rateLimitExceeded(retryAfter: nil)
+        },
+    ]
 
     @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
     private static func mapOS27(_ error: Error) -> AgentError? {
@@ -54,8 +72,7 @@ enum FoundationModelsErrorMapping: Sendable {
                     limit: payload.contextSize
                 )
             case let .rateLimited(payload):
-                let retryAfter = payload.resetDate.map { max(0, $0.timeIntervalSinceNow) }
-                return .rateLimitExceeded(retryAfter: retryAfter)
+                return AgentErrorCauseFactory.rateLimitExceeded(resetDate: payload.resetDate)
             case let .guardrailViolation(payload):
                 return .guardrailViolation(reason: payload.debugDescription)
             case let .refusal(payload):
@@ -103,8 +120,7 @@ enum FoundationModelsErrorMapping: Sendable {
     ) -> AgentError {
         switch error {
         case let .quotaLimitReached(payload):
-            let retryAfter = payload.resetDate.map { max(0, $0.timeIntervalSinceNow) }
-            return .rateLimitExceeded(retryAfter: retryAfter)
+            return AgentErrorCauseFactory.rateLimitExceeded(resetDate: payload.resetDate)
         @unknown default:
             return .generationFailed(reason: error.localizedDescription)
         }

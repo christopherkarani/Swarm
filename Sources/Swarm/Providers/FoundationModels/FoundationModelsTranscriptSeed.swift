@@ -28,6 +28,76 @@ enum FoundationModelsTranscriptSeed: Sendable {
         var canRehydrate: Bool
     }
 
+    /// One turn's rendered history: seed-first, flatten-fallback.
+    ///
+    /// This is the single owner of the history render choice. Representable
+    /// history rehydrates as seed entries plus a pending prompt; anything
+    /// else flattens into one prompt string. Capture (`makeCaptureTurn`) and
+    /// the owned loop resolve here so the choice cannot drift between call
+    /// sites. Both branches carry
+    /// ``FoundationModelsPromptFlattening/appendTurnSuffixes(to:tools:options:)``,
+    /// matching the previous per-site stitching.
+    enum RenderedTurn: Sendable, Equatable {
+        /// Rehydratable history: seed these entries, send this prompt.
+        case rehydrate(seedEntries: [Entry], prompt: String, images: [PendingImage])
+        /// Unrepresentable history: send this flattened prompt instead.
+        case flatten(prompt: String, images: [PendingImage])
+
+        /// Prompt text to send for the turn.
+        var prompt: String {
+            switch self {
+            case let .rehydrate(_, prompt, _):
+                prompt
+            case let .flatten(prompt, _):
+                prompt
+            }
+        }
+
+        /// Pending-turn image sidecars.
+        var images: [PendingImage] {
+            switch self {
+            case let .rehydrate(_, _, images):
+                images
+            case let .flatten(_, images):
+                images
+            }
+        }
+    }
+
+    /// Resolves `messages` into the turn's rendered history.
+    ///
+    /// - Parameter historyResident: Pass true when the target session already
+    ///   holds this history (owned-loop session reuse). The pending turn is
+    ///   sent as-is instead of re-resolving seed-first/flatten-fallback.
+    static func resolve(
+        messages: [InferenceMessage],
+        instructions: String?,
+        tools: [ToolSchema],
+        options: InferenceOptions,
+        historyResident: Bool = false
+    ) -> RenderedTurn {
+        let seed = seed(messages: messages, instructions: instructions)
+        if !historyResident, !seed.canRehydrate {
+            return .flatten(
+                prompt: FoundationModelsPromptFlattening.flatten(
+                    messages: messages,
+                    tools: tools,
+                    options: options
+                ),
+                images: seed.pendingImages
+            )
+        }
+        return .rehydrate(
+            seedEntries: seed.seedEntries,
+            prompt: FoundationModelsPromptFlattening.appendTurnSuffixes(
+                to: seed.pendingPrompt,
+                tools: tools,
+                options: options
+            ),
+            images: seed.pendingImages
+        )
+    }
+
     /// Returns a seed when every message maps; `canRehydrate` is false when
     /// the session must still flatten.
     static func seed(

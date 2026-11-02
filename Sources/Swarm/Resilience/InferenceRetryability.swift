@@ -56,8 +56,18 @@ public enum InferenceRetryability: Sendable {
     ///
     /// - Parameter error: The error thrown by inference (or a wrapper around it).
     /// - Returns: `true` only for the transient failures listed above.
+    /// Retryable `URLError` codes: connectivity loss, DNS, TCP, idle timeout.
+    private static let retryableURLCodes: Set<URLError.Code> = [
+        .timedOut,
+        .cannotFindHost,
+        .cannotConnectToHost,
+        .networkConnectionLost,
+        .dnsLookupFailed,
+        .notConnectedToInternet,
+    ]
+
     public static func isRetryable(_ error: Error) -> Bool {
-        if error is CancellationError {
+        if AgentErrorCauseFactory.cancelledIfApplicable(error) != nil {
             return false
         }
 
@@ -84,16 +94,6 @@ public enum InferenceRetryability: Sendable {
     }
 
     private static func isRetryable(_ urlError: URLError) -> Bool {
-        switch urlError.code {
-        case .timedOut,
-             .cannotFindHost,
-             .cannotConnectToHost,
-             .networkConnectionLost,
-             .dnsLookupFailed,
-             .notConnectedToInternet:
-            true
-        default:
-            false
-        }
+        retryableURLCodes.contains(urlError.code)
     }
 }

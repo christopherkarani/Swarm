@@ -47,6 +47,10 @@ actor FoundationModelsNativeToolRuntime {
             throw CancellationError()
         } catch let request as OwnedLoopHandoffRequest {
             throw request
+        } catch let request as WorkflowToolApprovalRequest {
+            // Durable approval pause: abort the session instead of feeding the
+            // model a tool-failure string.
+            throw request
         } catch let error as AgentError {
             switch error {
             case .toolFailure:

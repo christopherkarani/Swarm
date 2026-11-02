@@ -104,7 +104,7 @@ extension AgentTurnRunner {
                     _ = request.resultBuilder.addToolResult(result)
 
                     if agent.configuration.stopOnToolError {
-                        throw AgentError.toolFailure(toolName: parsedCall.name, message: message, cause: nil)
+                        throw ToolFailureCause.messageOnly(toolName: parsedCall.name, message: message)
                     }
 
                     let toolError = AgentTurnKernel.toolFailureConversationText(message: message)

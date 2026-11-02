@@ -69,13 +69,30 @@ struct InferenceRetryabilityTests {
         ))
     }
 
-    @Test("Network URLError codes are retryable; cancellation is not")
-    func urlErrors() {
-        #expect(InferenceRetryability.isRetryable(URLError(.timedOut)))
-        #expect(InferenceRetryability.isRetryable(URLError(.networkConnectionLost)))
-        #expect(InferenceRetryability.isRetryable(URLError(.cannotConnectToHost)))
-        #expect(!InferenceRetryability.isRetryable(URLError(.cancelled)))
-        #expect(!InferenceRetryability.isRetryable(URLError(.badURL)))
+    @Test("URLError retryability follows the cause table")
+    func urlErrorCauseTable() {
+        let retryable: [URLError.Code] = [
+            .timedOut,
+            .cannotFindHost,
+            .cannotConnectToHost,
+            .networkConnectionLost,
+            .dnsLookupFailed,
+            .notConnectedToInternet,
+        ]
+        for code in retryable {
+            #expect(InferenceRetryability.isRetryable(URLError(code)), "expected \(code.rawValue) to be retryable")
+        }
+        let permanent: [URLError.Code] = [
+            .cancelled,
+            .badURL,
+            .unsupportedURL,
+            .userCancelledAuthentication,
+            .fileDoesNotExist,
+            .zeroByteResource,
+        ]
+        for code in permanent {
+            #expect(!InferenceRetryability.isRetryable(URLError(code)), "expected \(code.rawValue) to stay non-retryable")
+        }
     }
 
     @Test("Unknown error types fail closed")

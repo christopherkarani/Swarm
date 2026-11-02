@@ -7,8 +7,8 @@ import Foundation
 /// reports `requiresApproval`. The tool has not executed. Inspect
 /// ``toolName``/``arguments``, then continue with
 /// ``DurableWorkflow/resume(decision:from:)``: ``WorkflowApprovalDecision/approve``
-/// executes the tool once and continues the run, ``WorkflowApprovalDecision/reject``
-/// ends the run durably and fails with
+/// replays the step and lets this call through once,
+/// ``WorkflowApprovalDecision/reject`` ends the run durably and fails with
 /// ``WorkflowError/humanApprovalRejected(prompt:reason:)``.
 ///
 /// The pause survives process restarts: the checkpoint holds the paused step
@@ -134,13 +134,19 @@ extension WorkflowApprovalReplayDiverged: LocalizedError {
 /// Human decision for a paused durable tool approval.
 ///
 /// Pass to ``DurableWorkflow/resume(decision:from:)``. There is no
-/// edited-arguments resume: `.approve` executes the paused call exactly as
-/// requested, once; `.reject` ends the run durably, so the rejected call can
-/// never be approved afterwards.
+/// edited-arguments resume.
 public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable {
-    /// Execute the paused tool call and continue the run.
+    /// Approve the paused call and continue the run.
+    ///
+    /// The resumed run replays the paused step from its start, inference
+    /// included. The approved call executes only if the replay regenerates the
+    /// same tool name and arguments; otherwise the run pauses again with a new
+    /// ``WorkflowApprovalRequired`` carrying the regenerated call.
     case approve
     /// Fail the run with ``WorkflowError/humanApprovalRejected(prompt:reason:)``.
+    ///
+    /// The rejection is checkpointed and final: later decisions or resumes on
+    /// the run report the same error without executing.
     case reject
 }
 
@@ -152,6 +158,18 @@ public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable {
 struct WorkflowApprovedCall: Sendable, Equatable, Hashable, Codable {
     var toolName: String
     var arguments: [String: SendableValue]
+
+    /// Builds a call whose arguments went through the same JSON round-trip as
+    /// the checkpointed envelopes, so a live call compares equal to its stored
+    /// approval (for example `.double(2.0)` decodes back as `.int(2)`).
+    static func normalized(toolName: String, arguments: [String: SendableValue]) -> Self {
+        guard let data = try? JSONEncoder().encode(arguments),
+              let decoded = try? JSONDecoder().decode([String: SendableValue].self, from: data)
+        else {
+            return Self(toolName: toolName, arguments: arguments)
+        }
+        return Self(toolName: toolName, arguments: decoded)
+    }
 }
 
 /// Throw-and-replay carrier from the tool gate to the durable workflow node.
@@ -181,8 +199,8 @@ struct WorkflowJournaledCall: Sendable, Equatable, Codable {
 
 /// Per-step-execution approval and replay state for durable runs.
 ///
-/// **Approvals are one-shot.** A human approval authorizes exactly one
-/// execution of the approved call. Approving `delete_vm(id: vm-1)` does not let
+/// **Approvals are one-shot.** Within one step execution a human approval
+/// authorizes one execution of the approved call. Approving `delete_vm(id: vm-1)` does not let
 /// the step run that call a second time: the second identical call consumes
 /// nothing and pauses for its own approval. Approvals are matched by tool name
 /// and exact arguments, as a multiset, so the order in which a replay reaches
@@ -257,7 +275,7 @@ enum WorkflowDurableApprovalGate {
         guard let ledger else { return }
         guard let tool = await registry.tool(named: call.toolName) else { return }
         guard tool.executionSemantics.runtimePolicy().requiresApproval else { return }
-        let candidate = WorkflowApprovedCall(toolName: call.toolName, arguments: call.arguments)
+        let candidate = WorkflowApprovedCall.normalized(toolName: call.toolName, arguments: call.arguments)
         guard await !ledger.consume(candidate) else { return }
         await observer?.onToolApprovalRequested(context: context, agent: agent, call: call)
         throw WorkflowToolApprovalRequest(toolName: call.toolName, arguments: call.arguments)
