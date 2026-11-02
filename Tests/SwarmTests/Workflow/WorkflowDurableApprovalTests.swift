@@ -59,7 +59,7 @@ actor ApprovalRecordingObserver: AgentObserver {
     }
 }
 
-@Suite("Durable approval event surface")
+@Suite("Durable approval event surface", .ephemeralDefaultStores)
 struct WorkflowDurableApprovalEventTests {
     @Test("approval request maps onto the AgentEvent tool stream")
     func approvalRequestedMapsToAgentEventStream() async throws {
@@ -99,7 +99,7 @@ struct WorkflowDurableApprovalEventTests {
 
 #if SWARM_INTEGRATIONS
 
-@Suite("Durable workflow tool approvals")
+@Suite("Durable workflow tool approvals", .ephemeralDefaultStores)
 struct WorkflowDurableApprovalTests {
     @Test("approve resumes and executes the tool exactly once")
     func approveResumesAndExecutesExactlyOnce() async throws {

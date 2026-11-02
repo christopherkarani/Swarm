@@ -60,16 +60,23 @@ public struct DurableWorkflow: Sendable {
     ///
     /// The pending approval is read back from the checkpoint thread, so the
     /// call works from a fresh process as long as the checkpoint store is
-    /// shared. `.approve` executes the paused tool call and continues the run
-    /// (pausing again if the step reaches another approval-required tool);
-    /// `.reject` fails with
-    /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing.
+    /// shared. `.approve` replays the paused step and lets the approved call
+    /// through when the replay regenerates the same tool name and arguments;
+    /// a different regenerated call, or another approval-required tool, pauses
+    /// again. `.reject` checkpoints a terminal rejection and fails with
+    /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing;
+    /// later decisions on the run report the same rejection.
     ///
-    /// Decisions are durable and one-shot. A rejection is committed as a
-    /// terminal checkpoint state, so approving the same checkpoint afterwards
-    /// throws instead of running the rejected call. An approval covers one
-    /// execution of the exact call; an identical second call in the same step
-    /// pauses again.
+    /// Deliver each decision once. Concurrent decisions for one run in the same
+    /// process are serialized (the first wins); decisions from separate
+    /// processes sharing a store are not coordinated.
+    ///
+    /// Within a single resumed execution an approval is consumed by one
+    /// matching call; an identical second call in the same step pauses again.
+    /// Resuming replays the step from its start, so calls approved earlier in
+    /// the pause chain execute again on every later resume of that step. Make
+    /// non-idempotent tools idempotent or guard them yourself; see
+    /// "Replay semantics" in the durable execution guide.
     ///
     /// There is no timeout on the approval wait itself: the run stays paused
     /// until this method is called.
@@ -80,7 +87,8 @@ public struct DurableWorkflow: Sendable {
     /// - Returns: The workflow's final ``AgentResult``.
     /// - Throws: ``WorkflowError/checkpointNotFound(id:)`` when no checkpoint exists,
     ///   ``WorkflowError/invalidWorkflow(reason:)`` when no approval is paused,
-    ///   ``WorkflowError/humanApprovalRejected(prompt:reason:)`` on `.reject`,
+    ///   ``WorkflowError/humanApprovalRejected(prompt:reason:)`` on `.reject` or
+    ///   when the run was already rejected,
     ///   ``WorkflowApprovalRequired`` when the resumed run pauses again,
     ///   or ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
     public func resume(
@@ -90,6 +98,82 @@ public struct DurableWorkflow: Sendable {
         try await workflow.executeDurableApprovalConfigured(
             decision: decision,
             checkpointID: checkpointID,
+            checkpointing: checkpointing,
+            policy: policy
+        )
+    }
+
+    /// Inspects this run's checkpoint history without executing.
+    ///
+    /// - Returns: The run's checkpoints ordered oldest first (newest last),
+    ///   with step cursors, results, and per-checkpoint signature-match flags.
+    /// - Throws: ``WorkflowError/checkpointNotFound(id:)`` when the run has no
+    ///   decodable checkpoints, or
+    ///   ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
+    public func inspect() async throws -> DurableWorkflowRunInspection {
+        #if SWARM_INTEGRATIONS
+        return try await DurableWorkflowInspector.inspect(
+            workflow: workflow,
+            run: checkpointID,
+            checkpointing: checkpointing
+        )
+        #else
+        throw WorkflowError.durableRuntimeUnavailable(
+            reason: IntegrationsTrait.requirementMessage(for: "Durable workflow inspection")
+        )
+        #endif
+    }
+
+    /// Inspects another run's checkpoint history with this workflow's signature.
+    ///
+    /// Signature-match flags compare the stored checkpoints against this
+    /// workflow's current definition, so inspecting an older run after changing
+    /// the workflow surfaces `false` instead of failing at resume time.
+    ///
+    /// - Parameter run: The checkpoint thread to inspect.
+    /// - Returns: The run's checkpoints ordered oldest first (newest last).
+    /// - Throws: ``WorkflowError/checkpointNotFound(id:)`` when the run has no
+    ///   decodable checkpoints, or
+    ///   ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
+    public func inspect(run: WorkflowCheckpointID) async throws -> DurableWorkflowRunInspection {
+        #if SWARM_INTEGRATIONS
+        return try await DurableWorkflowInspector.inspect(
+            workflow: workflow,
+            run: run,
+            checkpointing: checkpointing
+        )
+        #else
+        throw WorkflowError.durableRuntimeUnavailable(
+            reason: IntegrationsTrait.requirementMessage(for: "Durable workflow inspection")
+        )
+        #endif
+    }
+
+    /// Forks an older checkpoint of this run into a new run, then resumes it.
+    ///
+    /// The source checkpoint is selected from ``inspect()`` history. The
+    /// source run is left untouched; progress continues under `checkpointID`.
+    ///
+    /// - Parameters:
+    ///   - input: Input passed to the resumed run (may be ignored when the
+    ///     forked checkpoint already carries progress).
+    ///   - checkpointID: The new run to create. Must not have checkpoints yet.
+    ///   - sourceCheckpointID: A checkpoint ID from this run's history.
+    /// - Returns: The forked run's final ``AgentResult``.
+    /// - Throws: ``WorkflowError/checkpointNotFound(id:)`` when the source
+    ///   checkpoint does not exist, ``WorkflowError/invalidWorkflow(reason:)``
+    ///   when the target run already has checkpoints, or
+    ///   ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
+    public func resume(
+        _ input: String,
+        from checkpointID: WorkflowCheckpointID,
+        forkingFrom sourceCheckpointID: String
+    ) async throws -> AgentResult {
+        try await workflow.executeDurableFork(
+            input: input,
+            sourceRun: self.checkpointID,
+            sourceCheckpointID: sourceCheckpointID,
+            targetRun: checkpointID,
             checkpointing: checkpointing,
             policy: policy
         )

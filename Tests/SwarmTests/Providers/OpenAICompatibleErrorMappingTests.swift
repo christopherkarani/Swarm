@@ -187,6 +187,135 @@ struct OpenAICompatibleErrorMappingTests {
         #expect(InferenceRetryability.isRetryable(mapped))
     }
 
+    @Test("Status cause table maps every documented row")
+    func statusCauseTable() {
+        struct Row {
+            let status: Int
+            let body: String
+            let headers: [String: String]
+            let expected: AgentError
+        }
+        let rows: [Row] = [
+            Row(
+                status: 400, body: #"{"error":{"message":"bad schema"}}"#, headers: [:],
+                expected: .invalidInput(reason: "OpenAI-compatible request rejected (400): bad schema")
+            ),
+            Row(
+                status: 401, body: #"{"error":{"message":"nope"}}"#, headers: [:],
+                expected: .authenticationFailed(reason: "OpenAI-compatible authentication failed (401): nope")
+            ),
+            Row(
+                status: 402, body: #"{"error":{"message":"quota hit"}}"#, headers: [:],
+                expected: .invalidInput(reason: "OpenAI-compatible payment required (402): quota hit. Check plan and billing details.")
+            ),
+            Row(
+                status: 403, body: #"{"error":{"message":"forbidden"}}"#, headers: [:],
+                expected: .authenticationFailed(reason: "OpenAI-compatible request forbidden (403): forbidden")
+            ),
+            Row(
+                status: 404, body: #"{"error":{"message":"no such model"}}"#, headers: [:],
+                expected: .modelNotAvailable(model: "gpt-test")
+            ),
+            Row(
+                status: 408, body: #"{"error":{"message":"slow"}}"#, headers: [:],
+                expected: .generationFailed(reason: "OpenAI-compatible request timed out (408): slow")
+            ),
+            Row(
+                status: 413, body: #"{"error":{"message":"huge"}}"#, headers: [:],
+                expected: .invalidInput(reason: "OpenAI-compatible payload too large (413): huge")
+            ),
+            Row(
+                status: 418, body: #"{"error":{"message":"teapot"}}"#, headers: [:],
+                expected: .invalidInput(reason: "OpenAI-compatible client error (418): teapot")
+            ),
+            Row(
+                status: 422, body: #"{"Detail":"fast failure"}"#, headers: [:],
+                expected: .invalidInput(reason: "OpenAI-compatible client error (422): fast failure")
+            ),
+            Row(
+                status: 429, body: #"{"error":{"message":"slow down"}}"#,
+                headers: ["Retry-After": "2"],
+                expected: .rateLimitExceeded(retryAfter: 2)
+            ),
+            Row(
+                status: 429, body: #"{"error":{"message":"slow down"}}"#, headers: [:],
+                expected: .rateLimitExceeded(retryAfter: nil)
+            ),
+            Row(
+                status: 429, body: #"{"error":{"message":"check your plan","code":"insufficient_quota"}}"#,
+                headers: [:],
+                expected: .invalidInput(reason: "OpenAI-compatible quota exhausted (429 insufficient_quota): check your plan. Check plan and billing details.")
+            ),
+            Row(
+                status: 500, body: #"{"error":{"message":"boom"}}"#, headers: [:],
+                expected: .generationFailed(reason: "OpenAI-compatible server error (500): boom")
+            ),
+            Row(
+                status: 599, body: "gone", headers: [:],
+                expected: .generationFailed(reason: "OpenAI-compatible server error (599): gone")
+            ),
+            Row(
+                status: 302, body: "redirect", headers: [:],
+                expected: .generationFailed(reason: "OpenAI-compatible HTTP 302: redirect")
+            ),
+            Row(
+                status: 600, body: "weird", headers: [:],
+                expected: .generationFailed(reason: "OpenAI-compatible HTTP 600: weird")
+            ),
+            Row(
+                status: 400, body: #"{"error":{"message":"too long","code":"context_length_exceeded"}}"#,
+                headers: [:],
+                expected: .contextWindowExceeded(tokenCount: 0, limit: 0)
+            ),
+            Row(
+                status: 413, body: #"{"error":{"message":"input exceeds context length"}}"#,
+                headers: [:],
+                expected: .contextWindowExceeded(tokenCount: 0, limit: 0)
+            ),
+            Row(
+                status: 400, body: #"{"error":{"message":"blocked","code":"content_filter"}}"#,
+                headers: [:],
+                expected: .contentFiltered(reason: "blocked")
+            ),
+            Row(
+                status: 451, body: #"{"error":{"message":"legal"}}"#, headers: [:],
+                expected: .contentFiltered(reason: "legal")
+            ),
+            Row(
+                status: 400, body: "", headers: [:],
+                expected: .invalidInput(reason: "OpenAI-compatible request rejected (400): empty error body")
+            ),
+        ]
+        for row in rows {
+            let mapped = OpenAICompatibleErrorMapper.map(
+                statusCode: row.status,
+                body: Data(row.body.utf8),
+                headers: row.headers,
+                model: "gpt-test"
+            )
+            #expect(mapped == row.expected, "status \(row.status) body \(row.body)")
+            #expect(
+                mapped.isRetryable == row.expected.isRetryable,
+                "retryability drift for status \(row.status)"
+            )
+        }
+    }
+
+    @Test("Transport mapping routes cancellation and preserves identity")
+    func transportMappingTable() {
+        struct Mystery: Error {}
+        #expect(OpenAICompatibleErrorMapper.mapTransport(CancellationError()) as? AgentError == .cancelled)
+        #expect(
+            OpenAICompatibleErrorMapper.mapTransport(AgentError.invalidInput(reason: "x")) as? AgentError
+                == .invalidInput(reason: "x")
+        )
+        #expect(OpenAICompatibleErrorMapper.mapTransport(URLError(.timedOut)) is URLError)
+        #expect(
+            OpenAICompatibleErrorMapper.mapTransport(Mystery()) as? AgentError
+                == .generationFailed(reason: String(describing: Mystery()))
+        )
+    }
+
     @Test("Streaming HTTP 400 is not retryable")
     func streamingStatus400IsNotRetryable() async throws {
         OpenAICompatibleURLProtocol.reset()

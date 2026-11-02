@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Swarm
 
@@ -51,6 +52,103 @@ struct AgentErrorCauseTests {
     func retryabilityClassification() {
         let error = AgentError.toolFailure(toolName: "t", message: nil, cause: Boom())
         #expect(error.isRetryable == false)
+    }
+
+    @Test("factory wraps a caught error with the instance as cause")
+    func factoryWrappedPreservesCause() {
+        let cause = Boom()
+        let error = ToolFailureCause.wrapped(toolName: "boom", error: cause)
+        guard case let .toolFailure(name, message, wrapped) = error else {
+            Issue.record("expected toolFailure")
+            return
+        }
+        #expect(name == "boom")
+        #expect(message == cause.localizedDescription)
+        #expect(wrapped as? Boom == cause)
+    }
+
+    @Test("factory nests an AgentError cause instead of passing it through")
+    func factoryWrappedNestsAgentError() {
+        let inner = AgentError.toolNotFound(name: "missing")
+        let error = ToolFailureCause.wrapped(toolName: "boom", error: inner)
+        guard case let .toolFailure(_, _, cause) = error else {
+            Issue.record("expected toolFailure")
+            return
+        }
+        #expect(cause as? AgentError == inner)
+    }
+
+    @Test("factory wraps a caught error under an explicit message")
+    func factoryWrappedWithExplicitMessage() {
+        let cause = Boom()
+        let error = ToolFailureCause.wrapped(toolName: "boom", message: "fixed text", error: cause)
+        guard case let .toolFailure(name, message, wrapped) = error else {
+            Issue.record("expected toolFailure")
+            return
+        }
+        #expect(name == "boom")
+        #expect(message == "fixed text")
+        #expect(wrapped as? Boom == cause)
+    }
+
+    @Test("factory preserves CancellationError as cause by design (no cancellation guard)")
+    func factoryPreservesCancellationAsCause() {
+        let error = ToolFailureCause.wrapped(toolName: "boom", error: CancellationError())
+        guard case let .toolFailure(name, _, cause) = error else {
+            Issue.record("expected toolFailure")
+            return
+        }
+        #expect(name == "boom")
+        #expect(cause is CancellationError)
+    }
+
+    @Test("factory synthesizes message-only failures without a cause")
+    func factoryMessageOnly() {
+        let error = ToolFailureCause.messageOnly(toolName: "websearch", message: "boom")
+        guard case let .toolFailure(name, message, cause) = error else {
+            Issue.record("expected toolFailure")
+            return
+        }
+        #expect(name == "websearch")
+        #expect(message == "boom")
+        #expect(cause == nil)
+    }
+
+    @Test("stopOnToolError engine throw message equals the recorded transcript error")
+    func engineThrowMatchesTranscriptMessage() async throws {
+        struct Marker: Error, Equatable, Sendable, LocalizedError {
+            let message: String
+            var errorDescription: String? { message }
+        }
+        let registry = ToolRegistry()
+        try await registry.register(MockErrorTool(name: "boom", error: Marker(message: "engine boom")))
+        let agent = ParallelTestMockAgent()
+        let builder = AgentResult.Builder()
+
+        do {
+            _ = try await ToolExecutionEngine().execute(
+                toolName: "boom",
+                arguments: [:],
+                registry: registry,
+                agent: agent,
+                context: nil,
+                resultBuilder: builder,
+                observer: nil,
+                tracing: nil,
+                stopOnToolError: true
+            )
+            Issue.record("expected toolFailure")
+        } catch let error as AgentError {
+            guard case let .toolFailure(toolName, message, _) = error else {
+                Issue.record("expected toolFailure, got \(error)")
+                return
+            }
+            #expect(toolName == "boom")
+            #expect(message == "Tool 'boom' failed: engine boom")
+            let recorded = builder.build().toolResults.compactMap(\.errorMessage)
+            #expect(recorded == ["Tool 'boom' failed: engine boom"])
+            #expect(message == recorded.first)
+        }
     }
 
     @Test("stopOnToolError keeps the underlying error reachable through the engine seam")
