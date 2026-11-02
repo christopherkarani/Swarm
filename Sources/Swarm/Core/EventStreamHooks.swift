@@ -46,10 +46,9 @@ internal struct EventStreamObserver: AgentObserver {
     func onError(context _: AgentContext?, agent _: any AgentRuntime, error: Error) async {
         let agentError = error as? AgentError ?? .internalError(reason: error.localizedDescription)
         let event = AgentEvent.lifecycle(.failed(error: agentError))
-        // `ToolRegistry` reports tool failures here while the call is still
-        // open, and the run may recover from them. Only an error with no open
-        // tool call ends a run.
-        guard await !toolCallStore.hasPending() else {
+        // `ToolRegistry` also reports tool failures here, and the run may
+        // recover from them. Only a run-level error ends a run.
+        guard !ToolErrorReporting.isReportingToolFailure else {
             await emit(event)
             return
         }
@@ -172,10 +171,6 @@ private actor ToolCallStore {
 
     func record(_ call: ToolCall) {
         calls[call.id] = call
-    }
-
-    func hasPending() -> Bool {
-        !calls.isEmpty
     }
 
     func take(id: UUID) -> ToolCall? {

@@ -135,6 +135,44 @@ struct AgentStreamOutputGuardrailTests {
         #expect(!Self.isFailed(lastTerminal))
     }
 
+    @Test("Cancelling a run during a tool call still ends the guarded stream with .failed")
+    func cancelDuringToolCallEmitsFailed() async throws {
+        let provider = ScriptedToolStreamingProvider(scripts: [
+            [
+                .outputChunk("Let me check. "),
+                .toolCallsCompleted([
+                    InferenceResponse.ParsedToolCall(id: "call_slow", name: "slow_tool", arguments: [:]),
+                ]),
+            ],
+            [.outputChunk("All done")],
+        ])
+        let (toolStarted, toolStartedContinuation) = AsyncStream<Void>.makeStream()
+        // Sleeps in a detached task so cancellation cannot end the call early:
+        // the run settles while the tool call is still open.
+        let slowTool = MockTool(name: "slow_tool") { _ in
+            toolStartedContinuation.yield()
+            try await Task.detached { try await Task.sleep(for: .seconds(2)) }.value
+            return .string("late")
+        }
+        let agent = try Agent(
+            tools: [slowTool],
+            instructions: "Answer.",
+            configuration: Self.configuration(name: "agent").maxIterations(3),
+            inferenceProvider: provider,
+            outputGuardrails: [Self.noSSN]
+        )
+
+        let collector = Task { await Self.collectUntilFailure(agent.stream("tell me")) }
+        var startedIterator = toolStarted.makeAsyncIterator()
+        await startedIterator.next()
+        await agent.cancel()
+        let events = await collector.value
+
+        #expect(Self.tokens(in: events).isEmpty)
+        #expect(events.contains { if case .tool(.started) = $0 { true } else { false } })
+        #expect(Self.lastTerminal(in: events).map(Self.isFailed) == true)
+    }
+
     @Test("Without output guardrails tokens still stream before completion")
     func noGuardrailsStreamsLive() async throws {
         let agent = try Agent(
