@@ -6,7 +6,7 @@ Publish a `Swarm` GitHub tag that downstream users can resolve and build without
 
 ## Agent-Owned Steps
 
-1. Update release notes and changelog content.
+1. Update release notes and `CHANGELOG.md`: move the `Unreleased` entries under the new version heading and add its compare link.
 2. Verify `Package.swift` uses the intended published dependency graph for remote consumers.
 3. Run local parity verification:
    - `swift build`
