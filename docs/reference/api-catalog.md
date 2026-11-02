@@ -988,7 +988,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 390 | func | public | CompositeObserver.onIterationStart(context:agent:number:) | `public func onIterationStart(context: AgentContext?, agent: any AgentRuntime, number: Int) async` |
 | 400 | func | public | CompositeObserver.onIterationEnd(context:agent:number:) | `public func onIterationEnd(context: AgentContext?, agent: any AgentRuntime, number: Int) async` |
 | 437 | struct | public | LoggingObserver | `public struct LoggingObserver` |
-| 443 | func | public | LoggingObserver.init() | `public init()` |
+| — | var | public | LoggingObserver.logsContent | `public let logsContent: Bool` |
+| — | func | public | LoggingObserver.init(logsContent:) | `public init(logsContent: Bool = false)` |
 | 447 | func | public | LoggingObserver.onAgentStart(context:agent:input:) | `public func onAgentStart(context: AgentContext?, agent _: any AgentRuntime, input: String) async` |
 | 457 | func | public | LoggingObserver.onAgentEnd(context:agent:result:) | `public func onAgentEnd(context: AgentContext?, agent _: any AgentRuntime, result: AgentResult) async` |
 | 466 | func | public | LoggingObserver.onError(context:agent:error:) | `public func onError(context: AgentContext?, agent _: any AgentRuntime, error: any Error) async` |
