@@ -749,7 +749,8 @@ struct AgentTurnRunner: Sendable {
                 observer: observer,
                 tracing: tracing,
                 stopOnToolError: false,
-                allowConcurrent: agent.configuration.parallelToolCalls
+                allowConcurrent: agent.configuration.parallelToolCalls,
+                maxConcurrentCalls: agent.configuration.maxConcurrentToolCalls
             )
         }
 
