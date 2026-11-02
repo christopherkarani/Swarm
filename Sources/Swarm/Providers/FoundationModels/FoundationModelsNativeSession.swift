@@ -333,9 +333,11 @@ extension FoundationModelsInferenceProvider {
             toolNames: boundTools.map(\.name).sorted()
         )
         let instructions = resolved.instructions
-        let seed = FoundationModelsTranscriptSeed.seed(
+        let history = FoundationModelsTranscriptSeed.resolve(
             messages: resolved.messages,
-            instructions: instructions
+            instructions: instructions,
+            tools: boundSchemas,
+            options: resolved.options
         )
         let snapshot = FoundationModelsOwnedLoopSnapshot(
             instructions: instructions,
@@ -344,26 +346,24 @@ extension FoundationModelsInferenceProvider {
         )
         let store = nativeSessionStore
         let (session, reused, lease) = await store.tryBeginOwnedLoop(matching: identity) {
-            self.makeOwnedLoopSession(tools: boundTools, seed: seed, snapshot: snapshot)
+            self.makeOwnedLoopSession(tools: boundTools, history: history, snapshot: snapshot)
         } recreate: { transcript in
             self.makeProfileSession(tools: boundTools, snapshot: snapshot, history: transcript)
         }
 
-        let prompt: String
-        if reused || seed.canRehydrate {
-            prompt = FoundationModelsPromptFlattening.appendTurnSuffixes(
-                to: seed.pendingPrompt,
-                tools: boundSchemas,
-                options: resolved.options
-            )
-        } else {
-            prompt = flattenPrompt(
+        // A reused session already holds this history, so only the pending
+        // turn is sent. Otherwise the pre-resolved turn stands as-is.
+        let turn = reused
+            ? FoundationModelsTranscriptSeed.resolve(
                 messages: resolved.messages,
+                instructions: instructions,
                 tools: boundSchemas,
-                options: resolved.options
+                options: resolved.options,
+                historyResident: true
             )
-        }
-        let promptImages = seed.pendingImages
+            : history
+        let prompt = turn.prompt
+        let promptImages = turn.images
 
         let generationOptions = makeGenerationOptions(from: resolved.options)
         let reasoningLevel = ownedLoopReasoningLevel
@@ -499,11 +499,11 @@ extension FoundationModelsInferenceProvider {
     /// resolved Swarm profile. Tool-bearing history still flattens.
     func makeOwnedLoopSession(
         tools: [any FoundationModels.Tool],
-        seed: FoundationModelsTranscriptSeed.Seed,
+        history: FoundationModelsTranscriptSeed.RenderedTurn,
         snapshot: FoundationModelsOwnedLoopSnapshot
     ) -> LanguageModelSession {
-        if seed.canRehydrate,
-           let transcript = FoundationModelsTranscriptSeed.makeTranscript(from: seed.seedEntries)
+        if case let .rehydrate(entries, _, _) = history,
+           let transcript = FoundationModelsTranscriptSeed.makeTranscript(from: entries)
         {
             return makeProfileSession(tools: tools, snapshot: snapshot, history: transcript)
         }

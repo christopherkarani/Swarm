@@ -5,6 +5,8 @@ import HiveCore
 protocol WorkflowDurableCheckpointStore: Sendable {
     var runtimeStore: AnyHiveCheckpointStore<WorkflowDurableSchema> { get }
     func containsCheckpoint(for checkpointID: String) async throws -> Bool
+    /// Full checkpoint history for a run, ordered oldest first (newest last).
+    func history(for checkpointID: String) async throws -> [HiveCheckpoint<WorkflowDurableSchema>]
 }
 
 extension WorkflowCheckpointing {
@@ -14,6 +16,10 @@ extension WorkflowCheckpointing {
 
     func containsCheckpoint(for checkpointID: String) async throws -> Bool {
         try await backend.containsCheckpoint(for: checkpointID)
+    }
+
+    func history(for checkpointID: String) async throws -> [HiveCheckpoint<WorkflowDurableSchema>] {
+        try await backend.history(for: checkpointID)
     }
 }
 
@@ -44,7 +50,49 @@ actor WorkflowInMemoryCheckpointStore: WorkflowDurableCheckpointStore, HiveCheck
                 return lhs.stepIndex < rhs.stepIndex
             }
     }
+
+    func history(for checkpointID: String) async throws -> [HiveCheckpoint<WorkflowDurableSchema>] {
+        history(threadID: HiveThreadID(checkpointID))
+    }
+
+    func listCheckpoints(threadID: HiveThreadID, limit: Int?) async throws -> [HiveCheckpointSummary] {
+        let summaries = history(threadID: threadID).map(Self.summary)
+        if let limit, limit >= 0 {
+            return Array(summaries.suffix(limit))
+        }
+        return summaries
+    }
+
+    func loadCheckpoint(threadID: HiveThreadID, id: HiveCheckpointID) async throws -> HiveCheckpoint<WorkflowDurableSchema>? {
+        history(threadID: threadID).first { $0.id == id }
+    }
+
+    private func history(threadID: HiveThreadID) -> [HiveCheckpoint<WorkflowDurableSchema>] {
+        checkpoints
+            .filter { $0.threadID == threadID }
+            .sorted {
+                if $0.stepIndex != $1.stepIndex {
+                    return $0.stepIndex < $1.stepIndex
+                }
+                return $0.id.rawValue < $1.id.rawValue
+            }
+    }
+
+    private static func summary(for checkpoint: HiveCheckpoint<WorkflowDurableSchema>) -> HiveCheckpointSummary {
+        HiveCheckpointSummary(
+            id: checkpoint.id,
+            threadID: checkpoint.threadID,
+            runID: checkpoint.runID,
+            stepIndex: checkpoint.stepIndex,
+            schemaVersion: checkpoint.schemaVersion,
+            graphVersion: checkpoint.graphVersion,
+            createdAt: nil,
+            backendID: nil
+        )
+    }
 }
+
+extension WorkflowInMemoryCheckpointStore: HiveCheckpointQueryableStore {}
 
 protocol WorkflowCheckpointFileOperating: AnyObject, Sendable {
     func contentsOfDirectory(at url: URL) throws -> [URL]
@@ -169,6 +217,55 @@ actor WorkflowFileCheckpointStore: WorkflowDurableCheckpointStore, HiveCheckpoin
         }
 
         return nil
+    }
+
+    func history(for checkpointID: String) async throws -> [HiveCheckpoint<WorkflowDurableSchema>] {
+        try ensureDirectoryExists()
+        let threadID = HiveThreadID(checkpointID)
+        let manifest = try loadManifestForRead()
+        let entries = (manifest.runs[threadID.rawValue] ?? []).sorted(by: Self.isOlderThan)
+        let decoder = JSONDecoder()
+        var history: [HiveCheckpoint<WorkflowDurableSchema>] = []
+        history.reserveCapacity(entries.count)
+
+        for entry in entries {
+            let url = directory.appendingPathComponent(entry.fileName, isDirectory: false)
+            do {
+                let data = try files.read(from: url)
+                let checkpoint = try decoder.decode(HiveCheckpoint<WorkflowDurableSchema>.self, from: data)
+                guard checkpoint.threadID == threadID else { continue }
+                history.append(checkpoint)
+            } catch {
+                Log.orchestration.warning(
+                    "Skipping corrupt workflow checkpoint at \(entry.fileName): \(error)"
+                )
+            }
+        }
+
+        return history
+    }
+
+    func listCheckpoints(threadID: HiveThreadID, limit: Int?) async throws -> [HiveCheckpointSummary] {
+        let summaries = try await history(for: threadID.rawValue).map { checkpoint in
+            HiveCheckpointSummary(
+                id: checkpoint.id,
+                threadID: checkpoint.threadID,
+                runID: checkpoint.runID,
+                stepIndex: checkpoint.stepIndex,
+                schemaVersion: checkpoint.schemaVersion,
+                graphVersion: checkpoint.graphVersion,
+                createdAt: nil,
+                backendID: nil
+            )
+        }
+        if let limit, limit >= 0 {
+            return Array(summaries.suffix(limit))
+        }
+        return summaries
+    }
+
+    func loadCheckpoint(threadID: HiveThreadID, id: HiveCheckpointID) async throws -> HiveCheckpoint<WorkflowDurableSchema>? {
+        try await history(for: threadID.rawValue).first { $0.id == id }
     }
 
     private func loadManifestForRead() throws -> WorkflowCheckpointManifest {
@@ -301,4 +398,6 @@ actor WorkflowFileCheckpointStore: WorkflowDurableCheckpointStore, HiveCheckpoin
         return lhs.checkpointID < rhs.checkpointID
     }
 }
+
+extension WorkflowFileCheckpointStore: HiveCheckpointQueryableStore {}
 #endif

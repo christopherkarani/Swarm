@@ -30,42 +30,84 @@ enum OpenAICompatibleErrorMapper: Sendable {
             return .contentFiltered(reason: message)
         }
 
-        switch statusCode {
-        case 429:
+        // 429 carries header-derived retry state; 404 names the model instead of
+        // the message. Both bypass the label table below.
+        if statusCode == 429 {
             if code == "insufficient_quota" {
                 return .invalidInput(reason: "OpenAI-compatible quota exhausted (429 insufficient_quota): \(message). Check plan and billing details.")
             }
-            return .rateLimitExceeded(retryAfter: parseRetryAfter(headers))
-        case 400:
-            return .invalidInput(reason: "OpenAI-compatible request rejected (400): \(message)")
-        case 401:
-            return .authenticationFailed(reason: "OpenAI-compatible authentication failed (401): \(message)")
-        case 402:
-            return .invalidInput(reason: "OpenAI-compatible payment required (402): \(message). Check plan and billing details.")
-        case 403:
-            return .authenticationFailed(reason: "OpenAI-compatible request forbidden (403): \(message)")
-        case 404:
+            return .rateLimitExceeded(retryAfter: AgentErrorCauseFactory.retryAfter(fromHeaders: headers))
+        }
+        if statusCode == 404 {
             return .modelNotAvailable(model: model)
-        case 408:
-            return .generationFailed(reason: "OpenAI-compatible request timed out (408): \(message)")
-        case 413:
-            return .invalidInput(reason: "OpenAI-compatible payload too large (413): \(message)")
-        case 500 ... 599:
-            return .generationFailed(reason: "OpenAI-compatible server error (\(statusCode)): \(message)")
-        default:
-            if (400 ..< 500).contains(statusCode) {
-                return .invalidInput(reason: "OpenAI-compatible client error (\(statusCode)): \(message)")
+        }
+        if let cause = statusCauseTable[statusCode]
+            ?? statusRangeCauseTable.first(where: { $0.range.contains(statusCode) })?.cause
+        {
+            return cause.make(statusCode: statusCode, message: message)
+        }
+        return .generationFailed(reason: "OpenAI-compatible HTTP \(statusCode): \(message)")
+    }
+
+    /// One row of the status→`AgentError` cause table.
+    ///
+    /// Every row renders `OpenAI-compatible {label} ({code}): {message}`,
+    /// plus a billing suffix for payment rows.
+    private struct StatusCause: Sendable {
+        enum Kind: Sendable {
+            case invalidInput
+            case authenticationFailed
+            case generationFailed
+        }
+
+        let kind: Kind
+        let label: String
+        let mentionsBilling: Bool
+
+        init(kind: Kind, label: String, mentionsBilling: Bool = false) {
+            self.kind = kind
+            self.label = label
+            self.mentionsBilling = mentionsBilling
+        }
+
+        func make(statusCode: Int, message: String) -> AgentError {
+            var text = "OpenAI-compatible \(label) (\(statusCode)): \(message)"
+            if mentionsBilling {
+                text += ". Check plan and billing details."
             }
-            return .generationFailed(reason: "OpenAI-compatible HTTP \(statusCode): \(message)")
+            switch kind {
+            case .invalidInput:
+                return .invalidInput(reason: text)
+            case .authenticationFailed:
+                return .authenticationFailed(reason: text)
+            case .generationFailed:
+                return .generationFailed(reason: text)
+            }
         }
     }
+
+    /// Exact-status cause rows.
+    private static let statusCauseTable: [Int: StatusCause] = [
+        400: StatusCause(kind: .invalidInput, label: "request rejected"),
+        401: StatusCause(kind: .authenticationFailed, label: "authentication failed"),
+        402: StatusCause(kind: .invalidInput, label: "payment required", mentionsBilling: true),
+        403: StatusCause(kind: .authenticationFailed, label: "request forbidden"),
+        408: StatusCause(kind: .generationFailed, label: "request timed out"),
+        413: StatusCause(kind: .invalidInput, label: "payload too large"),
+    ]
+
+    /// Range-fallback cause rows, consulted after the exact-status table.
+    private static let statusRangeCauseTable: [(range: Range<Int>, cause: StatusCause)] = [
+        (500 ..< 600, StatusCause(kind: .generationFailed, label: "server error")),
+        (400 ..< 500, StatusCause(kind: .invalidInput, label: "client error")),
+    ]
 
     static func mapTransport(_ error: Error) -> Error {
         if error is AgentError {
             return error
         }
-        if error is CancellationError {
-            return AgentError.cancelled
+        if let cancelled = AgentErrorCauseFactory.cancelledIfApplicable(error) {
+            return cancelled
         }
         if error is URLError {
             return error
@@ -172,34 +214,6 @@ enum OpenAICompatibleErrorMapper: Sendable {
         }
         return nil
     }
-
-    private static func parseRetryAfter(_ headers: [AnyHashable: Any]) -> TimeInterval? {
-        let value = headers.first { key, _ in
-            String(describing: key).caseInsensitiveCompare("Retry-After") == .orderedSame
-        }?.value
-        guard let raw = (value as? String ?? (value as? NSNumber).map { $0.stringValue })?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !raw.isEmpty
-        else {
-            return nil
-        }
-        if let seconds = TimeInterval(raw) {
-            return max(0, seconds)
-        }
-        // HTTP-date form (RFC 9110 §13.1.1): delay until the named instant.
-        if let date = Self.retryAfterDateFormatter.date(from: raw) {
-            return max(0, date.timeIntervalSinceNow)
-        }
-        return nil
-    }
-
-    private static let retryAfterDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "GMT")
-        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
-        return formatter
-    }()
 }
 
 private extension String {

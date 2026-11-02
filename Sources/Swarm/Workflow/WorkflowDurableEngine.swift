@@ -169,7 +169,7 @@ struct WorkflowDurableEngine: Sendable {
         guard try await checkpointing.containsCheckpoint(for: checkpointID) else {
             throw WorkflowError.checkpointNotFound(id: checkpointID)
         }
-        guard let checkpoint = try await components.store.loadLatest(threadID: components.threadID),
+        guard let checkpoint = try await components.runtime.getLatestCheckpoint(threadID: components.threadID),
               let interruption = checkpoint.interruption else {
             throw WorkflowError.invalidWorkflow(reason: "No paused tool approval for checkpoint '\(checkpointID)'")
         }
@@ -201,27 +201,15 @@ struct WorkflowDurableEngine: Sendable {
     }
 
     private func makeRuntimeComponents() throws -> WorkflowDurableRuntimeComponents {
-        let graph = try makeGraph()
-        let context = WorkflowDurableContext(
+        let graph = try Self.compiledGraph(for: workflow)
+        let environment = Self.environment(
             workflow: workflow,
-            signature: workflow.workflowSignature
-        )
-        let store = faultInjectingStore(wrapping: AnyHiveCheckpointStore(
-            WorkflowLegacyMigratingCheckpointStore(
-                inner: checkpointing.runtimeStore,
-                schemaVersion: graph.schemaVersion,
-                graphVersion: graph.graphVersion
-            )
-        ))
-        let environment = HiveEnvironment<WorkflowDurableSchema>(
-            context: context,
-            clock: WorkflowDurableClock(),
-            logger: WorkflowDurableLogger(),
-            checkpointStore: store
+            checkpointing: checkpointing,
+            graph: graph
         )
         let runtime = try HiveRuntime(graph: graph, environment: environment)
         let threadID = Self.hiveThreadID(for: WorkflowCheckpointID(checkpointID))
-        return WorkflowDurableRuntimeComponents(runtime: runtime, threadID: threadID, store: store)
+        return WorkflowDurableRuntimeComponents(runtime: runtime, threadID: threadID)
     }
 
     private func flushIfNeeded(
@@ -237,22 +225,46 @@ struct WorkflowDurableEngine: Sendable {
         _ = try await flushHandle.outcome.value
     }
 
-    private func faultInjectingStore(
-        wrapping store: AnyHiveCheckpointStore<WorkflowDurableSchema>
-    ) -> AnyHiveCheckpointStore<WorkflowDurableSchema> {
-        guard WorkflowDurableFaultInjection.controller != nil else {
-            return store
-        }
-        return AnyHiveCheckpointStore(WorkflowFaultInjectingCheckpointStore(inner: store))
-    }
-
-    private func makeGraph() throws -> CompiledHiveGraph<WorkflowDurableSchema> {
+    static func compiledGraph(for workflow: Workflow) throws -> CompiledHiveGraph<WorkflowDurableSchema> {
         var builder = HiveGraphBuilder<WorkflowDurableSchema>(start: [WorkflowNodeID.execute])
         builder.addNode(WorkflowNodeID.execute, workflowNode)
         builder.addRouter(from: WorkflowNodeID.execute) { store in
             WorkflowDurableRouting.route(for: Result { try store.get(WorkflowDurableSchema.phaseKey) })
         }
         return try builder.compile()
+    }
+
+    static func environment(
+        workflow: Workflow,
+        checkpointing: WorkflowCheckpointing,
+        graph: CompiledHiveGraph<WorkflowDurableSchema>
+    ) -> HiveEnvironment<WorkflowDurableSchema> {
+        let context = WorkflowDurableContext(
+            workflow: workflow,
+            signature: workflow.workflowSignature
+        )
+        let migrating = AnyHiveCheckpointStore(
+            WorkflowLegacyMigratingCheckpointStore(
+                inner: checkpointing.runtimeStore,
+                schemaVersion: graph.schemaVersion,
+                graphVersion: graph.graphVersion
+            )
+        )
+        return HiveEnvironment(
+            context: context,
+            clock: WorkflowDurableClock(),
+            logger: WorkflowDurableLogger(),
+            checkpointStore: faultInjectingStore(wrapping: migrating)
+        )
+    }
+
+    private static func faultInjectingStore(
+        wrapping store: AnyHiveCheckpointStore<WorkflowDurableSchema>
+    ) -> AnyHiveCheckpointStore<WorkflowDurableSchema> {
+        guard WorkflowDurableFaultInjection.controller != nil else {
+            return store
+        }
+        return AnyHiveCheckpointStore(WorkflowFaultInjectingCheckpointStore(inner: store))
     }
 
     private func runOptions(for policy: Workflow.Durable.CheckpointPolicy) -> HiveRunOptions {
@@ -345,6 +357,48 @@ struct WorkflowDurableEngine: Sendable {
     }
 }
 
+/// Forks an older checkpoint of one run into a new run, then resumes the new run.
+///
+/// The runtime seeds the target thread from the source checkpoint (channels,
+/// versions, and frontier) and persists it, so the follow-up resume is an
+/// ordinary latest-checkpoint resume under the target run. The source run is
+/// left untouched.
+struct WorkflowDurableFork: Sendable {
+    let workflow: Workflow
+    let checkpointing: WorkflowCheckpointing
+    let sourceRun: WorkflowCheckpointID
+    let sourceCheckpointID: String
+    let targetRun: WorkflowCheckpointID
+    let policy: Workflow.Durable.CheckpointPolicy
+
+    func run(startInput: String) async throws -> AgentResult {
+        if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
+            throw error
+        }
+        let graph = try WorkflowDurableEngine.compiledGraph(for: workflow)
+        let environment = WorkflowDurableEngine.environment(
+            workflow: workflow,
+            checkpointing: checkpointing,
+            graph: graph
+        )
+        let runtime = try HiveRuntime(graph: graph, environment: environment)
+        _ = try await runtime.fork(
+            threadID: WorkflowDurableEngine.hiveThreadID(for: sourceRun),
+            to: WorkflowDurableEngine.hiveThreadID(for: targetRun),
+            from: HiveCheckpointID(sourceCheckpointID),
+            options: HiveRunOptions(maxSteps: 1, checkpointPolicy: .everyStep)
+        )
+        let engine = WorkflowDurableEngine(
+            workflow: workflow,
+            checkpointing: checkpointing,
+            checkpointID: targetRun.rawValue,
+            policy: policy,
+            resume: true
+        )
+        return try await engine.run(startInput: startInput)
+    }
+}
+
 /// Non-throwing router decision for the durable execute node.
 ///
 /// Routers cannot throw, so the phase-channel read arrives as a `Result`. Only
@@ -374,7 +428,6 @@ enum WorkflowDurableRouting: Sendable {
 private struct WorkflowDurableRuntimeComponents {
     let runtime: HiveRuntime<WorkflowDurableSchema>
     let threadID: HiveThreadID
-    let store: AnyHiveCheckpointStore<WorkflowDurableSchema>
 }
 
 private enum WorkflowNodeID {
@@ -623,6 +676,16 @@ actor WorkflowFaultInjectingCheckpointStore: HiveCheckpointStore {
     }
 }
 
+extension WorkflowFaultInjectingCheckpointStore: HiveCheckpointQueryableStore {
+    func listCheckpoints(threadID: HiveThreadID, limit: Int?) async throws -> [HiveCheckpointSummary] {
+        try await inner.listCheckpoints(threadID: threadID, limit: limit)
+    }
+
+    func loadCheckpoint(threadID: HiveThreadID, id: HiveCheckpointID) async throws -> HiveCheckpoint<Schema>? {
+        try await inner.loadCheckpoint(threadID: threadID, id: id)
+    }
+}
+
 /// Checkpoint store wrapper that migrates pre-phase-enum checkpoints on load.
 ///
 /// Loads matching the current schema version pass through untouched; anything
@@ -659,7 +722,23 @@ private struct WorkflowLegacyMigratingCheckpointStore: HiveCheckpointStore {
             graphVersion: graphVersion
         )
     }
+
+    func listCheckpoints(threadID: HiveThreadID, limit: Int?) async throws -> [HiveCheckpointSummary] {
+        try await inner.listCheckpoints(threadID: threadID, limit: limit)
+    }
+
+    func loadCheckpoint(threadID: HiveThreadID, id: HiveCheckpointID) async throws -> HiveCheckpoint<Schema>? {
+        guard let checkpoint = try await inner.loadCheckpoint(threadID: threadID, id: id) else { return nil }
+        guard checkpoint.schemaVersion != schemaVersion else { return checkpoint }
+        return try WorkflowLegacyCheckpointMigrator.migrate(
+            checkpoint,
+            schemaVersion: schemaVersion,
+            graphVersion: graphVersion
+        )
+    }
 }
+
+extension WorkflowLegacyMigratingCheckpointStore: HiveCheckpointQueryableStore {}
 
 /// Rewrites checkpoints persisted in the pre-phase-enum six-channel layout into
 /// the current three-channel phase-enum layout.
