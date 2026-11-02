@@ -106,7 +106,19 @@ struct ToolExecutionEngine: Sendable {
             return Outcome(call: call, result: result, caughtError: nil)
         } catch let pause as WorkflowToolApprovalRequest {
             // A nested agent (agent-as-tool) paused for durable approval; the
-            // pause belongs to the workflow, not to this tool's result.
+            // pause belongs to the workflow, not to this tool's result. Surface
+            // the nested request and close this call without a failure so start
+            // and end events stay paired.
+            await closePausedCall(
+                call,
+                pause: pause,
+                spanId: spanId,
+                startTime: startTime,
+                agent: agent,
+                context: context,
+                observer: observer,
+                tracing: tracing
+            )
             throw pause
         } catch {
             let measured = elapsedDuration(since: startTime)
@@ -288,6 +300,40 @@ struct ToolExecutionEngine: Sendable {
             collected.append(outcome)
         }
         return collected
+    }
+
+    /// Ends a started call whose tool body paused for a nested durable approval.
+    ///
+    /// Forwards the nested approval request (agent-as-tool runs its inner agent
+    /// without an observer), then closes the span and emits a non-failure
+    /// ``AgentObserver/onToolEnd(context:agent:invocation:)`` carrying a
+    /// paused marker, so consumers that pair start and end events do not show
+    /// the call as running forever.
+    private func closePausedCall(
+        _ call: ToolCall,
+        pause: WorkflowToolApprovalRequest,
+        spanId: UUID?,
+        startTime: UInt64,
+        agent: any AgentRuntime,
+        context: AgentContext?,
+        observer: (any AgentObserver)?,
+        tracing: TracingHelper?
+    ) async {
+        let measured = elapsedDuration(since: startTime)
+        let marker = "paused: awaiting approval for \(pause.toolName)"
+        await observer?.onToolApprovalRequested(
+            context: context,
+            agent: agent,
+            call: ToolCall(toolName: pause.toolName, arguments: pause.arguments)
+        )
+        if let tracing, let spanId {
+            await tracing.traceToolResult(spanId: spanId, name: call.toolName, result: marker, duration: measured)
+        }
+        await observer?.onToolEnd(
+            context: context,
+            agent: agent,
+            invocation: ToolInvocation(call: call, duration: measured, outcome: .success(.string(marker)))
+        )
     }
 
     private func elapsedDuration(since startNanoseconds: UInt64) -> Duration {
