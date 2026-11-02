@@ -734,6 +734,131 @@ struct CircuitBreakerRegistryTests {
     }
 }
 
+// MARK: - Admission Epoch Tests
+
+/// Controlled interleavings proving only operations admitted in the current
+/// breaker epoch adjust half-open accounting or drive transitions.
+@Suite("CircuitBreaker Admission Epoch Tests")
+struct CircuitBreakerAdmissionEpochTests {
+    private func makeBreaker(
+        failureThreshold: Int = 1,
+        successThreshold: Int = 1,
+        halfOpenMaxRequests: Int = 1
+    ) -> (CircuitBreaker, VirtualClock) {
+        let clock = VirtualClock()
+        let breaker = CircuitBreaker(
+            name: "epoch",
+            failureThreshold: failureThreshold,
+            successThreshold: successThreshold,
+            resetTimeout: 10,
+            halfOpenMaxRequests: halfOpenMaxRequests,
+            clock: clock
+        )
+        return (breaker, clock)
+    }
+
+    /// Opens the breaker with one failure, then moves past the open window.
+    private func openThenElapse(_ breaker: CircuitBreaker, _ clock: VirtualClock) async {
+        _ = try? await breaker.execute { () async throws -> Int in throw TestError.network }
+        clock.advance(by: 10_000_000_000)
+    }
+
+    /// Starts an operation that signals entry, then suspends until released.
+    private func startHeld(
+        _ breaker: CircuitBreaker,
+        outcome: Result<Int, TestError>
+    ) async -> (task: Task<Int, Error>, release: AsyncLatch) {
+        let started = AsyncLatch()
+        let release = AsyncLatch()
+        let task = Task {
+            try await breaker.execute { () async throws -> Int in
+                started.open()
+                await release.wait()
+                return try outcome.get()
+            }
+        }
+        await started.wait()
+        return (task, release)
+    }
+
+    @Test("reset() during a half-open probe does not leak an extra probe slot")
+    func resetDuringProbeKeepsSlotAccounting() async throws {
+        let (breaker, clock) = makeBreaker(successThreshold: 2)
+        await openThenElapse(breaker, clock)
+
+        // Probe A holds the only half-open slot, then the breaker is reset and
+        // re-enters half-open in a fresh epoch while A is still running.
+        let probeA = await startHeld(breaker, outcome: .success(1))
+        await breaker.reset()
+        await breaker.trip()
+        clock.advance(by: 10_000_000_000)
+
+        let probeB = await startHeld(breaker, outcome: .success(2))
+        probeA.release.open()
+        _ = try await probeA.task.value
+
+        // With halfOpenMaxRequests == 1, a second concurrent probe must be rejected.
+        await #expect(throws: ResilienceError.circuitBreakerOpen(serviceName: "epoch")) {
+            try await breaker.execute { 3 }
+        }
+        probeB.release.open()
+        _ = try await probeB.task.value
+    }
+
+    @Test("open-to-half-open transition while a probe runs does not leak a slot")
+    func reopenedProbeKeepsSlotAccounting() async throws {
+        let (breaker, clock) = makeBreaker(successThreshold: 2)
+        await openThenElapse(breaker, clock)
+
+        // Probe A holds the slot; a manual trip and elapsed window start a new
+        // half-open epoch while A is still running. A then fails late.
+        let probeA = await startHeld(breaker, outcome: .failure(.network))
+        await breaker.trip()
+        clock.advance(by: 10_000_000_000)
+
+        let probeB = await startHeld(breaker, outcome: .success(2))
+        probeA.release.open()
+        _ = try? await probeA.task.value
+        // A's stale failure must not reopen the current half-open epoch.
+        #expect(await breaker.currentState() == .halfOpen)
+
+        // B still holds the only slot of the current epoch.
+        await #expect(throws: ResilienceError.circuitBreakerOpen(serviceName: "epoch")) {
+            try await breaker.execute { 3 }
+        }
+        probeB.release.open()
+        _ = try await probeB.task.value
+    }
+
+    @Test("A late failure admitted while closed does not reopen a half-open breaker")
+    func staleClosedFailureDoesNotReopenHalfOpen() async throws {
+        let (breaker, clock) = makeBreaker(failureThreshold: 2)
+
+        // Slow operation admitted while closed.
+        let slow = await startHeld(breaker, outcome: .failure(.network))
+
+        // Two fresh failures open the breaker; the window then elapses and the
+        // next caller moves it to half-open.
+        for _ in 1...2 {
+            _ = try? await breaker.execute { () async throws -> Int in throw TestError.network }
+        }
+        clock.advance(by: 10_000_000_000)
+        let probe = await startHeld(breaker, outcome: .success(1))
+        #expect(await breaker.currentState() == .halfOpen)
+
+        // The stale closed-epoch failure lands while half-open.
+        slow.release.open()
+        _ = try? await slow.task.value
+        #expect(await breaker.currentState() == .halfOpen)
+
+        probe.release.open()
+        _ = try await probe.task.value
+        #expect(await breaker.currentState() == .closed)
+        // Lifetime totals still count the stale outcome.
+        #expect(await breaker.statistics().failureCount == 3)
+    }
+}
+
 // MARK: - AsyncLatch
 
 /// One-shot async gate for deterministic coordination of in-flight operations.
