@@ -33,6 +33,9 @@ import Foundation
 /// 2. Fill remaining budget with recent messages
 /// 3. Return combined context
 ///
+/// The summary only ever covers messages that have been evicted from the
+/// short-term window, so no message reaches the model twice.
+///
 /// ## Usage
 ///
 /// ```swift
@@ -63,6 +66,10 @@ public actor HybridMemory: Memory {
         public let summaryTokenRatio: Double
 
         /// Message threshold for triggering summarization.
+        ///
+        /// Counts messages not yet covered by the summary (the short-term
+        /// window plus messages evicted from it). When reached, only the
+        /// evicted messages are summarized.
         public let summarizationThreshold: Int
 
         /// Creates a hybrid memory configuration.
@@ -83,7 +90,7 @@ public actor HybridMemory: Memory {
             self.shortTermMaxMessages = max(10, shortTermMaxMessages)
             self.longTermSummaryTokens = max(200, longTermSummaryTokens)
             self.summaryTokenRatio = min(max(0.1, summaryTokenRatio), 0.5)
-            self.summarizationThreshold = max(shortTermMaxMessages * 2, summarizationThreshold)
+            self.summarizationThreshold = max(self.shortTermMaxMessages * 2, summarizationThreshold)
         }
     }
 
@@ -143,12 +150,14 @@ public actor HybridMemory: Memory {
     // MARK: - AgentMemory Conformance
 
     public func add(_ message: MemoryMessage) async {
-        await shortTermMemory.add(message)
-        pendingMessages.append(message)
+        // Only messages leaving the short-term window become summary input;
+        // summarizing in-window messages would send them to the model twice.
+        let evicted = await shortTermMemory.appendReturningEvicted(message)
+        pendingMessages.append(contentsOf: evicted)
         totalMessagesAdded += 1
 
         // Check if we should update long-term summary
-        if pendingMessages.count >= configuration.summarizationThreshold {
+        if await unsummarizedMessageCount() >= configuration.summarizationThreshold {
             await updateLongTermSummary()
         }
     }
@@ -321,6 +330,11 @@ public actor HybridMemory: Memory {
         return true
     }
 
+    /// Messages not yet covered by the summary: evicted-but-pending plus the window.
+    private func unsummarizedMessageCount() async -> Int {
+        await pendingMessages.count + shortTermMemory.count
+    }
+
     private func removePending(_ processed: [MemoryMessage]) {
         let processedIDs = Set(processed.map(\.id))
         pendingMessages.removeAll { message in
@@ -332,7 +346,9 @@ public actor HybridMemory: Memory {
 // MARK: - Manual Operations
 
 public extension HybridMemory {
-    /// Forces summarization even if threshold not reached.
+    /// Forces summarization of evicted messages even if threshold not reached.
+    ///
+    /// Messages still inside the short-term window are never summarized.
     func forceSummarize() async {
         guard !pendingMessages.isEmpty else { return }
         await updateLongTermSummary()
@@ -367,7 +383,7 @@ public extension HybridMemory {
             hasSummary: !longTermSummary.isEmpty,
             summaryTokenCount: tokenEstimator.estimateTokens(for: longTermSummary),
             summarizationCount: summarizationCount,
-            nextSummarizationIn: max(0, configuration.summarizationThreshold - pendingMessages.count)
+            nextSummarizationIn: max(0, configuration.summarizationThreshold - unsummarizedMessageCount())
         )
     }
 }
@@ -380,7 +396,7 @@ public struct HybridMemoryDiagnostics: Sendable {
     public let shortTermMessageCount: Int
     /// Maximum short-term capacity.
     public let shortTermMaxMessages: Int
-    /// Messages awaiting summarization.
+    /// Messages evicted from short-term memory and awaiting summarization.
     public let pendingMessages: Int
     /// Total messages processed since creation.
     public let totalMessagesProcessed: Int
