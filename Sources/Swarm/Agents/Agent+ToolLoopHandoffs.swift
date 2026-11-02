@@ -220,6 +220,10 @@ extension AgentTurnRunner {
                     result: result.output,
                     toolCallID: parsedCall.id
                 )
+                answerCallsSkippedByHandoff(
+                    response.toolCalls[(callIndex + 1)...],
+                    handoffToolName: parsedCall.name
+                )
 
                 let handoffDuration = ContinuousClock.now - handoffStart
                 _ = request.resultBuilder.addToolResult(
@@ -245,7 +249,7 @@ extension AgentTurnRunner {
                     _ = request.resultBuilder.addNestedTokenUsage(usage)
                 }
                 for (key, value) in result.metadata {
-                    _ = request.resultBuilder.setMetadata(key, value)
+                    _ = request.resultBuilder.setMetadata(Self.parentMetadataKey(forHandoffKey: key), value)
                 }
 
                 // Return the handoff output to be used as the final result
@@ -272,6 +276,45 @@ extension AgentTurnRunner {
         }
 
         return nil
+    }
+
+    /// Child result keys that identify the child's own run, not the parent's.
+    ///
+    /// Merged under ``handoffMetadataPrefix`` so the parent keeps its own
+    /// `response.id` (the one ``ResponseTracker`` recorded) and transcript identity.
+    static let handoffIdentityMetadataKeys: Set<String> = [
+        Agent.responseIDMetadataKey,
+        Agent.transcriptSchemaVersionMetadataKey,
+        Agent.transcriptHashMetadataKey,
+    ]
+
+    static let handoffMetadataPrefix = "handoff."
+
+    static func parentMetadataKey(forHandoffKey key: String) -> String {
+        handoffIdentityMetadataKeys.contains(key) ? handoffMetadataPrefix + key : key
+    }
+
+    /// Answers tool calls that follow a handoff in the same assistant message.
+    ///
+    /// A handoff ends the turn: the target's output becomes the final result
+    /// and no later inference reads sibling outputs. Running the siblings
+    /// would perform side effects nobody observes, after control has already
+    /// moved, so they are not executed. Each still gets an explicit transcript
+    /// result so the persisted assistant message has one result per call ID;
+    /// OpenAI-compatible endpoints reject replayed history with unanswered calls.
+    /// ``AgentResult/toolCalls`` keeps listing only calls that ran.
+    private mutating func answerCallsSkippedByHandoff(
+        _ skippedCalls: ArraySlice<InferenceResponse.ParsedToolCall>,
+        handoffToolName: String
+    ) {
+        for skipped in skippedCalls {
+            let message = "Not executed: the turn was handed off via '\(handoffToolName)'."
+            turnTranscript.appendToolResult(
+                toolName: skipped.name,
+                result: message,
+                toolCallID: skipped.id
+            )
+        }
     }
 
     private func applyContextValues(
