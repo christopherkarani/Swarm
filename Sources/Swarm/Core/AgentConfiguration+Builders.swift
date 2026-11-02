@@ -203,10 +203,11 @@ extension AgentConfiguration {
 
     /// Replaces the model settings used for every inference call.
     ///
-    /// ``modelSettings`` is the single source for sampling parameters, so this
-    /// replaces any value set earlier with ``temperature(_:)``,
-    /// ``maxTokens(_:)``, or ``stopSequences(_:)``. Chain those builders after
-    /// this call to adjust individual fields.
+    /// ``modelSettings`` is the single source for sampling parameters. Non-`nil`
+    /// `temperature`, `maxTokens`, and `stopSequences` in `value` win; `nil`
+    /// ones keep values set earlier with ``temperature(_:)``,
+    /// ``maxTokens(_:)``, or ``stopSequences(_:)``. Every other field is
+    /// replaced by `value`.
     ///
     /// ## Example
     /// ```swift
@@ -221,8 +222,12 @@ extension AgentConfiguration {
     /// - Returns: A new configuration with the updated model settings
     /// - SeeAlso: ``modelSettings``, ``temperature(_:)``, ``maxTokens(_:)``
     @discardableResult public func modelSettings(_ value: ModelSettings) -> AgentConfiguration {
+        var merged = value
+        merged.temperature = value.temperature ?? modelSettings.temperature
+        merged.maxTokens = value.maxTokens ?? modelSettings.maxTokens
+        merged.stopSequences = value.stopSequences ?? modelSettings.stopSequences
         var copy = self
-        copy.modelSettings = value
+        copy.modelSettings = merged
         return copy
     }
 

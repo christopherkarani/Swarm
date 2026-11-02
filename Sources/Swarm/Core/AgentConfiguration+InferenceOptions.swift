@@ -27,7 +27,8 @@ package extension AgentConfiguration {
             truncation: settings.truncation,
             verbosity: settings.verbosity,
             providerSettings: settings.providerSettings,
-            previousResponseId: pinnedPreviousResponseId,
+            // AgentTurnDependencyResolver.inferenceOptions owns continuation.
+            previousResponseId: nil,
             reasoning: settings.reasoning
         )
     }

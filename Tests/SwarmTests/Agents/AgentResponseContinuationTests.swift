@@ -88,6 +88,21 @@ struct AgentResponseContinuationTests {
         #expect(agent.configuration == .default)
     }
 
+    @Test("blank continuing ids are not sent to the provider", arguments: ["", "  "])
+    func blankContinuingIDIsIgnored(previousResponseID: String) async throws {
+        let provider = MockInferenceProvider(
+            responses: ["reply"],
+            capabilities: [.responseContinuation]
+        )
+        let agent = try Agent(configuration: .default, inferenceProvider: provider)
+
+        _ = try await agent.runWithResponse("hi", continuing: previousResponseID)
+
+        let call = await provider.generateMessageCalls.last
+        #expect(call != nil)
+        #expect(call?.options.previousResponseId == nil)
+    }
+
     @Test("previous response id is stripped when provider does not advertise continuation support")
     func stripsPreviousResponseIDWithoutContinuationCapability() async throws {
         let provider = MockInferenceProvider(responses: ["reply"])

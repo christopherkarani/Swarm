@@ -62,6 +62,35 @@ struct AgentConfigurationInferenceOptionsTests {
         #expect(options.providerSettings == nil)
     }
 
+    @Test("modelSettings(_:) keeps earlier sampling builders the incoming value leaves unset")
+    func modelSettingsKeepsEarlierSamplingBuilders() {
+        let config = AgentConfiguration.default
+            .temperature(0.2)
+            .maxTokens(500)
+            .stopSequences(["END"])
+            .modelSettings(ModelSettings().toolChoice(.required))
+
+        #expect(config.modelSettings.temperature == 0.2)
+        #expect(config.modelSettings.maxTokens == 500)
+        #expect(config.modelSettings.stopSequences == ["END"])
+        #expect(config.modelSettings.toolChoice == .required)
+
+        let options = config.inferenceOptions
+        #expect(options.temperature == 0.2)
+        #expect(options.maxTokens == 500)
+        #expect(options.stopSequences == ["END"])
+    }
+
+    @Test("modelSettings(_:) sampling fields win over earlier sampling builders")
+    func modelSettingsSamplingFieldsWin() {
+        let config = AgentConfiguration.default
+            .temperature(0.2)
+            .modelSettings(.creative)
+
+        #expect(config.modelSettings.temperature == ModelSettings.creative.temperature)
+        #expect(config.modelSettings.topP == ModelSettings.creative.topP)
+    }
+
     @Test("ModelSettings reasoning config propagates to InferenceOptions")
     func reasoningConfigPropagation() {
         let reasoning = ReasoningConfig(effort: .low, maxTokens: 4096, exclude: true)
