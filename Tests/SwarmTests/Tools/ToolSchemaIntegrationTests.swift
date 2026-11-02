@@ -47,21 +47,18 @@ struct ToolSchemaIntegrationTests {
         #expect(await registry.tool(named: "existing") != nil)
     }
 
-    @Test("Agents accept typed Tool arrays")
+    @Test("Agents accept typed Tool values and arrays through the tool builder")
     func agentsAcceptTypedTools() throws {
         let tool = SchemaEchoTool()
 
-        let agent = try Agent(tools: [tool])
+        let agent = try Agent("") { tool }
         #expect(agent.tools.count == 1)
         #expect(agent.tools.first?.name == "echo")
 
-        let react = try Agent(tools: [tool])
-        #expect(react.tools.count == 1)
-        #expect(react.tools.first?.name == "echo")
-
-        let planAndExecute = try Agent(tools: [tool])
-        #expect(planAndExecute.tools.count == 1)
-        #expect(planAndExecute.tools.first?.name == "echo")
+        let tools: [any Tool] = [tool]
+        let fromArray = try Agent("") { tools }
+        #expect(fromArray.tools.count == 1)
+        #expect(fromArray.tools.first?.name == "echo")
     }
 }
 

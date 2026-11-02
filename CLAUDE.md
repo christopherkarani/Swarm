@@ -200,7 +200,9 @@ swift package plugin --allow-writing-to-package-directory swiftformat
 
 - The canonical initializer is `Agent(_ instructions: String, ...)` with an
   unlabeled instructions string and a trailing `@ToolBuilder` closure for
-  tools. See `Sources/Swarm/Agents/Agent.swift`.
+  tools. See `Sources/Swarm/Agents/Agent.swift`. The only other public init is
+  the advanced `Agent(tools: [any AnyJSONTool], instructions:, ...)` for
+  runtime-assembled tool lists; don't add more convenience inits.
 - Provider resolution order is documented at the top of `Agent.swift`:
   1. explicit provider passed in (or privacy-required FM-first path),
   2. `.environment(\.inferenceProvider, ...)`,

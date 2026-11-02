@@ -12,8 +12,8 @@ final class AgentToolTests: XCTestCase {
 
     func testAgentToolCreation() async throws {
         let innerAgent = try Agent(
-            name: "Researcher",
-            instructions: "Research topics",
+            "Research topics",
+            configuration: .default.name("Researcher"),
             inferenceProvider: MockInferenceProvider()
         )
 
@@ -27,8 +27,8 @@ final class AgentToolTests: XCTestCase {
 
     func testAgentToolCustomNameAndDescription() async throws {
         let innerAgent = try Agent(
-            name: "Worker",
-            instructions: "Work",
+            "Work",
+            configuration: .default.name("Worker"),
             inferenceProvider: MockInferenceProvider()
         )
 
@@ -46,8 +46,8 @@ final class AgentToolTests: XCTestCase {
 
     func testAgentAsToolExtension() async throws {
         let agent = try Agent(
-            name: "Helper",
-            instructions: "Help users",
+            "Help users",
+            configuration: .default.name("Helper"),
             inferenceProvider: MockInferenceProvider()
         )
 
@@ -58,8 +58,8 @@ final class AgentToolTests: XCTestCase {
 
     func testAgentAsToolWithCustomParams() async throws {
         let agent = try Agent(
-            name: "Helper",
-            instructions: "Help users",
+            "Help users",
+            configuration: .default.name("Helper"),
             inferenceProvider: MockInferenceProvider()
         )
 
@@ -75,8 +75,8 @@ final class AgentToolTests: XCTestCase {
         await mock.setResponses(["Final Answer: done"])
 
         let innerAgent = try Agent(
-            name: "Worker",
-            instructions: "Work",
+            "Work",
+            configuration: .default.name("Worker"),
             inferenceProvider: mock
         )
 
@@ -95,8 +95,8 @@ final class AgentToolTests: XCTestCase {
         await mock.setResponses(["Final Answer: done"])
 
         let innerAgent = try Agent(
-            name: "Worker",
-            instructions: "Work",
+            "Work",
+            configuration: .default.name("Worker"),
             inferenceProvider: mock
         )
 
@@ -114,8 +114,8 @@ final class AgentToolTests: XCTestCase {
 
     func testAgentToolNameDerivedFromAgentName() async throws {
         let agent = try Agent(
-            name: "MyResearchAgent",
-            instructions: "Research",
+            "Research",
+            configuration: .default.name("MyResearchAgent"),
             inferenceProvider: MockInferenceProvider()
         )
 

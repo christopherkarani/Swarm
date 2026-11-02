@@ -43,7 +43,7 @@ struct AgentEvalTests {
     @Test("AI can create agent with provider and tools")
     func eval02_withTools() throws {
         let provider = MockInferenceProvider()
-        let agent = try Agent("Be helpful", provider: provider) {
+        let agent = try Agent("Be helpful", inferenceProvider: provider) {
             EvalTool()
         }
         #expect(agent.instructions == "Be helpful")
@@ -57,7 +57,7 @@ struct AgentEvalTests {
     @Test("AI can create agent with full modifier chain")
     func eval03_fullChain() throws {
         let provider = MockInferenceProvider()
-        let agent = try Agent("Be helpful", provider: provider) {
+        let agent = try Agent("Be helpful", inferenceProvider: provider) {
             EvalTool()
         }
         .withMemory(.conversation())
@@ -73,7 +73,7 @@ struct AgentEvalTests {
     @Test("callAsFunction works as sugar for run()")
     func eval04_callAsFunction() async throws {
         let provider = MockInferenceProvider(responses: ["OK"])
-        let agent = try Agent("Say OK", provider: provider)
+        let agent = try Agent("Say OK", inferenceProvider: provider)
         let result = try await agent("Hi")
         #expect(result.output.contains("OK"))
     }
@@ -117,7 +117,7 @@ struct AgentEvalTests {
     @Test("Chaining modifiers preserves all configuration")
     func eval08_chainingPreservesState() throws {
         let provider = MockInferenceProvider()
-        let agent = try Agent("test", provider: provider) {
+        let agent = try Agent("test", inferenceProvider: provider) {
             EvalTool()
         }
         .withMemory(.conversation())

@@ -106,9 +106,14 @@ The concrete agent type. Creates an immutable configuration; execution state liv
 public struct Agent: AgentRuntime
 ```
 
-### Low-level compatibility initializer
+`Agent` has exactly two public initializers: the canonical init in section 4
+(use it by default) and one advanced init for tool lists assembled at runtime.
 
-This initializer remains public for compatibility and generated collections. Most application code should prefer the V3 initializer in section 4, which takes unlabeled instructions and a trailing `@ToolBuilder` closure.
+### Advanced initializer (runtime tool lists)
+
+Use this when tools come from a runtime collection of `any AnyJSONTool` values,
+for example tools bridged from an MCP server or a registry. For typed `Tool`
+values or `[any Tool]` arrays, use the canonical init's `@ToolBuilder` closure.
 
 ```swift
 try Agent(
@@ -125,39 +130,11 @@ try Agent(
 )
 ```
 
-### Provider-first convenience
+Removed in 0.7.0: `Agent(_ provider:)`, `Agent(tools: [some Tool])`,
+`Agent(name:...)`, `handoffAgents:`, and `Agent(_:provider:tools:)`. See
+`docs/migration/0.7.0.md`.
 
-```swift
-try Agent(
-    _ inferenceProvider: any InferenceProvider,
-    tools: [any AnyJSONTool] = [],
-    instructions: String = "",
-    ...
-)
-```
-
-### Typed-tools convenience
-
-```swift
-try Agent(
-    tools: [some Tool] = [],
-    instructions: String = "",
-    ...
-)
-```
-
-### Handoff-agents convenience
-
-```swift
-try Agent(
-    tools: [any AnyJSONTool] = [],
-    instructions: String = "",
-    ...,
-    handoffAgents: [any AgentRuntime]
-)
-```
-
-Effective handoff tool names must be unique among themselves and must not equal a registered tool `name` (enabled or not). Two `Agent` values passed as `handoffAgents:` without overrides collide as `handoff_to_agent` and throw `AgentError.duplicateHandoffToolName`. A colliding tool throws `AgentError.handoffToolNameCollidesWithTool`. The same checks run on `withHandoffs`, `withTools`, and `Agent.Builder` handoff setters. Give each handoff a distinct `toolNameOverride` when targets share a runtime type.
+Effective handoff tool names must be unique among themselves and must not equal a registered tool `name` (enabled or not). Two `Agent` values passed as `handoffs: [a.asHandoff(), b.asHandoff()]` without overrides collide as `handoff_to_agent` and throw `AgentError.duplicateHandoffToolName`. A colliding tool throws `AgentError.handoffToolNameCollidesWithTool`. The same checks run on `withHandoffs`, `withTools`, and `Agent.Builder` handoff setters. Give each handoff a distinct name (`asHandoff { $0.name("...") }`) when targets share a runtime type.
 
 ## 4) Agent (V3 canonical init with @ToolBuilder)
 
@@ -192,7 +169,7 @@ let agent = try Agent("You are a helpful assistant.") {
 ```swift
 let agent = try Agent(
     "You are a helpful assistant.",
-    configuration: .init(name: "Assistant"),
+    configuration: .default.name("Assistant"),
     memory: .conversation(maxMessages: 50),
     inferenceProvider: .foundationModels(),
     inputGuardrails: [MaxInputLengthGuardrail(maxLength: 5000)],
@@ -823,7 +800,7 @@ the legacy marker protocols.
 
 ## 10) HandoffTool
 
-Agents passed via the `handoffs` or `handoffAgents` init parameters are automatically wrapped as tool calls. The LLM can invoke them to delegate control.
+Agents passed via the `handoffs` init parameter (for example `[billing.asHandoff()]`) are automatically wrapped as tool calls. The LLM can invoke them to delegate control.
 
 Default names come from the target runtime type (`handoff_to_` + snake_case of `type(of:)`). `Agent` initialization, `withHandoffs`, `withTools`, and `Agent.Builder` handoff setters reject duplicate effective names (`AgentError.duplicateHandoffToolName`) and names that collide with a registered tool (`AgentError.handoffToolNameCollidesWithTool`), including disabled tools. After that check, the in-loop handoff map keeps the first entry if a name were ever repeated.
 
