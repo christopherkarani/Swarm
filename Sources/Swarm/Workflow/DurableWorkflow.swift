@@ -78,10 +78,10 @@ public struct DurableWorkflow: Sendable {
     /// Each tool call that executed in the step is journaled in the checkpoint.
     /// On replay, a call with the same tool name and arguments returns its
     /// recorded result, does not notify observers or tracing again, and does
-    /// not write to memory again. If the replay keeps pausing on other calls
-    /// without reaching the approved one, the approve after
-    /// ``WorkflowApprovalReplayDiverged/maxAttempts`` such resumes throws
-    /// ``WorkflowApprovalReplayDiverged``.
+    /// not write to memory again. If replays keep pausing on other calls
+    /// without reaching the call just approved, the approve that would make
+    /// ``WorkflowApprovalReplayDiverged/maxAttempts`` such resumes in a row
+    /// throws ``WorkflowApprovalReplayDiverged`` before the step runs.
     ///
     /// There is no timeout on the approval wait itself: the run stays paused
     /// until this method is called.

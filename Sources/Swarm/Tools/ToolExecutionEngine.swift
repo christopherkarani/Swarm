@@ -78,7 +78,7 @@ struct ToolExecutionEngine: Sendable {
                 stopOnToolError: stopOnToolError
             )
         }
-        try await WorkflowDurableApprovalGate.check(
+        let consumedApproval = try await WorkflowDurableApprovalGate.check(
             call: call,
             registry: registry,
             agent: agent,
@@ -91,20 +91,25 @@ struct ToolExecutionEngine: Sendable {
 
         let spanId: UUID? = if let tracing { await tracing.traceToolCall(name: toolName, arguments: arguments) } else { nil }
 
+        // Calls a nested agent makes inside this tool are journaled under this
+        // scope, so this call's own entry replaces them once it finishes.
+        let journalScope = UUID()
         let startTime = clock.nowNanoseconds()
         do {
-            let output = try await registry.execute(
-                toolNamed: toolName,
-                arguments: arguments,
-                agent: agent,
-                context: context,
-                observer: observer
-            )
+            let output = try await WorkflowDurableApprovalGate.$scope.withValue(journalScope) {
+                try await registry.execute(
+                    toolNamed: toolName,
+                    arguments: arguments,
+                    agent: agent,
+                    context: context,
+                    observer: observer
+                )
+            }
 
             let measured = elapsedDuration(since: startTime)
             let result = ToolResult.success(callId: call.id, output: output, duration: measured)
             _ = resultBuilder.addToolResult(result)
-            await WorkflowDurableApprovalGate.record(call: call, outcome: .success(output))
+            await WorkflowDurableApprovalGate.record(call: call, outcome: .success(output), ownScope: journalScope)
 
             if let tracing, let spanId {
                 await tracing.traceToolResult(spanId: spanId, name: toolName, result: output.description, duration: measured)
@@ -121,7 +126,11 @@ struct ToolExecutionEngine: Sendable {
             // A nested agent (agent-as-tool) paused for durable approval; the
             // pause belongs to the workflow, not to this tool's result. Surface
             // the nested request and close this call without a failure so start
-            // and end events stay paired.
+            // and end events stay paired. This call is not journaled, so it
+            // gives back its approval for the replay.
+            if consumedApproval {
+                await WorkflowDurableApprovalGate.restore(call: call)
+            }
             await closePausedCall(
                 call,
                 pause: pause,
@@ -139,8 +148,17 @@ struct ToolExecutionEngine: Sendable {
 
             let result = ToolResult.failure(callId: call.id, error: errorMessage, duration: measured)
             _ = resultBuilder.addToolResult(result)
-            if !(error is CancellationError), !Task.isCancelled {
-                await WorkflowDurableApprovalGate.record(call: call, outcome: .failure(errorMessage))
+            if error is CancellationError || Task.isCancelled {
+                // Not journaled, so the approval stays available to the replay.
+                if consumedApproval {
+                    await WorkflowDurableApprovalGate.restore(call: call)
+                }
+            } else {
+                await WorkflowDurableApprovalGate.record(
+                    call: call,
+                    outcome: .failure(errorMessage),
+                    ownScope: journalScope
+                )
             }
 
             if let tracing, let spanId {
