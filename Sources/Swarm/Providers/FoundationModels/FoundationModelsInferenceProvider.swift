@@ -305,7 +305,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     ) -> AsyncThrowingStream<String, Error> {
         let resolved = resolveTurn(messages: messages, tools: [], options: options)
         let generationOptions = makeGenerationOptions(from: resolved.options)
-        return StreamHelper.makeTrackedStream { continuation in
+        return StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             let fitted = await PromptEnvelope.enforce(
                 messages: resolved.messages,
                 profile: envelopeProfile
