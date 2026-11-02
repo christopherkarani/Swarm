@@ -72,6 +72,33 @@ struct AgentTurnTranscriptTests {
         #expect(entries[2].content == structured.rawJSON)
     }
 
+    @Test("Formatted messages match the bracketed history renderer")
+    func formattedMatchesBracketedRenderer() {
+        let messages: [AgentTurnTranscript.Message] = [
+            .system("sys"),
+            .user("u"),
+            .assistant(""),
+            .assistant(
+                "work",
+                toolCalls: [.init(id: "1", name: "search", arguments: [:])]
+            ),
+            .assistant(
+                "",
+                toolCalls: [.init(id: "1", name: "search", arguments: [:])]
+            ),
+            .toolResult(toolName: "search", result: "hit", toolCallID: "1"),
+        ]
+
+        #expect(messages.map(\.formatted) == [
+            "[System]: sys",
+            "[User]: u",
+            "[Assistant]: ",
+            "[Assistant]: work\n[Assistant Tool Calls]: Calling tool: search",
+            "[Assistant]: Calling tool: search",
+            "[Tool Result - search]: hit",
+        ])
+    }
+
     @Test("An empty owned transcript becomes one final assistant message")
     func emptyOwnedLoopAddsFinalAssistant() {
         let structured = StructuredOutputResult(

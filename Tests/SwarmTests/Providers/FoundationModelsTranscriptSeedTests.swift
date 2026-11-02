@@ -128,4 +128,162 @@ struct FoundationModelsTranscriptSeedTests {
             options: .default
         ).contains("System: other system"))
     }
+
+    @Test("resolve rehydrates representable history with the pending prompt")
+    func resolveRehydratesRepresentableHistory() {
+        let resolved = FoundationModelsTranscriptSeed.resolve(
+            messages: [
+                .system("Be brief."),
+                .user("u1"),
+                .assistant("a1"),
+                .user("u2"),
+            ],
+            instructions: "Be brief.",
+            tools: [],
+            options: .default
+        )
+
+        #expect(resolved == .rehydrate(
+            seedEntries: [
+                .instructions("Be brief."),
+                .prompt(text: "u1", images: []),
+                .response("a1"),
+            ],
+            prompt: "u2",
+            images: []
+        ))
+    }
+
+    @Test("resolve flattens tool-call history into one prompt")
+    func resolveFlattensToolCallHistory() {
+        let messages: [InferenceMessage] = [
+            .user("look up"),
+            .assistant(
+                "",
+                toolCalls: [.init(id: "1", name: "search", arguments: ["q": .string("x")])]
+            ),
+            .tool(name: "search", content: "hit", toolCallID: "1"),
+        ]
+        let resolved = FoundationModelsTranscriptSeed.resolve(
+            messages: messages,
+            instructions: nil,
+            tools: [],
+            options: .default
+        )
+
+        #expect(resolved == .flatten(
+            prompt: [
+                "User: look up",
+                "Assistant requested tool calls:",
+                #"- search({"q":"x"})"#,
+                "Tool result (search) [id=1]: hit",
+            ].joined(separator: "\n"),
+            images: []
+        ))
+    }
+
+    @Test("resolve sends the pending turn when history is already resident")
+    func resolveResidentSendsPendingTurn() {
+        let messages: [InferenceMessage] = [
+            .user("look up"),
+            .assistant(
+                "",
+                toolCalls: [.init(id: "1", name: "search", arguments: ["q": .string("x")])]
+            ),
+            .tool(name: "search", content: "hit", toolCallID: "1"),
+        ]
+        let resolved = FoundationModelsTranscriptSeed.resolve(
+            messages: messages,
+            instructions: nil,
+            tools: [],
+            options: .default,
+            historyResident: true
+        )
+
+        #expect(resolved == .rehydrate(
+            seedEntries: [
+                .prompt(text: "look up", images: []),
+                .toolOutput(name: "search", content: "hit", toolCallID: "1"),
+            ],
+            prompt: "look up",
+            images: []
+        ))
+    }
+
+    @Test("resolve keeps ToolChoice.specific suffix on the rehydrate branch")
+    func resolveRehydrateKeepsSpecificToolChoice() {
+        let lookup = ToolSchema(name: "lookup", description: "Look up", parameters: [])
+        let resolved = FoundationModelsTranscriptSeed.resolve(
+            messages: [.user("look up")],
+            instructions: nil,
+            tools: [lookup],
+            options: InferenceOptions(toolChoice: .specific(toolName: "lookup"))
+        )
+
+        #expect(resolved.prompt.hasPrefix("look up"))
+        #expect(resolved.prompt.contains(#"call "lookup""#))
+        #expect(resolved.images == [])
+    }
 }
+
+#if canImport(FoundationModels)
+import FoundationModels
+
+extension FoundationModelsTranscriptSeedTests {
+    @Test("capture turn prompts match the central history resolution")
+    func captureTurnMatchesCentralResolution() {
+        guard #available(macOS 26.0, iOS 26.0, visionOS 26.0, *) else {
+            return
+        }
+        #if os(tvOS) || os(watchOS)
+        return
+        #else
+        let provider = FoundationModelsInferenceProvider()
+        let rehydratable: [InferenceMessage] = [
+            .user("u1"),
+            .assistant("a1"),
+            .user("u2"),
+        ]
+        let rehydrated = provider.makeCaptureTurn(
+            tools: [],
+            messages: rehydratable,
+            flattenTools: [],
+            instructions: nil,
+            options: .default
+        )
+        let resolvedRehydrate = FoundationModelsTranscriptSeed.resolve(
+            messages: rehydratable,
+            instructions: nil,
+            tools: [],
+            options: .default
+        )
+        #expect(rehydrated.prompt == "u2")
+        #expect(rehydrated.prompt == resolvedRehydrate.prompt)
+        #expect(rehydrated.images == resolvedRehydrate.images)
+        #expect(!rehydrated.session.transcript.isEmpty)
+
+        let flattenOnly: [InferenceMessage] = [
+            .user("look up"),
+            .assistant("", toolCalls: [.init(id: "1", name: "search", arguments: [:])]),
+            .tool(name: "search", content: "hit", toolCallID: "1"),
+        ]
+        let flattened = provider.makeCaptureTurn(
+            tools: [],
+            messages: flattenOnly,
+            flattenTools: [],
+            instructions: nil,
+            options: .default
+        )
+        let resolvedFlatten = FoundationModelsTranscriptSeed.resolve(
+            messages: flattenOnly,
+            instructions: nil,
+            tools: [],
+            options: .default
+        )
+        #expect(flattened.prompt == resolvedFlatten.prompt)
+        #expect(flattened.images == resolvedFlatten.images)
+        #expect(flattened.session.transcript.isEmpty)
+        #endif
+    }
+}
+#endif

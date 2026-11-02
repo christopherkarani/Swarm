@@ -42,6 +42,77 @@ struct WorkflowDurableApprovalResiliencePropagationTests {
     }
 }
 
+/// Records tool lifecycle callbacks in arrival order.
+private actor ToolLifecycleRecorder: AgentObserver {
+    enum Entry: Equatable {
+        case started(String)
+        case ended(String, isSuccess: Bool)
+        case approvalRequested(String)
+    }
+
+    private(set) var entries: [Entry] = []
+
+    func onToolStart(context _: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async {
+        entries.append(.started(call.toolName))
+    }
+
+    func onToolEnd(context _: AgentContext?, agent _: any AgentRuntime, invocation: ToolInvocation) async {
+        entries.append(.ended(invocation.call.toolName, isSuccess: invocation.result.isSuccess))
+    }
+
+    func onToolApprovalRequested(context _: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async {
+        entries.append(.approvalRequested(call.toolName))
+    }
+}
+
+@Suite("Durable approval pause through agent-as-tool observability")
+struct WorkflowDurableApprovalAgentToolObservabilityTests {
+    @Test("agent-as-tool pause pairs the outer tool start with a non-failure end and closes its span")
+    func agentToolPauseClosesOuterToolCall() async throws {
+        let counter = ApprovalToolCounter()
+        let innerProvider = await MockInferenceProvider()
+        await innerProvider.configureToolCallingSequence(
+            toolCalls: [("delete_vm", ["id": .string("vm-1")])],
+            finalAnswer: "inner-done"
+        )
+        let inner = try makeApprovalTestAgent(
+            tools: [makeApprovalCountingTool(name: "delete_vm", counter: counter)],
+            provider: innerProvider
+        )
+        let registry = ToolRegistry()
+        try await registry.register(inner.asTool(name: "operator", description: "Runs operations"))
+        let recorder = ToolLifecycleRecorder()
+        let tracer = SpyTracer()
+
+        await #expect(throws: WorkflowToolApprovalRequest.self) {
+            try await WorkflowDurableApprovalGate.$ledger.withValue(WorkflowApprovalLedger(approved: [])) {
+                _ = try await ToolExecutionEngine().execute(
+                    toolName: "operator",
+                    arguments: ["input": .string("delete vm-1")],
+                    registry: registry,
+                    agent: MockAgentRuntime(response: "outer"),
+                    context: nil,
+                    resultBuilder: AgentResult.Builder(),
+                    observer: recorder,
+                    tracing: TracingHelper(tracer: tracer, agentName: "outer"),
+                    stopOnToolError: false
+                )
+            }
+        }
+
+        #expect(await counter.count == 0)
+        #expect(await recorder.entries == [
+            .started("operator"),
+            .approvalRequested("delete_vm"),
+            .ended("operator", isSuccess: true)
+        ])
+        let events = await tracer.tracedEvents
+        let started = try #require(events.first { $0.kind == .toolCall && $0.toolName == "operator" })
+        #expect(events.contains { $0.kind == .toolResult && $0.spanId == started.spanId })
+        #expect(!events.contains { $0.kind == .toolError })
+    }
+}
+
 #if SWARM_INTEGRATIONS
 
 @Suite("Durable approval pause propagation through workflow combinators", .ephemeralDefaultStores)

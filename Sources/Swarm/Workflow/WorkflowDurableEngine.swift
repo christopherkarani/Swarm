@@ -17,7 +17,8 @@ enum WorkflowDurableInput: Sendable {
 ///
 /// The phase is the single checkpointed carrier of workflow progress: either the
 /// run is mid-flight (`running`, with its cursors and most recent step result) or
-/// it has terminated (`completed`, carrying the final result). Because the
+/// it has terminated (`completed`, carrying the final result, or `rejected`,
+/// carrying a human approval rejection). Because the
 /// cursors live inside `running`'s payload, a completed run can never coexist
 /// with pending cursor state — the illegal combination is unrepresentable by
 /// construction rather than guarded at runtime.
@@ -41,8 +42,8 @@ enum WorkflowDurablePhase: Codable, Sendable, Equatable {
     case completed(WorkflowResultSnapshot)
     /// The run ended because a human rejected a paused tool call.
     ///
-    /// Terminal like ``completed(_:)``: committing it resolves the pending
-    /// approval interrupt, so the rejected call can never be approved later.
+    /// Terminal like ``completed(_:)``: later approval decisions and resumes
+    /// report the rejection without executing.
     case rejected(toolName: String, reason: String)
 }
 
@@ -142,6 +143,9 @@ struct WorkflowDurableEngine: Sendable {
             guard try await checkpointing.containsCheckpoint(for: checkpointID) else {
                 throw WorkflowError.checkpointNotFound(id: checkpointID)
             }
+            try Self.throwIfRejected(
+                try await components.runtime.getLatestCheckpoint(threadID: components.threadID)
+            )
         }
 
         let input: WorkflowDurableInput = resume ? .resume : .start(
@@ -154,7 +158,8 @@ struct WorkflowDurableEngine: Sendable {
             options: runOptions(for: policy)
         )
 
-        return try await finish(try await handle.outcome.value, components: components)
+        let outcome = try await handle.outcome.value
+        return try await finish(outcome, components: components)
     }
 
     /// Delivers a human approval decision to a run paused on ``WorkflowApprovalRequired``.
@@ -163,8 +168,9 @@ struct WorkflowDurableEngine: Sendable {
     /// caller only names the checkpoint thread. `.approve` carries the approved
     /// call (plus earlier approvals in the pause chain) into the resumed step;
     /// `.reject` commits the terminal ``WorkflowDurablePhase/rejected(toolName:reason:)``
-    /// phase, which resolves the interrupt, and fails the run with
+    /// phase and fails the run with
     /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing.
+    /// A later decision on a rejected run reports the same rejection.
     ///
     /// Concurrent resumes of the same run do not both execute: the in-process
     /// guard rejects a second resume through the same store, and the
@@ -188,8 +194,22 @@ struct WorkflowDurableEngine: Sendable {
         guard try await checkpointing.containsCheckpoint(for: checkpointID) else {
             throw WorkflowError.checkpointNotFound(id: checkpointID)
         }
-        guard let checkpoint = try await components.store.loadLatest(threadID: components.threadID),
-              let interruption = checkpoint.interruption else {
+        return try await deliver(decision, components: components)
+    }
+
+    /// Reads the pending interrupt, claims it, and resumes it. Callers hold
+    /// the resume guard, and the claim keeps other processes out, so the read
+    /// and the resumed commit cannot interleave with another decision.
+    private func deliver(
+        _ decision: WorkflowApprovalDecision,
+        components: WorkflowDurableRuntimeComponents
+    ) async throws -> AgentResult {
+        guard let checkpoint = try await components.runtime.getLatestCheckpoint(threadID: components.threadID)
+        else {
+            throw WorkflowError.checkpointNotFound(id: checkpointID)
+        }
+        try Self.throwIfRejected(checkpoint)
+        guard let interruption = checkpoint.interruption else {
             throw WorkflowError.invalidWorkflow(reason: "No paused tool approval for checkpoint '\(checkpointID)'")
         }
         let request = try WorkflowApprovalRequestEnvelope.decoded(from: interruption.payload)
@@ -217,51 +237,50 @@ struct WorkflowDurableEngine: Sendable {
                 payload: resumePayload,
                 options: runOptions(for: policy)
             )
-            return try await finish(try await handle.outcome.value, components: components)
+            let outcome = try await handle.outcome.value
+            return try await finish(outcome, components: components)
         } catch {
             await releaseClaim(claimed, request: request, store: components.store)
             throw error
         }
     }
 
-    /// Maps a run outcome to the caller's result, persisting terminal state first.
+    /// Maps a run outcome to the caller's result, persisting terminal state.
     ///
-    /// Terminal outcomes are flushed before the result (or the terminal
-    /// rejection error) is surfaced, so an `.onCompletion` run commits a
-    /// rejection exactly like a completion.
+    /// A rejection is terminal state too, so it is flushed under
+    /// `.onCompletion` before the rejection error propagates.
     private func finish(
         _ outcome: HiveRunOutcome<WorkflowDurableSchema>,
         components: WorkflowDurableRuntimeComponents
     ) async throws -> AgentResult {
-        let result = Result { try extractResult(from: outcome) }
-        switch outcome {
-        case .finished, .cancelled:
+        do {
+            let result = try extractResult(from: outcome)
             try await flushIfNeeded(runtime: components.runtime, threadID: components.threadID)
-        case .interrupted, .outOfSteps:
-            break
+            return result
+        } catch WorkflowError.humanApprovalRejected(let prompt, let reason) {
+            try await flushIfNeeded(runtime: components.runtime, threadID: components.threadID)
+            throw WorkflowError.humanApprovalRejected(prompt: prompt, reason: reason)
         }
-        return try result.get()
+    }
+
+    /// Reports a checkpointed rejection before any runtime work.
+    ///
+    /// The rejecting step's checkpoint can still carry the original interrupt
+    /// (Hive clears it in memory after the checkpoint is built), so the phase,
+    /// not the interrupt, decides whether the run is terminal. Undecodable
+    /// phases fall through to the runtime's own error reporting.
+    private static func throwIfRejected(_ checkpoint: HiveCheckpoint<WorkflowDurableSchema>?) throws {
+        guard let data = checkpoint?.globalDataByChannelID[WorkflowDurableSchema.phaseKey.id.rawValue],
+              let phase = try? WorkflowCheckpointCodec<WorkflowDurablePhase>().decode(data),
+              case .rejected(let toolName, let reason) = phase
+        else { return }
+        throw WorkflowError.humanApprovalRejected(prompt: toolName, reason: reason)
     }
 
     private func makeRuntimeComponents() throws -> WorkflowDurableRuntimeComponents {
-        let graph = try makeGraph()
-        let context = WorkflowDurableContext(
-            workflow: workflow,
-            signature: workflow.workflowSignature
-        )
-        let store = faultInjectingStore(wrapping: AnyHiveCheckpointStore(
-            WorkflowLegacyMigratingCheckpointStore(
-                inner: checkpointing.runtimeStore,
-                schemaVersion: graph.schemaVersion,
-                graphVersion: graph.graphVersion
-            )
-        ))
-        let environment = HiveEnvironment<WorkflowDurableSchema>(
-            context: context,
-            clock: WorkflowDurableClock(),
-            logger: WorkflowDurableLogger(),
-            checkpointStore: store
-        )
+        let graph = try Self.compiledGraph(for: workflow)
+        let store = Self.checkpointStore(checkpointing: checkpointing, graph: graph)
+        let environment = Self.environment(workflow: workflow, store: store)
         let runtime = try HiveRuntime(graph: graph, environment: environment)
         let threadID = Self.hiveThreadID(for: WorkflowCheckpointID(checkpointID))
         return WorkflowDurableRuntimeComponents(runtime: runtime, threadID: threadID, store: store)
@@ -280,22 +299,53 @@ struct WorkflowDurableEngine: Sendable {
         _ = try await flushHandle.outcome.value
     }
 
-    private func faultInjectingStore(
-        wrapping store: AnyHiveCheckpointStore<WorkflowDurableSchema>
-    ) -> AnyHiveCheckpointStore<WorkflowDurableSchema> {
-        guard WorkflowDurableFaultInjection.controller != nil else {
-            return store
-        }
-        return AnyHiveCheckpointStore(WorkflowFaultInjectingCheckpointStore(inner: store))
-    }
-
-    private func makeGraph() throws -> CompiledHiveGraph<WorkflowDurableSchema> {
+    static func compiledGraph(for workflow: Workflow) throws -> CompiledHiveGraph<WorkflowDurableSchema> {
         var builder = HiveGraphBuilder<WorkflowDurableSchema>(start: [WorkflowNodeID.execute])
         builder.addNode(WorkflowNodeID.execute, workflowNode)
         builder.addRouter(from: WorkflowNodeID.execute) { store in
             WorkflowDurableRouting.route(for: Result { try store.get(WorkflowDurableSchema.phaseKey) })
         }
         return try builder.compile()
+    }
+
+    static func environment(
+        workflow: Workflow,
+        store: AnyHiveCheckpointStore<WorkflowDurableSchema>
+    ) -> HiveEnvironment<WorkflowDurableSchema> {
+        let context = WorkflowDurableContext(
+            workflow: workflow,
+            signature: workflow.workflowSignature
+        )
+        return HiveEnvironment(
+            context: context,
+            clock: WorkflowDurableClock(),
+            logger: WorkflowDurableLogger(),
+            checkpointStore: store
+        )
+    }
+
+    /// The runtime's checkpoint store: legacy migration plus optional fault injection.
+    static func checkpointStore(
+        checkpointing: WorkflowCheckpointing,
+        graph: CompiledHiveGraph<WorkflowDurableSchema>
+    ) -> AnyHiveCheckpointStore<WorkflowDurableSchema> {
+        let migrating = AnyHiveCheckpointStore(
+            WorkflowLegacyMigratingCheckpointStore(
+                inner: checkpointing.runtimeStore,
+                schemaVersion: graph.schemaVersion,
+                graphVersion: graph.graphVersion
+            )
+        )
+        return faultInjectingStore(wrapping: migrating)
+    }
+
+    private static func faultInjectingStore(
+        wrapping store: AnyHiveCheckpointStore<WorkflowDurableSchema>
+    ) -> AnyHiveCheckpointStore<WorkflowDurableSchema> {
+        guard WorkflowDurableFaultInjection.controller != nil else {
+            return store
+        }
+        return AnyHiveCheckpointStore(WorkflowFaultInjectingCheckpointStore(inner: store))
     }
 
     private func runOptions(for policy: Workflow.Durable.CheckpointPolicy) -> HiveRunOptions {
@@ -392,6 +442,47 @@ struct WorkflowDurableEngine: Sendable {
     }
 }
 
+/// Forks an older checkpoint of one run into a new run, then resumes the new run.
+///
+/// The runtime seeds the target thread from the source checkpoint (channels,
+/// versions, and frontier) and persists it, so the follow-up resume is an
+/// ordinary latest-checkpoint resume under the target run. The source run is
+/// left untouched.
+struct WorkflowDurableFork: Sendable {
+    let workflow: Workflow
+    let checkpointing: WorkflowCheckpointing
+    let sourceRun: WorkflowCheckpointID
+    let sourceCheckpointID: String
+    let targetRun: WorkflowCheckpointID
+    let policy: Workflow.Durable.CheckpointPolicy
+
+    func run(startInput: String) async throws -> AgentResult {
+        if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
+            throw error
+        }
+        let graph = try WorkflowDurableEngine.compiledGraph(for: workflow)
+        let environment = WorkflowDurableEngine.environment(
+            workflow: workflow,
+            store: WorkflowDurableEngine.checkpointStore(checkpointing: checkpointing, graph: graph)
+        )
+        let runtime = try HiveRuntime(graph: graph, environment: environment)
+        _ = try await runtime.fork(
+            threadID: WorkflowDurableEngine.hiveThreadID(for: sourceRun),
+            to: WorkflowDurableEngine.hiveThreadID(for: targetRun),
+            from: HiveCheckpointID(sourceCheckpointID),
+            options: HiveRunOptions(maxSteps: 1, checkpointPolicy: .everyStep)
+        )
+        let engine = WorkflowDurableEngine(
+            workflow: workflow,
+            checkpointing: checkpointing,
+            checkpointID: targetRun.rawValue,
+            policy: policy,
+            resume: true
+        )
+        return try await engine.run(startInput: startInput)
+    }
+}
+
 /// Non-throwing router decision for the durable execute node.
 ///
 /// Routers cannot throw, so the phase-channel read arrives as a `Result`. Only
@@ -459,10 +550,10 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
             await controller.markWorkflowStepStarted()
         }
         let allowedCalls: [WorkflowApprovedCall]
-        switch try approvalResolution(resumePayload: input.run.resume?.payload) {
+        switch try approvalGate(resumePayload: input.run.resume?.payload) {
         case .rejected(let toolName, let reason):
             return rejectedOutput(toolName: toolName, reason: reason)
-        case .allowing(let calls):
+        case .allowed(let calls):
             allowedCalls = calls
         }
         let ledger = WorkflowApprovalLedger(approved: allowedCalls)
@@ -510,10 +601,10 @@ private func progressValue(from decision: WorkflowTransition.Decision) throws ->
     }
 }
 
-/// How a step execution resolves the human decision it was resumed with.
-private enum WorkflowApprovalResolution {
-    /// Run the step with these approvals (empty for a fresh step).
-    case allowing([WorkflowApprovedCall])
+/// Approval gate state for one step execution.
+private enum WorkflowApprovalGateState {
+    /// Run the step with these calls allowed past the gate.
+    case allowed([WorkflowApprovedCall])
     /// The human rejected the paused call; end the run without executing.
     case rejected(toolName: String, reason: String)
 }
@@ -521,10 +612,12 @@ private enum WorkflowApprovalResolution {
 /// Resolves the approval gate for one step execution.
 ///
 /// A fresh step arms the gate with no allowances. A Hive-resumed step carries
-/// the human decision: `.reject` ends the run without executing, `.approve`
-/// allows the calls approved so far in the pause chain.
-private func approvalResolution(resumePayload: String?) throws -> WorkflowApprovalResolution {
-    guard let resumePayload else { return .allowing([]) }
+/// the human decision: `.reject` ends the run without executing (the node
+/// commits a terminal rejected phase so the decision is checkpointed), and
+/// `.approve` allows the calls approved so far in the pause chain, each
+/// consumable once per step execution.
+private func approvalGate(resumePayload: String?) throws -> WorkflowApprovalGateState {
+    guard let resumePayload else { return .allowed([]) }
     let decision = try WorkflowApprovalDecisionEnvelope.decoded(from: resumePayload)
     switch decision.decision {
     case .reject:
@@ -533,14 +626,11 @@ private func approvalResolution(resumePayload: String?) throws -> WorkflowApprov
             reason: "Operator rejected tool '\(decision.toolName)' at durable approval resume"
         )
     case .approve:
-        return .allowing(decision.approved)
+        return .allowed(decision.approved)
     }
 }
 
-/// Commits the terminal rejection phase.
-///
-/// Returning normally (instead of throwing) lets the runtime commit the
-/// resumed step, which clears the pending interrupt from the checkpoint.
+/// Terminal output for a rejected approval: commits the rejected phase and ends.
 private func rejectedOutput(toolName: String, reason: String) -> HiveNodeOutput<WorkflowDurableSchema> {
     HiveNodeOutput(
         writes: [AnyHiveWrite(WorkflowDurableSchema.phaseKey, .rejected(toolName: toolName, reason: reason))],
@@ -711,6 +801,16 @@ actor WorkflowFaultInjectingCheckpointStore: HiveCheckpointStore {
     }
 }
 
+extension WorkflowFaultInjectingCheckpointStore: HiveCheckpointQueryableStore {
+    func listCheckpoints(threadID: HiveThreadID, limit: Int?) async throws -> [HiveCheckpointSummary] {
+        try await inner.listCheckpoints(threadID: threadID, limit: limit)
+    }
+
+    func loadCheckpoint(threadID: HiveThreadID, id: HiveCheckpointID) async throws -> HiveCheckpoint<Schema>? {
+        try await inner.loadCheckpoint(threadID: threadID, id: id)
+    }
+}
+
 /// Checkpoint store wrapper that migrates pre-phase-enum checkpoints on load.
 ///
 /// Loads matching the current schema version pass through untouched; anything
@@ -751,7 +851,23 @@ private struct WorkflowLegacyMigratingCheckpointStore: HiveCheckpointStore {
             graphVersion: graphVersion
         )
     }
+
+    func listCheckpoints(threadID: HiveThreadID, limit: Int?) async throws -> [HiveCheckpointSummary] {
+        try await inner.listCheckpoints(threadID: threadID, limit: limit)
+    }
+
+    func loadCheckpoint(threadID: HiveThreadID, id: HiveCheckpointID) async throws -> HiveCheckpoint<Schema>? {
+        guard let checkpoint = try await inner.loadCheckpoint(threadID: threadID, id: id) else { return nil }
+        guard checkpoint.schemaVersion != schemaVersion else { return checkpoint }
+        return try WorkflowLegacyCheckpointMigrator.migrate(
+            checkpoint,
+            schemaVersion: schemaVersion,
+            graphVersion: graphVersion
+        )
+    }
 }
+
+extension WorkflowLegacyMigratingCheckpointStore: HiveCheckpointQueryableStore {}
 
 /// Rewrites checkpoints persisted in the pre-phase-enum six-channel layout into
 /// the current three-channel phase-enum layout.
