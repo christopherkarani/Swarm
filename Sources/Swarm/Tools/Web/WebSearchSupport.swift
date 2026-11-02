@@ -593,14 +593,14 @@ internal struct WebExecutionEngine: Sendable {
             Log.agents.warning("[WebSearchTool] liveSearch skipped: no API key configured (hasLiveSearchBackend=false)")
             return []
         }
-        Log.agents.info("[WebSearchTool] liveSearch: query='\(query)', maxResults=\(request.maxResults), domains=\(request.domains), recencyDays=\(request.recencyDays ?? -1)")
+        Log.agents.debug("[WebSearchTool] liveSearch: query=\(redactedQuery(query)), maxResults=\(request.maxResults), domains=\(request.domains), recencyDays=\(request.recencyDays ?? -1)")
         let hits = try await TavilySearchBackend(configuration: configuration, secretStore: secretStore).search(
             query: query,
             maxResults: request.maxResults,
             domains: request.domains,
             recencyDays: request.recencyDays
         )
-        Log.agents.info("[WebSearchTool] liveSearch returned \(hits.count) hits for query: '\(query)'")
+        Log.agents.debug("[WebSearchTool] liveSearch returned \(hits.count) hits")
         return hits
     }
 
@@ -1215,7 +1215,7 @@ internal struct TavilySearchBackend: Sendable {
             return []
         }
 
-        Log.agents.info("[TavilySearchBackend] POST api.tavily.com/search — query='\(query)', maxResults=\(maxResults)")
+        Log.agents.debug("[TavilySearchBackend] POST api.tavily.com/search — query=\(redactedQuery(query)), maxResults=\(maxResults)")
 
         guard let url = URL(string: "https://api.tavily.com/search") else {
             throw AgentError.toolFailure(toolName: "websearch", message: "Invalid Tavily URL", cause: nil)
@@ -1247,11 +1247,13 @@ internal struct TavilySearchBackend: Sendable {
             throw AgentError.toolFailure(toolName: "websearch", message: "Tavily returned a non-HTTP response", cause: nil)
         }
         guard http.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "(no body)"
+            // The body can echo the query or the API key, so the model only
+            // sees the status and the log only a redacted, truncated excerpt.
+            let errorBody = Self.sanitizedErrorBody(data, apiKey: apiKey)
             Log.agents.error("[TavilySearchBackend] HTTP \(http.statusCode) — \(errorBody)")
             throw AgentError.toolFailure(
                 toolName: "websearch",
-                message: "Tavily request failed (HTTP \(http.statusCode)): \(errorBody)",
+                message: Self.failureMessage(statusCode: http.statusCode),
                 cause: nil
             )
         }
@@ -1270,6 +1272,50 @@ internal struct TavilySearchBackend: Sendable {
             )
         }
     }
+
+    /// Longest error-body excerpt written to the log.
+    static let maxLoggedErrorBodyLength = 200
+
+    /// Tool-failure text for a non-200 Tavily response: status only, never the body.
+    static func failureMessage(statusCode: Int) -> String {
+        let reason: String? = switch statusCode {
+        case 400: "bad request"
+        case 401, 403: "authentication failed"
+        case 429: "rate limited"
+        case 432, 433: "plan limit exceeded"
+        case 500 ... 599: "server error"
+        default: nil
+        }
+        guard let reason else {
+            return "Tavily request failed (HTTP \(statusCode))"
+        }
+        return "Tavily request failed (HTTP \(statusCode): \(reason))"
+    }
+
+    /// A single-line, secret-redacted, truncated excerpt of an error body for logs.
+    static func sanitizedErrorBody(_ data: Data, apiKey: String) -> String {
+        guard !data.isEmpty else {
+            return "(no body)"
+        }
+        guard var text = String(validating: data, as: UTF8.self) else {
+            return "(\(data.count)-byte non-UTF-8 body)"
+        }
+        if !apiKey.isEmpty {
+            text = text.replacingOccurrences(of: apiKey, with: "[api-key]")
+        }
+        text = text.replacingOccurrences(of: "tvly-[A-Za-z0-9_-]+", with: "[api-key]", options: .regularExpression)
+        text = TraceRedactor().redact(text)
+        text = String(text.map { $0.isNewline || ($0.asciiValue ?? 0x20) < 0x20 ? " " : $0 })
+        guard text.count > maxLoggedErrorBodyLength else {
+            return text
+        }
+        return String(text.prefix(maxLoggedErrorBodyLength)) + "…"
+    }
+}
+
+/// A log-safe stand-in for a search query: its length, never its text.
+internal func redactedQuery(_ query: String) -> String {
+    "<redacted, \(query.count) chars>"
 }
 
 /// Fetches public web pages for the web tool with SSRF protection.
