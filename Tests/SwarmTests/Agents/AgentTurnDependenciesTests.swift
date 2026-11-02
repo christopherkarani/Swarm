@@ -384,7 +384,7 @@ struct AgentTurnDependenciesTests {
     func inferenceOptionsStripWithoutContinuationSupport() {
         var configuration = AgentConfiguration.default
         configuration.autoPreviousResponseId = true
-        configuration.previousResponseId = "stale-id"
+        configuration.pinnedPreviousResponseId = "stale-id"
 
         let options = AgentTurnDependencyResolver.inferenceOptions(
             configuration: configuration,
@@ -399,7 +399,7 @@ struct AgentTurnDependenciesTests {
     func inferenceOptionsExplicitIDWins() {
         var configuration = AgentConfiguration.default
         configuration.autoPreviousResponseId = true
-        configuration.previousResponseId = "  explicit-id  "
+        configuration.pinnedPreviousResponseId = "  explicit-id  "
 
         let options = AgentTurnDependencyResolver.inferenceOptions(
             configuration: configuration,
@@ -436,7 +436,7 @@ struct AgentTurnDependenciesTests {
     func inferenceOptionsAutoRequiresSessionAndFlag() {
         var autoEnabled = AgentConfiguration.default
         autoEnabled.autoPreviousResponseId = true
-        autoEnabled.previousResponseId = nil
+        autoEnabled.pinnedPreviousResponseId = nil
 
         let noSession = AgentTurnDependencyResolver.inferenceOptions(
             configuration: autoEnabled,

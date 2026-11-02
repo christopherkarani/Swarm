@@ -203,7 +203,7 @@ struct WorkflowDurableTests {
         let original = Workflow()
             .step(MockAgentRuntime(
                 response: "done",
-                configuration: AgentConfiguration(name: "Worker", maxIterations: 1, temperature: 0.1)
+                configuration: AgentConfiguration(name: "Worker", maxIterations: 1, modelSettings: ModelSettings(temperature: 0.1))
             ))
             .durable
             .checkpoint(id: "wf-agent-config-mismatch", policy: .everyStep)
@@ -215,7 +215,7 @@ struct WorkflowDurableTests {
         let changed = Workflow()
             .step(MockAgentRuntime(
                 response: "done",
-                configuration: AgentConfiguration(name: "Worker", maxIterations: 5, temperature: 0.1)
+                configuration: AgentConfiguration(name: "Worker", maxIterations: 5, modelSettings: ModelSettings(temperature: 0.1))
             ))
             .durable
             .checkpoint(id: "wf-agent-config-mismatch", policy: .everyStep)

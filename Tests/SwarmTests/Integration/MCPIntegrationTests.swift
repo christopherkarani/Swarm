@@ -170,10 +170,10 @@ struct ModelSettingsIntegrationTests {
         let config = AgentConfiguration.default
             .modelSettings(settings)
 
-        #expect(config.modelSettings?.temperature == 1.2)
-        #expect(config.modelSettings?.topP == 0.95)
-        #expect(config.modelSettings?.maxTokens == 2048)
-        #expect(config.modelSettings?.toolChoice == .required)
+        #expect(config.modelSettings.temperature == 1.2)
+        #expect(config.modelSettings.topP == 0.95)
+        #expect(config.modelSettings.maxTokens == 2048)
+        #expect(config.modelSettings.toolChoice == .required)
     }
 
     @Test("Model settings validation works in context")
@@ -219,9 +219,9 @@ struct AgentModelSettingsIntegrationTests {
             configuration: config
         )
 
-        #expect(agent.configuration.modelSettings?.temperature == 0.2)
-        #expect(agent.configuration.modelSettings?.topP == 0.9)
-        #expect(agent.configuration.modelSettings?.maxTokens == 1500)
+        #expect(agent.configuration.modelSettings.temperature == 0.2)
+        #expect(agent.configuration.modelSettings.topP == 0.9)
+        #expect(agent.configuration.modelSettings.maxTokens == 1500)
     }
 
     @Test("Agent configuration merge works correctly via direct init")
@@ -235,7 +235,7 @@ struct AgentModelSettingsIntegrationTests {
         )
 
         #expect(agent.configuration.maxIterations == 15)
-        #expect(agent.configuration.modelSettings?.temperature == 0.7)
-        #expect(agent.configuration.modelSettings?.parallelToolCalls == true)
+        #expect(agent.configuration.modelSettings.temperature == 0.7)
+        #expect(agent.configuration.modelSettings.parallelToolCalls == true)
     }
 }

@@ -6,15 +6,6 @@
 import Foundation
 import Logging
 
-/// Context envelope mode used by agent prompt construction.
-public enum ContextMode: Sendable, Equatable {
-    /// Adaptive context sizing based on configured profile/platform defaults.
-    case adaptive
-
-    /// Strict 4K token limit for context window.
-    case strict4k
-}
-
 /// Optional graph runtime override for orchestration execution.
 struct SwarmGraphRunOptionsOverride: Sendable, Equatable {
     var maxSteps: Int?
@@ -208,7 +199,6 @@ public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
 /// - ``stopSequences(_:)`` - Set stop sequences
 /// - ``modelSettings(_:)`` - Set extended model settings
 /// - ``contextProfile(_:)`` - Set context profile
-/// - ``contextMode(_:)`` - Set context mode
 /// - ``inferencePolicy(_:)`` - Set inference routing policy
 /// - ``enableStreaming(_:)`` - Set streaming behavior
 /// - ``includeToolCallDetails(_:)`` - Set tool detail inclusion
@@ -216,7 +206,6 @@ public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
 /// - ``includeReasoning(_:)`` - Set reasoning inclusion
 /// - ``sessionHistoryLimit(_:)`` - Set history limit
 /// - ``parallelToolCalls(_:)`` - Set parallel execution
-/// - ``previousResponseId(_:)`` - Set response continuation
 /// - ``autoPreviousResponseId(_:)`` - Set auto response tracking
 /// - ``defaultTracingEnabled(_:)`` - Set default tracing
 /// - ``autoAttachMetricsCollector(_:)`` - Auto-attach a ``MetricsCollector``
@@ -230,7 +219,7 @@ public enum FoundationModelsExecutionMode: String, Sendable, Equatable {
 ///
 /// ## Post-Initialization Writes
 ///
-/// ``maxIterations``, ``timeout``, and ``temperature`` are mutation-proofed:
+/// ``maxIterations`` and ``timeout`` are mutation-proofed:
 /// `didSet` observers coerce any write with the exact same rules (and
 /// ``Log/agents`` warnings) as the designated initializer, so e.g.
 /// `config.maxIterations = 0` reads back as `1`. Property setters cannot
@@ -250,8 +239,8 @@ public struct AgentConfiguration: Sendable, Equatable {
         )
         #else
         AgentConfiguration(
-            sessionHistoryLimit: 12,
-            contextMode: .strict4k
+            contextProfile: .strict4k,
+            sessionHistoryLimit: 12
         )
         #endif
     }
@@ -299,51 +288,30 @@ public struct AgentConfiguration: Sendable, Equatable {
 
     // MARK: - Model Settings
 
-    /// Temperature for model generation (0.0 = deterministic, 2.0 = creative).
-    /// Default: 1.0
+    /// Sampling and provider settings for every inference call.
     ///
-    /// Post-initialization writes are coerced like the initializer: non-finite
-    /// or out-of-range values fall back to 1.0 (with a `Log.agents` warning).
-    public var temperature: Double {
-        didSet { temperature = Self.coercedTemperature(temperature) }
-    }
-
-    /// Maximum tokens to generate per response.
-    /// Default: nil (model default)
-    public var maxTokens: Int?
-
-    /// Sequences that will stop generation when encountered.
-    /// Default: empty
-    public var stopSequences: [String]
-
-    /// Extended model settings for fine-grained control.
-    ///
-    /// When set, values in `modelSettings` take precedence over the individual
-    /// `temperature`, `maxTokens`, and `stopSequences` properties above.
-    /// This allows for backward compatibility while enabling advanced configuration.
+    /// This is the single source for temperature, max output tokens, stop
+    /// sequences, and the other ``ModelSettings`` knobs. `nil` fields use the
+    /// provider default. The fluent ``temperature(_:)``, ``maxTokens(_:)``, and
+    /// ``stopSequences(_:)`` builders write into this value.
     ///
     /// Example:
     /// ```swift
     /// let config = AgentConfiguration.default
-    ///     .modelSettings(ModelSettings.creative
-    ///         .toolChoice(.required)
-    ///         .parallelToolCalls(true)
-    ///     )
+    ///     .modelSettings(ModelSettings.precise.toolChoice(.required))
+    ///     .maxTokens(500)
     /// ```
-    public var modelSettings: ModelSettings?
+    public var modelSettings: ModelSettings
 
     // MARK: - Context Settings
 
     /// Context budgeting profile for long-running agent workflows.
     ///
     /// Default: `.platformDefault`
-    public var contextProfile: ContextProfile
-
-    /// Context envelope mode for prompt construction.
     ///
-    /// When set to `.strict4k`, the runtime uses `ContextProfile.strict4k`
-    /// regardless of `contextProfile`.
-    public var contextMode: ContextMode
+    /// This is the single context-window knob: pick a preset such as
+    /// ``ContextProfile/strict4k`` or build a custom profile.
+    public var contextProfile: ContextProfile
 
     // MARK: - Graph Runtime Settings
 
@@ -562,34 +530,11 @@ public struct AgentConfiguration: Sendable, Equatable {
 
     // MARK: - Response Tracking Settings
 
-    /// Previous response ID for conversation continuation.
+    /// Explicit previous response ID pinned for a single run.
     ///
-    /// Set this to continue a conversation from a specific response.
-    /// The agent uses this ID to retrieve context and maintain continuity
-    /// across separate `run()` calls or sessions.
-    ///
-    /// This is typically used when:
-    /// - Resuming a conversation after app restart
-    /// - Connecting separate agent runs into a coherent thread
-    /// - Implementing conversation branching
-    ///
-    /// - Note: Usually set automatically when `autoPreviousResponseId` is enabled
-    /// - Important: The ID must be a valid response ID from a previous run
-    ///
-    /// ## Example
-    /// ```swift
-    /// // Store the response ID for later continuation
-    /// let response1 = try await agent.run("Hello")
-    /// let responseId = response1.responseId
-    ///
-    /// // Continue the conversation later
-    /// let config = AgentConfiguration.default
-    ///     .previousResponseId(responseId)
-    /// let response2 = try await agent.run("How are you?", config: config)
-    /// ```
-    ///
-    /// - SeeAlso: ``AgentResponse/responseId``, ``autoPreviousResponseId``
-    public var previousResponseId: String?
+    /// Set only by ``Agent/runWithResponse(_:continuing:session:observer:)``
+    /// on a per-run copy; never part of a reusable configuration.
+    var pinnedPreviousResponseId: String?
 
     /// Whether to automatically populate previous response ID.
     ///
@@ -616,7 +561,10 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///
     /// Default: `false`
     ///
-    /// - SeeAlso: ``previousResponseId``, ``AgentResponse/responseId``
+    /// To continue from one specific response instead, pass it per run with
+    /// ``Agent/runWithResponse(_:continuing:session:observer:)``.
+    ///
+    /// - SeeAlso: ``AgentResponse/responseId``
     public var autoPreviousResponseId: Bool
 
     // MARK: - Observability Settings
@@ -709,20 +657,16 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - name: The agent name for identification. Default: "Agent"
     ///   - maxIterations: Maximum reasoning iterations. Default: 10
     ///   - timeout: Maximum execution time. Default: 60 seconds
-    ///   - temperature: Model temperature (0.0-2.0). Default: 1.0
-    ///   - maxTokens: Maximum tokens per response. Default: nil
-    ///   - stopSequences: Generation stop sequences. Default: []
-    ///   - modelSettings: Extended model settings. Default: nil
+    ///   - modelSettings: Sampling and provider settings (temperature, max tokens,
+    ///     stop sequences, …). Default: `ModelSettings()` (provider defaults)
     ///   - enableStreaming: Enable response streaming. Default: true
     ///   - includeToolCallDetails: Include tool details in results. Default: true
     ///   - stopOnToolError: Stop on first tool error. Default: false
     ///   - includeReasoning: Include reasoning in events. Default: true
     ///   - sessionHistoryLimit: Maximum session history messages to load. Default: 50
-    ///   - contextMode: Context envelope mode. Default: `.adaptive`
     ///   - contextProfile: Context budgeting profile. Default: `.platformDefault`
     ///   - inferencePolicy: Inference routing policy hints. Default: nil
     ///   - parallelToolCalls: Enable parallel tool execution. Default: false
-    ///   - previousResponseId: Previous response ID for continuation. Default: nil
     ///   - autoPreviousResponseId: Enable auto response ID tracking. Default: false
     ///   - defaultTracingEnabled: Enable default tracing when no tracer configured. Default: true
     ///   - autoAttachMetricsCollector: Auto-attach a ``MetricsCollector``. Default: false
@@ -733,10 +677,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         maxIterations: Int = 10,
         maxConsecutiveToolRepeats: Int = 3,
         timeout: Duration = .seconds(60),
-        temperature: Double = 1.0,
-        maxTokens: Int? = nil,
-        stopSequences: [String] = [],
-        modelSettings: ModelSettings? = nil,
+        modelSettings: ModelSettings = ModelSettings(),
         contextProfile: ContextProfile = .platformDefault,
         inferencePolicy: InferencePolicy? = nil,
         enableStreaming: Bool = true,
@@ -744,9 +685,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         stopOnToolError: Bool = false,
         includeReasoning: Bool = true,
         sessionHistoryLimit: Int? = 50,
-        contextMode: ContextMode = .adaptive,
         parallelToolCalls: Bool = false,
-        previousResponseId: String? = nil,
         autoPreviousResponseId: Bool = false,
         defaultTracingEnabled: Bool = true,
         autoAttachMetricsCollector: Bool = false,
@@ -757,9 +696,6 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.maxIterations = Self.coercedMaxIterations(maxIterations)
         self.maxConsecutiveToolRepeats = Self.coercedMaxConsecutiveToolRepeats(maxConsecutiveToolRepeats)
         self.timeout = Self.coercedTimeout(timeout)
-        self.temperature = Self.coercedTemperature(temperature)
-        self.maxTokens = maxTokens
-        self.stopSequences = stopSequences
         self.modelSettings = modelSettings
         self.contextProfile = contextProfile
         self.graphRunOptionsOverride = nil
@@ -769,9 +705,8 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.stopOnToolError = stopOnToolError
         self.includeReasoning = includeReasoning
         self.sessionHistoryLimit = sessionHistoryLimit
-        self.contextMode = contextMode
         self.parallelToolCalls = parallelToolCalls
-        self.previousResponseId = previousResponseId
+        self.pinnedPreviousResponseId = nil
         self.autoPreviousResponseId = autoPreviousResponseId
         self.defaultTracingEnabled = defaultTracingEnabled
         self.autoAttachMetricsCollector = autoAttachMetricsCollector
@@ -806,17 +741,6 @@ private extension AgentConfiguration {
         return .seconds(60)
     }
 
-    /// Falls back to 1.0 for non-finite or out-of-range temperatures, matching
-    /// the designated initializer; warns via ``Log/agents`` when replaced.
-    /// Shares ``ModelSettings/temperatureRange`` so both types' temperature
-    /// bounds cannot drift apart.
-    static func coercedTemperature(_ value: Double) -> Double {
-        guard value.isFinite, ModelSettings.temperatureRange.contains(value) else {
-            Log.agents.warning("AgentConfiguration: temperature \(value) out of [0.0, 2.0]; using default 1.0")
-            return 1.0
-        }
-        return value
-    }
 }
 
 // MARK: - CustomStringConvertible
@@ -828,10 +752,7 @@ extension AgentConfiguration: CustomStringConvertible {
             name: "\(name)",
             maxIterations: \(maxIterations),
             timeout: \(timeout),
-            temperature: \(temperature),
-            maxTokens: \(maxTokens.map(String.init) ?? "nil"),
-            stopSequences: \(stopSequences),
-            modelSettings: \(modelSettings.map { String(describing: $0) } ?? "nil"),
+            modelSettings: \(modelSettings),
             contextProfile: \(contextProfile),
             graphRunOptionsOverride: \(graphRunOptionsOverride.map { String(describing: $0) } ?? "nil"),
             inferencePolicy: \(inferencePolicy.map { String(describing: $0) } ?? "nil"),
@@ -840,9 +761,7 @@ extension AgentConfiguration: CustomStringConvertible {
             stopOnToolError: \(stopOnToolError),
             includeReasoning: \(includeReasoning),
             sessionHistoryLimit: \(sessionHistoryLimit.map(String.init) ?? "nil"),
-            contextMode: \(contextMode),
             parallelToolCalls: \(parallelToolCalls),
-            previousResponseId: \(previousResponseId.map { "\"\($0)\"" } ?? "nil"),
             autoPreviousResponseId: \(autoPreviousResponseId),
             defaultTracingEnabled: \(defaultTracingEnabled),
             autoAttachMetricsCollector: \(autoAttachMetricsCollector),

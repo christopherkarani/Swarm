@@ -46,7 +46,7 @@ struct AgentConversationHistoryTests {
         let agent = try Agent(
             tools: [],
             instructions: "Stay concise.",
-            configuration: AgentConfiguration(contextMode: .strict4k, defaultTracingEnabled: false),
+            configuration: AgentConfiguration(contextProfile: .strict4k, defaultTracingEnabled: false),
             inferenceProvider: provider
         )
 
@@ -81,7 +81,7 @@ struct AgentConversationHistoryTests {
         let agent = try Agent(
             tools: [],
             instructions: "Stay concise.",
-            configuration: AgentConfiguration(contextMode: .strict4k, defaultTracingEnabled: false),
+            configuration: AgentConfiguration(contextProfile: .strict4k, defaultTracingEnabled: false),
             memory: MockAgentMemory(context: ""),
             inferenceProvider: provider
         )
@@ -110,7 +110,7 @@ struct AgentConversationHistoryTests {
         let agent = try Agent(
             tools: [],
             instructions: "Stay concise.",
-            configuration: AgentConfiguration(contextMode: .strict4k, defaultTracingEnabled: false),
+            configuration: AgentConfiguration(contextProfile: .strict4k, defaultTracingEnabled: false),
             memory: MockAgentMemory(context: ""),
             inferenceProvider: provider
         )

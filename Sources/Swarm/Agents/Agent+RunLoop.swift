@@ -139,6 +139,35 @@ extension Agent {
         return makeResponse(from: result, responseID: responseID)
     }
 
+    /// Runs the agent once, continuing from a specific earlier response.
+    ///
+    /// The ID is sent as ``InferenceOptions/previousResponseId`` only to
+    /// providers advertising ``InferenceProviderCapabilities/responseContinuation``
+    /// and only for this run; it wins over
+    /// ``AgentConfiguration/autoPreviousResponseId`` session tracking. Blank IDs
+    /// are ignored.
+    ///
+    /// ```swift
+    /// let first = try await agent.runWithResponse("Plan a trip to Lisbon")
+    /// let next = try await agent.runWithResponse("Make it 3 days", continuing: first.responseId)
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - input: The user's input/query.
+    ///   - previousResponseId: The ``AgentResponse/responseId`` to continue from.
+    ///   - session: Optional session for conversation history management.
+    ///   - observer: Optional run observer.
+    /// - Returns: The response for this run.
+    public func runWithResponse(
+        _ input: String,
+        continuing previousResponseId: String,
+        session: (any Session)? = nil,
+        observer: (any AgentObserver)? = nil
+    ) async throws -> AgentResponse {
+        try await pinningPreviousResponseId(previousResponseId)
+            .runWithResponse(input, session: session, observer: observer)
+    }
+
     func runInternal(
         _ input: String,
         session: (any Session)? = nil,

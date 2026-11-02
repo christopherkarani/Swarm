@@ -136,7 +136,7 @@ struct AgentConfigurationTests {
 
         #expect(config.maxIterations == 10)
         #expect(config.timeout == .seconds(60))
-        #expect(config.temperature == 1.0)
+        #expect(config.modelSettings.temperature == nil)
         #expect(config.foundationModelsExecution == .capture)
         #expect(config.resilience == .disabled)
         #expect(config.resilience.retryPolicy == .noRetry)
@@ -158,12 +158,12 @@ struct AgentConfigurationTests {
         let config = AgentConfiguration(
             maxIterations: 5,
             timeout: .seconds(30),
-            temperature: 0.5
+            modelSettings: ModelSettings(temperature: 0.5)
         )
 
         #expect(config.maxIterations == 5)
         #expect(config.timeout == .seconds(30))
-        #expect(config.temperature == 0.5)
+        #expect(config.modelSettings.temperature == 0.5)
     }
 
     // MARK: - New Tests: Fluent Builder Methods
@@ -175,7 +175,7 @@ struct AgentConfigurationTests {
         #expect(config.maxIterations == 15)
         // Other properties unchanged
         #expect(config.timeout == .seconds(60))
-        #expect(config.temperature == 1.0)
+        #expect(config.modelSettings.temperature == nil)
     }
 
     @Test("Fluent timeout")
@@ -185,14 +185,14 @@ struct AgentConfigurationTests {
         #expect(config.timeout == .seconds(120))
         // Other properties unchanged
         #expect(config.maxIterations == 10)
-        #expect(config.temperature == 1.0)
+        #expect(config.modelSettings.temperature == nil)
     }
 
     @Test("Fluent temperature")
     func fluentTemperature() {
         let config = AgentConfiguration.default.temperature(0.7)
 
-        #expect(config.temperature == 0.7)
+        #expect(config.modelSettings.temperature == 0.7)
         // Other properties unchanged
         #expect(config.maxIterations == 10)
         #expect(config.timeout == .seconds(60))
@@ -213,9 +213,9 @@ struct AgentConfigurationTests {
 
         #expect(config.maxIterations == 20)
         #expect(config.timeout == .seconds(180))
-        #expect(config.temperature == 0.5)
-        #expect(config.maxTokens == 1000)
-        #expect(config.stopSequences == ["STOP", "END"])
+        #expect(config.modelSettings.temperature == 0.5)
+        #expect(config.modelSettings.maxTokens == 1000)
+        #expect(config.modelSettings.stopSequences == ["STOP", "END"])
         #expect(config.enableStreaming == false)
         #expect(config.includeToolCallDetails == false)
         #expect(config.stopOnToolError == true)
@@ -231,24 +231,23 @@ struct AgentConfigurationTests {
 
         // Original unchanged (value semantics)
         #expect(original.maxIterations == 10)
-        #expect(original.temperature == 1.0)
+        #expect(original.modelSettings.temperature == nil)
 
         // Modified has new values
         #expect(modified.maxIterations == 20)
-        #expect(modified.temperature == 0.5)
+        #expect(modified.modelSettings.temperature == 0.5)
     }
 
     @Test("Invalid initializer inputs are coerced to safe defaults")
     func invalidInputsAreCoerced() {
         let config = AgentConfiguration(
             maxIterations: 0,
-            timeout: .zero,
-            temperature: .infinity
+            timeout: .zero
         )
 
         #expect(config.maxIterations == 1)
         #expect(config.timeout == .seconds(60))
-        #expect(config.temperature == 1.0)
+        #expect(config.modelSettings.temperature == nil)
     }
 }
 

@@ -675,6 +675,16 @@ public extension Agent {
     ///   an effective handoff tool name.
     /// - Throws: ``AgentError/handoffToolNameCollidesWithTool(name:)`` if a handoff's
     ///   effective name equals a registered tool name, including disabled tools.
+    /// Returns a copy that continues from `previousResponseId` for one run.
+    ///
+    /// Backs ``runWithResponse(_:continuing:session:observer:)``; the copy shares
+    /// this agent's run registry, so ``cancel()`` still reaches the run.
+    internal func pinningPreviousResponseId(_ previousResponseId: String?) -> Agent {
+        var copy = self
+        copy.configuration.pinnedPreviousResponseId = previousResponseId
+        return copy
+    }
+
     @discardableResult
     func withHandoffs(_ agents: [any AgentRuntime]) throws -> Agent {
         try replacingHandoffs(

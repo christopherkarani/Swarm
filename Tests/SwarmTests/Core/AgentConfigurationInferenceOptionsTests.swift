@@ -40,21 +40,22 @@ struct AgentConfigurationInferenceOptionsTests {
         #expect(options.providerSettings?["openai:custom"] == .string("value"))
     }
 
-    @Test("Fallback inference options use base config when model settings are absent")
-    func fallbackInferenceOptions() {
+    @Test("Sampling builders write modelSettings, the single source for inference options")
+    func samplingBuildersWriteModelSettings() {
         let config = AgentConfiguration.default
             .temperature(0.5)
             .maxTokens(123)
             .stopSequences(["STOP"])
             .parallelToolCalls(true)
-            .previousResponseId("resp_123")
+
+        #expect(config.modelSettings == ModelSettings(temperature: 0.5, maxTokens: 123, stopSequences: ["STOP"]))
 
         let options = config.inferenceOptions
         #expect(options.temperature == 0.5)
         #expect(options.maxTokens == 123)
         #expect(options.stopSequences == ["STOP"])
         #expect(options.parallelToolCalls == true)
-        #expect(options.previousResponseId == "resp_123")
+        #expect(options.previousResponseId == nil)
         #expect(options.seed == nil)
         #expect(options.truncation == nil)
         #expect(options.verbosity == nil)
@@ -93,15 +94,22 @@ struct AgentConfigurationInferenceOptionsTests {
         #expect(ReasoningEffort.none.rawValue == "none")
     }
 
-    @Test("Context mode strict4k overrides adaptive profile")
-    func strict4kContextModeUsesStrictProfile() {
+    @Test("Unset model settings fall back to InferenceOptions defaults")
+    func unsetModelSettingsUseInferenceDefaults() {
+        let options = AgentConfiguration.default.inferenceOptions
+        #expect(options.temperature == InferenceOptions.default.temperature)
+        #expect(options.maxTokens == nil)
+        #expect(options.stopSequences.isEmpty)
+    }
+
+    @Test("contextProfile is the single context knob")
+    func strict4kProfileIsUsedDirectly() {
         let config = AgentConfiguration.default
             .contextProfile(.heavy(maxContextTokens: 8192))
-            .contextMode(.strict4k)
+            .contextProfile(.strict4k)
 
-        let effective = config.effectiveContextProfile
-        #expect(effective.preset == .strict4k)
-        #expect(effective.maxTotalContextTokens == 4096)
-        #expect(effective.maxContextTokens == 3412)
+        #expect(config.contextProfile.preset == .strict4k)
+        #expect(config.contextProfile.maxTotalContextTokens == 4096)
+        #expect(config.contextProfile.maxContextTokens == 3412)
     }
 }

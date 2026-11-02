@@ -62,13 +62,30 @@ struct AgentResponseContinuationTests {
         let session = InMemorySession(sessionId: "response-tracking-explicit")
         let config = AgentConfiguration.default
             .autoPreviousResponseId(true)
-            .previousResponseId("explicit-response-id")
         let agent = try Agent(configuration: config, inferenceProvider: provider)
 
-        _ = try await agent.run("prompt", session: session, observer: nil)
+        _ = try await agent.runWithResponse("prompt", continuing: "explicit-response-id", session: session)
 
         let call = await provider.generateMessageCalls.last
         #expect(call?.options.previousResponseId == "explicit-response-id")
+    }
+
+    @Test("explicit previous response id applies to one run only")
+    func explicitPreviousResponseIDIsPerRun() async throws {
+        let provider = MockInferenceProvider(
+            responses: ["first", "second"],
+            capabilities: [.responseContinuation]
+        )
+        let agent = try Agent(configuration: .default, inferenceProvider: provider)
+
+        _ = try await agent.runWithResponse("prompt", continuing: "explicit-response-id")
+        _ = try await agent.runWithResponse("again")
+
+        let calls = await provider.generateMessageCalls
+        #expect(calls.count == 2)
+        #expect(calls[0].options.previousResponseId == "explicit-response-id")
+        #expect(calls[1].options.previousResponseId == nil)
+        #expect(agent.configuration == .default)
     }
 
     @Test("previous response id is stripped when provider does not advertise continuation support")
@@ -77,10 +94,9 @@ struct AgentResponseContinuationTests {
         let session = InMemorySession(sessionId: "response-tracking-no-capability")
         let config = AgentConfiguration.default
             .autoPreviousResponseId(true)
-            .previousResponseId("explicit-response-id")
         let agent = try Agent(configuration: config, inferenceProvider: provider)
 
-        _ = try await agent.run("prompt", session: session, observer: nil)
+        _ = try await agent.runWithResponse("prompt", continuing: "explicit-response-id", session: session)
 
         let call = await provider.generateMessageCalls.last
         #expect(call?.options.previousResponseId == nil)

@@ -25,16 +25,12 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 10 | var | public | AgentConfiguration.effectiveContextProfile | `public var effectiveContextProfile: ContextProfile { get }` |
-| 22 | var | public | AgentConfiguration.inferenceOptions | `public var inferenceOptions: InferenceOptions { get }` |
+| 13 | var | package | AgentConfiguration.inferenceOptions | `package var inferenceOptions: InferenceOptions { get }` |
 
 ### Core/AgentConfiguration.swift
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 10 | enum | public | ContextMode | `public enum ContextMode` |
-| 12 | case | public | ContextMode.adaptive | `public case adaptive` |
-| 15 | case | public | ContextMode.strict4k | `public case strict4k` |
 | 46 | struct | public | InferencePolicy | `public struct InferencePolicy` |
 | 48 | enum | public | InferencePolicy.LatencyTier | `public enum LatencyTier` |
 | 50 | case | public | InferencePolicy.LatencyTier.interactive | `public case interactive` |
@@ -49,7 +45,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 76 | var | public | InferencePolicy.networkState | `public var networkState: InferencePolicy.NetworkState` |
 | 78 | func | public | InferencePolicy.init(latencyTier:privacyRequired:tokenBudget:networkState:) | `public init(latencyTier: InferencePolicy.LatencyTier = .interactive, privacyRequired: Bool = false, tokenBudget: Int? = nil, networkState: InferencePolicy.NetworkState = .online)` |
 | 108 | func | public | AgentConfiguration.autoPreviousResponseId(_:) | `public @discardableResult func autoPreviousResponseId(_ value: Bool) -> AgentConfiguration` |
-| 108 | func | public | AgentConfiguration.contextMode(_:) | `public @discardableResult func contextMode(_ value: ContextMode) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.contextProfile(_:) | `public @discardableResult func contextProfile(_ value: ContextProfile) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.autoAttachMetricsCollector(_:) | `public @discardableResult func autoAttachMetricsCollector(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.defaultTracingEnabled(_:) | `public @discardableResult func defaultTracingEnabled(_ value: Bool) -> AgentConfiguration` |
@@ -61,10 +56,9 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 108 | func | public | AgentConfiguration.maxIterations(_:) | `public @discardableResult func maxIterations(_ value: Int) -> AgentConfiguration` |
 | 884 | func | public | AgentConfiguration.maxConsecutiveToolRepeats(_:) | `public @discardableResult func maxConsecutiveToolRepeats(_ value: Int) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.maxTokens(_:) | `public @discardableResult func maxTokens(_ value: Int?) -> AgentConfiguration` |
-| 108 | func | public | AgentConfiguration.modelSettings(_:) | `public @discardableResult func modelSettings(_ value: ModelSettings?) -> AgentConfiguration` |
+| 108 | func | public | AgentConfiguration.modelSettings(_:) | `public @discardableResult func modelSettings(_ value: ModelSettings) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.name(_:) | `public @discardableResult func name(_ value: String) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.parallelToolCalls(_:) | `public @discardableResult func parallelToolCalls(_ value: Bool) -> AgentConfiguration` |
-| 108 | func | public | AgentConfiguration.previousResponseId(_:) | `public @discardableResult func previousResponseId(_ value: String?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.sessionHistoryLimit(_:) | `public @discardableResult func sessionHistoryLimit(_ value: Int?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.stopOnToolError(_:) | `public @discardableResult func stopOnToolError(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.stopSequences(_:) | `public @discardableResult func stopSequences(_ value: [String]) -> AgentConfiguration` |
@@ -76,12 +70,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 125 | var | public | AgentConfiguration.maxIterations | `public var maxIterations: Int` |
 | 287 | var | public | AgentConfiguration.maxConsecutiveToolRepeats | `public var maxConsecutiveToolRepeats: Int` |
 | 129 | var | public | AgentConfiguration.timeout | `public var timeout: Duration` |
-| 135 | var | public | AgentConfiguration.temperature | `public var temperature: Double` |
-| 139 | var | public | AgentConfiguration.maxTokens | `public var maxTokens: Int?` |
-| 143 | var | public | AgentConfiguration.stopSequences | `public var stopSequences: [String]` |
-| 159 | var | public | AgentConfiguration.modelSettings | `public var modelSettings: ModelSettings?` |
+| 304 | var | public | AgentConfiguration.modelSettings | `public var modelSettings: ModelSettings` |
 | 166 | var | public | AgentConfiguration.contextProfile | `public var contextProfile: ContextProfile` |
-| 172 | var | public | AgentConfiguration.contextMode | `public var contextMode: ContextMode` |
 | 187 | var | public | AgentConfiguration.inferencePolicy | `public var inferencePolicy: InferencePolicy?` |
 | 193 | var | public | AgentConfiguration.enableStreaming | `public var enableStreaming: Bool` |
 | 197 | var | public | AgentConfiguration.includeToolCallDetails | `public var includeToolCallDetails: Bool` |
@@ -89,7 +79,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 205 | var | public | AgentConfiguration.includeReasoning | `public var includeReasoning: Bool` |
 | 215 | var | public | AgentConfiguration.sessionHistoryLimit | `public var sessionHistoryLimit: Int?` |
 | 235 | var | public | AgentConfiguration.parallelToolCalls | `public var parallelToolCalls: Bool` |
-| 245 | var | public | AgentConfiguration.previousResponseId | `public var previousResponseId: String?` |
 | 253 | var | public | AgentConfiguration.autoPreviousResponseId | `public var autoPreviousResponseId: Bool` |
 | 264 | var | public | AgentConfiguration.defaultTracingEnabled | `public var defaultTracingEnabled: Bool` |
 | 265 | var | public | AgentConfiguration.autoAttachMetricsCollector | `public var autoAttachMetricsCollector: Bool` |
@@ -98,7 +87,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 139 | case | public | FoundationModelsExecutionMode.nativeSession | `public case nativeSession` |
 | 604 | var | public | AgentConfiguration.foundationModelsExecution | `public var foundationModelsExecution: FoundationModelsExecutionMode` |
 | 608 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
-| 630 | func | public | AgentConfiguration.init(name:maxIterations:maxConsecutiveToolRepeats:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, maxConsecutiveToolRepeats: Int = 3, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
+| 675 | func | public | AgentConfiguration.init(name:maxIterations:maxConsecutiveToolRepeats:timeout:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:parallelToolCalls:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, maxConsecutiveToolRepeats: Int = 3, timeout: Duration = .seconds(60), modelSettings: ModelSettings = ModelSettings(), contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, parallelToolCalls: Bool = false, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
 | 108 | func | public | AgentConfiguration.resilience(_:) | `public @discardableResult func resilience(_ value: ResilienceConfiguration) -> AgentConfiguration` |
 | 345 | var | public | AgentConfiguration.description | `public var description: String { get }` |
 
@@ -1173,6 +1162,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 303 | func | public | Agent.cancel() | `public func cancel() async` |
 | 313 | func | public | Agent.stream(_:session:observer:) | `public func stream(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 336 | func | public | Agent.runWithResponse(_:session:observer:) | `public func runWithResponse(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
+| 161 | func | public | Agent.runWithResponse(_:continuing:session:observer:) | `public func runWithResponse(_ input: String, continuing previousResponseId: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
 | 1259 | struct | public | Agent.Builder | `@available(*, deprecated, message: "Use an Agent initializer or withTools(_:). Agent.Builder compatibility will be removed in 0.7.0.") public struct Builder` |
 | 1265 | func | public | Agent.Builder.init() | `public init()` |
 | 1273 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [any AnyJSONTool]) -> Agent.Builder` (deprecated) |
