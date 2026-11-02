@@ -1,13 +1,14 @@
 # Swarm CI Workflow
-# Fast lane on PRs (lean build/test + trait compile checks); deep suite
-# (full trait tests, showcase matrix, provider proofs) only on main
-# pushes, tags, releases, or manual dispatch.
+# PRs run lean build/test, trait builds, and the full Integrations/MCP/
+# OpenTelemetry test lane so regressions are caught before merge. The
+# remaining deep checks (showcase matrix, CodeReviewer example, provider
+# proofs) run only on main pushes, tags, releases, or manual dispatch.
 
 name: Swift CI
 
 on:
   push:
-    branches: [ "main", "fix/ci-code-quality" ]
+    branches: [ "main" ]
     tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
@@ -66,7 +67,6 @@ jobs:
           swift build --traits Integrations
 
       - name: Run tests with Integrations trait
-        if: github.event_name != 'pull_request'
         timeout-minutes: 90
         run: swift test --no-parallel --traits Integrations,MCP,OpenTelemetry
 
@@ -125,7 +125,6 @@ jobs:
         run: swift build --build-tests --traits Integrations,MCP,OpenTelemetry
 
       - name: Run tests with Integrations trait
-        if: github.event_name != 'pull_request'
         timeout-minutes: 90
         run: swift test --no-parallel --traits Integrations,MCP,OpenTelemetry
 
