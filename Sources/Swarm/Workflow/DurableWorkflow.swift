@@ -75,6 +75,15 @@ public struct DurableWorkflow: Sendable {
     /// process or in another process sharing the checkpoint store, throw
     /// ``WorkflowResumeConflict`` without executing.
     ///
+    /// The paused step replays from its start, but tool calls do not run twice.
+    /// Each tool call that executed in the step is journaled in the checkpoint.
+    /// On replay, a call with the same tool name and arguments returns its
+    /// recorded result, does not notify observers or tracing again, and does
+    /// not write to memory again. If the replay keeps pausing on other calls
+    /// without reaching the approved one, the approve after
+    /// ``WorkflowApprovalReplayDiverged/maxAttempts`` such resumes throws
+    /// ``WorkflowApprovalReplayDiverged``.
+    ///
     /// There is no timeout on the approval wait itself: the run stays paused
     /// until this method is called.
     ///
@@ -87,6 +96,7 @@ public struct DurableWorkflow: Sendable {
     ///   ``WorkflowError/humanApprovalRejected(prompt:reason:)`` on `.reject`,
     ///   ``WorkflowApprovalRequired`` when the resumed run pauses again,
     ///   ``WorkflowResumeConflict`` when another resume holds the run,
+    ///   ``WorkflowApprovalReplayDiverged`` when replays keep missing the approved call,
     ///   or ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
     public func resume(
         decision: WorkflowApprovalDecision,

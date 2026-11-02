@@ -207,7 +207,9 @@ struct WorkflowDurableEngine: Sendable {
             decision: decision,
             toolName: request.toolName,
             arguments: request.arguments,
-            approved: approved
+            approved: approved,
+            journal: request.journal,
+            divergentResumes: request.divergentResumes
         ).encoded()
 
         do {
@@ -458,14 +460,14 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
         if let controller = WorkflowDurableFaultInjection.controller {
             await controller.markWorkflowStepStarted()
         }
-        let allowedCalls: [WorkflowApprovedCall]
+        let replay: WorkflowStepReplay
         switch try approvalResolution(resumePayload: input.run.resume?.payload) {
         case .rejected(let toolName, let reason):
             return rejectedOutput(toolName: toolName, reason: reason)
-        case .allowing(let calls):
-            allowedCalls = calls
+        case .allowing(let state):
+            replay = state
         }
-        let ledger = WorkflowApprovalLedger(approved: allowedCalls)
+        let ledger = WorkflowApprovalLedger(approved: replay.approved, journal: replay.journal)
         do {
             let result = try await WorkflowDurableApprovalGate.$ledger.withValue(ledger) {
                 try await input.context.workflow.execute(step: step, withInput: progress.currentInput)
@@ -478,7 +480,13 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
             let nextProgress = try progressValue(from: nextDecision)
             return runningOutput(for: nextProgress)
         } catch let request as WorkflowToolApprovalRequest {
-            return try approvalInterruptOutput(progress: progress, request: request, allowed: allowedCalls)
+            return try await approvalInterruptOutput(
+                progress: progress,
+                request: request,
+                ledger: ledger,
+                replay: replay,
+                checkpointID: WorkflowCheckpointID(input.run.threadID.rawValue)
+            )
         }
 
     case .evaluateRepeat(let progress, let result):
@@ -510,10 +518,22 @@ private func progressValue(from decision: WorkflowTransition.Decision) throws ->
     }
 }
 
+/// Approval and replay state a step execution starts from.
+private struct WorkflowStepReplay {
+    /// Approvals not yet consumed in the pause chain.
+    var approved: [WorkflowApprovedCall] = []
+    /// Calls earlier executions of this step already ran.
+    var journal: [WorkflowJournaledCall] = []
+    /// Divergence streak carried from the paused request.
+    var divergentResumes = 0
+    /// `true` when this execution follows an `.approve` decision.
+    var isApprovedResume = false
+}
+
 /// How a step execution resolves the human decision it was resumed with.
 private enum WorkflowApprovalResolution {
-    /// Run the step with these approvals (empty for a fresh step).
-    case allowing([WorkflowApprovedCall])
+    /// Run the step with this replay state (empty for a fresh step).
+    case allowing(WorkflowStepReplay)
     /// The human rejected the paused call; end the run without executing.
     case rejected(toolName: String, reason: String)
 }
@@ -524,7 +544,7 @@ private enum WorkflowApprovalResolution {
 /// the human decision: `.reject` ends the run without executing, `.approve`
 /// allows the calls approved so far in the pause chain.
 private func approvalResolution(resumePayload: String?) throws -> WorkflowApprovalResolution {
-    guard let resumePayload else { return .allowing([]) }
+    guard let resumePayload else { return .allowing(WorkflowStepReplay()) }
     let decision = try WorkflowApprovalDecisionEnvelope.decoded(from: resumePayload)
     switch decision.decision {
     case .reject:
@@ -533,7 +553,12 @@ private func approvalResolution(resumePayload: String?) throws -> WorkflowApprov
             reason: "Operator rejected tool '\(decision.toolName)' at durable approval resume"
         )
     case .approve:
-        return .allowing(decision.approved)
+        return .allowing(WorkflowStepReplay(
+            approved: decision.approved,
+            journal: decision.journal ?? [],
+            divergentResumes: decision.divergentResumes ?? 0,
+            isApprovedResume: true
+        ))
     }
 }
 
@@ -552,17 +577,36 @@ private func rejectedOutput(toolName: String, reason: String) -> HiveNodeOutput<
 ///
 /// The writes preserve the incoming progress (step cursor included) rather
 /// than advancing it, so the interrupt-forced checkpoint holds the paused
-/// state and the resumed run replays the step from its start.
+/// state and the resumed run replays the step from its start. The payload
+/// carries the unused approvals and the step's tool journal.
+///
+/// An approved resume that pauses again while an approval is still unused
+/// diverged from the call it was approved for. After
+/// ``WorkflowApprovalReplayDiverged/maxAttempts`` such resumes in a row this
+/// throws ``WorkflowApprovalReplayDiverged`` instead of pausing again.
 private func approvalInterruptOutput(
     progress: WorkflowTransition.Progress,
     request: WorkflowToolApprovalRequest,
-    allowed: [WorkflowApprovedCall]
-) throws -> HiveNodeOutput<WorkflowDurableSchema> {
-    let payload = try WorkflowApprovalRequestEnvelope(
+    ledger: WorkflowApprovalLedger,
+    replay: WorkflowStepReplay,
+    checkpointID: WorkflowCheckpointID
+) async throws -> HiveNodeOutput<WorkflowDurableSchema> {
+    let unused = await ledger.unusedApprovals
+    let divergentResumes = replay.isApprovedResume && !unused.isEmpty ? replay.divergentResumes + 1 : 0
+    if divergentResumes >= WorkflowApprovalReplayDiverged.maxAttempts, let missed = unused.first {
+        throw WorkflowApprovalReplayDiverged(
+            checkpointID: checkpointID,
+            toolName: missed.toolName,
+            attempts: divergentResumes
+        )
+    }
+    let payload = try await WorkflowApprovalRequestEnvelope(
         toolName: request.toolName,
         arguments: request.arguments,
         stepCursor: progress.stepCursor,
-        approved: allowed
+        approved: unused,
+        journal: ledger.journal,
+        divergentResumes: divergentResumes
     ).encoded()
     var output = runningOutput(for: progress)
     output.interrupt = HiveInterruptRequest(payload: payload)

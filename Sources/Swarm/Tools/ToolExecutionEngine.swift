@@ -51,6 +51,10 @@ struct ToolExecutionEngine: Sendable {
         /// ``ToolResult`` only stores a message string. The façade keeps this
         /// instance so continue-on-error and fail-fast can preserve error identity.
         let caughtError: (any Error)?
+        /// `true` when a durable replay returned the call's recorded outcome
+        /// instead of executing it. Callers skip side effects such as memory
+        /// writes that already happened when the call executed.
+        var replayed = false
     }
 
     func execute(
@@ -66,6 +70,14 @@ struct ToolExecutionEngine: Sendable {
         stopOnToolError: Bool
     ) async throws -> Outcome {
         let call = ToolCall(providerCallId: providerCallId, toolName: toolName, arguments: arguments)
+        if let recorded = await WorkflowDurableApprovalGate.replay(call: call) {
+            return try replayedOutcome(
+                call: call,
+                recorded: recorded,
+                resultBuilder: resultBuilder,
+                stopOnToolError: stopOnToolError
+            )
+        }
         try await WorkflowDurableApprovalGate.check(
             call: call,
             registry: registry,
@@ -92,6 +104,7 @@ struct ToolExecutionEngine: Sendable {
             let measured = elapsedDuration(since: startTime)
             let result = ToolResult.success(callId: call.id, output: output, duration: measured)
             _ = resultBuilder.addToolResult(result)
+            await WorkflowDurableApprovalGate.record(call: call, outcome: .success(output))
 
             if let tracing, let spanId {
                 await tracing.traceToolResult(spanId: spanId, name: toolName, result: output.description, duration: measured)
@@ -114,6 +127,9 @@ struct ToolExecutionEngine: Sendable {
 
             let result = ToolResult.failure(callId: call.id, error: errorMessage, duration: measured)
             _ = resultBuilder.addToolResult(result)
+            if !(error is CancellationError), !Task.isCancelled {
+                await WorkflowDurableApprovalGate.record(call: call, outcome: .failure(errorMessage))
+            }
 
             if let tracing, let spanId {
                 await tracing.traceToolError(spanId: spanId, name: toolName, error: error)
@@ -134,6 +150,33 @@ struct ToolExecutionEngine: Sendable {
             }
 
             return Outcome(call: call, result: result, caughtError: error)
+        }
+    }
+
+    /// Builds the outcome of a call whose result a durable replay recorded earlier.
+    ///
+    /// The call and result go into the step's ``AgentResult``; observers and
+    /// tracing are not notified again, since they saw the original execution.
+    private func replayedOutcome(
+        call: ToolCall,
+        recorded: WorkflowJournaledOutcome,
+        resultBuilder: AgentResult.Builder,
+        stopOnToolError: Bool
+    ) throws -> Outcome {
+        _ = resultBuilder.addToolCall(call)
+        switch recorded {
+        case .success(let output):
+            let result = ToolResult.success(callId: call.id, output: output, duration: .zero)
+            _ = resultBuilder.addToolResult(result)
+            return Outcome(call: call, result: result, caughtError: nil, replayed: true)
+        case .failure(let message):
+            let result = ToolResult.failure(callId: call.id, error: message, duration: .zero)
+            _ = resultBuilder.addToolResult(result)
+            let error = AgentError.toolFailure(toolName: call.toolName, message: message, cause: nil)
+            if stopOnToolError {
+                throw error
+            }
+            return Outcome(call: call, result: result, caughtError: error, replayed: true)
         }
     }
 

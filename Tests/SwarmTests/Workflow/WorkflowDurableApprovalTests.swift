@@ -261,11 +261,11 @@ struct WorkflowDurableApprovalTests {
         #expect(await counterA.count == 1)
         #expect(await counterB.count == 0)
 
-        // Step-granularity replay re-executes already-approved tools; B still runs once.
+        // The replay returns A's recorded result instead of executing it again.
         await script()
         let result = try await workflow.resume(decision: .approve, from: checkpointID)
         #expect(result.output == "done")
-        #expect(await counterA.count == 2)
+        #expect(await counterA.count == 1)
         #expect(await counterB.count == 1)
     }
 

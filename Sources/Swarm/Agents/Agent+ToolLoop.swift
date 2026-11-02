@@ -766,7 +766,8 @@ struct AgentTurnRunner: Sendable {
                     result: toolOutputText,
                     toolCallID: parsedCall.id
                 )
-                if let memory = request.dependencies.memory {
+                // A replayed durable call wrote its memory entry when it executed.
+                if let memory = request.dependencies.memory, !outcome.replayed {
                     await memory.add(.tool(toolOutputText, toolName: parsedCall.name))
                 }
             } else {
@@ -776,7 +777,7 @@ struct AgentTurnRunner: Sendable {
                     result: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
                     toolCallID: parsedCall.id
                 )
-                if let memory = request.dependencies.memory {
+                if let memory = request.dependencies.memory, !outcome.replayed {
                     await memory.add(.tool(
                         AgentTurnKernel.memoryToolErrorText(message: errorMessage),
                         toolName: parsedCall.name

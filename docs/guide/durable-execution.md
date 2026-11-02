@@ -182,8 +182,29 @@ pause can be resumed again. A resume that fails before committing (for
 example an inference error) releases its claim, so it can be retried
 immediately.
 
-Replay semantics still apply: the resumed run replays the paused step from its
-start, so already-approved tools in that step may execute again, and direct
-(non-durable) runs never pause. Observe pauses on the `AgentEvent` stream via
+The resumed run replays the paused step from its start, but tool calls do not
+execute twice:
+
+- Every tool call that executes inside a durable step is recorded in a
+  per-step journal, which is stored in the approval interrupt payload. This
+  covers successes and failures, and approval-gated and ordinary tools alike.
+- On replay, a call that matches a journal entry (same tool name and exact
+  arguments, earliest unused entry first) returns the recorded output instead
+  of executing. The call and result still appear in the step's `AgentResult`.
+  Observers and tracing are not notified again, and the agent's memory is not
+  written a second time.
+- A call that does not match a journal entry runs normally. That includes a
+  call whose arguments changed because the model answered differently on
+  replay. Calls recorded during the current replay are not reused within it,
+  so a repeated identical call runs, or pauses, on its own.
+- Cancelled calls are not journaled, and neither are handoffs or Membrane
+  internal tools.
+- If a replay keeps pausing on other calls and never reaches the call that was
+  just approved (the model keeps asking for something different), the third
+  approve in a row throws `WorkflowApprovalReplayDiverged` instead of asking
+  again. Nothing is executed and the run stays paused: reject it, or make the
+  step deterministic.
+
+Direct (non-durable) runs never pause. Observe pauses on the `AgentEvent` stream via
 `AgentEvent.Tool.approvalRequested` (or
 `AgentObserver.onToolApprovalRequested`).

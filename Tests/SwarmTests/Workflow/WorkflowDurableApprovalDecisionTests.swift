@@ -101,9 +101,11 @@ struct WorkflowDurableApprovalDecisionTests {
         }
         #expect(await counter.count == 1)
 
+        // The first call replays from the journal; only the second executes.
         await script()
         let result = try await workflow.resume(decision: .approve, from: checkpointID)
         #expect(result.output == "done")
+        #expect(await counter.count == 2)
     }
 }
 

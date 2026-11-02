@@ -570,7 +570,11 @@ again on the next approval-required tool); `.reject` fails with
 terminal state, so the call cannot be approved later. Each approval covers one
 execution of the exact call. Concurrent resumes of one checkpoint (same process
 or another process sharing the store) execute once; the loser throws
-`WorkflowResumeConflict`. No edited-arguments resume, no approval timeout. Pauses surface on the `AgentEvent` stream as
+`WorkflowResumeConflict`. The resumed step replays from its start, but tool
+calls the step already executed return their journaled result instead of running
+again, and their memory writes are not repeated. A replay that keeps diverging
+from the approved call throws `WorkflowApprovalReplayDiverged` after
+`WorkflowApprovalReplayDiverged.maxAttempts` approve-resumes. No edited-arguments resume, no approval timeout. Pauses surface on the `AgentEvent` stream as
 `AgentEvent.Tool.approvalRequested` via
 `AgentObserver.onToolApprovalRequested`.
 

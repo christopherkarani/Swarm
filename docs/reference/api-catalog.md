@@ -2685,9 +2685,15 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 81 | var | public | WorkflowResumeConflict.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
 | 83 | var | public | WorkflowResumeConflict.reason | `public let reason: String` |
 | 86 | func | public | WorkflowResumeConflict.init(checkpointID:reason:) | `public init(checkpointID: WorkflowCheckpointID, reason: String)` |
-| 104 | enum | public | WorkflowApprovalDecision | `public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable` |
-| 106 | case | public | WorkflowApprovalDecision.approve | `public case approve` |
-| 108 | case | public | WorkflowApprovalDecision.reject | `public case reject` |
+| 108 | struct | public | WorkflowApprovalReplayDiverged | `public struct WorkflowApprovalReplayDiverged: Error, Sendable, Equatable` |
+| 110 | var | public | WorkflowApprovalReplayDiverged.maxAttempts | `public static let maxAttempts: Int` |
+| 113 | var | public | WorkflowApprovalReplayDiverged.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
+| 115 | var | public | WorkflowApprovalReplayDiverged.toolName | `public let toolName: String` |
+| 117 | var | public | WorkflowApprovalReplayDiverged.attempts | `public let attempts: Int` |
+| 120 | func | public | WorkflowApprovalReplayDiverged.init(checkpointID:toolName:attempts:) | `public init(checkpointID: WorkflowCheckpointID, toolName: String, attempts: Int)` |
+| 140 | enum | public | WorkflowApprovalDecision | `public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable` |
+| 142 | case | public | WorkflowApprovalDecision.approve | `public case approve` |
+| 144 | case | public | WorkflowApprovalDecision.reject | `public case reject` |
 
 ### Workflow/WorkflowCheckpointID.swift
 

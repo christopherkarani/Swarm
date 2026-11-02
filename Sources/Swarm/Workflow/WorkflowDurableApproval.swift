@@ -95,6 +95,42 @@ extension WorkflowResumeConflict: LocalizedError {
     }
 }
 
+/// A resumed step keeps pausing without reaching the call it was approved for.
+///
+/// Durable approvals replay the paused step from its start. When the model
+/// asks for something different on replay (for example `delete_vm(id: vm-2)`
+/// after `delete_vm(id: vm-1)` was approved), the step pauses again for the new
+/// call and the earlier approval stays unused. After ``maxAttempts``
+/// consecutive approve-resumes that end in such a pause, the resume throws this
+/// error instead of asking again. Nothing is executed and the run stays paused
+/// on its last request: resolve it with `.reject`, or fix the step so that its
+/// replay is deterministic.
+public struct WorkflowApprovalReplayDiverged: Error, Sendable, Equatable {
+    /// Consecutive diverging approve-resumes allowed before this error.
+    public static let maxAttempts = 3
+
+    /// Checkpoint thread whose step keeps diverging.
+    public let checkpointID: WorkflowCheckpointID
+    /// Tool name of an approved call that the replay never reached.
+    public let toolName: String
+    /// Consecutive diverging approve-resumes, including this one.
+    public let attempts: Int
+
+    /// Creates a replay-divergence error.
+    public init(checkpointID: WorkflowCheckpointID, toolName: String, attempts: Int) {
+        self.checkpointID = checkpointID
+        self.toolName = toolName
+        self.attempts = attempts
+    }
+}
+
+extension WorkflowApprovalReplayDiverged: LocalizedError {
+    public var errorDescription: String? {
+        "Durable workflow '\(checkpointID.rawValue)' replayed \(attempts) times without reaching "
+            + "the approved '\(toolName)' call; reject the pending approval or make the step deterministic"
+    }
+}
+
 /// Human decision for a paused durable tool approval.
 ///
 /// Pass to ``DurableWorkflow/resume(decision:from:)``. There is no
@@ -128,18 +164,48 @@ struct WorkflowToolApprovalRequest: Error, Sendable {
     let arguments: [String: SendableValue]
 }
 
-/// Approvals available to one durable step execution, each usable once.
+/// Recorded outcome of a tool call that already executed in a paused step.
+enum WorkflowJournaledOutcome: Sendable, Equatable, Codable {
+    case success(SendableValue)
+    case failure(String)
+}
+
+/// A tool call that executed during an earlier run of a paused step.
 ///
-/// A human approval authorizes exactly one execution of the approved call.
-/// Approving `delete_vm(id: vm-1)` does not let the step run that call a second
-/// time: the second identical call consumes nothing and pauses for its own
-/// approval. Approvals are matched by tool name and exact arguments, as a
-/// multiset, so the order in which a replay reaches them does not matter.
+/// Carried in the approval envelopes so the replayed step returns the recorded
+/// outcome instead of executing the call again.
+struct WorkflowJournaledCall: Sendable, Equatable, Codable {
+    var call: WorkflowApprovedCall
+    var outcome: WorkflowJournaledOutcome
+}
+
+/// Per-step-execution approval and replay state for durable runs.
+///
+/// **Approvals are one-shot.** A human approval authorizes exactly one
+/// execution of the approved call. Approving `delete_vm(id: vm-1)` does not let
+/// the step run that call a second time: the second identical call consumes
+/// nothing and pauses for its own approval. Approvals are matched by tool name
+/// and exact arguments, as a multiset, so the order in which a replay reaches
+/// them does not matter.
+///
+/// **Executed calls replay from the journal.** Every tool call that executes
+/// while the gate is armed is recorded. When the step pauses, the journal goes
+/// into the interrupt payload. The resumed step replays from its start and
+/// returns the recorded outcome for each call that matches a journal entry (by
+/// tool name and exact arguments, first unused entry first) instead of
+/// executing it again. Calls recorded during the current execution are not
+/// replayable within it, so a repeated identical call still runs (or pauses)
+/// on its own.
 actor WorkflowApprovalLedger {
     private var remaining: [WorkflowApprovedCall]
+    private let priorJournal: [WorkflowJournaledCall]
+    private var replayable: [WorkflowJournaledCall]
+    private var recorded: [WorkflowJournaledCall] = []
 
-    init(approved: [WorkflowApprovedCall]) {
+    init(approved: [WorkflowApprovedCall], journal: [WorkflowJournaledCall] = []) {
         remaining = approved
+        priorJournal = journal
+        replayable = journal
     }
 
     /// Consumes one matching approval. Returns `false` when none is left.
@@ -147,6 +213,27 @@ actor WorkflowApprovalLedger {
         guard let index = remaining.firstIndex(of: call) else { return false }
         remaining.remove(at: index)
         return true
+    }
+
+    /// Consumes and returns the recorded outcome of a matching earlier execution.
+    func replay(_ call: WorkflowApprovedCall) -> WorkflowJournaledOutcome? {
+        guard let index = replayable.firstIndex(where: { $0.call == call }) else { return nil }
+        return replayable.remove(at: index).outcome
+    }
+
+    /// Records a call that executed in this step execution.
+    func record(_ call: WorkflowApprovedCall, outcome: WorkflowJournaledOutcome) {
+        recorded.append(WorkflowJournaledCall(call: call, outcome: outcome))
+    }
+
+    /// Approvals not yet consumed.
+    var unusedApprovals: [WorkflowApprovedCall] {
+        remaining
+    }
+
+    /// Every call executed in this step so far, across all its executions.
+    var journal: [WorkflowJournaledCall] {
+        priorJournal + recorded
     }
 }
 
@@ -175,6 +262,18 @@ enum WorkflowDurableApprovalGate {
         await observer?.onToolApprovalRequested(context: context, agent: agent, call: call)
         throw WorkflowToolApprovalRequest(toolName: call.toolName, arguments: call.arguments)
     }
+
+    /// Recorded outcome for `call` when an earlier run of this step executed it.
+    static func replay(call: ToolCall) async -> WorkflowJournaledOutcome? {
+        guard let ledger else { return nil }
+        return await ledger.replay(WorkflowApprovedCall(toolName: call.toolName, arguments: call.arguments))
+    }
+
+    /// Journals an executed call so a replay of this step does not execute it again.
+    static func record(call: ToolCall, outcome: WorkflowJournaledOutcome) async {
+        guard let ledger else { return }
+        await ledger.record(WorkflowApprovedCall(toolName: call.toolName, arguments: call.arguments), outcome: outcome)
+    }
 }
 
 #if SWARM_INTEGRATIONS
@@ -198,6 +297,11 @@ struct WorkflowApprovalRequestEnvelope: Sendable, Equatable, Codable {
     /// Set while a resume holds the pause; absent in payloads written before
     /// claims existed, which decode as unclaimed.
     var claim: WorkflowApprovalClaim?
+    /// Calls the paused step already executed; `nil` in older payloads.
+    var journal: [WorkflowJournaledCall]?
+    /// Consecutive approve-resumes that paused again without reaching an
+    /// approved call; `nil` in older payloads.
+    var divergentResumes: Int?
 
     func encoded() throws -> String {
         let data = try JSONEncoder().encode(self)
@@ -255,6 +359,10 @@ struct WorkflowApprovalDecisionEnvelope: Sendable, Equatable, Codable {
     var toolName: String
     var arguments: [String: SendableValue]
     var approved: [WorkflowApprovedCall] = []
+    /// Calls the paused step already executed; `nil` in older payloads.
+    var journal: [WorkflowJournaledCall]?
+    /// Divergence streak carried from the paused request; `nil` in older payloads.
+    var divergentResumes: Int?
 
     func encoded() throws -> String {
         let data = try JSONEncoder().encode(self)
