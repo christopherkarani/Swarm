@@ -370,6 +370,21 @@ private final class DeliveryRecordingExporter: SpanExporter, @unchecked Sendable
     func shutdown(explicitTimeout: TimeInterval?) {}
 }
 
+/// Carries a loading `URLProtocol` and its client onto the response queue.
+///
+/// `@unchecked Sendable` because URLProtocol is not Sendable on Linux; the
+/// client is only messaged once, from the single response closure.
+private struct DeliveryLoading: @unchecked Sendable {
+    let urlProtocol: URLProtocol
+    let client: (any URLProtocolClient)?
+
+    func respond(with response: HTTPURLResponse) {
+        client?.urlProtocol(urlProtocol, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(urlProtocol, didLoad: Data())
+        client?.urlProtocolDidFinishLoading(urlProtocol)
+    }
+}
+
 /// URLProtocol stub that can park responses until released.
 ///
 /// State is guarded by `lock` (`@unchecked Sendable`). Parked requests are
@@ -467,21 +482,23 @@ private final class DeliveryURLProtocol: URLProtocol, @unchecked Sendable {
             return Self.gate
         }
         let url = request.url ?? URL(string: "http://localhost")!
-        DispatchQueue.global().async { [self] in
+        // swift-corelibs-foundation marks URLProtocol's Sendable conformance
+        // unavailable, so `self` cannot be captured in a @Sendable closure on
+        // Linux. Hand the instance and its client over in a box instead.
+        let loading = DeliveryLoading(urlProtocol: self, client: client)
+        DispatchQueue.global().async {
             _ = parked?.wait(timeout: .now() + 30)
             // Leave `active` before answering: once the client sees the
             // response the exporter may start its next POST, which must not
             // count as overlapping this one.
-            let status = Self.lock.withLock {
-                Self.recordedBodies.append(body)
-                Self.responses += 1
-                Self.active -= 1
-                return Self.statuses.isEmpty ? 200 : Self.statuses.removeFirst()
+            let status = DeliveryURLProtocol.lock.withLock {
+                DeliveryURLProtocol.recordedBodies.append(body)
+                DeliveryURLProtocol.responses += 1
+                DeliveryURLProtocol.active -= 1
+                return DeliveryURLProtocol.statuses.isEmpty ? 200 : DeliveryURLProtocol.statuses.removeFirst()
             }
             let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: Data())
-            client?.urlProtocolDidFinishLoading(self)
+            loading.respond(with: response)
         }
     }
 
