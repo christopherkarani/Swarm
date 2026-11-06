@@ -163,7 +163,7 @@ struct GraphAgent: AgentRuntime, Sendable {
         session: (any Session)? = nil,
         observer: (any AgentObserver)? = nil
     ) -> AsyncThrowingStream<AgentEvent, Error> {
-        StreamHelper.makeTrackedStream { [self] continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { [self] continuation in
             actor FinishGate {
                 private var finished = false
 

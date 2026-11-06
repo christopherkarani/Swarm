@@ -48,7 +48,7 @@ public struct EnvironmentAgent: AgentRuntime, Sendable {
         session: (any Session)?,
         observer: (any AgentObserver)?
     ) -> AsyncThrowingStream<AgentEvent, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             try await AgentEnvironmentValues.$current.withValue(envForStream()) {
                 for try await event in base.stream(input, session: session, observer: observer) {
                     continuation.yield(event)
