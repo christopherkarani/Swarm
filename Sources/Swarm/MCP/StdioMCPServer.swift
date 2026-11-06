@@ -100,6 +100,10 @@ public actor StdioMCPServer: MCPServerConnection {
     /// allowlist selection nor the `environment` overlay provides one.
     public static let defaultSandboxPATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 
+    /// Default cap, in bytes, on a single newline-delimited message read from
+    /// the child's stdout (16 MB).
+    public static let defaultMaxMessageSize = 16 * 1024 * 1024
+
     /// Creates a stdio MCP client that will launch `command` on initialize.
     ///
     /// - Parameters:
@@ -121,9 +125,14 @@ public actor StdioMCPServer: MCPServerConnection {
     ///     child runs with this root as its working directory.
     ///   - name: A name for this connection (used for identification).
     ///   - timeout: Per-request timeout in seconds. Default: 30.0
-    /// - Throws: `MCPError.invalidParams` when `command` is not absolute or
-    ///   the working-directory URLs are not absolute file URLs inside the
-    ///   sandbox root.
+    ///   - maxMessageSize: Largest single stdout message, in bytes, the client
+    ///     buffers while waiting for its terminating newline. When the child
+    ///     exceeds it, in-flight requests fail, the child is terminated, and
+    ///     later requests fail until ``close()``. Default:
+    ///     ``defaultMaxMessageSize``.
+    /// - Throws: `MCPError.invalidParams` when `command` is not absolute, the
+    ///   working-directory URLs are not absolute file URLs inside the sandbox
+    ///   root, or `maxMessageSize` is not positive.
     public init(
         command: String,
         arguments: [String] = [],
@@ -132,8 +141,12 @@ public actor StdioMCPServer: MCPServerConnection {
         workingDirectory: URL? = nil,
         allowedWorkingDirectoryRoot: URL? = nil,
         name: String,
-        timeout: TimeInterval = 30.0
+        timeout: TimeInterval = 30.0,
+        maxMessageSize: Int = StdioMCPServer.defaultMaxMessageSize
     ) throws {
+        guard maxMessageSize > 0 else {
+            throw MCPError.invalidParams("StdioMCPServer maxMessageSize must be positive (got \(maxMessageSize)).")
+        }
         try Self.validateCommand(command)
         try Self.validateDirectoryURL(workingDirectory, label: "workingDirectory")
         try Self.validateDirectoryURL(allowedWorkingDirectoryRoot, label: "allowedWorkingDirectoryRoot")
@@ -149,6 +162,7 @@ public actor StdioMCPServer: MCPServerConnection {
         self.allowedWorkingDirectoryRoot = allowedWorkingDirectoryRoot
         self.name = name
         self.timeout = timeout
+        self.maxMessageSize = maxMessageSize
         encoder = JSONEncoder()
         decoder = JSONDecoder()
     }
@@ -238,6 +252,7 @@ public actor StdioMCPServer: MCPServerConnection {
         cachedCapabilities = nil
         cachedProtocolVersion = nil
         stdoutBuffer.removeAll()
+        connectionFailure = nil
     }
 
     // MARK: Private
@@ -249,6 +264,7 @@ public actor StdioMCPServer: MCPServerConnection {
     private let workingDirectory: URL?
     private let allowedWorkingDirectoryRoot: URL?
     private let timeout: TimeInterval
+    private let maxMessageSize: Int
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
@@ -265,6 +281,9 @@ public actor StdioMCPServer: MCPServerConnection {
     private var pending: [String: CheckedContinuation<MCPResponse, Error>] = [:]
     private var stdoutBuffer = Data()
     private var stderrBuffer = Data()
+    /// Set when the connection failed in a way that must not be retried on
+    /// the same child (an oversized stdout message). Cleared by ``close()``.
+    private var connectionFailure: MCPError?
     private var cachedCapabilities: MCPCapabilities?
     private var cachedProtocolVersion: String?
 
@@ -348,6 +367,9 @@ public actor StdioMCPServer: MCPServerConnection {
 
     private func startProcessIfNeeded() throws {
         #if os(macOS) || os(Linux)
+        if let connectionFailure {
+            throw connectionFailure
+        }
         if let process, process.isRunning {
             return
         }
@@ -474,12 +496,37 @@ public actor StdioMCPServer: MCPServerConnection {
     }
 
     private func consumeStdout(_ chunk: Data) {
+        guard connectionFailure == nil else { return }
         stdoutBuffer.append(chunk)
         while let newline = stdoutBuffer.firstIndex(of: UInt8(ascii: "\n")) {
             let line = stdoutBuffer[..<newline]
+            guard line.count <= maxMessageSize else {
+                failOversizedMessage()
+                return
+            }
             stdoutBuffer.removeSubrange(...newline)
             guard !line.isEmpty else { continue }
             handleMessage(Data(line))
+        }
+        if stdoutBuffer.count > maxMessageSize {
+            failOversizedMessage()
+        }
+    }
+
+    /// Fails the connection when the child sends more than `maxMessageSize`
+    /// bytes without a newline, so a misbehaving server cannot grow the
+    /// buffer without bound.
+    private func failOversizedMessage() {
+        let error = MCPError.internalError(
+            "MCP stdio server '\(name)' sent a message larger than the \(maxMessageSize)-byte limit; connection closed"
+        )
+        connectionFailure = error
+        stdoutBuffer = Data()
+        failPending(error)
+        readerTask?.cancel()
+        readerTask = nil
+        if let process, process.isRunning {
+            process.terminate()
         }
     }
 
@@ -542,6 +589,10 @@ public actor StdioMCPServer: MCPServerConnection {
 
     private func performSend(_ request: MCPRequest) async throws -> MCPResponse {
         try await withCheckedThrowingContinuation { continuation in
+            if let connectionFailure {
+                continuation.resume(throwing: connectionFailure)
+                return
+            }
             if process?.isRunning != true {
                 continuation.resume(
                     throwing: MCPError.internalError("MCP stdio server '\(name)' is not running")
