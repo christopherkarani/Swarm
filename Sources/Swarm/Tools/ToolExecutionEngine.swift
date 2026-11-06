@@ -176,6 +176,9 @@ struct ToolExecutionEngine: Sendable {
     /// each overlapping call; results are merged onto `resultBuilder` in input
     /// order. Observer and tracing callbacks for a concurrent group follow
     /// completion order.
+    ///
+    /// At most `maxConcurrentCalls` calls of a concurrent group run at once;
+    /// the next call starts when one finishes. Values below 1 are treated as 1.
     func executeBatch(
         _ calls: [some ToolCallGoal],
         registry: ToolRegistry,
@@ -185,11 +188,13 @@ struct ToolExecutionEngine: Sendable {
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
         stopOnToolError: Bool,
-        allowConcurrent: Bool
+        allowConcurrent: Bool,
+        maxConcurrentCalls: Int = AgentConfiguration.defaultMaxConcurrentToolCalls
     ) async throws -> [Outcome] {
         guard !calls.isEmpty else {
             return []
         }
+        let concurrencyLimit = max(1, maxConcurrentCalls)
 
         var eligibility: [Bool] = []
         eligibility.reserveCapacity(calls.count)
@@ -221,7 +226,7 @@ struct ToolExecutionEngine: Sendable {
 
             case let .concurrent(range):
                 try await withThrowingTaskGroup(of: (Int, Outcome).self) { taskGroup in
-                    for index in range {
+                    func startCall(at index: Int) {
                         let goal = calls[index]
                         taskGroup.addTask {
                             let isolatedBuilder = AgentResult.Builder()
@@ -242,11 +247,20 @@ struct ToolExecutionEngine: Sendable {
                         }
                     }
 
+                    var pending = range.makeIterator()
+                    for _ in 0 ..< concurrencyLimit {
+                        guard let index = pending.next() else { break }
+                        startCall(at: index)
+                    }
+
                     var collected: [(Int, Outcome)] = []
                     collected.reserveCapacity(range.count)
                     for try await item in taskGroup {
                         try Task.checkCancellation()
                         collected.append(item)
+                        if let index = pending.next() {
+                            startCall(at: index)
+                        }
                     }
                     collected.sort { $0.0 < $1.0 }
                     for (index, outcome) in collected {
