@@ -47,9 +47,8 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     /// Provider configuration (endpoint, model, auth, structured-output mode).
     public let configuration: OpenAICompatibleProviderConfiguration
 
-    /// `URLSession` is thread-safe. swift-corelibs-foundation does not mark it
-    /// `Sendable`, so the session is stored in this box.
-    private let sessionBox: SessionBox
+    /// Session used for POST requests.
+    private let session: URLSession
 
     /// Backend resolving `configuration.apiKeyReference`, if any.
     private let secretStore: (any SecretStore)?
@@ -66,7 +65,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     ) {
         self.configuration = configuration
         self.secretStore = nil
-        self.sessionBox = SessionBox(session)
+        self.session = session
     }
 
     /// Creates a provider that resolves `configuration.apiKeyReference`.
@@ -88,7 +87,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     ) {
         self.configuration = configuration
         self.secretStore = secretStore
-        self.sessionBox = SessionBox(session)
+        self.session = session
     }
 
     // MARK: - Metadata
@@ -305,7 +304,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         )
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await sessionBox.session.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch {
             throw OpenAICompatibleErrorMapper.mapTransport(error)
         }
@@ -354,7 +353,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await sessionBox.session.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch {
             throw OpenAICompatibleErrorMapper.mapTransport(error)
         }
@@ -370,7 +369,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         let bytes: URLSession.AsyncBytes
         let response: URLResponse
         do {
-            (bytes, response) = try await sessionBox.session.bytes(for: request)
+            (bytes, response) = try await session.bytes(for: request)
         } catch {
             throw OpenAICompatibleErrorMapper.mapTransport(error)
         }
@@ -547,18 +546,6 @@ struct OpenAICompatibleSSELineBuffer: Sendable {
             throw AgentError.generationFailed(reason: "OpenAI-compatible stream is not valid UTF-8")
         }
         return line
-    }
-}
-
-// MARK: - Session box
-
-extension OpenAICompatibleProvider {
-    fileprivate final class SessionBox: @unchecked Sendable {
-        let session: URLSession
-
-        init(_ session: URLSession) {
-            self.session = session
-        }
     }
 }
 
