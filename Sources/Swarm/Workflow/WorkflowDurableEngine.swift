@@ -150,7 +150,7 @@ struct WorkflowDurableEngine: Sendable {
             options: runOptions(for: policy)
         )
 
-        let outcome = try await handle.outcome.value
+        let outcome = try await Self.awaitOutcome(of: handle)
         let result = try extractResult(from: outcome)
 
         if policy == .onCompletion {
@@ -159,10 +159,30 @@ struct WorkflowDurableEngine: Sendable {
                 writes: [],
                 options: HiveRunOptions(maxSteps: 1, checkpointPolicy: .everyStep)
             )
+            // The main run already finished (and its side effects happened), so
+            // the completion checkpoint must land even if the caller is cancelled
+            // or times out now. Await the flush without forwarding cancellation;
+            // otherwise a resume would re-run side-effecting steps.
             _ = try await flushHandle.outcome.value
         }
 
         return result
+    }
+
+    /// Awaits a Hive run outcome while forwarding caller cancellation to it.
+    ///
+    /// `HiveRuntime` drives each attempt in an unstructured task, so cancelling
+    /// the caller (or losing a `Workflow.timeout` race) would otherwise leave the
+    /// run calling models, running tools, and writing checkpoints after the
+    /// caller has already returned.
+    private static func awaitOutcome(
+        of handle: HiveRunHandle<WorkflowDurableSchema>
+    ) async throws -> HiveRunOutcome<WorkflowDurableSchema> {
+        try await withTaskCancellationHandler {
+            try await handle.outcome.value
+        } onCancel: {
+            handle.outcome.cancel()
+        }
     }
 
     static func compiledGraph(for workflow: Workflow) throws -> CompiledHiveGraph<WorkflowDurableSchema> {
@@ -240,8 +260,10 @@ struct WorkflowDurableEngine: Sendable {
         switch outcome {
         case .finished(let output, _):
             return try extractResult(from: output)
-        case .cancelled(let output, _):
-            return try extractResult(from: output)
+        case .cancelled:
+            // A cancelled run's output is the last committed step (or the echoed
+            // input), not a workflow result. Surfacing it would look like success.
+            throw AgentError.cancelled
         case .outOfSteps:
             throw WorkflowError.invalidWorkflow(reason: "Workflow exceeded execution budget")
         case .interrupted:
