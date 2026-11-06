@@ -268,6 +268,13 @@ execute twice:
   approve on that run throws again, even after the step is changed, so end it
   with `.reject`; making the step deterministic only helps future runs. A
   resume that runs the call it approved resets the count.
+- A resumed step that fails without pausing (for example the inference after
+  the approved call throws) releases the pause with its journal, so retrying
+  the resume replays the calls that already ran, the approved one included.
+- The journal is saved only when the step pauses, fails, or commits. If the
+  process crashes mid-resume (or the release cannot be written), calls made
+  since the pause are at-least-once: after the 10-minute claim lease expires,
+  the next resume runs them again.
 
 Pauses propagate through `.fallback` steps (no retry or fallback on a pause),
 agents used as tools (`asTool()`), and provider-owned tool loops such as

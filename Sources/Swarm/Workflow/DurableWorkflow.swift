@@ -84,6 +84,14 @@ public struct DurableWorkflow: Sendable {
     /// ``WorkflowApprovalReplayDiverged/maxAttempts`` such resumes in a row
     /// throws ``WorkflowApprovalReplayDiverged`` before the step runs.
     ///
+    /// A resumed step that fails (for example an inference error after the
+    /// approved call ran) keeps its journal in the released pause, so retrying
+    /// the resume replays the calls that already executed. The guarantee
+    /// relies on that release being saved: if the process crashes mid-resume,
+    /// or the release cannot be written, calls since the pause are
+    /// at-least-once, and a resume after the claim lease expires runs them
+    /// again.
+    ///
     /// There is no timeout on the approval wait itself: the run stays paused
     /// until this method is called.
     ///

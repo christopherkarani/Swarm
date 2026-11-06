@@ -66,6 +66,48 @@ struct WorkflowDurableApprovalReplayTests {
         #expect(result.toolResults.first?.output == .string("lookup-result"))
     }
 
+    @Test("an approved call that ran before the resumed step failed is not re-executed on retry")
+    func approvedCallSurvivesFailedResume() async throws {
+        let transfers = ApprovalToolCounter()
+        let provider = await MockInferenceProvider()
+        let script: () async -> Void = {
+            await provider.configureToolCallingSequence(
+                toolCalls: [("transfer_money", ["amount": .int(100)])],
+                finalAnswer: "done"
+            )
+        }
+        await script()
+        // The approved transfer runs, then the follow-up inference fails.
+        let transfer = FunctionTool(
+            name: "transfer_money",
+            description: "Approval-gated side effect",
+            executionSemantics: ToolExecutionSemantics(approvalRequirement: .always)
+        ) { _ in
+            await transfers.increment()
+            await provider.setError(AgentError.generationFailed(reason: "transient"))
+            return .string("transferred")
+        }
+        let agent = try makeApprovalTestAgent(tools: [transfer], provider: provider)
+        let checkpointID = WorkflowCheckpointID("approval-replay-failed-resume")
+        let workflow = makeDurableWorkflow(agent: agent, checkpointID: checkpointID)
+
+        await #expect(throws: WorkflowApprovalRequired.self) {
+            _ = try await workflow.execute("go")
+        }
+
+        await script()
+        await #expect(throws: AgentError.generationFailed(reason: "transient")) {
+            _ = try await workflow.resume(decision: .approve, from: checkpointID)
+        }
+        #expect(await transfers.count == 1)
+
+        await provider.setError(nil)
+        await script()
+        let result = try await workflow.resume(decision: .approve, from: checkpointID)
+        #expect(result.output == "done")
+        #expect(await transfers.count == 1)
+    }
+
     @Test("replayed tool results are not written to memory twice")
     func replayDoesNotDuplicateMemoryWrites() async throws {
         let lookups = ApprovalToolCounter()

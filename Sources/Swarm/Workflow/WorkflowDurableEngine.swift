@@ -244,6 +244,12 @@ struct WorkflowDurableEngine: Sendable {
                 let outcome = try await handle.outcome.value
                 return try await finish(outcome, components: components)
             }
+        } catch let failure as WorkflowResumedStepFailure {
+            var released = request
+            released.journal = failure.journal
+            released.approved = failure.approved
+            await releaseClaim(await holder.current, request: released, store: components.store)
+            throw failure.underlying
         } catch {
             await releaseClaim(await holder.current, request: request, store: components.store)
             throw error
@@ -624,6 +630,14 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
                 ledger: ledger,
                 replay: replay
             )
+        } catch {
+            guard let justApproved = replay.justApproved else { throw error }
+            throw await WorkflowResumedStepFailure(
+                underlying: error,
+                ledger: ledger,
+                offered: replay.approved,
+                justApproved: justApproved
+            )
         }
 
     case .evaluateRepeat(let progress, let result):
@@ -666,6 +680,39 @@ private struct WorkflowStepReplay {
     /// The call the `.approve` decision this execution follows granted;
     /// `nil` for a fresh step.
     var justApproved: WorkflowApprovedCall?
+}
+
+/// An approve-resumed step failed with `underlying` (not a pause).
+///
+/// The step may already have executed tools, the approved call included, but
+/// nothing was committed, so the engine releases the claim back to the pause.
+/// This carries the step's journal and remaining approvals so the released
+/// pause records them: a retried resume then replays those calls instead of
+/// executing them again. The engine unwraps it before the caller sees it.
+struct WorkflowResumedStepFailure: Error {
+    let underlying: any Error
+    let journal: [WorkflowJournaledCall]
+    /// Approvals to keep in the released pause, excluding the paused call
+    /// itself, which the next `.approve` grants again.
+    let approved: [WorkflowApprovedCall]
+
+    init(
+        underlying: any Error,
+        ledger: WorkflowApprovalLedger,
+        offered: [WorkflowApprovedCall],
+        justApproved: WorkflowApprovedCall
+    ) async {
+        self.underlying = underlying
+        journal = await ledger.journal
+        var unused = await ledger.unusedApprovals
+        // `offered` includes the paused call; if no matching approval was
+        // consumed it is still unused, so drop that copy.
+        if unused.count(where: { $0 == justApproved }) == offered.count(where: { $0 == justApproved }),
+           let index = unused.firstIndex(of: justApproved) {
+            unused.remove(at: index)
+        }
+        approved = unused
+    }
 }
 
 /// Approval gate state for one step execution.
