@@ -247,6 +247,9 @@ enum OpenAICompatibleWire: Sendable {
         var streamOptions: StreamOptions?
         /// Set only for native structured turns without tools.
         var responseFormat: ResponseFormat?
+        /// Qualitative reasoning level (`low`, `medium`, …). Set only when
+        /// configured — hosts that reject unknown fields must never see it.
+        var reasoningEffort: String?
 
         private enum CodingKeys: String, CodingKey {
             case model
@@ -264,6 +267,7 @@ enum OpenAICompatibleWire: Sendable {
             case stream
             case streamOptions = "stream_options"
             case responseFormat = "response_format"
+            case reasoningEffort = "reasoning_effort"
         }
     }
 
