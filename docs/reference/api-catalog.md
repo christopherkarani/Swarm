@@ -3610,7 +3610,10 @@ Without it this product is a hollow module exposing ``OpenTelemetryTrait``.
 | 30 | struct | public | OTLPHTTPExporterConfiguration | `public struct OTLPHTTPExporterConfiguration` |
 | 32 | var | public | OTLPHTTPExporterConfiguration.defaultEndpoint | `public static let defaultEndpoint: URL` |
 | 35 | var | public | OTLPHTTPExporterConfiguration.default | `public static let \`default\`: OTLPHTTPExporterConfiguration` |
-| 72 | func | public | OTLPHTTPExporterConfiguration.init(endpoint:headers:resourceAttributes:maxBatchSize:scheduleDelay:maxRetries:retryBackoff:) | `public init(endpoint: URL = defaultEndpoint, headers: [String : String] = [:], resourceAttributes: [String : String] = ["service.name": "swarm"], maxBatchSize: Int = 64, scheduleDelay: Duration = .seconds(5), maxRetries: Int = 1, retryBackoff: Duration = .milliseconds(200))` |
+| 94 | func | public | OTLPHTTPExporterConfiguration.init(endpoint:headers:resourceAttributes:maxBatchSize:scheduleDelay:maxRetries:retryBackoff:maxQueueSize:maxExportAttempts:syncTimeout:) | `public init(endpoint: URL = defaultEndpoint, headers: [String : String] = [:], resourceAttributes: [String : String] = ["service.name": "swarm"], maxBatchSize: Int = 64, scheduleDelay: Duration = .seconds(5), maxRetries: Int = 1, retryBackoff: Duration = .milliseconds(200), maxQueueSize: Int = 2048, maxExportAttempts: Int = 3, syncTimeout: TimeInterval = 10)` |
+| 178 | func | public | OTLPHTTPExporterConfiguration.maxQueueSize(_:) | `func maxQueueSize(_ value: Int) -> OTLPHTTPExporterConfiguration` |
+| 186 | func | public | OTLPHTTPExporterConfiguration.maxExportAttempts(_:) | `func maxExportAttempts(_ value: Int) -> OTLPHTTPExporterConfiguration` |
+| 194 | func | public | OTLPHTTPExporterConfiguration.syncTimeout(_:) | `func syncTimeout(_ value: TimeInterval) -> OTLPHTTPExporterConfiguration` |
 
 #### Sources/SwarmOpenTelemetry/OTLPHTTPTraceExporter.swift
 
@@ -3618,6 +3621,8 @@ Without it this product is a hollow module exposing ``OpenTelemetryTrait``.
 |------|------|--------|------|-----------|
 | 30 | class | public | OTLPHTTPTraceExporter | `public final class OTLPHTTPTraceExporter` |
 | 40 | func | public | OTLPHTTPTraceExporter.init(configuration:session:) | `public init(configuration: OTLPHTTPExporterConfiguration = .default, session: URLSession = .shared)` |
+| 87 | var | public | OTLPHTTPTraceExporter.droppedSpanCount | `public var droppedSpanCount: Int { get }` |
+| 92 | var | public | OTLPHTTPTraceExporter.queuedSpanCount | `public var queuedSpanCount: Int { get }` |
 | 219 | enum | public | OpenTelemetryTracing | `public enum OpenTelemetryTracing` |
 | 230 | func | public | OpenTelemetryTracing.configureOTLPHTTPExport(configuration:session:) | `public static func configureOTLPHTTPExport(configuration: OTLPHTTPExporterConfiguration = .default, session: URLSession = .shared) -> OTLPHTTPTraceExporter` |
 
