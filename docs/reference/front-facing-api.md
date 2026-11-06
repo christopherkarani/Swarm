@@ -595,7 +595,14 @@ durable run instead of executing. `execute` throws `WorkflowApprovalRequired`;
 checkpoint store. `.approve` replays the paused step and lets the approved call
 through when the replay regenerates the same call (otherwise it pauses again
 with the new call); `.reject` checkpoints a terminal rejection and fails with
-`WorkflowError.humanApprovalRejected` without executing. No edited-arguments
+`WorkflowError.humanApprovalRejected` without executing. Within one resumed
+execution each approval covers one matching call. Concurrent resumes of one checkpoint (same process
+or another process sharing the store) execute once; the loser throws
+`WorkflowResumeConflict`. The resumed step replays from its start, but tool
+calls the step already executed return their journaled result instead of running
+again, and their memory writes are not repeated. A replay that keeps diverging
+from the approved call throws `WorkflowApprovalReplayDiverged` after
+`WorkflowApprovalReplayDiverged.maxAttempts` approve-resumes. No edited-arguments
 resume, no approval timeout. Pauses surface on the `AgentEvent` stream as
 `AgentEvent.Tool.approvalRequested` via
 `AgentObserver.onToolApprovalRequested`.

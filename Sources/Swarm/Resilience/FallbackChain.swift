@@ -261,6 +261,9 @@ public struct FallbackChain<Output: Sendable>: Sendable {
                     totalAttempts: index + 1,
                     errors: errors
                 )
+            } catch let pause as WorkflowToolApprovalRequest {
+                // A durable approval pause must reach the human, not a fallback.
+                throw pause
             } catch {
                 // Step failed - record error and try next step
                 let stepError = StepError(
