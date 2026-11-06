@@ -568,6 +568,9 @@ public struct Agent: AgentRuntime, Sendable {
 
     static let responseIDMetadataKey = "response.id"
     static let transcriptSchemaVersionMetadataKey = "swarm.transcript.schema_version"
+    /// Result metadata key holding the SHA-256 of the transcript items this
+    /// turn appended to the session (the user message plus this turn's
+    /// transcript), not of the full session history.
     static let transcriptHashMetadataKey = "swarm.transcript.hash"
     static let structuredOutputJSONMetadataKey = "structured_output.raw_json"
     static let structuredOutputSourceMetadataKey = "structured_output.source"

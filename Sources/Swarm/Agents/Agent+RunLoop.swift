@@ -254,9 +254,11 @@ extension Agent {
             // Store turn in session for conversation persistence
             // Session is the source of truth for conversation history
             if let session {
-                // Validate before writing so a rejected turn is never stored
-                // (a retry would duplicate it), and describe only this turn's
-                // items instead of re-reading the whole session every run.
+                // Describe only this turn's items instead of re-reading the whole
+                // session every run. The turn transcript is always built at the
+                // current schema version, so the validation below is a defensive
+                // invariant check that runs before the write; it does not detect
+                // incompatible items already stored in the session.
                 // `swarm.transcript.hash` is the hash of the items this turn appended.
                 let turnItems = [userMessage] + toolLoopOutcome.transcriptMessages
                 let turnTranscript = SwarmTranscript(memoryMessages: turnItems)
