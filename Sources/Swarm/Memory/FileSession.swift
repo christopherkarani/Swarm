@@ -36,12 +36,16 @@ import Foundation
 ///
 /// Files written by earlier releases as `<sanitized-sessionId>.json` are
 /// still read when they hold this session's ID; the first successful write
-/// moves the history to the new name and removes the legacy file.
+/// stores the history under the new name. The legacy file is left in place
+/// so an older release can still read the pre-migration history after a
+/// downgrade; once the new file exists it always wins.
 ///
 /// ## Load Failures
 /// If the file exists but cannot be read or decoded, every operation throws
 /// and the file is left untouched: a session never replaces history it
-/// failed to load.
+/// failed to load. The one exception is ``clearSession()``, which discards
+/// history by intent and therefore overwrites an unreadable file with an
+/// empty session — the API's recovery path for a corrupt file.
 public actor FileSession: Session {
     // MARK: Public
 
@@ -130,9 +134,13 @@ public actor FileSession: Session {
     }
 
     /// Clears all items and persists the empty session.
+    ///
+    /// Unlike the other operations, this does not load the existing file
+    /// first: clearing discards the history anyway, so an unreadable or
+    /// corrupt file is replaced by an empty session instead of throwing.
     public func clearSession() async throws {
-        try ensureLoaded()
         items.removeAll()
+        loaded = true
         try persist()
     }
 
@@ -152,9 +160,6 @@ public actor FileSession: Session {
 
     private var items: [MemoryMessage] = []
     private var loaded = false
-
-    /// Legacy file adopted at load time; removed after the first successful write.
-    private var adoptedLegacyFile: URL?
 
     private nonisolated var sanitizedSessionId: String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
@@ -195,7 +200,6 @@ public actor FileSession: Session {
         } else if let legacy = try readSnapshot(at: legacyFileURL), legacy.sessionId == sessionId {
             // A legacy file holding another ID belongs to a colliding session; ignore it.
             items = legacy.items
-            adoptedLegacyFile = legacyFileURL
         }
         loaded = true
     }
@@ -238,11 +242,6 @@ public actor FileSession: Session {
                 reason: "Failed to persist file session '\(sessionId)'",
                 underlyingError: error.localizedDescription
             )
-        }
-        if let legacy = adoptedLegacyFile {
-            // History now lives at `fileURL`; dropping the legacy copy is best effort.
-            try? FileManager.default.removeItem(at: legacy)
-            adoptedLegacyFile = nil
         }
     }
 }

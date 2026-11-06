@@ -116,7 +116,7 @@ struct FileSessionTests {
         #expect(try await resumed.getAllItems().count == 1)
     }
 
-    @Test("A corrupt file is never overwritten by later writes")
+    @Test("A corrupt file is never overwritten by add, but clearSession recovers it")
     func corruptFileIsNeverOverwritten() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
@@ -134,11 +134,15 @@ struct FileSessionTests {
         await #expect(throws: SessionError.self) {
             try await session.addItem(.user("second"))
         }
-        await #expect(throws: SessionError.self) {
-            try await session.clearSession()
-        }
-
         #expect(try Data(contentsOf: session.fileURL) == original)
+
+        // Clearing discards history by intent, so it replaces the corrupt file.
+        try await session.clearSession()
+        #expect(try await session.getAllItems().isEmpty)
+        try await session.addItem(.user("after clear"))
+
+        let reloaded = FileSession(sessionId: "file-corrupt", directory: directory)
+        #expect(try await reloaded.getAllItems().map(\.content) == ["after clear"])
     }
 
     @Test("IDs that sanitize to the same name use distinct files")
@@ -159,7 +163,7 @@ struct FileSessionTests {
         #expect(try await reloadedUnderscore.getAllItems().map(\.content) == ["from underscore"])
     }
 
-    @Test("Legacy sanitized-name files are still read and migrated")
+    @Test("Legacy sanitized-name files are read, migrated, and kept for downgrade")
     func legacyFilesAreReadAndMigrated() async throws {
         let directory = try makeTemporaryDirectory()
         defer { removeTemporaryDirectory(directory) }
@@ -173,7 +177,9 @@ struct FileSessionTests {
 
         try await session.addItem(.user("new"))
         #expect(FileManager.default.fileExists(atPath: session.fileURL.path))
-        #expect(!FileManager.default.fileExists(atPath: legacyURL.path))
+        // Kept so an older release can still read the pre-migration history.
+        let legacyAfter = try SessionSnapshot(encoded: Data(contentsOf: legacyURL))
+        #expect(legacyAfter.items.map(\.content) == ["old history"])
 
         let reloaded = FileSession(sessionId: "legacy-1", directory: directory)
         #expect(try await reloaded.getAllItems().map(\.content) == ["old history", "new"])
