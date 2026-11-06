@@ -56,18 +56,22 @@ struct PersistentMemoryErrorSurfacingTests {
         }
     }
 
-    @Test("A successful backend operation clears lastFailure")
-    func successClearsFailure() async throws {
+    @Test("A later success does not hide an earlier failure")
+    func failureStaysUntilCleared() async throws {
         let backend = FailingPersistentBackend()
         let memory = PersistentMemory(backend: backend, conversationId: "flaky")
 
         await memory.add(.user("lost"))
-        #expect(await memory.lastFailure != nil)
+        #expect(await memory.lastFailure?.operation == .store)
 
         await backend.setFailing(false)
         await memory.add(.user("kept"))
-        #expect(await memory.lastFailure == nil)
+        _ = await memory.allMessages()
+        #expect(await memory.lastFailure?.operation == .store)
         #expect(try await memory.messageCount() == 1)
+
+        await memory.clearLastFailure()
+        #expect(await memory.lastFailure == nil)
     }
 
     @Test("Healthy backends never record failures")

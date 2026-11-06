@@ -71,13 +71,20 @@ public actor PersistentMemory: Memory {
         get async { await count == 0 }
     }
 
-    /// The most recent backend failure, or `nil` while the backend is healthy.
+    /// The most recent backend failure, or `nil` if none occurred since the
+    /// last ``clearLastFailure()``.
     ///
     /// Set whenever a non-throwing member (``add(_:)``, ``count``,
-    /// ``allMessages()``, …) swallows a backend error, and cleared by the next
-    /// backend operation that succeeds. The throwing variants propagate their
-    /// errors and update this value the same way.
+    /// ``allMessages()``, …) swallows a backend error; the throwing variants
+    /// record their errors here too. The value is sticky: a later successful
+    /// operation does not clear it, so a dropped ``add(_:)`` stays visible
+    /// after the backend recovers. Call ``clearLastFailure()`` once handled.
     public private(set) var lastFailure: PersistentMemoryFailure?
+
+    /// Clears ``lastFailure`` after the caller has handled it.
+    public func clearLastFailure() {
+        lastFailure = nil
+    }
 
     /// Creates a new persistent memory.
     ///
@@ -224,15 +231,13 @@ public actor PersistentMemory: Memory {
 
     // MARK: - Private Helpers
 
-    /// Runs a backend operation, updating ``lastFailure`` from its outcome.
+    /// Runs a backend operation, recording a failure in ``lastFailure``.
     private func tracking<T: Sendable>(
         _ operation: PersistentMemoryFailure.Operation,
         _ body: () async throws -> T
     ) async throws -> T {
         do {
-            let value = try await body()
-            lastFailure = nil
-            return value
+            return try await body()
         } catch {
             lastFailure = PersistentMemoryFailure(operation: operation, error: error)
             throw error
