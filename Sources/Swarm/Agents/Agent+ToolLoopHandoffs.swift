@@ -161,6 +161,12 @@ extension AgentTurnRunner {
                     context: await request.executionContext.snapshot,
                     metadata: initialHandoffData.metadata
                 )
+                // Answer skipped siblings before projecting history so a `.nested`
+                // or `.summarized` child request never carries unanswered calls.
+                answerCallsSkippedByHandoff(
+                    response.toolCalls[(callIndex + 1)...],
+                    handoffToolName: parsedCall.name
+                )
                 let prepared = HandoffPreparation.prepare(
                     sourceAgentName: handoffData.sourceAgentName,
                     targetAgentName: handoffData.targetAgentName,
@@ -219,10 +225,6 @@ extension AgentTurnRunner {
                     toolName: parsedCall.name,
                     result: result.output,
                     toolCallID: parsedCall.id
-                )
-                answerCallsSkippedByHandoff(
-                    response.toolCalls[(callIndex + 1)...],
-                    handoffToolName: parsedCall.name
                 )
 
                 let handoffDuration = ContinuousClock.now - handoffStart

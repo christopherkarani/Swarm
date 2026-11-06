@@ -67,6 +67,34 @@ struct AgentHandoffSiblingToolCallTests {
         #expect(childResponseID != response.responseId)
     }
 
+    @Test("Nested handoff history answers every tool call in the child request")
+    func nestedHistoryAnswersEveryToolCallInChildRequest() async throws {
+        let sourceProvider = MockInferenceProvider()
+        await sourceProvider.setToolCallResponses([
+            Self.handoffResponse(calls: [
+                ("call_a", "lookup_a"),
+                ("call_handoff", "handoff_to_target"),
+                ("call_b", "lookup_b"),
+            ]),
+        ])
+        let targetProvider = MockInferenceProvider(responses: ["target done"])
+        let source = try Self.makeSource(
+            provider: sourceProvider,
+            tools: [SpyTool(name: "lookup_a"), SpyTool(name: "lookup_b")],
+            targetProvider: targetProvider,
+            history: .nested
+        )
+
+        let result = try await source.run("please route this")
+
+        #expect(result.output == "target done")
+        let childMessages = try #require(await targetProvider.generateMessageCalls.first?.messages)
+        let requestedIDs = childMessages.flatMap { $0.toolCalls.compactMap(\.id) }
+        let answeredIDs = Set(childMessages.filter { $0.role == .tool }.compactMap(\.toolCallID))
+        #expect(requestedIDs == ["call_a", "call_b"])
+        #expect(requestedIDs.allSatisfy { answeredIDs.contains($0) })
+    }
+
     // MARK: - Helpers
 
     private static func handoffResponse(calls: [(id: String, name: String)]) -> InferenceResponse {
@@ -84,7 +112,8 @@ struct AgentHandoffSiblingToolCallTests {
         provider: MockInferenceProvider,
         tools: [any AnyJSONTool],
         targetProvider: MockInferenceProvider,
-        configuration: AgentConfiguration = AgentConfiguration(name: "source-agent", defaultTracingEnabled: false)
+        configuration: AgentConfiguration = AgentConfiguration(name: "source-agent", defaultTracingEnabled: false),
+        history: HandoffHistory = .none
     ) throws -> Agent {
         let target = try Agent(
             tools: [],
@@ -100,7 +129,8 @@ struct AgentHandoffSiblingToolCallTests {
             handoffs: [
                 AnyHandoffConfiguration(HandoffConfiguration(
                     targetAgent: target,
-                    toolNameOverride: "handoff_to_target"
+                    toolNameOverride: "handoff_to_target",
+                    history: history
                 )),
             ]
         )
