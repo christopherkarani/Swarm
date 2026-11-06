@@ -5,7 +5,6 @@
 // Provides comprehensive event tracking with metadata, spans, and source location.
 
 import Foundation
-import Synchronization
 
 // MARK: - EventLevel
 
@@ -217,7 +216,7 @@ public struct TraceEvent: Sendable, Codable, Identifiable, Equatable, Hashable {
 public extension TraceEvent {
     /// Fluent builder for creating trace events.
     ///
-    /// All builder state lives behind a `Mutex`, so a builder can be shared
+    /// All builder state lives behind an `NSLock`, so a builder can be shared
     /// across concurrency domains: each setter and ``build()`` is atomic.
     final class Builder: Sendable {
         // MARK: Public
@@ -232,7 +231,7 @@ public extension TraceEvent {
             timestamp: Date = Date(),
             level: EventLevel = .info
         ) {
-            state = Mutex(State(
+            _state = State(
                 id: id,
                 traceId: traceId,
                 spanId: spanId,
@@ -240,76 +239,76 @@ public extension TraceEvent {
                 kind: kind,
                 level: level,
                 message: message
-            ))
+            )
         }
 
         /// Sets the parent span ID.
         @discardableResult
         public func parentSpan(_ id: UUID) -> Builder {
-            state.withLock { $0.parentSpanId = id }
+            withState { $0.parentSpanId = id }
             return self
         }
 
         /// Sets the timestamp.
         @discardableResult
         public func timestamp(_ date: Date) -> Builder {
-            state.withLock { $0.timestamp = date }
+            withState { $0.timestamp = date }
             return self
         }
 
         /// Sets the duration.
         @discardableResult
         public func duration(_ duration: TimeInterval) -> Builder {
-            state.withLock { $0.duration = duration }
+            withState { $0.duration = duration }
             return self
         }
 
         /// Sets the event level.
         @discardableResult
         public func level(_ level: EventLevel) -> Builder {
-            state.withLock { $0.level = level }
+            withState { $0.level = level }
             return self
         }
 
         /// Sets the message.
         @discardableResult
         public func message(_ message: String) -> Builder {
-            state.withLock { $0.message = message }
+            withState { $0.message = message }
             return self
         }
 
         /// Adds a metadata key-value pair.
         @discardableResult
         public func metadata(key: String, value: SendableValue) -> Builder {
-            state.withLock { $0.metadata[key] = value }
+            withState { $0.metadata[key] = value }
             return self
         }
 
         /// Replaces all metadata.
         @discardableResult
         public func metadata(_ metadata: [String: SendableValue]) -> Builder {
-            state.withLock { $0.metadata = metadata }
+            withState { $0.metadata = metadata }
             return self
         }
 
         /// Adds multiple metadata entries.
         @discardableResult
         public func addingMetadata(_ additional: [String: SendableValue]) -> Builder {
-            state.withLock { $0.metadata.merge(additional) { _, new in new } }
+            withState { $0.metadata.merge(additional) { _, new in new } }
             return self
         }
 
         /// Sets the agent name.
         @discardableResult
         public func agent(_ name: String) -> Builder {
-            state.withLock { $0.agentName = name }
+            withState { $0.agentName = name }
             return self
         }
 
         /// Sets the tool name.
         @discardableResult
         public func tool(_ name: String) -> Builder {
-            state.withLock { $0.toolName = name }
+            withState { $0.toolName = name }
             return self
         }
 
@@ -317,14 +316,14 @@ public extension TraceEvent {
         @discardableResult
         public func error(_ error: Error) -> Builder {
             let info = ErrorInfo(from: error)
-            state.withLock { $0.error = info }
+            withState { $0.error = info }
             return self
         }
 
         /// Sets error information directly.
         @discardableResult
         public func error(_ errorInfo: ErrorInfo) -> Builder {
-            state.withLock { $0.error = errorInfo }
+            withState { $0.error = errorInfo }
             return self
         }
 
@@ -336,25 +335,25 @@ public extension TraceEvent {
             line: Int = #line
         ) -> Builder {
             let location = SourceLocation(file: file, function: function, line: line)
-            state.withLock { $0.source = location }
+            withState { $0.source = location }
             return self
         }
 
         /// Sets the source location directly.
         @discardableResult
         public func source(_ location: SourceLocation) -> Builder {
-            state.withLock { $0.source = location }
+            withState { $0.source = location }
             return self
         }
 
         /// Builds the trace event.
         public func build() -> TraceEvent {
-            state.withLock { $0.event() }
+            withState { $0.event() }
         }
 
         // MARK: Private
 
-        /// Mutable builder fields, guarded by `state`.
+        /// Mutable builder fields, guarded by `lock`.
         private struct State: Sendable {
             let id: UUID
             let traceId: UUID
@@ -391,7 +390,13 @@ public extension TraceEvent {
             }
         }
 
-        private let state: Mutex<State>
+        private let lock = NSLock()
+        /// Only accessed through ``withState(_:)`` while holding `lock`.
+        private nonisolated(unsafe) var _state: State
+
+        private func withState<R>(_ body: (inout State) -> R) -> R {
+            lock.withLock { body(&_state) }
+        }
     }
 }
 
