@@ -222,14 +222,59 @@ Within one resumed execution an approval is one-shot: it is consumed by the
 first matching call, so if the step calls the same tool with the same arguments
 again, that second call pauses for its own approval.
 
-Replay semantics still apply: other tools the step called before the pause,
-including calls approved earlier in the same pause chain, execute again on
-replay, so keep them idempotent or guard them yourself.
+Only one resume of a paused run executes. A second `resume` of the same
+checkpoint while the first is running throws `WorkflowResumeConflict` instead
+of running the tool again. In one process this is an in-memory guard per
+checkpoint store; across processes sharing a checkpoint directory, an approval
+resume first claims the pause with a compare-and-swap checkpoint save (the
+file store holds an advisory `flock` on the directory for the swap). A running
+resume renews its claim while the approved step executes, however long it
+takes; a claim left behind by a crashed process expires after 10 minutes,
+after which the pause can be resumed again. `execute` on a run that a resume
+currently holds also throws `WorkflowResumeConflict` rather than restarting it
+from step 0. A resume that fails before committing (for
+example an inference error) releases its claim, so it can be retried
+immediately. A decision delivered after another one finished sees its outcome
+(a completed run reports no pending approval).
 
-Deliver each decision once. Concurrent decisions for one run in the same
-process are serialized: the first wins and later ones see its outcome (a
-completed run reports no pending approval). Decisions from different processes
-sharing a store are not coordinated.
+The resumed run replays the paused step from its start, but tool calls do not
+execute twice:
+
+- Every tool call that executes inside a durable step is recorded in a
+  per-step journal, which is stored in the approval interrupt payload. This
+  covers successes and failures, and approval-gated and ordinary tools alike.
+- On replay, a call that matches a journal entry (same tool name and exact
+  arguments, earliest unused entry first) returns the recorded output instead
+  of executing. The call and result still appear in the step's `AgentResult`.
+  Observers and tracing are not notified again, and the agent's memory is not
+  written a second time.
+- A call that does not match a journal entry runs normally. That includes a
+  call whose arguments changed because the model answered differently on
+  replay. Calls recorded during the current replay are not reused within it,
+  so a repeated identical call runs, or pauses, on its own.
+- Cancelled calls are not journaled, and neither are handoffs or Membrane
+  internal tools.
+- Calls made inside an agent used as a tool belong to that outer call: they
+  replay only inside a re-run of the same outer call (same name and
+  arguments). Once the outer call finishes, its own journal entry replaces
+  them, so a later call with the same name and arguments still runs.
+- An approval counts as used only once its call is journaled. A call
+  cancelled after taking its approval (for example a parallel sibling of a
+  call that paused) keeps its approval for the next replay.
+- If replays keep pausing on other calls and never reach the call that was
+  just approved (the model keeps asking for something different), the third
+  such approve in a row throws `WorkflowApprovalReplayDiverged` before the
+  step runs. Nothing is executed, and the run stays paused. Every later
+  approve on that run throws again, even after the step is changed, so end it
+  with `.reject`; making the step deterministic only helps future runs. A
+  resume that runs the call it approved resets the count.
+- A resumed step that fails without pausing (for example the inference after
+  the approved call throws) releases the pause with its journal, so retrying
+  the resume replays the calls that already ran, the approved one included.
+- The journal is saved only when the step pauses, fails, or commits. If the
+  process crashes mid-resume (or the release cannot be written), calls made
+  since the pause are at-least-once: after the 10-minute claim lease expires,
+  the next resume runs them again.
 
 Pauses propagate through `.fallback` steps (no retry or fallback on a pause),
 agents used as tools (`asTool()`), and provider-owned tool loops such as
