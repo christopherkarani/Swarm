@@ -28,9 +28,9 @@ enum HiveStateSnapshotSource: Sendable, Equatable {
     case trackerOnly
 }
 
-// MARK: - HiveRuntimeFrontierSummary
+// MARK: - GraphRuntimeFrontierSummary
 
-struct HiveRuntimeFrontierSummary: Sendable, Equatable {
+struct GraphRuntimeFrontierSummary: Sendable, Equatable {
     struct Entry: Sendable, Equatable {
         let nodeID: HiveNodeID
         let provenance: HiveTaskProvenance
@@ -92,15 +92,15 @@ struct HiveRuntimeInterruptionSummary<Schema: HiveSchema>: Sendable, Equatable {
     }
 }
 
-// MARK: - HiveRuntimeStateSnapshot
+// MARK: - GraphRuntimeStateSnapshot
 
-struct HiveRuntimeStateSnapshot<Schema: HiveSchema>: Sendable, Equatable {
+struct GraphRuntimeStateSnapshot<Schema: HiveSchema>: Sendable, Equatable {
     let threadID: HiveThreadID
     let runID: HiveRunID?
     let stepIndex: Int?
     let interruption: HiveRuntimeInterruptionSummary<Schema>?
     let checkpointID: HiveCheckpointID?
-    let frontier: HiveRuntimeFrontierSummary
+    let frontier: GraphRuntimeFrontierSummary
     let channelState: HiveRuntimeChannelStateSummary?
     let eventSchemaVersion: String
     let source: HiveStateSnapshotSource
@@ -111,7 +111,7 @@ struct HiveRuntimeStateSnapshot<Schema: HiveSchema>: Sendable, Equatable {
         stepIndex: Int?,
         interruption: HiveRuntimeInterruptionSummary<Schema>?,
         checkpointID: HiveCheckpointID?,
-        frontier: HiveRuntimeFrontierSummary,
+        frontier: GraphRuntimeFrontierSummary,
         channelState: HiveRuntimeChannelStateSummary?,
         eventSchemaVersion: String,
         source: HiveStateSnapshotSource
@@ -293,7 +293,7 @@ enum HiveDeterminism {
     }
 
     static func finalStateHash(
-        _ snapshot: HiveRuntimeStateSnapshot<some HiveSchema>,
+        _ snapshot: GraphRuntimeStateSnapshot<some HiveSchema>,
         includeRuntimeIdentity: Bool = false
     ) throws -> String {
         let canonical = CanonicalStateProjection(
@@ -377,8 +377,8 @@ enum HiveDeterminism {
     }
 
     static func firstStateDiff<Schema: HiveSchema>(
-        expected: HiveRuntimeStateSnapshot<Schema>,
-        actual: HiveRuntimeStateSnapshot<Schema>,
+        expected: GraphRuntimeStateSnapshot<Schema>,
+        actual: GraphRuntimeStateSnapshot<Schema>,
         includeRuntimeIdentity: Bool = false
     ) -> HiveDeterminismDiff? {
         if expected.threadID != actual.threadID {
@@ -895,7 +895,7 @@ extension GraphRunController {
 
     func getState(
         threadID: HiveThreadID
-    ) async throws -> HiveRuntimeStateSnapshot<ChatGraph.Schema>? {
+    ) async throws -> GraphRuntimeStateSnapshot<ChatGraph.Schema>? {
         let tracked = await stateTracker.snapshot(threadID: threadID)
         let runtimeSnapshot = try await runtime.getState(threadID: threadID)
 
@@ -904,7 +904,7 @@ extension GraphRunController {
                 runtimeInterruption: runtimeSnapshot.interruption,
                 tracked: tracked
             )
-            return HiveRuntimeStateSnapshot(
+            return GraphRuntimeStateSnapshot(
                 threadID: runtimeSnapshot.threadID,
                 runID: tracked?.runID ?? runtimeSnapshot.runID,
                 stepIndex: tracked?.stepIndex ?? runtimeSnapshot.stepIndex,
@@ -920,7 +920,7 @@ extension GraphRunController {
         guard let tracked else {
             return nil
         }
-        return HiveRuntimeStateSnapshot(
+        return GraphRuntimeStateSnapshot(
             threadID: threadID,
             runID: tracked.runID,
             stepIndex: tracked.stepIndex,
@@ -963,10 +963,10 @@ extension GraphRunController {
     fileprivate static func resolveFrontierSummary(
         checkpoint: HiveCheckpoint<ChatGraph.Schema>?,
         fallbackCount: Int?
-    ) -> HiveRuntimeFrontierSummary {
+    ) -> GraphRuntimeFrontierSummary {
         if let checkpoint {
             let entries = checkpoint.frontier.map { entry in
-                HiveRuntimeFrontierSummary.Entry(
+                GraphRuntimeFrontierSummary.Entry(
                     nodeID: entry.nodeID,
                     provenance: entry.provenance,
                     localFingerprintHash: hexLower(entry.localFingerprint)
@@ -983,7 +983,7 @@ extension GraphRunController {
             let digestInput = entries
                 .map { "\($0.nodeID.rawValue)|\($0.provenance.rawValue)|\($0.localFingerprintHash)" }
                 .joined(separator: ";")
-            return HiveRuntimeFrontierSummary(
+            return GraphRuntimeFrontierSummary(
                 count: checkpoint.frontier.count,
                 hash: sha256Hex(Data(digestInput.utf8)),
                 entries: entries
@@ -991,7 +991,7 @@ extension GraphRunController {
         }
 
         let count = fallbackCount ?? 0
-        return HiveRuntimeFrontierSummary(
+        return GraphRuntimeFrontierSummary(
             count: count,
             hash: sha256Hex(Data("count:\(count)".utf8)),
             entries: []
@@ -1154,7 +1154,7 @@ extension GraphRunController {
 extension HiveRuntime where Schema == ChatGraph.Schema {
     func getState(
         threadID: HiveThreadID
-    ) async throws -> HiveRuntimeStateSnapshot<Schema>? {
+    ) async throws -> GraphRuntimeStateSnapshot<Schema>? {
         let store = getLatestStore(threadID: threadID)
         let checkpoint = try await getLatestCheckpoint(threadID: threadID)
 
@@ -1170,7 +1170,7 @@ extension HiveRuntime where Schema == ChatGraph.Schema {
             .checkpoint
         }
 
-        return try HiveRuntimeStateSnapshot(
+        return try GraphRuntimeStateSnapshot(
             threadID: threadID,
             runID: checkpoint?.runID,
             stepIndex: checkpoint?.stepIndex,

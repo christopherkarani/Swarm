@@ -1,4 +1,4 @@
-/// Runtime tuning parameters for ``AgentContext``.
+/// Runtime tuning parameters for ``ContextWindowEngine``.
 public struct ContextConfiguration: Sendable {
     /// Maximum token budget before safety margin is applied.
     public var maxTokens: Int

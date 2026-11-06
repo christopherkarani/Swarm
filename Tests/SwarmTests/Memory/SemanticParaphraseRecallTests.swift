@@ -12,7 +12,7 @@ struct ContextCoreSwarmEmbeddingAdapterTests {
         var configuration = ContextConfiguration.default
         configuration.embeddingProvider = ContextCoreEmbeddingAdapter(ResidenceSwarmEmbedder())
 
-        let context = try AgentContext(configuration: configuration)
+        let context = try ContextWindowEngine(configuration: configuration)
         try await context.beginSession()
         try await context.remember("I live in Kyoto")
         try await context.remember("Sourdough bread needs a starter.")
@@ -37,7 +37,7 @@ final class SemanticParaphraseRecallTests: XCTestCase {
             )
         }
 
-        let context = try AgentContext()
+        let context = try ContextWindowEngine()
         try await context.beginSession()
         try await context.remember("I live in Kyoto")
         try await context.remember("Sourdough bread needs a starter.")

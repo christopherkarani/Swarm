@@ -738,14 +738,16 @@ struct AgentTurnRunner: Sendable {
         let resultBuilder = request.resultBuilder
         let observer = request.observer
         let tracing = request.tracing
+        let executionContext = request.executionContext
         let startTime = startTime
         let engine = ToolExecutionEngine()
         let outcomes = try await agent.executeWithinRemainingTimeout(startTime: startTime) {
+            // Same context the provider-owned loop passes (`makeToolCallExecutor`).
             try await engine.executeBatch(
                 calls,
                 registry: toolRegistry,
                 agent: agent,
-                context: nil,
+                context: executionContext,
                 resultBuilder: resultBuilder,
                 observer: observer,
                 tracing: tracing,

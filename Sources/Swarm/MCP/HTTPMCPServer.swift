@@ -86,7 +86,9 @@ public actor HTTPMCPServer: MCPServerConnection {
     ///   - name: A name for this server instance (used for identification and logging).
     ///   - apiKey: An optional API key for Bearer token authentication.
     ///   - timeout: The request timeout interval in seconds. Default: 30.0
-    ///   - maxRetries: The maximum number of retry attempts for failed requests. Default: 3
+    ///   - maxRetries: The maximum number of retry attempts for failed requests. Default: 3.
+    ///     `tools/call` and other side-effecting methods are retried only when
+    ///     the connection never opened, never after a timeout or 5xx response.
     ///   - session: The URLSession to use for requests. Default: .shared
     public init(
         url: URL,
@@ -129,7 +131,9 @@ public actor HTTPMCPServer: MCPServerConnection {
     ///   - apiKeyReference: Pointer to the API key used for Bearer authentication.
     ///   - secretStore: Backend holding the referenced secret.
     ///   - timeout: The request timeout interval in seconds. Default: 30.0
-    ///   - maxRetries: The maximum number of retry attempts for failed requests. Default: 3
+    ///   - maxRetries: The maximum number of retry attempts for failed requests. Default: 3.
+    ///     `tools/call` and other side-effecting methods are retried only when
+    ///     the connection never opened, never after a timeout or 5xx response.
     ///   - session: The URLSession to use for requests. Default: .shared
     public init(
         url: URL,
@@ -372,14 +376,56 @@ public actor HTTPMCPServer: MCPServerConnection {
     /// Sends an MCP request with retry logic.
     ///
     /// Implements exponential backoff for retryable errors. Client errors (4xx)
-    /// are not retried.
+    /// are not retried. Methods outside ``idempotentMethods`` (notably
+    /// `tools/call`) are only retried when the connection never opened, so a
+    /// side-effecting call that may have run on the server is never resent.
     ///
     /// - Parameter mcpRequest: The MCP request to send.
     /// - Returns: The MCP response from the server.
     /// - Throws: `MCPError` if all retry attempts fail.
     private func sendRequest(_ mcpRequest: MCPRequest) async throws -> MCPResponse {
-        try await sendWithRetry {
+        try await sendWithRetry(scope: Self.retryScope(forMethod: mcpRequest.method)) {
             try await self.performRequest(mcpRequest)
+        }
+    }
+
+    /// Which failures may be retried for a request.
+    enum RetryScope: Equatable {
+        /// 5xx responses and any transport error: the method is safe to resend.
+        case transientFailures
+        /// Only failures that prove the request never left the client.
+        case connectionNotEstablished
+    }
+
+    /// MCP methods without server-side effects, safe to resend after an
+    /// ambiguous failure such as a timeout or a 5xx response.
+    static let idempotentMethods: Set<String> = [
+        "initialize",
+        "notifications/initialized",
+        "ping",
+        "tools/list",
+        "resources/list",
+        "resources/templates/list",
+        "resources/read",
+        "prompts/list",
+        "prompts/get",
+    ]
+
+    static func retryScope(forMethod method: String) -> RetryScope {
+        idempotentMethods.contains(method) ? .transientFailures : .connectionNotEstablished
+    }
+
+    /// Whether `error` proves the request was never delivered to the server:
+    /// DNS failed, the host refused the connection, or there is no network.
+    static func isConnectionNotEstablished(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else {
+            return false
+        }
+        switch urlError.code {
+        case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed, .notConnectedToInternet:
+            return true
+        default:
+            return false
         }
     }
 
@@ -391,12 +437,15 @@ public actor HTTPMCPServer: MCPServerConnection {
     /// - Parameter notification: The MCP notification to send.
     /// - Throws: `MCPError` if all retry attempts fail.
     private func sendNotification(_ notification: MCPNotification) async throws {
-        try await sendWithRetry {
+        try await sendWithRetry(scope: Self.retryScope(forMethod: notification.method)) {
             try await self.performNotification(notification)
         }
     }
 
-    private func sendWithRetry<T>(_ operation: () async throws -> T) async throws -> T {
+    private func sendWithRetry<T>(
+        scope: RetryScope,
+        _ operation: () async throws -> T
+    ) async throws -> T {
         var lastError: Error?
 
         for attempt in 0..<(maxRetries + 1) {
@@ -413,8 +462,9 @@ public actor HTTPMCPServer: MCPServerConnection {
                     throw error
                 }
 
-                // Don't retry if this was the last attempt
-                if attempt == maxRetries {
+                // Don't retry if this was the last attempt, or if the server
+                // answered (so it received the request) a non-idempotent call.
+                if attempt == maxRetries || scope == .connectionNotEstablished {
                     throw error
                 }
 
@@ -427,7 +477,10 @@ public actor HTTPMCPServer: MCPServerConnection {
             } catch {
                 lastError = error
 
-                if attempt == maxRetries {
+                // A non-idempotent request is only resent when it provably
+                // never reached the server; a timeout may have run it already.
+                let mayResend = scope == .transientFailures || Self.isConnectionNotEstablished(error)
+                if attempt == maxRetries || !mayResend {
                     // Preserve detailed error context for debugging
                     let errorData: [String: SendableValue] = [
                         "originalError": .string(String(describing: error)),
@@ -437,7 +490,7 @@ public actor HTTPMCPServer: MCPServerConnection {
                     ]
                     throw MCPError(
                         code: MCPError.internalErrorCode,
-                        message: "Request failed after \(maxRetries + 1) attempts: \(error.localizedDescription)",
+                        message: "Request failed after \(attempt + 1) attempts: \(error.localizedDescription)",
                         data: .dictionary(errorData)
                     )
                 }

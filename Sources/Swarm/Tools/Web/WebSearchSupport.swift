@@ -593,14 +593,14 @@ internal struct WebExecutionEngine: Sendable {
             Log.agents.warning("[WebSearchTool] liveSearch skipped: no API key configured (hasLiveSearchBackend=false)")
             return []
         }
-        Log.agents.info("[WebSearchTool] liveSearch: query='\(query)', maxResults=\(request.maxResults), domains=\(request.domains), recencyDays=\(request.recencyDays ?? -1)")
+        Log.agents.debug("[WebSearchTool] liveSearch: query=\(redactedQuery(query)), maxResults=\(request.maxResults), domains=\(request.domains), recencyDays=\(request.recencyDays ?? -1)")
         let hits = try await TavilySearchBackend(configuration: configuration, secretStore: secretStore).search(
             query: query,
             maxResults: request.maxResults,
             domains: request.domains,
             recencyDays: request.recencyDays
         )
-        Log.agents.info("[WebSearchTool] liveSearch returned \(hits.count) hits for query: '\(query)'")
+        Log.agents.debug("[WebSearchTool] liveSearch returned \(hits.count) hits")
         return hits
     }
 
@@ -1215,7 +1215,7 @@ internal struct TavilySearchBackend: Sendable {
             return []
         }
 
-        Log.agents.info("[TavilySearchBackend] POST api.tavily.com/search — query='\(query)', maxResults=\(maxResults)")
+        Log.agents.debug("[TavilySearchBackend] POST api.tavily.com/search — query=\(redactedQuery(query)), maxResults=\(maxResults)")
 
         guard let url = URL(string: "https://api.tavily.com/search") else {
             throw AgentError.toolFailure(toolName: "websearch", message: "Invalid Tavily URL", cause: nil)
@@ -1247,11 +1247,13 @@ internal struct TavilySearchBackend: Sendable {
             throw AgentError.toolFailure(toolName: "websearch", message: "Tavily returned a non-HTTP response", cause: nil)
         }
         guard http.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "(no body)"
+            // The body can echo the query or the API key, so the model only
+            // sees the status and the log only a redacted, truncated excerpt.
+            let errorBody = Self.sanitizedErrorBody(data, apiKey: apiKey)
             Log.agents.error("[TavilySearchBackend] HTTP \(http.statusCode) — \(errorBody)")
             throw AgentError.toolFailure(
                 toolName: "websearch",
-                message: "Tavily request failed (HTTP \(http.statusCode)): \(errorBody)",
+                message: Self.failureMessage(statusCode: http.statusCode),
                 cause: nil
             )
         }
@@ -1270,8 +1272,67 @@ internal struct TavilySearchBackend: Sendable {
             )
         }
     }
+
+    /// Longest error-body excerpt written to the log.
+    static let maxLoggedErrorBodyLength = 200
+
+    /// Tool-failure text for a non-200 Tavily response: status only, never the body.
+    static func failureMessage(statusCode: Int) -> String {
+        let reason: String? = switch statusCode {
+        case 400: "bad request"
+        case 401, 403: "authentication failed"
+        case 429: "rate limited"
+        case 432, 433: "plan limit exceeded"
+        case 500 ... 599: "server error"
+        default: nil
+        }
+        guard let reason else {
+            return "Tavily request failed (HTTP \(statusCode))"
+        }
+        return "Tavily request failed (HTTP \(statusCode): \(reason))"
+    }
+
+    /// A single-line, secret-redacted, truncated excerpt of an error body for logs.
+    static func sanitizedErrorBody(_ data: Data, apiKey: String) -> String {
+        guard !data.isEmpty else {
+            return "(no body)"
+        }
+        guard var text = String(validating: data, as: UTF8.self) else {
+            return "(\(data.count)-byte non-UTF-8 body)"
+        }
+        if !apiKey.isEmpty {
+            text = text.replacingOccurrences(of: apiKey, with: "[api-key]")
+        }
+        text = text.replacingOccurrences(of: "tvly-[A-Za-z0-9_-]+", with: "[api-key]", options: .regularExpression)
+        text = TraceRedactor().redact(text)
+        text = String(text.map { $0.isNewline || ($0.asciiValue ?? 0x20) < 0x20 ? " " : $0 })
+        guard text.count > maxLoggedErrorBodyLength else {
+            return text
+        }
+        return String(text.prefix(maxLoggedErrorBodyLength)) + "…"
+    }
 }
 
+/// A log-safe stand-in for a search query: its length, never its text.
+internal func redactedQuery(_ query: String) -> String {
+    "<redacted, \(query.count) chars>"
+}
+
+/// Fetches public web pages for the web tool with SSRF protection.
+///
+/// Every request URL, redirect target and final response URL is checked with
+/// ``validate(url:)``: IP literals are classified by their numeric value
+/// (including IPv4 embedded in IPv6), non-canonical IPv4 spellings are refused,
+/// and DNS names are resolved and refused when any address is non-public.
+///
+/// - Important: Validation resolves DNS separately from `URLSession`, which
+///   performs its own lookup when it connects. A hostile DNS server with a
+///   short TTL can therefore answer the validation lookup with a public address
+///   and the connection lookup with a private one (DNS rebinding). Pinning the
+///   connection to the validated address is not possible through `URLSession`
+///   without breaking TLS server-name indication and certificate validation.
+///   Deployments that must rule this out should route fetches through an
+///   egress proxy or firewall that enforces the same policy at connect time.
 internal struct SafeWebFetcher: Sendable {
     let configuration: WebSearchTool.Configuration
     private let sessionConfiguration: URLSessionConfiguration
@@ -1370,7 +1431,10 @@ internal struct SafeWebFetcher: Sendable {
         }
     }
 
-    private static func validate(url: URL) throws {
+    /// Rejects URLs whose scheme is not http(s) or whose host is, or resolves
+    /// to, a loopback, private, link-local, multicast or otherwise non-public
+    /// address.
+    static func validate(url: URL) throws {
         guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
             throw AgentError.invalidToolArguments(toolName: "websearch", reason: "Only http/https URLs are allowed")
         }
@@ -1621,63 +1685,102 @@ internal struct SafeWebBodyAccumulator: Sendable {
     }
 }
 
-private enum ResolvedHostAddress: Sendable {
+/// A numeric address a fetch host resolves to, classified for SSRF filtering.
+///
+/// IPv6 addresses are held as their 16 network-order bytes so that every textual
+/// spelling of the same address (`::1`, `0:0:0:0:0:0:0:1`, `::ffff:7f00:1`, ...)
+/// is classified identically.
+internal enum ResolvedHostAddress: Sendable, Equatable {
     case ipv4(UInt8, UInt8, UInt8, UInt8)
-    case ipv6(String)
+    case ipv6([UInt8])
 
     var isBlockedForFetch: Bool {
         switch self {
         case let .ipv4(first, second, _, _):
-            switch first {
-            case 0, 10, 127:
-                return true
-            case 100:
-                return (64 ... 127).contains(second)
-            case 169:
-                return second == 254
-            case 172:
-                return (16 ... 31).contains(second)
-            case 192:
-                return second == 0 || second == 168
-            case 198:
-                return (18 ... 19).contains(second) || second == 51
-            case 203:
-                return second == 0
-            case 224 ... 255:
-                return true
-            default:
-                return false
-            }
-        case let .ipv6(address):
-            let normalized = address
-                .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-                .lowercased()
-
-            if normalized == "::" || normalized == "::1" {
-                return true
-            }
-            if let embeddedIPv4 = Self.embeddedIPv4(from: normalized) {
-                return embeddedIPv4.isBlockedForFetch
-            }
-            guard let firstHextet = normalized.split(separator: ":").first,
-                  let first = UInt16(firstHextet, radix: 16)
-            else {
-                return false
-            }
-            return (first & 0xFE00) == 0xFC00
-                || (first & 0xFFC0) == 0xFE80
-                || (first & 0xFF00) == 0xFF00
+            Self.isBlockedIPv4(first: first, second: second)
+        case let .ipv6(bytes):
+            Self.isBlockedIPv6(bytes)
         }
     }
 
+    private static func isBlockedIPv4(first: UInt8, second: UInt8) -> Bool {
+        switch first {
+        case 0, 10, 127:
+            true
+        case 100:
+            (64 ... 127).contains(second)
+        case 169:
+            second == 254
+        case 172:
+            (16 ... 31).contains(second)
+        case 192:
+            second == 0 || second == 168
+        case 198:
+            (18 ... 19).contains(second) || second == 51
+        case 203:
+            second == 0
+        case 224 ... 255:
+            true
+        default:
+            false
+        }
+    }
+
+    private static func isBlockedIPv6(_ bytes: [UInt8]) -> Bool {
+        guard bytes.count == 16 else {
+            return true
+        }
+        if let embedded = embeddedIPv4(in: bytes) {
+            return embedded.isBlockedForFetch
+        }
+        // ::/96 covers the unspecified address, loopback, and the deprecated
+        // IPv4-compatible range (RFC 4291 §2.5.5.1); none is a public destination.
+        if bytes[0 ..< 12].allSatisfy({ $0 == 0 }) {
+            return true
+        }
+        let first = bytes[0]
+        let second = bytes[1]
+        let firstWord = UInt16(first) << 8 | UInt16(second)
+        let secondWord = UInt16(bytes[2]) << 8 | UInt16(bytes[3])
+        return first == 0xFF // multicast ff00::/8
+            || (first & 0xFE) == 0xFC // unique local fc00::/7
+            || (firstWord & 0xFFC0) == 0xFE80 // link-local fe80::/10
+            || (firstWord & 0xFFC0) == 0xFEC0 // deprecated site-local fec0::/10
+            || (firstWord == 0x0064 && secondWord == 0xFF9B && bytes[4] == 0 && bytes[5] == 1) // local NAT64 64:ff9b:1::/48
+            || (firstWord == 0x2001 && secondWord == 0x0000) // Teredo 2001::/32
+            || (firstWord == 0x2001 && secondWord == 0x0DB8) // documentation 2001:db8::/32
+            || (firstWord == 0x0100 && bytes[2 ..< 8].allSatisfy { $0 == 0 }) // discard 100::/64
+    }
+
+    /// Returns the IPv4 address embedded in an IPv4-mapped (`::ffff:0:0/96`),
+    /// IPv4-translated (`::ffff:0:0:0/96`), NAT64 (`64:ff9b::/96`) or 6to4
+    /// (`2002::/16`) IPv6 address.
+    private static func embeddedIPv4(in bytes: [UInt8]) -> ResolvedHostAddress? {
+        let isMapped = bytes[0 ..< 10].allSatisfy { $0 == 0 } && bytes[10] == 0xFF && bytes[11] == 0xFF
+        let isTranslated = bytes[0 ..< 8].allSatisfy { $0 == 0 }
+            && bytes[8] == 0xFF && bytes[9] == 0xFF && bytes[10] == 0 && bytes[11] == 0
+        let isNAT64 = bytes[0 ..< 12].elementsEqual([0x00, 0x64, 0xFF, 0x9B, 0, 0, 0, 0, 0, 0, 0, 0])
+        if isMapped || isTranslated || isNAT64 {
+            return .ipv4(bytes[12], bytes[13], bytes[14], bytes[15])
+        }
+        if bytes[0] == 0x20, bytes[1] == 0x02 {
+            return .ipv4(bytes[2], bytes[3], bytes[4], bytes[5])
+        }
+        return nil
+    }
+
+    /// Resolves a URL host to the numeric addresses it denotes.
+    ///
+    /// IP literals are parsed without DNS. A host whose last label is numeric is
+    /// treated as an IPv4 literal (as the WHATWG URL parser and `inet_aton` do)
+    /// and must be in canonical dotted-decimal form: octal (`0177.0.0.1`), hex
+    /// (`0x7f.0.0.1`), shorthand (`127.1`) and integer (`2130706433`) spellings
+    /// are rejected because resolvers disagree on what they mean.
     static func resolve(host: String) throws -> [ResolvedHostAddress] {
-        let normalizedHost = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        if let literal = parseIPv4(normalizedHost) {
+        if let literal = try literalAddress(host) {
             return [literal]
         }
-        if normalizedHost.contains(":") {
-            return [.ipv6(normalizedHost)]
-        }
+        let normalizedHost = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
 
         #if canImport(Darwin) || canImport(Glibc)
         #if canImport(Glibc)
@@ -1727,50 +1830,108 @@ private enum ResolvedHostAddress: Sendable {
         #endif
     }
 
-    private static func numericAddress(from info: addrinfo) -> ResolvedHostAddress? {
-        guard let socketAddress = info.ai_addr else {
-            return nil
-        }
-        var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-        let status = getnameinfo(
-            socketAddress,
-            info.ai_addrlen,
-            &host,
-            socklen_t(host.count),
-            nil,
-            0,
-            NI_NUMERICHOST
-        )
-        guard status == 0 else {
-            return nil
+    /// Parses `host` as an IP literal.
+    ///
+    /// - Returns: The address, or `nil` when `host` is a DNS name.
+    /// - Throws: When `host` looks like an IP literal but is malformed,
+    ///   non-canonical, or carries an IPv6 zone identifier.
+    static func literalAddress(_ host: String) throws -> ResolvedHostAddress? {
+        let unbracketed = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if unbracketed.contains(":") {
+            guard let address = parseIPv6(unbracketed) else {
+                throw AgentError.invalidToolArguments(toolName: "websearch", reason: "Malformed IPv6 host is blocked")
+            }
+            return address
         }
 
-        let value = host.prefix(while: { $0 != 0 }).withUnsafeBufferPointer { buffer in
-            String(decoding: buffer.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        var labels = unbracketed.split(separator: ".", omittingEmptySubsequences: false)
+        if labels.count > 1, labels.last?.isEmpty == true {
+            labels.removeLast() // a single trailing root dot
         }
-        if let ipv4 = parseIPv4(value) {
-            return ipv4
-        }
-        return .ipv6(value)
-    }
-
-    private static func parseIPv4(_ host: String) -> ResolvedHostAddress? {
-        let parts = host.split(separator: ".")
-        guard parts.count == 4 else {
+        guard let last = labels.last, isNumericLabel(last) else {
             return nil
         }
-        let octets = parts.compactMap { UInt8($0) }
-        guard octets.count == 4 else {
-            return nil
+        let octets = labels.compactMap(canonicalOctet)
+        guard labels.count == 4, octets.count == 4 else {
+            throw AgentError.invalidToolArguments(
+                toolName: "websearch",
+                reason: "Non-canonical IPv4 host forms are blocked"
+            )
         }
         return .ipv4(octets[0], octets[1], octets[2], octets[3])
     }
 
-    private static func embeddedIPv4(from ipv6: String) -> ResolvedHostAddress? {
-        guard let suffix = ipv6.split(separator: ":").last else {
+    /// A label that a URL parser or `inet_aton` would read as a number:
+    /// decimal digits, or `0x`/`0X` followed by hex digits.
+    private static func isNumericLabel(_ label: Substring) -> Bool {
+        if label.isEmpty {
+            return false
+        }
+        if label.allSatisfy(\.isASCIIDigit) {
+            return true
+        }
+        let lowered = label.lowercased()
+        return lowered.hasPrefix("0x") && lowered.dropFirst(2).allSatisfy(\.isHexDigit)
+    }
+
+    /// A dotted-decimal octet with no leading zeros, in `0...255`.
+    private static func canonicalOctet(_ label: Substring) -> UInt8? {
+        guard !label.isEmpty, label.count <= 3, label.allSatisfy(\.isASCIIDigit) else {
             return nil
         }
-        return parseIPv4(String(suffix))
+        if label.count > 1, label.first == "0" {
+            return nil
+        }
+        return UInt8(label)
+    }
+
+    private static func parseIPv6(_ text: String) -> ResolvedHostAddress? {
+        // Zone identifiers (`fe80::1%en0`) only name link-local scopes.
+        guard !text.contains("%") else {
+            return nil
+        }
+        #if canImport(Darwin) || canImport(Glibc)
+        var storage = in6_addr()
+        guard inet_pton(AF_INET6, text, &storage) == 1 else {
+            return nil
+        }
+        return .ipv6(withUnsafeBytes(of: &storage) { Array($0) })
+        #else
+        return nil
+        #endif
+    }
+
+    #if canImport(Darwin) || canImport(Glibc)
+    private static func numericAddress(from info: addrinfo) -> ResolvedHostAddress? {
+        guard let socketAddress = info.ai_addr else {
+            return nil
+        }
+        switch info.ai_family {
+        case Int32(AF_INET):
+            let bytes = socketAddress.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { pointer in
+                var address = pointer.pointee.sin_addr
+                return withUnsafeBytes(of: &address) { Array($0) }
+            }
+            guard bytes.count == 4 else {
+                return nil
+            }
+            return .ipv4(bytes[0], bytes[1], bytes[2], bytes[3])
+        case Int32(AF_INET6):
+            let bytes = socketAddress.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { pointer in
+                var address = pointer.pointee.sin6_addr
+                return withUnsafeBytes(of: &address) { Array($0) }
+            }
+            return .ipv6(bytes)
+        default:
+            return nil
+        }
+    }
+    #endif
+}
+
+private extension Character {
+    var isASCIIDigit: Bool {
+        isASCII && isNumber
     }
 }
 
