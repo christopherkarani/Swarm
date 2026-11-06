@@ -208,13 +208,18 @@ private actor OutputTokenGate {
 
     /// Ends one run. The outermost end releases the queue followed by
     /// `terminal`; held tokens are released only when the run succeeded.
+    ///
+    /// An end with no open run (a runtime outside `Agent` may end without a
+    /// start) is unmatched: `terminal` queues behind held events and nothing
+    /// is released, so it cannot bypass the outermost run's guardrails.
     func runEnded(with terminal: AgentEvent, succeeded: Bool) -> [AgentEvent] {
-        depth -= 1
-        guard depth <= 0 else {
+        guard depth > 0 else {
             return submit(terminal)
         }
-        // Defensive: a handoff target outside `Agent` may end without a start.
-        depth = 0
+        depth -= 1
+        guard depth == 0 else {
+            return submit(terminal)
+        }
         let queued = held
         held = []
         let released = succeeded ? queued : queued.filter { event in

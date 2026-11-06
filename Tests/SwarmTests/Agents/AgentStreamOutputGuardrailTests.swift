@@ -173,6 +173,22 @@ struct AgentStreamOutputGuardrailTests {
         #expect(Self.lastTerminal(in: events).map(Self.isFailed) == true)
     }
 
+    @Test("An unmatched onAgentEnd does not release held tokens")
+    func unmatchedAgentEndDoesNotReleaseTokens() async throws {
+        let (stream, continuation) = AsyncThrowingStream<AgentEvent, any Error>.makeStream()
+        let observer = EventStreamObserver(continuation: continuation, holdsOutputTokens: true)
+        let agent = MockAgentRuntime()
+
+        await observer.onOutputToken(context: nil, agent: agent, token: "held")
+        // An end with no open run (e.g. a custom runtime that never reported a start).
+        await observer.onAgentEnd(context: nil, agent: agent, result: AgentResult(output: "stray"))
+        continuation.finish()
+
+        let events = try await stream.collect()
+        #expect(Self.tokens(in: events).isEmpty)
+        #expect(!events.contains { if case .lifecycle(.completed) = $0 { true } else { false } })
+    }
+
     @Test("Without output guardrails tokens still stream before completion")
     func noGuardrailsStreamsLive() async throws {
         let agent = try Agent(
