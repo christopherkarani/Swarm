@@ -212,6 +212,7 @@ struct WorkflowDurableEngine: Sendable {
             throw WorkflowError.invalidWorkflow(reason: "No paused tool approval for checkpoint '\(checkpointID)'")
         }
         let request = try WorkflowApprovalRequestEnvelope.decoded(from: interruption.payload)
+        try refuseDivergentApproval(decision, request: request)
         let claimed = try await claimApproval(
             checkpoint,
             interruption: interruption,
@@ -226,7 +227,9 @@ struct WorkflowDurableEngine: Sendable {
             decision: decision,
             toolName: request.toolName,
             arguments: request.arguments,
-            approved: approved
+            approved: approved,
+            journal: request.journal,
+            divergentResumes: request.divergentResumes
         ).encoded()
 
         let holder = WorkflowApprovalClaimHolder(claimed)
@@ -241,10 +244,32 @@ struct WorkflowDurableEngine: Sendable {
                 let outcome = try await handle.outcome.value
                 return try await finish(outcome, components: components)
             }
+        } catch let failure as WorkflowResumedStepFailure {
+            var released = request
+            released.journal = failure.journal
+            released.approved = failure.approved
+            await releaseClaim(await holder.current, request: released, store: components.store)
+            throw failure.underlying
         } catch {
             await releaseClaim(await holder.current, request: request, store: components.store)
             throw error
         }
+    }
+
+    /// Refuses an `.approve` that would extend the divergence streak to
+    /// ``WorkflowApprovalReplayDiverged/maxAttempts``, before the step runs, so
+    /// a refused approve executes nothing and leaves the pause as it was.
+    private func refuseDivergentApproval(
+        _ decision: WorkflowApprovalDecision,
+        request: WorkflowApprovalRequestEnvelope
+    ) throws {
+        let streak = request.divergentResumes ?? 0
+        guard decision == .approve, streak + 1 >= WorkflowApprovalReplayDiverged.maxAttempts else { return }
+        throw WorkflowApprovalReplayDiverged(
+            checkpointID: WorkflowCheckpointID(checkpointID),
+            toolName: request.toolName,
+            attempts: streak + 1
+        )
     }
 
     /// Maps a run outcome to the caller's result, persisting terminal state.
@@ -579,14 +604,14 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
         if let controller = WorkflowDurableFaultInjection.controller {
             await controller.markWorkflowStepStarted()
         }
-        let allowedCalls: [WorkflowApprovedCall]
+        let replay: WorkflowStepReplay
         switch try approvalGate(resumePayload: input.run.resume?.payload) {
         case .rejected(let toolName, let reason):
             return rejectedOutput(toolName: toolName, reason: reason)
-        case .allowed(let calls):
-            allowedCalls = calls
+        case .allowed(let state):
+            replay = state
         }
-        let ledger = WorkflowApprovalLedger(approved: allowedCalls)
+        let ledger = WorkflowApprovalLedger(approved: replay.approved, journal: replay.journal)
         do {
             let result = try await WorkflowDurableApprovalGate.$ledger.withValue(ledger) {
                 try await input.context.workflow.execute(step: step, withInput: progress.currentInput)
@@ -599,7 +624,20 @@ private func workflowNode(_ input: HiveNodeInput<WorkflowDurableSchema>) async t
             let nextProgress = try progressValue(from: nextDecision)
             return runningOutput(for: nextProgress)
         } catch let request as WorkflowToolApprovalRequest {
-            return try approvalInterruptOutput(progress: progress, request: request, allowed: allowedCalls)
+            return try await approvalInterruptOutput(
+                progress: progress,
+                request: request,
+                ledger: ledger,
+                replay: replay
+            )
+        } catch {
+            guard let justApproved = replay.justApproved else { throw error }
+            throw await WorkflowResumedStepFailure(
+                underlying: error,
+                ledger: ledger,
+                offered: replay.approved,
+                justApproved: justApproved
+            )
         }
 
     case .evaluateRepeat(let progress, let result):
@@ -631,10 +669,56 @@ private func progressValue(from decision: WorkflowTransition.Decision) throws ->
     }
 }
 
+/// Approval and replay state a step execution starts from.
+private struct WorkflowStepReplay {
+    /// Approvals not yet consumed in the pause chain.
+    var approved: [WorkflowApprovedCall] = []
+    /// Calls earlier executions of this step already ran.
+    var journal: [WorkflowJournaledCall] = []
+    /// Divergence streak carried from the paused request.
+    var divergentResumes = 0
+    /// The call the `.approve` decision this execution follows granted;
+    /// `nil` for a fresh step.
+    var justApproved: WorkflowApprovedCall?
+}
+
+/// An approve-resumed step failed with `underlying` (not a pause).
+///
+/// The step may already have executed tools, the approved call included, but
+/// nothing was committed, so the engine releases the claim back to the pause.
+/// This carries the step's journal and remaining approvals so the released
+/// pause records them: a retried resume then replays those calls instead of
+/// executing them again. The engine unwraps it before the caller sees it.
+struct WorkflowResumedStepFailure: Error {
+    let underlying: any Error
+    let journal: [WorkflowJournaledCall]
+    /// Approvals to keep in the released pause, excluding the paused call
+    /// itself, which the next `.approve` grants again.
+    let approved: [WorkflowApprovedCall]
+
+    init(
+        underlying: any Error,
+        ledger: WorkflowApprovalLedger,
+        offered: [WorkflowApprovedCall],
+        justApproved: WorkflowApprovedCall
+    ) async {
+        self.underlying = underlying
+        journal = await ledger.journal
+        var unused = await ledger.unusedApprovals
+        // `offered` includes the paused call; if no matching approval was
+        // consumed it is still unused, so drop that copy.
+        if unused.count(where: { $0 == justApproved }) == offered.count(where: { $0 == justApproved }),
+           let index = unused.firstIndex(of: justApproved) {
+            unused.remove(at: index)
+        }
+        approved = unused
+    }
+}
+
 /// Approval gate state for one step execution.
 private enum WorkflowApprovalGateState {
-    /// Run the step with these calls allowed past the gate.
-    case allowed([WorkflowApprovedCall])
+    /// Run the step with this replay state (empty for a fresh step).
+    case allowed(WorkflowStepReplay)
     /// The human rejected the paused call; end the run without executing.
     case rejected(toolName: String, reason: String)
 }
@@ -645,9 +729,9 @@ private enum WorkflowApprovalGateState {
 /// the human decision: `.reject` ends the run without executing (the node
 /// commits a terminal rejected phase so the decision is checkpointed), and
 /// `.approve` allows the calls approved so far in the pause chain, each
-/// consumable once per step execution.
+/// consumable once per step execution, plus the step's tool journal.
 private func approvalGate(resumePayload: String?) throws -> WorkflowApprovalGateState {
-    guard let resumePayload else { return .allowed([]) }
+    guard let resumePayload else { return .allowed(WorkflowStepReplay()) }
     let decision = try WorkflowApprovalDecisionEnvelope.decoded(from: resumePayload)
     switch decision.decision {
     case .reject:
@@ -656,7 +740,12 @@ private func approvalGate(resumePayload: String?) throws -> WorkflowApprovalGate
             reason: "Operator rejected tool '\(decision.toolName)' at durable approval resume"
         )
     case .approve:
-        return .allowed(decision.approved)
+        return .allowed(WorkflowStepReplay(
+            approved: decision.approved,
+            journal: decision.journal ?? [],
+            divergentResumes: decision.divergentResumes ?? 0,
+            justApproved: WorkflowApprovedCall(toolName: decision.toolName, arguments: decision.arguments)
+        ))
     }
 }
 
@@ -672,17 +761,32 @@ private func rejectedOutput(toolName: String, reason: String) -> HiveNodeOutput<
 ///
 /// The writes preserve the incoming progress (step cursor included) rather
 /// than advancing it, so the interrupt-forced checkpoint holds the paused
-/// state and the resumed run replays the step from its start.
+/// state and the resumed run replays the step from its start. The payload
+/// carries the unused approvals and the step's tool journal.
+///
+/// An approved resume that pauses again without using the approval it was
+/// resumed with diverged from that call and extends the divergence streak;
+/// any other pause resets it. The resume path refuses an `.approve` that
+/// would reach ``WorkflowApprovalReplayDiverged/maxAttempts`` before the step
+/// runs, so the streak is checked there, not here.
 private func approvalInterruptOutput(
     progress: WorkflowTransition.Progress,
     request: WorkflowToolApprovalRequest,
-    allowed: [WorkflowApprovedCall]
-) throws -> HiveNodeOutput<WorkflowDurableSchema> {
-    let payload = try WorkflowApprovalRequestEnvelope(
+    ledger: WorkflowApprovalLedger,
+    replay: WorkflowStepReplay
+) async throws -> HiveNodeOutput<WorkflowDurableSchema> {
+    let diverged = if let justApproved = replay.justApproved {
+        await !ledger.hasConsumed(justApproved)
+    } else {
+        false
+    }
+    let payload = try await WorkflowApprovalRequestEnvelope(
         toolName: request.toolName,
         arguments: request.arguments,
         stepCursor: progress.stepCursor,
-        approved: allowed
+        approved: ledger.unusedApprovals,
+        journal: ledger.journal,
+        divergentResumes: diverged ? replay.divergentResumes + 1 : 0
     ).encoded()
     var output = runningOutput(for: progress)
     output.interrupt = HiveInterruptRequest(payload: payload)
@@ -838,181 +942,6 @@ extension WorkflowFaultInjectingCheckpointStore: HiveCheckpointQueryableStore {
 
     func loadCheckpoint(threadID: HiveThreadID, id: HiveCheckpointID) async throws -> HiveCheckpoint<Schema>? {
         try await inner.loadCheckpoint(threadID: threadID, id: id)
-    }
-}
-
-/// Checkpoint store wrapper that migrates pre-phase-enum checkpoints on load.
-///
-/// Loads matching the current schema version pass through untouched; anything
-/// else is offered to ``WorkflowLegacyCheckpointMigrator`` so durable runs
-/// checkpointed by earlier Swarm releases resume instead of failing with a
-/// version mismatch.
-private struct WorkflowLegacyMigratingCheckpointStore: HiveCheckpointStore {
-    typealias Schema = WorkflowDurableSchema
-
-    private let inner: AnyHiveCheckpointStore<Schema>
-    private let schemaVersion: String
-    private let graphVersion: String
-
-    init(
-        inner: AnyHiveCheckpointStore<Schema>,
-        schemaVersion: String,
-        graphVersion: String
-    ) {
-        self.inner = inner
-        self.schemaVersion = schemaVersion
-        self.graphVersion = graphVersion
-    }
-
-    func save(_ checkpoint: HiveCheckpoint<Schema>) async throws {
-        try await inner.save(checkpoint)
-    }
-
-    func save(_ checkpoint: HiveCheckpoint<Schema>, expectedLatestID: HiveCheckpointID?) async throws {
-        try await inner.save(checkpoint, expectedLatestID: expectedLatestID)
-    }
-
-    func loadLatest(threadID: HiveThreadID) async throws -> HiveCheckpoint<Schema>? {
-        guard let checkpoint = try await inner.loadLatest(threadID: threadID) else { return nil }
-        guard checkpoint.schemaVersion != schemaVersion else { return checkpoint }
-        return try WorkflowLegacyCheckpointMigrator.migrate(
-            checkpoint,
-            schemaVersion: schemaVersion,
-            graphVersion: graphVersion
-        )
-    }
-
-    func listCheckpoints(threadID: HiveThreadID, limit: Int?) async throws -> [HiveCheckpointSummary] {
-        try await inner.listCheckpoints(threadID: threadID, limit: limit)
-    }
-
-    func loadCheckpoint(threadID: HiveThreadID, id: HiveCheckpointID) async throws -> HiveCheckpoint<Schema>? {
-        guard let checkpoint = try await inner.loadCheckpoint(threadID: threadID, id: id) else { return nil }
-        guard checkpoint.schemaVersion != schemaVersion else { return checkpoint }
-        return try WorkflowLegacyCheckpointMigrator.migrate(
-            checkpoint,
-            schemaVersion: schemaVersion,
-            graphVersion: graphVersion
-        )
-    }
-}
-
-extension WorkflowLegacyMigratingCheckpointStore: HiveCheckpointQueryableStore {}
-
-/// Rewrites checkpoints persisted in the pre-phase-enum six-channel layout into
-/// the current three-channel phase-enum layout.
-///
-/// The legacy channels (`workflow.currentInput`, `workflow.lastResult`,
-/// `workflow.stepCursor`, `workflow.iterationCursor`, `workflow.completed`,
-/// `workflow.signature`) are decoded with the same deterministic JSON codecs
-/// that wrote them, then folded into one ``WorkflowDurablePhase``:
-/// `completed == true` becomes `.completed` (synthesizing the result from the
-/// current input when no step ever committed), otherwise `.running` carries the
-/// cursors and snapshot forward. A synthesized completion cannot leave pending
-/// cursors behind because the cursors are dropped with the legacy layout.
-///
-/// Version bookkeeping (`channelVersionsByChannelID`, `versionsSeenByNodeID`,
-/// `updatedChannelsLastCommit`) is pruned to channel IDs the current schema
-/// still registers: legacy checkpoints carry the removed channel IDs in these
-/// maps, and the runtime rejects any unknown ID there as corrupt. Surviving
-/// channels keep their write history; the phase channel starts at version 0
-/// like any newly registered channel.
-///
-/// Checkpoints without the legacy discriminator channel are returned untouched
-/// so the runtime raises its regular version-mismatch error rather than
-/// guessing at an unknown format.
-enum WorkflowLegacyCheckpointMigrator {
-    static func migrate(
-        _ checkpoint: HiveCheckpoint<WorkflowDurableSchema>,
-        schemaVersion: String,
-        graphVersion: String
-    ) throws -> HiveCheckpoint<WorkflowDurableSchema> {
-        let legacyData = checkpoint.globalDataByChannelID
-        guard legacyData[LegacyRunState.completedChannelID] != nil else {
-            return checkpoint
-        }
-
-        let legacy = try LegacyRunState(globalDataByChannelID: legacyData)
-        let phase: WorkflowDurablePhase
-        if legacy.completed {
-            phase = .completed(legacy.lastResult ?? WorkflowResultSnapshot(AgentResult(output: legacy.currentInput)))
-        } else {
-            phase = .running(
-                stepCursor: legacy.stepCursor,
-                iterationCursor: legacy.iterationCursor,
-                lastResult: legacy.lastResult
-            )
-        }
-
-        var migratedData: [String: Data] = [:]
-        migratedData[WorkflowDurableSchema.phaseKey.id.rawValue] =
-            try WorkflowCheckpointCodec<WorkflowDurablePhase>().encode(phase)
-        migratedData[WorkflowDurableSchema.currentInputKey.id.rawValue] =
-            try WorkflowCheckpointCodec<String>().encode(legacy.currentInput)
-        migratedData[WorkflowDurableSchema.signatureKey.id.rawValue] =
-            try WorkflowCheckpointCodec<String>().encode(legacy.signature)
-
-        let registeredGlobalIDs = Set(
-            WorkflowDurableSchema.channelSpecs
-                .filter { $0.scope == .global }
-                .map { $0.id.rawValue }
-        )
-
-        return HiveCheckpoint(
-            id: checkpoint.id,
-            threadID: checkpoint.threadID,
-            runID: checkpoint.runID,
-            stepIndex: checkpoint.stepIndex,
-            schemaVersion: schemaVersion,
-            graphVersion: graphVersion,
-            checkpointFormatVersion: checkpoint.checkpointFormatVersion,
-            channelVersionsByChannelID: checkpoint.channelVersionsByChannelID
-                .filter { registeredGlobalIDs.contains($0.key) },
-            versionsSeenByNodeID: checkpoint.versionsSeenByNodeID.mapValues { versions in
-                versions.filter { registeredGlobalIDs.contains($0.key) }
-            },
-            updatedChannelsLastCommit: checkpoint.updatedChannelsLastCommit
-                .filter { registeredGlobalIDs.contains($0) },
-            globalDataByChannelID: migratedData,
-            frontier: checkpoint.frontier,
-            deferredFrontier: checkpoint.deferredFrontier,
-            joinBarrierSeenByJoinID: checkpoint.joinBarrierSeenByJoinID,
-            interruption: checkpoint.interruption,
-            lineage: checkpoint.lineage
-        )
-    }
-}
-
-/// Channel identifiers and decoded values of the pre-phase-enum durable layout.
-private struct LegacyRunState {
-    static let currentInputChannelID = "workflow.currentInput"
-    static let signatureChannelID = "workflow.signature"
-    static let stepCursorChannelID = "workflow.stepCursor"
-    static let iterationCursorChannelID = "workflow.iterationCursor"
-    static let completedChannelID = "workflow.completed"
-    static let lastResultChannelID = "workflow.lastResult"
-
-    let currentInput: String
-    let signature: String
-    let stepCursor: Int
-    let iterationCursor: Int
-    let completed: Bool
-    let lastResult: WorkflowResultSnapshot?
-
-    init(globalDataByChannelID data: [String: Data]) throws {
-        // Missing entries fall back to start-of-run values; entries that are
-        // present but undecodable fail loudly instead of fabricating state.
-        currentInput = try Self.decoded(data[Self.currentInputChannelID], as: String.self) ?? ""
-        signature = try Self.decoded(data[Self.signatureChannelID], as: String.self) ?? ""
-        stepCursor = try Self.decoded(data[Self.stepCursorChannelID], as: Int.self) ?? 0
-        iterationCursor = try Self.decoded(data[Self.iterationCursorChannelID], as: Int.self) ?? 0
-        completed = try Self.decoded(data[Self.completedChannelID], as: Bool.self) ?? false
-        lastResult = try Self.decoded(data[Self.lastResultChannelID], as: WorkflowResultSnapshot?.self) ?? nil
-    }
-
-    private static func decoded<Value: Codable & Sendable>(_ data: Data?, as _: Value.Type) throws -> Value? {
-        guard let data else { return nil }
-        return try WorkflowCheckpointCodec<Value>().decode(data)
     }
 }
 

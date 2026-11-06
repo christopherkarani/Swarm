@@ -544,6 +544,7 @@ struct AgentTurnRunner: Sendable {
         // locals (e.g. Apple's session loop), so carry the durable approval
         // gate explicitly into each tool call.
         let approvalGate = WorkflowDurableApprovalGate.ledger
+        let journalScope = WorkflowDurableApprovalGate.scope
         return ToolCallExecutor { name, arguments in
             guard executionGate.isActive else {
                 throw CancellationError()
@@ -554,17 +555,19 @@ struct AgentTurnRunner: Sendable {
                 throw OwnedLoopHandoffRequest(name: name, arguments: arguments)
             }
             let outcome = try await WorkflowDurableApprovalGate.$ledger.withValue(approvalGate) {
-                try await engine.execute(
-                    toolName: name,
-                    arguments: arguments,
-                    registry: toolRegistry,
-                    agent: agent,
-                    context: executionContext,
-                    resultBuilder: resultBuilder,
-                    observer: observer,
-                    tracing: tracing,
-                    stopOnToolError: stopOnToolError
-                )
+                try await WorkflowDurableApprovalGate.$scope.withValue(journalScope) {
+                    try await engine.execute(
+                        toolName: name,
+                        arguments: arguments,
+                        registry: toolRegistry,
+                        agent: agent,
+                        context: executionContext,
+                        resultBuilder: resultBuilder,
+                        observer: observer,
+                        tracing: tracing,
+                        stopOnToolError: stopOnToolError
+                    )
+                }
             }
             if outcome.result.isSuccess {
                 return outcome.result.output
@@ -790,7 +793,8 @@ struct AgentTurnRunner: Sendable {
                     result: toolOutputText,
                     toolCallID: parsedCall.id
                 )
-                if let memory = request.dependencies.memory {
+                // A replayed durable call wrote its memory entry when it executed.
+                if let memory = request.dependencies.memory, !outcome.replayed {
                     await memory.add(.tool(toolOutputText, toolName: parsedCall.name))
                 }
             } else {
@@ -800,7 +804,7 @@ struct AgentTurnRunner: Sendable {
                     result: AgentTurnKernel.toolFailureConversationText(message: errorMessage),
                     toolCallID: parsedCall.id
                 )
-                if let memory = request.dependencies.memory {
+                if let memory = request.dependencies.memory, !outcome.replayed {
                     await memory.add(.tool(
                         AgentTurnKernel.memoryToolErrorText(message: errorMessage),
                         toolName: parsedCall.name

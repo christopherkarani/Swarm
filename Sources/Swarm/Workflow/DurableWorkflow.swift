@@ -70,14 +70,27 @@ public struct DurableWorkflow: Sendable {
     ///
     /// Within a single resumed execution an approval is consumed by one
     /// matching call; an identical second call in the same step pauses again.
-    /// Resuming replays the step from its start, so calls approved earlier in
-    /// the pause chain execute again on every later resume of that step. Make
-    /// non-idempotent tools idempotent or guard them yourself; see
-    /// "Replay semantics" in the durable execution guide.
     ///
     /// Only one concurrent resume of a checkpoint executes. Others, in this
     /// process or in another process sharing the checkpoint store, throw
     /// ``WorkflowResumeConflict`` without executing.
+    ///
+    /// The paused step replays from its start, but tool calls do not run twice.
+    /// Each tool call that executed in the step is journaled in the checkpoint.
+    /// On replay, a call with the same tool name and arguments returns its
+    /// recorded result, does not notify observers or tracing again, and does
+    /// not write to memory again. If replays keep pausing on other calls
+    /// without reaching the call just approved, the approve that would make
+    /// ``WorkflowApprovalReplayDiverged/maxAttempts`` such resumes in a row
+    /// throws ``WorkflowApprovalReplayDiverged`` before the step runs.
+    ///
+    /// A resumed step that fails (for example an inference error after the
+    /// approved call ran) keeps its journal in the released pause, so retrying
+    /// the resume replays the calls that already executed. The guarantee
+    /// relies on that release being saved: if the process crashes mid-resume,
+    /// or the release cannot be written, calls since the pause are
+    /// at-least-once, and a resume after the claim lease expires runs them
+    /// again.
     ///
     /// There is no timeout on the approval wait itself: the run stays paused
     /// until this method is called.
@@ -92,6 +105,7 @@ public struct DurableWorkflow: Sendable {
     ///   when the run was already rejected,
     ///   ``WorkflowApprovalRequired`` when the resumed run pauses again,
     ///   ``WorkflowResumeConflict`` when another resume holds the run,
+    ///   ``WorkflowApprovalReplayDiverged`` when replays keep missing the approved call,
     ///   or ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
     public func resume(
         decision: WorkflowApprovalDecision,
