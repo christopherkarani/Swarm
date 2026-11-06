@@ -71,25 +71,105 @@ struct OTLPHTTPTraceExporterDeliveryTests {
     func boundedQueueDropsOldest() async throws {
         let session = DeliveryURLProtocol.makeSession()
         defer { DeliveryURLProtocol.reset() }
+        DeliveryURLProtocol.hold()
 
         let exporter = OTLPHTTPTraceExporter(
             configuration: .default
-                .maxBatchSize(100)
+                .maxBatchSize(3)
                 .maxQueueSize(3)
                 .scheduleDelay(.seconds(60)),
             session: session
         )
-        for index in 1...5 {
-            _ = await exporter.export(spans: [try makeSpan(name: "s\(index)")], explicitTimeout: nil)
+        // s1...s3 start a size-triggered POST that stays parked in the stub.
+        for index in 1...3 {
+            _ = syncExport(exporter, [try makeSpan(name: "s\(index)")])
+        }
+        try await waitUntil { DeliveryURLProtocol.startCount == 1 }
+        for index in 4...8 {
+            _ = syncExport(exporter, [try makeSpan(name: "s\(index)")])
         }
 
         #expect(exporter.queuedSpanCount == 3)
         #expect(exporter.droppedSpanCount == 2)
 
+        DeliveryURLProtocol.release()
+        try await waitUntil { DeliveryURLProtocol.responseCount == 2 }
+        let body = try #require(DeliveryURLProtocol.bodies.last)
+        #expect(try spanNames(in: body) == ["s6", "s7", "s8"])
+        await exporter.shutdown(explicitTimeout: nil)
+    }
+
+    @Test("maxQueueSize is never smaller than maxBatchSize")
+    func queueSizeClampedToBatchSize() {
+        #expect(OTLPHTTPExporterConfiguration(maxBatchSize: 100, maxQueueSize: 3).maxQueueSize == 100)
+        #expect(OTLPHTTPExporterConfiguration.default.maxBatchSize(100).maxQueueSize(3).maxQueueSize == 100)
+        #expect(OTLPHTTPExporterConfiguration.default.maxQueueSize(500).maxBatchSize(1000).maxQueueSize == 1000)
+        #expect(OTLPHTTPExporterConfiguration.default.maxBatchSize(10).maxQueueSize(50).maxQueueSize == 50)
+    }
+
+    @Test("After a transient failure, size-triggered flushes wait for scheduleDelay")
+    func sizeTriggeredFlushBacksOffAfterFailure() async throws {
+        let session = DeliveryURLProtocol.makeSession()
+        defer { DeliveryURLProtocol.reset() }
+        DeliveryURLProtocol.enqueue(status: 503)
+
+        let exporter = OTLPHTTPTraceExporter(
+            configuration: .default
+                .maxBatchSize(2)
+                .maxRetries(0)
+                .maxExportAttempts(10)
+                .scheduleDelay(.seconds(60)),
+            session: session
+        )
+        _ = syncExport(exporter, [try makeSpan(name: "a"), try makeSpan(name: "b")])
+        try await waitUntil { DeliveryURLProtocol.responseCount == 1 && exporter.queuedSpanCount == 2 }
+
+        // The requeued batch keeps the queue full, but a new export must not
+        // immediately re-POST during the outage.
+        _ = syncExport(exporter, [try makeSpan(name: "c"), try makeSpan(name: "d")])
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(DeliveryURLProtocol.startCount == 1)
+        #expect(exporter.queuedSpanCount == 4)
+
+        // An explicit flush (like the timer) still retries.
         #expect(await exporter.flush(explicitTimeout: nil) == .success)
         let body = try #require(DeliveryURLProtocol.bodies.last)
-        #expect(try spanNames(in: body) == ["s3", "s4", "s5"])
+        #expect(try spanNames(in: body) == ["a", "b", "c", "d"])
         await exporter.shutdown(explicitTimeout: nil)
+    }
+
+    @Test("Shutdown is not stalled by producers that keep the queue full")
+    func shutdownIsNotStalledByProducers() async throws {
+        let session = DeliveryURLProtocol.makeSession()
+        defer { DeliveryURLProtocol.reset() }
+
+        let exporter = OTLPHTTPTraceExporter(
+            configuration: .default.maxBatchSize(1).scheduleDelay(.seconds(60)),
+            session: session
+        )
+        var burst: [SpanData] = []
+        for index in 0 ..< 50 {
+            burst.append(try makeSpan(name: "p\(index)"))
+        }
+        let spans = burst
+        let stop = DeliveryFlag()
+        // Producer outpaces the one-span-per-POST drain loop for up to 4 s.
+        let producer = Task.detached {
+            let deadline = ContinuousClock.now + .seconds(4)
+            while !stop.isSet, ContinuousClock.now < deadline {
+                _ = syncExport(exporter, spans)
+                try? await Task.sleep(for: .milliseconds(1))
+            }
+        }
+        try await waitUntil { DeliveryURLProtocol.startCount >= 1 }
+
+        let start = ContinuousClock.now
+        await exporter.shutdown(explicitTimeout: nil)
+        let elapsed = ContinuousClock.now - start
+        stop.set()
+        await producer.value
+
+        #expect(elapsed < .seconds(2))
     }
 
     @Test("Transiently failed spans are requeued and delivered by a later flush")

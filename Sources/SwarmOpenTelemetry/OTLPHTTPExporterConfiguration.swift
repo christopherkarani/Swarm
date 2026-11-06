@@ -65,7 +65,9 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
     public var retryBackoff: Duration
 
     /// Maximum spans held for export. When full, the oldest spans are dropped
-    /// and counted in ``OTLPHTTPTraceExporter/droppedSpanCount``. Default: `2048`.
+    /// and counted in ``OTLPHTTPTraceExporter/droppedSpanCount``. Never less
+    /// than ``maxBatchSize``, so a full batch can always trigger a flush.
+    /// Default: `2048`.
     public var maxQueueSize: Int
 
     /// Flushes a span may take part in before it is dropped after transient
@@ -88,7 +90,8 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
     ///   - scheduleDelay: Timer-based flush interval. Default: 5 seconds
     ///   - maxRetries: Retry count after the first attempt. Default: `1`
     ///   - retryBackoff: Delay between retries. Default: 200 milliseconds
-    ///   - maxQueueSize: Queue capacity before dropping oldest spans. Default: `2048`
+    ///   - maxQueueSize: Queue capacity before dropping oldest spans; raised to
+    ///     `maxBatchSize` if smaller. Default: `2048`
     ///   - maxExportAttempts: Flushes per span before dropping it. Default: `3`
     ///   - syncTimeout: Default wait for synchronous flush, in seconds. Default: `10`
     public init(
@@ -110,7 +113,7 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
         self.scheduleDelay = scheduleDelay > .zero ? scheduleDelay : .seconds(5)
         self.maxRetries = max(0, maxRetries)
         self.retryBackoff = retryBackoff >= .zero ? retryBackoff : .milliseconds(200)
-        self.maxQueueSize = max(1, maxQueueSize)
+        self.maxQueueSize = max(self.maxBatchSize, maxQueueSize)
         self.maxExportAttempts = max(1, maxExportAttempts)
         self.syncTimeout = Self.validSyncTimeout(syncTimeout)
     }
@@ -139,11 +142,13 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
         return copy
     }
 
-    /// Sets the size-based flush threshold.
+    /// Sets the size-based flush threshold, raising ``maxQueueSize`` to match
+    /// if it is smaller.
     @discardableResult
     public func maxBatchSize(_ value: Int) -> OTLPHTTPExporterConfiguration {
         var copy = self
         copy.maxBatchSize = max(1, value)
+        copy.maxQueueSize = max(copy.maxQueueSize, copy.maxBatchSize)
         return copy
     }
 
@@ -174,10 +179,11 @@ public struct OTLPHTTPExporterConfiguration: Sendable, Equatable {
 
 public extension OTLPHTTPExporterConfiguration {
     /// Sets the queue capacity; the oldest spans are dropped beyond it.
+    /// Values below ``maxBatchSize`` are raised to it.
     @discardableResult
     func maxQueueSize(_ value: Int) -> OTLPHTTPExporterConfiguration {
         var copy = self
-        copy.maxQueueSize = max(1, value)
+        copy.maxQueueSize = max(copy.maxBatchSize, value)
         return copy
     }
 

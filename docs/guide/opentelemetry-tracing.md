@@ -108,17 +108,22 @@ errors) retry once by default; HTTP 4xx is not retried.
   returns `.success` before the spans are delivered. A full batch
   (`maxBatchSize`) starts a background flush; at most one size-triggered POST
   is in flight at a time.
-- The queue is bounded by `maxQueueSize`. When it is full, the oldest spans
+- The queue is bounded by `maxQueueSize` (never less than `maxBatchSize`).
+  When it is full, the oldest spans
   are dropped and counted in `OTLPHTTPTraceExporter.droppedSpanCount`;
   `queuedSpanCount` reports what is waiting.
 - A batch that still fails transiently after `maxRetries` is requeued for a
   later flush, up to `maxExportAttempts` flushes per span; then its spans are
   dropped and counted. Batches the collector rejects with 4xx are dropped too.
+  After a transient failure, size-triggered flushes pause for `scheduleDelay`;
+  the timer retries the requeued spans.
 - `flush` and `shutdown` wait for POSTs already in flight before sending what
   is left. The synchronous versions (used by `forceFlush()` and
   `tracerProvider.shutdown()`) give up after `syncTimeout` (10 seconds by
-  default) and return `.failure`. The `async` versions have no timeout: under
-  sustained load they wait as long as producers keep a full batch queued.
+  default) and return `.failure`. The `async` `flush` has no timeout: under
+  sustained load it waits as long as producers keep a full batch queued.
+  `shutdown` stops size-triggered flushing after the current batch, then
+  posts what is queued, so producers cannot stall it.
   After shutdown, spans that could not be delivered are dropped and counted.
 
 ## Local collector
