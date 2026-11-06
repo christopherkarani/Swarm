@@ -159,7 +159,11 @@ struct WorkflowDurableEngine: Sendable {
                 writes: [],
                 options: HiveRunOptions(maxSteps: 1, checkpointPolicy: .everyStep)
             )
-            _ = try await Self.awaitOutcome(of: flushHandle)
+            // The main run already finished (and its side effects happened), so
+            // the completion checkpoint must land even if the caller is cancelled
+            // or times out now. Await the flush without forwarding cancellation;
+            // otherwise a resume would re-run side-effecting steps.
+            _ = try await flushHandle.outcome.value
         }
 
         return result
