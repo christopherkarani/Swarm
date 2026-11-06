@@ -36,5 +36,5 @@ config.maxTokens = 4096
 config.episodicMemoryK = 8
 config.semanticMemoryK = 4
 config.relevanceWeight = 0.7
-let context = try AgentContext(configuration: config)
+let context = try ContextWindowEngine(configuration: config)
 ```

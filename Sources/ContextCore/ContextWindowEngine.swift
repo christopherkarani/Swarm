@@ -8,7 +8,7 @@ import ContextCoreEngine
 
 #if canImport(OSLog)
 extension Logger {
-    static let contextCore = Logger(subsystem: "com.contextcore", category: "AgentContext")
+    static let contextCore = Logger(subsystem: "com.contextcore", category: "ContextWindowEngine")
     static let consolidation = Logger(subsystem: "com.contextcore", category: "Consolidation")
     static let scoring = Logger(subsystem: "com.contextcore", category: "Scoring")
 }
@@ -54,7 +54,7 @@ private struct Logger: Sendable {
         }
     }
 
-    static let contextCore = Logger(subsystem: "com.contextcore", category: "AgentContext")
+    static let contextCore = Logger(subsystem: "com.contextcore", category: "ContextWindowEngine")
     static let consolidation = Logger(subsystem: "com.contextcore", category: "Consolidation")
     static let scoring = Logger(subsystem: "com.contextcore", category: "Scoring")
 
@@ -78,7 +78,7 @@ private struct Logger: Sendable {
 }
 #endif
 
-/// NSLock-backed box so `AgentContext/stats` stays nonisolated on platforms
+/// NSLock-backed box so `ContextWindowEngine/stats` stays nonisolated on platforms
 /// without `os.lock` (Linux). Same `withLock` shape as `OSAllocatedUnfairLock`.
 private final class Locked<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
@@ -96,7 +96,7 @@ private final class Locked<Value: Sendable>: @unchecked Sendable {
 }
 
 /// High-level actor API coordinating retrieval, scoring, packing, compression, and persistence.
-public actor AgentContext {
+public actor ContextWindowEngine {
     /// Immutable runtime configuration for this context instance.
     public let configuration: ContextConfiguration
 
@@ -121,12 +121,18 @@ public actor AgentContext {
 
     private nonisolated let statsLock = Locked(ContextStats())
 
+    /// Background embed that warms the provider (model load, caches).
+    ///
+    /// Owned by the engine and cancelled in `deinit`, so releasing an engine
+    /// never leaves an orphaned embedding call running.
+    private let warmupTask: Task<Void, Never>
+
     /// Latest nonisolated runtime stats snapshot.
     public nonisolated var stats: ContextStats {
         statsLock.withLock { $0 }
     }
 
-    /// Creates an ``AgentContext`` and initializes all processing subsystems.
+    /// Creates a ``ContextWindowEngine`` and initializes all processing subsystems.
     ///
     /// Prefers Metal-backed engines when Metal is available and falls back to the
     /// portable CPU engines otherwise.
@@ -171,13 +177,17 @@ public actor AgentContext {
             similarityThreshold: configuration.similarityMergeThreshold
         )
 
+        self.warmupTask = Task.detached(priority: .background) {
+            _ = try? await provider.embed("warmup")
+        }
+
         statsLock.withLock { snapshot in
             snapshot.proceduralCount = 0
         }
+    }
 
-        Task.detached(priority: .background) {
-            _ = try? await provider.embed("warmup")
-        }
+    deinit {
+        warmupTask.cancel()
     }
 
     private static func makeScoringEngine() -> any RelevanceScoringEngine {
@@ -230,12 +240,12 @@ public actor AgentContext {
         return CPUConsolidationEngine(embeddingProvider: provider)
     }
 
-    /// Restores an ``AgentContext`` from a checkpoint file.
+    /// Restores a ``ContextWindowEngine`` from a checkpoint file.
     ///
     /// - Parameter url: Checkpoint file URL.
     /// - Returns: A restored context with persisted stores and session metadata.
     /// - Throws: `ContextCoreError.checkpointCorrupt` when data cannot be decoded or schema is unsupported.
-    public static func load(from url: URL) async throws -> AgentContext {
+    public static func load(from url: URL) async throws -> ContextWindowEngine {
         let data: Data
         do {
             data = try Data(contentsOf: url)
@@ -260,7 +270,7 @@ public actor AgentContext {
         }
 
         let config = checkpoint.configuration.apply(to: .default)
-        let context = try AgentContext(configuration: config)
+        let context = try ContextWindowEngine(configuration: config)
         try await context.restore(from: checkpoint)
         return context
     }

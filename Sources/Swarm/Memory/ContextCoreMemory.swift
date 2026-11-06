@@ -91,14 +91,14 @@ public actor ContextCoreMemory: Memory {
 
     init(
         configuration: ContextCoreMemoryConfiguration = .default,
-        endSession: @escaping @Sendable (ContextCore.AgentContext) async throws -> Void
+        endSession: @escaping @Sendable (ContextWindowEngine) async throws -> Void
     ) throws {
         self.configuration = configuration
         self.memoryPromptTitle = configuration.promptTitle
         self.memoryPromptGuidance = configuration.promptGuidance
         self.allowsAutomaticSessionSeeding = configuration.allowsAutomaticSessionSeeding
         self.contextFactory = {
-            try ContextCore.AgentContext(configuration: configuration.contextConfiguration)
+            try ContextWindowEngine(configuration: configuration.contextConfiguration)
         }
         self.context = try contextFactory()
         self.endSession = endSession
@@ -204,9 +204,9 @@ public actor ContextCoreMemory: Memory {
     }
 
     private let configuration: ContextCoreMemoryConfiguration
-    private let contextFactory: @Sendable () throws -> ContextCore.AgentContext
-    private let endSession: @Sendable (ContextCore.AgentContext) async throws -> Void
-    private var context: ContextCore.AgentContext
+    private let contextFactory: @Sendable () throws -> ContextWindowEngine
+    private let endSession: @Sendable (ContextWindowEngine) async throws -> Void
+    private var context: ContextWindowEngine
     private var sessionIsReady = false
     private var messages: [MemoryMessage] = []
 
