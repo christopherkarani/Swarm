@@ -773,7 +773,7 @@ extension Workflow.MergeStrategy {
         }
     }
 
-    fileprivate func mergedOutput(from results: [AgentResult]) -> String {
+    func mergedOutput(from results: [AgentResult]) -> String {
         switch self {
         case .structured:
             let dict = results.enumerated().reduce(into: [String: String]()) { acc, pair in

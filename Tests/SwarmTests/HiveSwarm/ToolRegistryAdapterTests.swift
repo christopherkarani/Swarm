@@ -44,5 +44,39 @@ struct SwarmToolRegistryTests {
             _ = try await registry.invoke(call)
         }
     }
+
+    @Test("fromRegistry snapshots sorted definitions and invokes registry tools")
+    func fromRegistrySnapshotsAndInvokes() async throws {
+        let toolRegistry = try ToolRegistry(tools: [
+            MockTool(name: "zeta", result: .string("z")),
+            MockTool(name: "alpha", result: .string("a"))
+        ])
+        let adapter = try await ToolRegistryAdapter.fromRegistry(toolRegistry)
+
+        #expect(adapter.listTools().map(\.name) == ["alpha", "zeta"])
+
+        let result = try await adapter.invoke(HiveToolCall(id: "call_3", name: "zeta", argumentsJSON: "{}"))
+        #expect(result.toolCallID == "call_3")
+        #expect(result.content == "z")
+    }
+
+    @Test("invoke reports unknown tools and malformed JSON with typed errors")
+    func invokeTypedErrors() async throws {
+        let adapter = try ToolRegistryAdapter(tools: [MockTool(name: "echo")])
+
+        await #expect(throws: ToolRegistryAdapterError.toolNotFound(name: "missing")) {
+            _ = try await adapter.invoke(HiveToolCall(id: "call_4", name: "missing", argumentsJSON: "{}"))
+        }
+        await #expect(throws: ToolRegistryAdapterError.invalidArgumentsJSON) {
+            _ = try await adapter.invoke(HiveToolCall(id: "call_5", name: "echo", argumentsJSON: "{not json"))
+        }
+    }
+
+    @Test("duplicate tool names are rejected at construction")
+    func duplicateToolNames() {
+        #expect(throws: ToolRegistryAdapterError.duplicateToolName("echo")) {
+            _ = try ToolRegistryAdapter(tools: [MockTool(name: "echo"), MockTool(name: "echo")])
+        }
+    }
 }
 #endif

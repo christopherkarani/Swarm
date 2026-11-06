@@ -56,12 +56,7 @@ public actor ConversationMemory: Memory {
     // MARK: - AgentMemory Conformance
 
     public func add(_ message: MemoryMessage) async {
-        messages.append(message)
-
-        // Trim oldest messages if over limit
-        if messages.count > maxMessages {
-            messages.removeFirst(messages.count - maxMessages)
-        }
+        appendReturningEvicted(message)
     }
 
     public func context(for _: String, tokenLimit: Int) async -> String {
@@ -74,6 +69,23 @@ public actor ConversationMemory: Memory {
 
     public func clear() async {
         messages.removeAll()
+    }
+
+    // MARK: Internal
+
+    /// Appends a message and returns the oldest messages trimmed to stay
+    /// within ``maxMessages``, oldest first.
+    ///
+    /// Atomic on the actor, so callers such as ``HybridMemory`` learn exactly
+    /// which messages left the window without racing a separate read.
+    @discardableResult
+    func appendReturningEvicted(_ message: MemoryMessage) -> [MemoryMessage] {
+        messages.append(message)
+        let overflow = messages.count - maxMessages
+        guard overflow > 0 else { return [] }
+        let evicted = Array(messages.prefix(overflow))
+        messages.removeFirst(overflow)
+        return evicted
     }
 
     // MARK: Private

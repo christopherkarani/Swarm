@@ -24,14 +24,14 @@ Within Swarm sources, `import ContextCore` works when Integrations is on.
 External apps typically use Swarm's memory APIs (`DefaultAgentMemory`) rather
 than depending on the internal ContextCore target directly.
 
-## 2. Create an ``AgentContext``
+## 2. Create a ``ContextWindowEngine``
 
 Use the default configuration first, then tune for your workload.
 
 ```swift
 import ContextCore
 
-let context = try AgentContext()
+let context = try ContextWindowEngine()
 ```
 
 ## 3. Begin a Session

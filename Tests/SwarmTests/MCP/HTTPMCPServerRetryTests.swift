@@ -219,6 +219,125 @@ struct HTTPMCPServerRetryTests {
             Issue.record("Expected MCPError, got \(error)")
         }
     }
+
+    @Test(
+        "tools/call is never resent after the request may have reached the server",
+        arguments: [
+            ToolCallFailure.httpStatus(500),
+            ToolCallFailure.httpStatus(503),
+            ToolCallFailure.transport(.timedOut),
+            ToolCallFailure.transport(.networkConnectionLost),
+        ]
+    )
+    func toolsCallIsNotRetriedOnAmbiguousFailure(_ failure: ToolCallFailure) async throws {
+        let session = Self.makeSession()
+        MockURLProtocol.reset()
+        defer { MockURLProtocol.reset() }
+        MockURLProtocol.handler = { request in try failure.respond(to: request) }
+
+        let server = try HTTPMCPServer(
+            url: URL(string: "https://mcp.example.com/api")!,
+            name: "no-retry-tools-call",
+            maxRetries: 3,
+            session: session
+        )
+
+        await #expect(throws: MCPError.self) {
+            _ = try await server.callTool(name: "transfer_funds", arguments: [:])
+        }
+        #expect(MockURLProtocol.requestCount == 1)
+    }
+
+    @Test("tools/call is retried when the connection never opened")
+    func toolsCallIsRetriedOnPreSendFailure() async throws {
+        let session = Self.makeSession()
+        MockURLProtocol.reset()
+        defer { MockURLProtocol.reset() }
+        MockURLProtocol.handler = { request in
+            if MockURLProtocol.requestCount == 1 {
+                throw URLError(.cannotConnectToHost)
+            }
+            return try Self.toolCallSuccess(for: request)
+        }
+
+        let server = try HTTPMCPServer(
+            url: URL(string: "https://mcp.example.com/api")!,
+            name: "retry-pre-send",
+            maxRetries: 1,
+            session: session
+        )
+
+        _ = try await server.callTool(name: "echo", arguments: [:])
+        #expect(MockURLProtocol.requestCount == 2)
+    }
+
+    @Test("Read-only methods still retry transient server failures")
+    func listToolsRetriesServerErrors() async throws {
+        let session = Self.makeSession()
+        MockURLProtocol.reset()
+        defer { MockURLProtocol.reset() }
+        MockURLProtocol.handler = { request in try ToolCallFailure.httpStatus(503).respond(to: request) }
+
+        let server = try HTTPMCPServer(
+            url: URL(string: "https://mcp.example.com/api")!,
+            name: "retry-list",
+            maxRetries: 1,
+            session: session
+        )
+
+        await #expect(throws: MCPError.self) {
+            _ = try await server.listTools()
+        }
+        #expect(MockURLProtocol.requestCount == 2)
+    }
+
+    private static func makeSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        return URLSession(configuration: config)
+    }
+
+    private static func toolCallSuccess(for request: URLRequest) throws -> (HTTPURLResponse, Data) {
+        let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "https://mcp.example.com/api")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        let body: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": "call",
+            "result": ["content": [["type": "text", "text": "ok"]]],
+        ]
+        return (response, try JSONSerialization.data(withJSONObject: body))
+    }
+}
+
+enum ToolCallFailure: Sendable, CustomTestStringConvertible {
+    case httpStatus(Int)
+    case transport(URLError.Code)
+
+    var testDescription: String {
+        switch self {
+        case let .httpStatus(code): "HTTP \(code)"
+        case let .transport(code): "URLError \(code.rawValue)"
+        }
+    }
+
+    func respond(to request: URLRequest) throws -> (HTTPURLResponse, Data) {
+        switch self {
+        case let .httpStatus(status):
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(string: "https://mcp.example.com/api")!,
+                statusCode: status,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data("server error".utf8))
+        case let .transport(code):
+            throw URLError(code)
+        }
+    }
 }
 
 private final class MockURLProtocol: URLProtocol {
