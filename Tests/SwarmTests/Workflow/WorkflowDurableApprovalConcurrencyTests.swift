@@ -210,6 +210,91 @@ struct WorkflowDurableApprovalConcurrencyTests {
         expectOneWinnerOneConflict(outcomes)
     }
 
+    @Test("a resume outliving the claim lease renews it so another store cannot take over")
+    func longResumeRenewsClaim() async throws {
+        let directory = try makeTemporaryCheckpointDirectory("approval-claim-renewal")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let counter = ApprovalToolCounter()
+        let gate = ApprovalToolGate()
+        let checkpointID = WorkflowCheckpointID("approval-claim-renewal")
+        let first = try await makeGatedWorkflow(
+            checkpointID: checkpointID,
+            store: .fileSystem(directory: directory),
+            counter: counter,
+            gate: gate,
+            scriptedCalls: 2
+        )
+        let second = try await makeGatedWorkflow(
+            checkpointID: checkpointID,
+            store: .fileSystem(directory: directory),
+            counter: counter,
+            gate: gate,
+            scriptedCalls: 1
+        )
+
+        await #expect(throws: WorkflowApprovalRequired.self) {
+            _ = try await first.execute("go")
+        }
+
+        let outcomes = await WorkflowApprovalClaim.$lease.withValue(0.3) {
+            let firstTask = Task { try await first.resume(decision: .approve, from: checkpointID) }
+            await gate.waitUntilStarted(1)
+            // Outlive several leases while the approved tool is still running.
+            try? await Task.sleep(for: .milliseconds(1000))
+            let secondTask = Task { try await second.resume(decision: .approve, from: checkpointID) }
+            try? await Task.sleep(for: .milliseconds(300))
+            await gate.release()
+            return [await firstTask.result, await secondTask.result]
+        }
+
+        #expect(await counter.count == 1)
+        expectOneWinnerOneConflict(outcomes)
+    }
+
+    @Test("execute refuses a run whose paused approval is being resumed")
+    func executeRefusesClaimedRun() async throws {
+        let store: WorkflowCheckpointing = .inMemory()
+        let counter = ApprovalToolCounter()
+        let gate = ApprovalToolGate()
+        let checkpointID = WorkflowCheckpointID("approval-execute-while-claimed")
+        let workflow = try await makeGatedWorkflow(
+            checkpointID: checkpointID,
+            store: store,
+            counter: counter,
+            gate: gate,
+            scriptedCalls: 2
+        )
+
+        await #expect(throws: WorkflowApprovalRequired.self) {
+            _ = try await workflow.execute("go")
+        }
+
+        let resumeTask = Task { try await workflow.resume(decision: .approve, from: checkpointID) }
+        await gate.waitUntilStarted(1)
+
+        await #expect(throws: WorkflowResumeConflict.self) {
+            _ = try await workflow.execute("go")
+        }
+
+        // A different run on the same store still starts.
+        let other = try await makeGatedWorkflow(
+            checkpointID: WorkflowCheckpointID("approval-execute-while-claimed-other"),
+            store: store,
+            counter: ApprovalToolCounter(),
+            gate: gate,
+            scriptedCalls: 1
+        )
+        await #expect(throws: WorkflowApprovalRequired.self) {
+            _ = try await other.execute("go")
+        }
+
+        await gate.release()
+        let result = try await resumeTask.value
+        #expect(result.output == "done")
+        #expect(await counter.count == 1)
+    }
+
     @Test("a resume that fails before committing releases its claim")
     func failedResumeReleasesClaim() async throws {
         let counter = ApprovalToolCounter()

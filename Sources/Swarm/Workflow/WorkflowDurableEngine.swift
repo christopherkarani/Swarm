@@ -146,6 +146,8 @@ struct WorkflowDurableEngine: Sendable {
             try Self.throwIfRejected(
                 try await components.runtime.getLatestCheckpoint(threadID: components.threadID)
             )
+        } else {
+            try await throwIfResumeInFlight(components: components)
         }
 
         let input: WorkflowDurableInput = resume ? .resume : .start(
@@ -230,17 +232,20 @@ struct WorkflowDurableEngine: Sendable {
             divergentResumes: request.divergentResumes
         ).encoded()
 
+        let holder = WorkflowApprovalClaimHolder(claimed)
         do {
-            let handle = await components.runtime.resume(
-                threadID: components.threadID,
-                interruptID: interruption.id,
-                payload: resumePayload,
-                options: runOptions(for: policy)
-            )
-            let outcome = try await handle.outcome.value
-            return try await finish(outcome, components: components)
+            return try await withRenewal(of: holder, store: components.store) {
+                let handle = await components.runtime.resume(
+                    threadID: components.threadID,
+                    interruptID: interruption.id,
+                    payload: resumePayload,
+                    options: runOptions(for: policy)
+                )
+                let outcome = try await handle.outcome.value
+                return try await finish(outcome, components: components)
+            }
         } catch {
-            await releaseClaim(claimed, request: request, store: components.store)
+            await releaseClaim(await holder.current, request: request, store: components.store)
             throw error
         }
     }
@@ -277,6 +282,34 @@ struct WorkflowDurableEngine: Sendable {
             try await flushIfNeeded(runtime: components.runtime, threadID: components.threadID)
             throw WorkflowError.humanApprovalRejected(prompt: prompt, reason: reason)
         }
+    }
+
+    /// Refuses a fresh start over a run that a resume currently holds.
+    ///
+    /// Starting rewrites the run from step 0, so it must not overlap a resume
+    /// in this process (the resume guard) or anywhere sharing the store (a
+    /// live approval claim on the latest checkpoint). Other run IDs and runs
+    /// with no resume in flight start normally.
+    private func throwIfResumeInFlight(components: WorkflowDurableRuntimeComponents) async throws {
+        let key = WorkflowDurableResumeGuard.Key(
+            store: ObjectIdentifier(checkpointing.backend),
+            checkpointID: checkpointID
+        )
+        if await WorkflowDurableResumeGuard.shared.isActive(key) {
+            throw WorkflowResumeConflict(
+                checkpointID: WorkflowCheckpointID(checkpointID),
+                reason: "a resume of this checkpoint is in progress in this process"
+            )
+        }
+        guard let interruption = try await components.store.loadLatest(threadID: components.threadID)?.interruption,
+              let request = try? WorkflowApprovalRequestEnvelope.decoded(from: interruption.payload),
+              let claim = request.claim,
+              claim.isLive(at: Date())
+        else { return }
+        throw WorkflowResumeConflict(
+            checkpointID: WorkflowCheckpointID(checkpointID),
+            reason: "the paused approval is held by a resume claimed at \(claim.claimedAt)"
+        )
     }
 
     /// Reports a checkpointed rejection before any runtime work.

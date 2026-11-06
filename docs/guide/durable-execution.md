@@ -227,9 +227,12 @@ checkpoint while the first is running throws `WorkflowResumeConflict` instead
 of running the tool again. In one process this is an in-memory guard per
 checkpoint store; across processes sharing a checkpoint directory, an approval
 resume first claims the pause with a compare-and-swap checkpoint save (the
-file store holds an advisory `flock` on the directory for the swap). A claim
-left behind by a crashed process expires after 10 minutes, after which the
-pause can be resumed again. A resume that fails before committing (for
+file store holds an advisory `flock` on the directory for the swap). A running
+resume renews its claim while the approved step executes, however long it
+takes; a claim left behind by a crashed process expires after 10 minutes,
+after which the pause can be resumed again. `execute` on a run that a resume
+currently holds also throws `WorkflowResumeConflict` rather than restarting it
+from step 0. A resume that fails before committing (for
 example an inference error) releases its claim, so it can be retried
 immediately. A decision delivered after another one finished sees its outcome
 (a completed run reports no pending approval).
