@@ -24,6 +24,11 @@ public enum ReasoningEffort: String, Sendable, Hashable, Codable, CaseIterable {
     /// disable reasoning when the base/provider config has it enabled;
     /// `nil` means "preserve base config", which can't override an
     /// inherited reasoning setting.
+    ///
+    /// The OpenAI-compatible chat-completions provider has no portable
+    /// "off" value, so it omits `reasoning_effort` for `.none`: the request
+    /// uses the provider's default, which on reasoning-by-default models
+    /// still reasons.
     case none
 }
 

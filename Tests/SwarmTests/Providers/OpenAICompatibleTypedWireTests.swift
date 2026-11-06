@@ -231,6 +231,44 @@ struct OpenAICompatibleTypedWireBoundaryTests {
         #expect(!json.contains("reasoning_effort"))
     }
 
+    @Test(
+        "Request body omits reasoning effort when reasoning is disabled",
+        arguments: [ReasoningEffort.high, .low, .none]
+    )
+    func requestBodyOmitsEffortWhenDisabled(_ effort: ReasoningEffort) throws {
+        let body: OpenAICompatibleWire.Request = try OpenAICompatibleCodec.requestBody(
+            configuration: .init(baseURL: endpoint, model: "gpt-test"),
+            messages: [.user("hi")],
+            tools: [],
+            options: .default.reasoning(ReasoningConfig(effort: effort, enabled: false)),
+            stream: false,
+            structuredOutput: nil
+        )
+        #expect(body.reasoningEffort == nil)
+        let data = try OpenAICompatibleWire.encode(body)
+        let json = String(decoding: data, as: UTF8.self)
+        #expect(
+            json == #"{"messages":[{"content":"hi","role":"user"}],"model":"gpt-test","temperature":1}"#
+        )
+    }
+
+    @Test("Request body sends reasoning effort when reasoning is explicitly enabled")
+    func requestBodySendsEffortWhenEnabled() throws {
+        let body: OpenAICompatibleWire.Request = try OpenAICompatibleCodec.requestBody(
+            configuration: .init(baseURL: endpoint, model: "gpt-test"),
+            messages: [.user("hi")],
+            tools: [],
+            options: .default.reasoning(ReasoningConfig(effort: .high, enabled: true)),
+            stream: false,
+            structuredOutput: nil
+        )
+        let data = try OpenAICompatibleWire.encode(body)
+        let json = String(decoding: data, as: UTF8.self)
+        #expect(
+            json == #"{"messages":[{"content":"hi","role":"user"}],"model":"gpt-test","reasoning_effort":"high","temperature":1}"#
+        )
+    }
+
     @Test("Encoded message carries signatures only when present")
     func encodedMessageWire() {
         let message = InferenceMessage(
