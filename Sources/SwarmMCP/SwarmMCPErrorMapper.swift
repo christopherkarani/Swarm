@@ -49,14 +49,7 @@ enum SwarmMCPErrorMapper {
             return mapAgentError(agentError, toolName: toolName)
         }
 
-        return .failure(
-            callToolErrorResult(
-                code: "execution_failed",
-                action: "inspect_error_and_retry",
-                toolName: toolName,
-                message: error.localizedDescription
-            )
-        )
+        return opaqueFailure(error, toolName: toolName)
     }
 
     static func mapToolResult(_ value: SendableValue) -> CallTool.Result {
@@ -164,14 +157,7 @@ enum SwarmMCPErrorMapper {
                 )
             )
         default:
-            return .failure(
-                callToolErrorResult(
-                    code: "execution_failed",
-                    action: "inspect_error_and_retry",
-                    toolName: toolName,
-                    message: error.localizedDescription
-                )
-            )
+            return opaqueFailure(error, toolName: toolName)
         }
     }
 
@@ -206,24 +192,47 @@ enum SwarmMCPErrorMapper {
                 )
             )
         case let .toolFailure(_, message, cause):
+            // A tool-authored message is meant for the caller; a bare cause is
+            // internal detail and stays server-side.
+            guard let message else {
+                return opaqueFailure(cause ?? error, toolName: toolName)
+            }
             return .failure(
                 callToolErrorResult(
                     code: "execution_failed",
                     action: "inspect_error_and_retry",
                     toolName: toolName,
-                    message: message ?? cause.map(String.init(describing:)) ?? "Tool execution failed."
+                    message: message
                 )
             )
         default:
-            return .failure(
-                callToolErrorResult(
-                    code: "execution_failed",
-                    action: "inspect_error_and_retry",
-                    toolName: toolName,
-                    message: error.localizedDescription
-                )
-            )
+            return opaqueFailure(error, toolName: toolName)
         }
+    }
+
+    /// Maps an error whose description is internal detail (paths, hosts,
+    /// credentials). The remote client gets a generic message plus a
+    /// correlation ID; the full error is logged server-side under that ID.
+    private static func opaqueFailure(_ error: Error, toolName: String) -> SwarmMCPCallToolOutcome {
+        let correlationID = UUID().uuidString
+        Log.orchestration.error(
+            "MCP tools/call failed",
+            metadata: [
+                "tool": "\(toolName)",
+                "correlation_id": "\(correlationID)",
+                "error_type": "\(String(reflecting: type(of: error)))",
+                "error": "\(error.localizedDescription)",
+            ]
+        )
+        return .failure(
+            callToolErrorResult(
+                code: "execution_failed",
+                action: "inspect_error_and_retry",
+                toolName: toolName,
+                message: "Tool execution failed. Reference: \(correlationID).",
+                details: ["correlationId": .string(correlationID)]
+            )
+        )
     }
 
     private static func callToolErrorResult(

@@ -104,7 +104,8 @@ struct AgentTurnRunner: Sendable {
     private var turnProgress: TurnProgress
     private var loopDetector: ToolCallLoopDetector
     var turnTranscript = AgentTurnTranscript()
-    private var inferenceOptions: InferenceOptions!
+    /// Resolved by `prepare()` before the first iteration.
+    private var inferenceOptions = InferenceOptions.default
     private var systemMessage = ""
     private var enableStreaming = false
     private var useToolStreaming = false
@@ -165,14 +166,14 @@ struct AgentTurnRunner: Sendable {
     private mutating func performIteration() async throws -> IterationDecision {
         try agent.checkCancellationAndTimeout(startTime: startTime)
 
+        // Already sorted by `buildToolSchemasWithHandoffs()`.
         let unplannedSchemas = await buildToolSchemasWithHandoffs()
-        var plannedSchemas = MembraneInternalTools.sortedSchemas(unplannedSchemas)
-        let historyPrompt = buildPrompt(from: turnTranscript.conversationMessages)
+        var plannedSchemas = unplannedSchemas
 
         if let membraneAdapter = request.dependencies.membraneAdapter {
             do {
                 let plan = try await membraneAdapter.plan(
-                    prompt: historyPrompt,
+                    prompt: buildPrompt(from: turnTranscript.conversationMessages),
                     toolSchemas: unplannedSchemas,
                     profile: agent.configuration.effectiveContextProfile
                 )
@@ -181,12 +182,12 @@ struct AgentTurnRunner: Sendable {
             } catch {
                 _ = request.resultBuilder.setMetadata("membrane.fallback.used", .bool(true))
                 _ = request.resultBuilder.setMetadata("membrane.fallback.error", .string(agent.fallbackDiagnosticMessage(for: error)))
-                plannedSchemas = MembraneInternalTools.sortedSchemas(unplannedSchemas)
+                plannedSchemas = unplannedSchemas
             }
         }
 
         let toolSchemas: [ToolSchema] = {
-            var schemas = MembraneInternalTools.sortedSchemas(plannedSchemas)
+            var schemas = plannedSchemas
             // For strict4k, strip tool descriptions to save ~120 tokens.
             if agent.configuration.effectiveContextProfile.preset == .strict4k {
                 schemas = schemas.map { ToolSchema(name: $0.name, description: $0.name, parameters: $0.parameters) }
@@ -746,19 +747,22 @@ struct AgentTurnRunner: Sendable {
         let resultBuilder = request.resultBuilder
         let observer = request.observer
         let tracing = request.tracing
+        let executionContext = request.executionContext
         let startTime = startTime
         let engine = ToolExecutionEngine()
         let outcomes = try await agent.executeWithinRemainingTimeout(startTime: startTime) {
+            // Same context the provider-owned loop passes (`makeToolCallExecutor`).
             try await engine.executeBatch(
                 calls,
                 registry: toolRegistry,
                 agent: agent,
-                context: nil,
+                context: executionContext,
                 resultBuilder: resultBuilder,
                 observer: observer,
                 tracing: tracing,
                 stopOnToolError: false,
-                allowConcurrent: agent.configuration.parallelToolCalls
+                allowConcurrent: agent.configuration.parallelToolCalls,
+                maxConcurrentCalls: agent.configuration.maxConcurrentToolCalls
             )
         }
 

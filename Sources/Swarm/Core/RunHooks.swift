@@ -571,6 +571,13 @@ package struct CompositeObserver: AgentObserver {
 /// - `.warning`: Guardrail triggered
 /// - `.error`: Error events
 ///
+/// ## Content redaction
+///
+/// User input, model thinking, and output tokens are user data. By default
+/// they are logged only as a character count, and output tokens only at
+/// `.trace`. Pass `logsContent: true` to log input and thinking (truncated to
+/// 100 characters) and each output token at `.debug`, for local debugging.
+///
 /// Example:
 /// ```swift
 /// let agent = Agent(
@@ -582,10 +589,18 @@ package struct CompositeObserver: AgentObserver {
 public struct LoggingObserver: AgentObserver {
     // MARK: Public
 
+    /// Whether user and model content is written to the log.
+    public let logsContent: Bool
+
     // MARK: - Initialization
 
     /// Creates a new logging hook.
-    public init() {}
+    ///
+    /// - Parameter logsContent: Log input, thinking, and output-token text
+    ///   instead of only their length. Default: `false`.
+    public init(logsContent: Bool = false) {
+        self.logsContent = logsContent
+    }
 
     // MARK: - AgentObserver Implementation
 
@@ -595,8 +610,7 @@ public struct LoggingObserver: AgentObserver {
         } else {
             ""
         }
-        let truncatedInput = input.count > 100 ? String(input.prefix(100)) + "..." : input
-        Log.agents.info("LegacyAgent started\(contextId) - input: \"\(truncatedInput)\"")
+        Log.agents.info("LegacyAgent started\(contextId) - input: \(contentDescription(input))")
     }
 
     public func onAgentEnd(context: AgentContext?, agent _: any AgentRuntime, result: AgentResult) async {
@@ -714,8 +728,7 @@ public struct LoggingObserver: AgentObserver {
         } else {
             ""
         }
-        let truncatedThought = thought.count > 100 ? String(thought.prefix(100)) + "..." : thought
-        Log.agents.info("LegacyAgent thinking\(contextId): \"\(truncatedThought)\"")
+        Log.agents.info("LegacyAgent thinking\(contextId): \(contentDescription(thought))")
     }
 
     public func onOutputToken(context: AgentContext?, agent _: any AgentRuntime, token: String) async {
@@ -724,7 +737,11 @@ public struct LoggingObserver: AgentObserver {
         } else {
             ""
         }
-        Log.agents.debug("LegacyAgent output token\(contextId): \"\(token)\"")
+        if logsContent {
+            Log.agents.debug("LegacyAgent output token\(contextId): \"\(token)\"")
+        } else {
+            Log.agents.trace("LegacyAgent output token\(contextId): \(token.count) chars")
+        }
     }
 
     public func onIterationStart(context: AgentContext?, agent _: any AgentRuntime, number: Int) async {
@@ -750,6 +767,16 @@ public struct LoggingObserver: AgentObserver {
     // MARK: Private
 
     // MARK: - Private Helpers
+
+    /// Log text for user or model content: quoted and truncated to 100
+    /// characters when ``logsContent`` is on, otherwise only its length.
+    func contentDescription(_ text: String) -> String {
+        guard logsContent else {
+            return "<redacted, \(text.count) chars>"
+        }
+        let truncated = text.count > 100 ? String(text.prefix(100)) + "..." : text
+        return "\"\(truncated)\""
+    }
 
     /// Returns a display name for an agent, falling back to type name if configuration name is empty.
     private func agentDisplayName(_ agent: any AgentRuntime) -> String {

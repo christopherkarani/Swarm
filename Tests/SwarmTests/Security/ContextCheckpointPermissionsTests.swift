@@ -8,7 +8,7 @@ import Testing
 struct ContextCheckpointPermissionsTests {
     @Test("Checkpoints are owner-only and stay loadable")
     func checkpointsAreOwnerOnly() async throws {
-        let context = try ContextCore.AgentContext()
+        let context = try ContextWindowEngine()
         try await context.beginSession(systemPrompt: "test-prompt")
 
         let directory = FileManager.default.temporaryDirectory
@@ -20,7 +20,7 @@ struct ContextCheckpointPermissionsTests {
         #expect(try permissions(of: url) == 0o600)
         #expect(try permissions(of: directory) == 0o700)
 
-        let restored = try await ContextCore.AgentContext.load(from: url)
+        let restored = try await ContextWindowEngine.load(from: url)
         #expect(restored.stats.totalSessions == 1)
     }
 

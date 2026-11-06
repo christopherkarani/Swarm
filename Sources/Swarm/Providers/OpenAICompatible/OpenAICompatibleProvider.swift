@@ -47,9 +47,8 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     /// Provider configuration (endpoint, model, auth, structured-output mode).
     public let configuration: OpenAICompatibleProviderConfiguration
 
-    /// `URLSession` is thread-safe. swift-corelibs-foundation does not mark it
-    /// `Sendable`, so the session is stored in this box.
-    private let sessionBox: SessionBox
+    /// Session used for POST requests.
+    private let session: URLSession
 
     /// Backend resolving `configuration.apiKeyReference`, if any.
     private let secretStore: (any SecretStore)?
@@ -66,7 +65,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     ) {
         self.configuration = configuration
         self.secretStore = nil
-        self.sessionBox = SessionBox(session)
+        self.session = session
     }
 
     /// Creates a provider that resolves `configuration.apiKeyReference`.
@@ -88,7 +87,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     ) {
         self.configuration = configuration
         self.secretStore = secretStore
-        self.sessionBox = SessionBox(session)
+        self.session = session
     }
 
     // MARK: - Metadata
@@ -187,8 +186,8 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         messages: [InferenceMessage],
         options: InferenceOptions
     ) -> AsyncThrowingStream<String, Error> {
-        // Unbounded: `streamCompletions` already holds the full SSE body and
-        // yields every event before the consumer may start iterating. A
+        // Unbounded: `streamCompletions` can yield events faster than the
+        // consumer iterates (on Linux it replays a fully buffered body). A
         // newest-100 buffer would drop the oldest tokens on long replies.
         StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             do {
@@ -305,7 +304,7 @@ public struct OpenAICompatibleProvider: InferenceProvider,
         )
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await sessionBox.session.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch {
             throw OpenAICompatibleErrorMapper.mapTransport(error)
         }
@@ -346,49 +345,106 @@ public struct OpenAICompatibleProvider: InferenceProvider,
             capabilities: capabilities
         )
 
-        // `data(for:)` is used instead of `bytes(for:)` so URLProtocol stubs
-        // (and swift-corelibs-foundation) deliver the SSE body reliably.
-        // Events are still yielded in wire order after the body arrives.
+        var state = SSEStreamState()
+        #if canImport(FoundationNetworking)
+        // swift-corelibs-foundation has no reliable `URLSession.bytes(for:)`,
+        // so Linux downloads the whole SSE body and then replays it line by
+        // line. Events keep wire order but arrive only after the body ends.
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await sessionBox.session.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch {
             throw OpenAICompatibleErrorMapper.mapTransport(error)
         }
+        try requireSuccess(response, body: data, model: configuration.model)
+        for byte in data {
+            if try consume(byte, state: &state, continuation: continuation) {
+                return
+            }
+        }
+        #else
+        // `bytes(for:)` yields SSE lines as they arrive, so tokens reach the
+        // caller while the model is still generating.
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (bytes, response) = try await session.bytes(for: request)
+        } catch {
+            throw OpenAICompatibleErrorMapper.mapTransport(error)
+        }
+        if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+            let body = try await Self.collectErrorBody(from: bytes)
+            try requireSuccess(response, body: body, model: configuration.model)
+        }
+        _ = try httpResponse(response)
+        do {
+            for try await byte in bytes {
+                if try consume(byte, state: &state, continuation: continuation) {
+                    return
+                }
+            }
+        } catch {
+            throw OpenAICompatibleErrorMapper.mapTransport(error)
+        }
+        #endif
 
+        if let line = try state.lineBuffer.flush(),
+           try emit(state.parser.consume(line: line), accumulator: &state.accumulator, continuation: continuation)
+        {
+            return
+        }
+        _ = try emit(state.parser.finish(), accumulator: &state.accumulator, continuation: continuation)
+        for update in state.accumulator.finish() {
+            continuation.yield(update)
+        }
+    }
+
+    /// Feeds one body byte; returns `true` once `[DONE]` has been emitted.
+    private func consume(
+        _ byte: UInt8,
+        state: inout SSEStreamState,
+        continuation: AsyncThrowingStream<InferenceStreamUpdate, Error>.Continuation
+    ) throws -> Bool {
+        guard let line = try state.lineBuffer.append(byte) else {
+            return false
+        }
+        try Task.checkCancellation()
+        return try emit(state.parser.consume(line: line), accumulator: &state.accumulator, continuation: continuation)
+    }
+
+    private func requireSuccess(_ response: URLResponse, body: Data, model: String) throws {
         let http = try httpResponse(response)
         if http.statusCode >= 400 {
             throw OpenAICompatibleErrorMapper.map(
                 statusCode: http.statusCode,
-                body: data,
+                body: body,
                 headers: http.allHeaderFields,
-                model: configuration.model
+                model: model
             )
         }
-
-        var parser = OpenAICompatibleSSEParser()
-        var accumulator = OpenAICompatibleStreamAccumulator()
-        var finished = false
-        let text = String(data: data, encoding: .utf8) ?? ""
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-
-        for line in lines {
-            try Task.checkCancellation()
-            let events = parser.consume(line: line)
-            if try emit(events, accumulator: &accumulator, continuation: continuation) {
-                finished = true
-                break
-            }
-        }
-
-        if !finished {
-            _ = try emit(parser.finish(), accumulator: &accumulator, continuation: continuation)
-            for update in accumulator.finish() {
-                continuation.yield(update)
-            }
-        }
     }
+
+    #if !canImport(FoundationNetworking)
+    /// Reads an error body for status mapping, capped so a misbehaving server
+    /// cannot stream an unbounded error page into memory.
+    private static func collectErrorBody(from bytes: URLSession.AsyncBytes) async throws -> Data {
+        var body = Data()
+        do {
+            for try await byte in bytes {
+                body.append(byte)
+                if body.count >= maxErrorBodyBytes {
+                    break
+                }
+            }
+        } catch {
+            throw OpenAICompatibleErrorMapper.mapTransport(error)
+        }
+        return body
+    }
+
+    private static let maxErrorBodyBytes = 64 * 1024
+    #endif
 
     private func emit(
         _ events: [OpenAICompatibleSSEEvent],
@@ -447,15 +503,49 @@ public struct OpenAICompatibleProvider: InferenceProvider,
     }
 }
 
-// MARK: - Session box
+// MARK: - SSE stream state
 
 extension OpenAICompatibleProvider {
-    fileprivate final class SessionBox: @unchecked Sendable {
-        let session: URLSession
+    /// Parser and accumulator state for one SSE response.
+    fileprivate struct SSEStreamState {
+        var lineBuffer = OpenAICompatibleSSELineBuffer()
+        var parser = OpenAICompatibleSSEParser()
+        var accumulator = OpenAICompatibleStreamAccumulator()
+    }
+}
 
-        init(_ session: URLSession) {
-            self.session = session
+/// Splits an SSE byte stream into strictly decoded UTF-8 lines.
+///
+/// Lines are split on LF bytes before decoding. LF never occurs inside a
+/// multi-byte UTF-8 sequence, so a character split across network chunks is
+/// still decoded whole.
+struct OpenAICompatibleSSELineBuffer: Sendable {
+    private var pending: [UInt8] = []
+
+    /// Appends one byte. Returns the completed line, without its LF, when
+    /// `byte` ends a line.
+    ///
+    /// - Throws: ``AgentError/generationFailed(reason:)`` when the line is not
+    ///   valid UTF-8.
+    mutating func append(_ byte: UInt8) throws -> String? {
+        guard byte == UInt8(ascii: "\n") else {
+            pending.append(byte)
+            return nil
         }
+        return try takeLine()
+    }
+
+    /// Returns a trailing line that was not terminated by LF, if any.
+    mutating func flush() throws -> String? {
+        pending.isEmpty ? nil : try takeLine()
+    }
+
+    private mutating func takeLine() throws -> String {
+        defer { pending.removeAll(keepingCapacity: true) }
+        guard let line = String(validating: pending, as: UTF8.self) else {
+            throw AgentError.generationFailed(reason: "OpenAI-compatible stream is not valid UTF-8")
+        }
+        return line
     }
 }
 

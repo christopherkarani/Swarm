@@ -2,6 +2,11 @@
 // Swarm Framework
 //
 // Functional operations on AsyncThrowingStream<AgentEvent, Error> for reactive stream processing.
+//
+// Every operator buffers `.unbounded`, like `Agent.stream`. A bounded
+// `.bufferingNewest` buffer drops the oldest events (tool and terminal
+// lifecycle events included) whenever the consumer is slower than the
+// upstream; an operator only relays what its upstream already produced.
 
 import Foundation
 
@@ -31,7 +36,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// }
     /// ```
     var toolCalls: AsyncThrowingStream<ToolCall, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             for try await event in self {
                 if case let .tool(.started(call: call)) = event {
                     continuation.yield(call)
@@ -50,7 +55,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// }
     /// ```
     var toolResults: AsyncThrowingStream<ToolResult, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             for try await event in self {
                 if case let .tool(.completed(call: _, result: result)) = event {
                     continuation.yield(result)
@@ -104,12 +109,12 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     ) -> AsyncThrowingStream<AgentEvent, Error> {
         guard maxAttempts >= 1 else {
             let invalid = maxAttempts
-            return StreamHelper.makeTrackedStream { continuation in
+            return StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
                 continuation.finish(throwing: ResilienceError.invalidMaxAttempts(invalid))
             }
         }
 
-        let (stream, continuation): (AsyncThrowingStream<AgentEvent, Error>, AsyncThrowingStream<AgentEvent, Error>.Continuation) = StreamHelper.makeStream()
+        let (stream, continuation): (AsyncThrowingStream<AgentEvent, Error>, AsyncThrowingStream<AgentEvent, Error>.Continuation) = StreamHelper.makeStream(bufferingPolicy: .unbounded)
 
         let task = Task { @Sendable in
             var attempts = 0
@@ -222,7 +227,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     func filter(
         _ predicate: @escaping @Sendable (AgentEvent) -> Bool
     ) -> AsyncThrowingStream<AgentEvent, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             for try await event in self where predicate(event) {
                 continuation.yield(event)
             }
@@ -249,7 +254,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     func map<T: Sendable>(
         _ transform: @escaping @Sendable (AgentEvent) -> T
     ) -> AsyncThrowingStream<T, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             for try await event in self {
                 continuation.yield(transform(event))
             }
@@ -268,7 +273,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// }
     /// ```
     func mapToThoughts() -> AsyncThrowingStream<String, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             for try await event in self {
                 if case let .output(.thinking(thought: thought)) = event {
                     continuation.yield(thought)
@@ -403,7 +408,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// }
     /// ```
     func take(_ count: Int) -> AsyncThrowingStream<AgentEvent, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             var taken = 0
             for try await event in self {
                 continuation.yield(event)
@@ -426,7 +431,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// }
     /// ```
     func drop(_ count: Int) -> AsyncThrowingStream<AgentEvent, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             var dropped = 0
             for try await event in self {
                 if dropped < count {
@@ -453,7 +458,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// }
     /// ```
     func timeout(after duration: Duration) -> AsyncThrowingStream<AgentEvent, Error> {
-        let (stream, continuation): (AsyncThrowingStream<AgentEvent, Error>, AsyncThrowingStream<AgentEvent, Error>.Continuation) = StreamHelper.makeStream()
+        let (stream, continuation): (AsyncThrowingStream<AgentEvent, Error>, AsyncThrowingStream<AgentEvent, Error>.Continuation) = StreamHelper.makeStream(bufferingPolicy: .unbounded)
 
         // Box so the timeout task can cancel the processing task after it's created.
         // Without this, when the timeout fires the upstream keeps consuming tokens / making
@@ -511,7 +516,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     func onEach(
         _ action: @escaping @Sendable (AgentEvent) -> Void
     ) -> AsyncThrowingStream<AgentEvent, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             for try await event in self {
                 action(event)
                 continuation.yield(event)
@@ -578,7 +583,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     func catchErrors(
         _ handler: @escaping @Sendable (Error) -> AgentEvent
     ) -> AsyncThrowingStream<AgentEvent, Error> {
-        let (stream, continuation): (AsyncThrowingStream<AgentEvent, Error>, AsyncThrowingStream<AgentEvent, Error>.Continuation) = StreamHelper.makeStream()
+        let (stream, continuation): (AsyncThrowingStream<AgentEvent, Error>, AsyncThrowingStream<AgentEvent, Error>.Continuation) = StreamHelper.makeStream(bufferingPolicy: .unbounded)
 
         let task = Task { @Sendable in
             do {
@@ -603,6 +608,12 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
 
     /// Debounces rapid events by the specified duration.
     ///
+    /// An event is emitted once `duration` passes with no newer event; a newer
+    /// event replaces the pending one. The pending event is also flushed when
+    /// the upstream finishes or fails. Terminal lifecycle events (`completed`,
+    /// `failed`, `cancelled`, `guardrailFailed`) are never debounced: the
+    /// pending event is flushed, then the terminal event is emitted at once.
+    ///
     /// - Parameter duration: The debounce window.
     /// - Returns: A debounced stream.
     ///
@@ -613,37 +624,21 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// }
     /// ```
     func debounce(for duration: Duration) -> AsyncThrowingStream<AgentEvent, Error> {
-        StreamHelper.makeTrackedStream { continuation in
-            var lastEvent: AgentEvent?
-            var lastTime: ContinuousClock.Instant?
-            let durationSeconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
-
-            for try await event in self {
-                let now = ContinuousClock.now
-
-                if let last = lastTime {
-                    let elapsed = now - last
-                    let elapsedSeconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-
-                    if elapsedSeconds >= durationSeconds {
-                        if let pending = lastEvent {
-                            continuation.yield(pending)
-                        }
-                        lastEvent = event
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
+            let relay = DebounceRelay(continuation: continuation, duration: duration)
+            do {
+                for try await event in self {
+                    if event.isTerminalLifecycleEvent {
+                        await relay.emitImmediately(event)
                     } else {
-                        lastEvent = event
+                        await relay.submit(event)
                     }
-                } else {
-                    lastEvent = event
                 }
-
-                lastTime = now
+            } catch {
+                await relay.flush()
+                throw error
             }
-
-            // Yield final event
-            if let final = lastEvent {
-                continuation.yield(final)
-            }
+            await relay.flush()
             continuation.finish()
         }
     }
@@ -653,7 +648,9 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// Limits the emission rate to one event per time interval.
     ///
     /// Events that arrive faster than the specified interval are dropped.
-    /// The first event in each interval is always emitted.
+    /// The first event in each interval is always emitted. Terminal lifecycle
+    /// events (`completed`, `failed`, `cancelled`, `guardrailFailed`) are
+    /// always emitted, whenever they arrive.
     ///
     /// - Parameter interval: The minimum time between emitted events.
     /// - Returns: A throttled stream.
@@ -666,14 +663,16 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// }
     /// ```
     func throttle(for interval: Duration) -> AsyncThrowingStream<AgentEvent, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             var lastEmitTime: ContinuousClock.Instant?
             let intervalSeconds = Double(interval.components.seconds) + Double(interval.components.attoseconds) / 1e18
 
             for try await event in self {
                 let now = ContinuousClock.now
 
-                if let lastTime = lastEmitTime {
+                if event.isTerminalLifecycleEvent {
+                    continuation.yield(event)
+                } else if let lastTime = lastEmitTime {
                     let elapsed = now - lastTime
                     let elapsedSeconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
 
@@ -711,7 +710,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// }
     /// ```
     func buffer(count: Int) -> AsyncThrowingStream<[AgentEvent], Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             var buffer: [AgentEvent] = []
             buffer.reserveCapacity(count)
 
@@ -754,7 +753,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     func compactMap<T: Sendable>(
         _ transform: @escaping @Sendable (AgentEvent) async throws -> T?
     ) -> AsyncThrowingStream<T, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             for try await event in self {
                 if let transformed = try await transform(event) {
                     continuation.yield(transformed)
@@ -780,7 +779,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
     /// }
     /// ```
     func distinctUntilChanged() -> AsyncThrowingStream<AgentEvent, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             var previousEvent: AgentEvent?
 
             for try await event in self {
@@ -834,7 +833,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
         _ initial: T,
         _ combine: @escaping @Sendable (T, AgentEvent) async throws -> T
     ) -> AsyncThrowingStream<T, Error> {
-        StreamHelper.makeTrackedStream { continuation in
+        StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             var accumulator = initial
 
             for try await event in self {
@@ -867,5 +866,71 @@ private final class TimeoutTaskRef: @unchecked Sendable {
             defer { lock.unlock() }
             _task = newValue
         }
+    }
+}
+
+// MARK: - Terminal Events
+
+extension AgentEvent {
+    /// Whether this event ends a run: `completed`, `failed`, `cancelled`, or `guardrailFailed`.
+    var isTerminalLifecycleEvent: Bool {
+        switch self {
+        case .lifecycle(.completed), .lifecycle(.failed), .lifecycle(.cancelled), .lifecycle(.guardrailFailed):
+            true
+        default:
+            false
+        }
+    }
+}
+
+// MARK: - DebounceRelay
+
+/// Serializes debounce emissions so timer flushes and upstream events never interleave.
+private actor DebounceRelay {
+    private let continuation: AsyncThrowingStream<AgentEvent, Error>.Continuation
+    private let duration: Duration
+    private var pending: AgentEvent?
+    private var generation = 0
+    private var timer: Task<Void, Never>?
+
+    init(continuation: AsyncThrowingStream<AgentEvent, Error>.Continuation, duration: Duration) {
+        self.continuation = continuation
+        self.duration = duration
+    }
+
+    /// Replaces the pending event and restarts the quiet-period timer.
+    func submit(_ event: AgentEvent) {
+        pending = event
+        generation += 1
+        timer?.cancel()
+        let scheduled = generation
+        let duration = duration
+        timer = Task { [weak self] in
+            guard (try? await Task.sleep(for: duration)) != nil else { return }
+            await self?.fire(generation: scheduled)
+        }
+    }
+
+    /// Flushes the pending event, then emits `event` without delay.
+    func emitImmediately(_ event: AgentEvent) {
+        flush()
+        continuation.yield(event)
+    }
+
+    /// Emits the pending event, if any, and stops the timer.
+    func flush() {
+        timer?.cancel()
+        timer = nil
+        if let pending {
+            self.pending = nil
+            continuation.yield(pending)
+        }
+    }
+
+    private func fire(generation scheduled: Int) {
+        guard scheduled == generation, let pending else { return }
+        self.pending = nil
+        timer = nil
+        continuation.yield(pending)
     }
 }

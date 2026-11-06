@@ -17,6 +17,14 @@ import Foundation
 /// - **Open**: Failures exceeded threshold, requests blocked until timeout
 /// - **Half-Open**: Testing recovery, limited requests allowed
 ///
+/// Every state change (and every ``reset()``/``trip()``) starts a new
+/// *epoch*. An operation records the epoch it was admitted in; when it
+/// finishes in a later epoch it still counts toward ``statistics()`` totals
+/// but no longer adjusts consecutive counters, half-open slots, or state.
+/// A slow call admitted while closed therefore cannot reopen a half-open
+/// breaker, and a probe outliving a reset cannot free a slot it no longer
+/// holds.
+///
 /// Example:
 /// ```swift
 /// let breaker = CircuitBreaker(
@@ -133,9 +141,10 @@ public actor CircuitBreaker {
         try await checkAndTransitionState()
 
         // Check current state and decide whether to allow execution
+        let admission: Admission
         switch state {
         case .closed:
-            return try await executeOperation(operation)
+            admission = Admission(epoch: epoch, holdsHalfOpenSlot: false)
 
         case .open:
             throw ResilienceError.circuitBreakerOpen(serviceName: name)
@@ -147,10 +156,11 @@ public actor CircuitBreaker {
             }
 
             halfOpenRequestsInFlight += 1
-            defer { halfOpenRequestsInFlight -= 1 }
-
-            return try await executeOperation(operation)
+            admission = Admission(epoch: epoch, holdsHalfOpenSlot: true)
         }
+
+        defer { release(admission) }
+        return try await executeOperation(operation, admission: admission)
     }
 
     /// Returns the current state of the circuit breaker.
@@ -159,11 +169,14 @@ public actor CircuitBreaker {
     }
 
     /// Manually resets the circuit breaker to closed state.
+    ///
+    /// Operations still in flight finish in a stale epoch: they cannot free
+    /// slots or drive transitions in the reset breaker.
     public func reset() async {
         state = .closed
         consecutiveFailures = 0
         consecutiveSuccesses = 0
-        halfOpenRequestsInFlight = 0
+        beginEpoch()
     }
 
     /// Manually opens the circuit breaker.
@@ -173,6 +186,7 @@ public actor CircuitBreaker {
             resetTimeout: resetTimeout,
             now: currentDate()
         )
+        beginEpoch()
     }
 
     /// Returns statistics about this circuit breaker.
@@ -210,8 +224,13 @@ public actor CircuitBreaker {
     /// Total success count (lifetime).
     private var totalSuccesses = 0
 
-    /// Number of requests currently in flight in half-open state.
+    /// Number of requests admitted in half-open state during the current
+    /// epoch that are still in flight.
     private var halfOpenRequestsInFlight = 0
+
+    /// Increments on every state change, reset, and trip. Operations only
+    /// adjust counters or drive transitions while their admission epoch is current.
+    private var epoch: UInt64 = 0
 
     /// Timestamp of last failure.
     private var lastFailureTime: Date?
@@ -242,44 +261,74 @@ public actor CircuitBreaker {
 
     // MARK: - Private Helpers
 
+    /// Epoch and half-open slot captured when an operation was admitted.
+    private struct Admission {
+        let epoch: UInt64
+        let holdsHalfOpenSlot: Bool
+    }
+
+    /// Starts a new epoch: in-flight operations become stale and the new
+    /// epoch begins with no half-open requests in flight.
+    private func beginEpoch() {
+        epoch &+= 1
+        halfOpenRequestsInFlight = 0
+    }
+
+    /// Applies an outcome transition, starting a new epoch when the state changes.
+    private func apply(_ snapshot: CircuitBreakerTransitions.Snapshot) {
+        let changedState = snapshot.state != state
+        fsmSnapshot = snapshot
+        if changedState {
+            beginEpoch()
+        }
+    }
+
+    /// Frees the admission's half-open slot if its epoch is still current.
+    private func release(_ admission: Admission) {
+        guard admission.holdsHalfOpenSlot, admission.epoch == epoch else { return }
+        halfOpenRequestsInFlight -= 1
+    }
+
     /// Executes the operation and handles state transitions based on success/failure.
     private func executeOperation<T: Sendable>(
-        _ operation: @Sendable () async throws -> T
+        _ operation: @Sendable () async throws -> T,
+        admission: Admission
     ) async throws -> T {
         do {
             let result = try await operation()
-            await recordSuccess()
+            recordSuccess(admission)
             return result
         } catch {
-            await recordFailure()
+            recordFailure(admission)
             throw error
         }
     }
 
-    /// Records a successful operation and handles state transitions.
-    private func recordSuccess() async {
+    /// Records a successful operation; only current-epoch outcomes drive transitions.
+    private func recordSuccess(_ admission: Admission) {
         totalSuccesses += 1
-        fsmSnapshot = CircuitBreakerTransitions.success(fsmSnapshot, successThreshold: successThreshold)
+        guard admission.epoch == epoch else { return }
+        apply(CircuitBreakerTransitions.success(fsmSnapshot, successThreshold: successThreshold))
     }
 
-    /// Records a failed operation and handles state transitions.
-    private func recordFailure() async {
+    /// Records a failed operation; only current-epoch outcomes drive transitions.
+    private func recordFailure(_ admission: Admission) {
         totalFailures += 1
         let now = currentDate()
         lastFailureTime = now
-        fsmSnapshot = CircuitBreakerTransitions.failure(
+        guard admission.epoch == epoch else { return }
+        apply(CircuitBreakerTransitions.failure(
             fsmSnapshot,
             failureThreshold: failureThreshold,
             resetTimeout: resetTimeout,
             now: now
-        )
+        ))
     }
 
     /// Checks if the circuit should transition from open to half-open based on timeout.
     private func checkAndTransitionState() async throws {
         if let transitioned = CircuitBreakerTransitions.timeoutCheck(fsmSnapshot, now: currentDate()) {
-            fsmSnapshot = transitioned
-            halfOpenRequestsInFlight = 0
+            apply(transitioned)
         }
     }
 }

@@ -181,6 +181,56 @@ struct SwarmMCPServerServiceTests {
         #expect(metadata["tool"] == .string("explode"))
     }
 
+    @Test("Unexpected errors reach remote clients only as a generic message with a correlation ID")
+    func unexpectedErrorDetailsStayServerSide() async throws {
+        struct InternalFailure: LocalizedError {
+            var errorDescription: String? {
+                "sqlite open failed at /Users/alice/private/app.db (token=abc123)"
+            }
+        }
+
+        let catalog = SwarmMCPToolCatalogStub(
+            schemas: [ToolSchema(name: "lookup", description: "lookup", parameters: [])]
+        )
+        let executor = SwarmMCPToolExecutorStub { _, _ in
+            throw InternalFailure()
+        }
+        let harness = try await SwarmMCPTestHarness.make(catalog: catalog, executor: executor)
+        defer {
+            Task { await harness.shutdown() }
+        }
+
+        let result = try await harness.client.callTool(name: "lookup", arguments: nil)
+        #expect(result.isError == true)
+
+        let texts = result.content.compactMap { item -> String? in
+            switch item {
+            case let .text(text, _, _):
+                text
+            case let .resource(resource, _, _):
+                resource.text
+            default:
+                nil
+            }
+        }
+        #expect(texts.isEmpty == false)
+        for text in texts {
+            #expect(!text.contains("alice"))
+            #expect(!text.contains("abc123"))
+        }
+
+        let metadata = try metadataObject(from: result.content)
+        #expect(metadata["code"] == .string("execution_failed"))
+        guard case let .object(details)? = metadata["details"],
+              case let .string(correlationID)? = details["correlationId"]
+        else {
+            Issue.record("Expected details.correlationId")
+            return
+        }
+        #expect(UUID(uuidString: correlationID) != nil)
+        #expect(texts.first?.contains(correlationID) == true)
+    }
+
     @Test("Approval-required path is deterministic with actionable metadata")
     func approvalRequiredMapping() async throws {
         let catalog = SwarmMCPToolCatalogStub(
