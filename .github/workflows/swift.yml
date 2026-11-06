@@ -1,13 +1,14 @@
 # Swarm CI Workflow
-# Fast lane on PRs (lean build/test + trait compile checks); deep suite
-# (full trait tests, showcase matrix, provider proofs) only on main
-# pushes, tags, releases, or manual dispatch.
+# PRs run lean build/test, trait builds, and the full Integrations/MCP/
+# OpenTelemetry test lane so regressions are caught before merge. The
+# remaining deep checks (showcase matrix, CodeReviewer example, provider
+# proofs) run only on main pushes, tags, releases, or manual dispatch.
 
 name: Swift CI
 
 on:
   push:
-    branches: [ "main", "fix/ci-code-quality" ]
+    branches: [ "main" ]
     tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
@@ -26,6 +27,8 @@ jobs:
     # macos-15 is billed; this account's $0 Actions budget + failed
     # payment auth refuse to queue GitHub-hosted macOS jobs. Self-hosted
     # still runs the same steps and produces hosted job records.
+    # Self-hosted runners never run fork PR code.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, macOS]
     # Fail fast instead of burning hours when a test hangs.
     timeout-minutes: 150
@@ -66,7 +69,6 @@ jobs:
           swift build --traits Integrations
 
       - name: Run tests with Integrations trait
-        if: github.event_name != 'pull_request'
         timeout-minutes: 90
         run: swift test --no-parallel --traits Integrations,MCP,OpenTelemetry
 
@@ -125,7 +127,6 @@ jobs:
         run: swift build --build-tests --traits Integrations,MCP,OpenTelemetry
 
       - name: Run tests with Integrations trait
-        if: github.event_name != 'pull_request'
         timeout-minutes: 90
         run: swift test --no-parallel --traits Integrations,MCP,OpenTelemetry
 
@@ -136,7 +137,8 @@ jobs:
   # Opt-in live microphone proof. Not a merge gate. Does not record samples.
   voice-live:
     name: Voice live microphone (opt-in)
-    if: ${{ vars.SWARM_VOICE_LIVE_MIC == '1' }}
+    # Self-hosted runners never run fork PR code.
+    if: ${{ vars.SWARM_VOICE_LIVE_MIC == '1' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, macOS]
     steps:
       - name: Checkout repository
@@ -155,6 +157,8 @@ jobs:
   # Code Quality (macOS only - SwiftLint/SwiftFormat)
   code-quality:
     name: Code Quality
+    # Self-hosted runners never run fork PR code.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, macOS]
     timeout-minutes: 30
 
