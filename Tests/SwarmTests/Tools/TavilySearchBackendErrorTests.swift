@@ -35,16 +35,29 @@ struct TavilySearchBackendErrorTests {
     @Test("Logged Tavily error bodies are redacted and truncated")
     func sanitizedErrorBodyRedactsAndTruncates() {
         let body = Data(("api key tvly-SECRETSECRET rejected\n" + String(repeating: "x", count: 1000)).utf8)
-        let sanitized = TavilySearchBackend.sanitizedErrorBody(body, apiKey: "tvly-SECRETSECRET")
+        let sanitized = TavilySearchBackend.sanitizedErrorBody(body, apiKey: "tvly-SECRETSECRET", query: "q")
 
         #expect(!sanitized.contains("SECRETSECRET"))
         #expect(!sanitized.contains("\n"))
         #expect(sanitized.count <= TavilySearchBackend.maxLoggedErrorBodyLength + 1)
     }
 
+    @Test("Logged Tavily error bodies never echo the user's query")
+    func sanitizedErrorBodyRedactsQuery() {
+        let body = Data(#"{"detail":{"error":"No results for query 'my medical records' (try again)"}}"#.utf8)
+        let sanitized = TavilySearchBackend.sanitizedErrorBody(
+            body,
+            apiKey: "tvly-SECRETSECRET",
+            query: "my medical records"
+        )
+
+        #expect(!sanitized.contains("medical"))
+        #expect(sanitized.contains("[query]"))
+    }
+
     @Test("Undecodable bodies are summarized by size")
     func sanitizedErrorBodyHandlesBinary() {
-        let sanitized = TavilySearchBackend.sanitizedErrorBody(Data([0xFF, 0xFE, 0x00]), apiKey: "k")
+        let sanitized = TavilySearchBackend.sanitizedErrorBody(Data([0xFF, 0xFE, 0x00]), apiKey: "k", query: "q")
         #expect(sanitized == "(3-byte non-UTF-8 body)")
     }
 }

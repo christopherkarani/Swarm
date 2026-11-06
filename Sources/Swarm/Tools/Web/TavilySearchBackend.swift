@@ -66,7 +66,7 @@ internal struct TavilySearchBackend: Sendable {
         guard http.statusCode == 200 else {
             // The body can echo the query or the API key, so the model only
             // sees the status and the log only a redacted, truncated excerpt.
-            let errorBody = Self.sanitizedErrorBody(data, apiKey: apiKey)
+            let errorBody = Self.sanitizedErrorBody(data, apiKey: apiKey, query: query)
             Log.agents.error("[TavilySearchBackend] HTTP \(http.statusCode) — \(errorBody)")
             throw AgentError.toolFailure(
                 toolName: "websearch",
@@ -109,8 +109,9 @@ internal struct TavilySearchBackend: Sendable {
         return "Tavily request failed (HTTP \(statusCode): \(reason))"
     }
 
-    /// A single-line, secret-redacted, truncated excerpt of an error body for logs.
-    static func sanitizedErrorBody(_ data: Data, apiKey: String) -> String {
+    /// A single-line, truncated excerpt of an error body for logs, with the
+    /// API key replaced by `[api-key]` and the search query by `[query]`.
+    static func sanitizedErrorBody(_ data: Data, apiKey: String, query: String) -> String {
         guard !data.isEmpty else {
             return "(no body)"
         }
@@ -121,6 +122,10 @@ internal struct TavilySearchBackend: Sendable {
             text = text.replacingOccurrences(of: apiKey, with: "[api-key]")
         }
         text = text.replacingOccurrences(of: "tvly-[A-Za-z0-9_-]+", with: "[api-key]", options: .regularExpression)
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedQuery.isEmpty {
+            text = text.replacingOccurrences(of: trimmedQuery, with: "[query]")
+        }
         text = TraceRedactor().redact(text)
         text = String(text.map { $0.isNewline || ($0.asciiValue ?? 0x20) < 0x20 ? " " : $0 })
         guard text.count > maxLoggedErrorBodyLength else {
