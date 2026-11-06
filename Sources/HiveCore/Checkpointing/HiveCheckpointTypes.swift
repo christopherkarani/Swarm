@@ -305,6 +305,56 @@ public protocol HiveCheckpointStore: Sendable {
     associatedtype Schema: HiveSchema
     func save(_ checkpoint: HiveCheckpoint<Schema>) async throws
     func loadLatest(threadID: HiveThreadID) async throws -> HiveCheckpoint<Schema>?
+
+    /// Saves `checkpoint` only if the thread's latest checkpoint is still
+    /// `expectedLatestID` (optimistic concurrency, compare-and-swap).
+    ///
+    /// Pass `nil` to require that the thread has no checkpoint yet. Throws
+    /// ``HiveCheckpointConflict`` without saving when another writer got there
+    /// first.
+    ///
+    /// The default implementation loads, compares, then saves. That narrows
+    /// the race window but is **not atomic**: stores shared between processes
+    /// should override it with a store-level atomic check.
+    func save(_ checkpoint: HiveCheckpoint<Schema>, expectedLatestID: HiveCheckpointID?) async throws
+}
+
+public extension HiveCheckpointStore {
+    func save(_ checkpoint: HiveCheckpoint<Schema>, expectedLatestID: HiveCheckpointID?) async throws {
+        let latestID = try await loadLatest(threadID: checkpoint.threadID)?.id
+        guard latestID == expectedLatestID else {
+            throw HiveCheckpointConflict(
+                threadID: checkpoint.threadID,
+                expectedLatestID: expectedLatestID,
+                actualLatestID: latestID
+            )
+        }
+        try await save(checkpoint)
+    }
+}
+
+/// A compare-and-swap checkpoint save lost to a concurrent writer.
+///
+/// Thrown by ``HiveCheckpointStore/save(_:expectedLatestID:)`` when the
+/// thread's latest checkpoint is not the one the caller read.
+public struct HiveCheckpointConflict: Error, Sendable, Equatable {
+    /// Thread whose latest checkpoint moved.
+    public let threadID: HiveThreadID
+    /// Latest checkpoint the caller expected (`nil`: no checkpoint).
+    public let expectedLatestID: HiveCheckpointID?
+    /// Latest checkpoint actually found (`nil`: no checkpoint).
+    public let actualLatestID: HiveCheckpointID?
+
+    /// Creates a conflict error.
+    public init(
+        threadID: HiveThreadID,
+        expectedLatestID: HiveCheckpointID?,
+        actualLatestID: HiveCheckpointID?
+    ) {
+        self.threadID = threadID
+        self.expectedLatestID = expectedLatestID
+        self.actualLatestID = actualLatestID
+    }
 }
 
 /// Discoverable capabilities for a configured checkpoint store.
@@ -340,6 +390,7 @@ public protocol HiveCheckpointQueryableStore: HiveCheckpointStore {
 /// Type-erased checkpoint store wrapper.
 public struct AnyHiveCheckpointStore<Schema: HiveSchema>: Sendable {
     private let _save: @Sendable (HiveCheckpoint<Schema>) async throws -> Void
+    private let _saveExpecting: @Sendable (HiveCheckpoint<Schema>, HiveCheckpointID?) async throws -> Void
     private let _loadLatest: @Sendable (HiveThreadID) async throws -> HiveCheckpoint<Schema>?
     private let _listCheckpoints: (@Sendable (HiveThreadID, Int?) async throws -> [HiveCheckpointSummary])?
     private let _loadCheckpoint: (@Sendable (HiveThreadID, HiveCheckpointID) async throws -> HiveCheckpoint<Schema>?)?
@@ -347,6 +398,9 @@ public struct AnyHiveCheckpointStore<Schema: HiveSchema>: Sendable {
 
     public init<S: HiveCheckpointStore>(_ store: S) where S.Schema == Schema {
         self._save = store.save
+        self._saveExpecting = { checkpoint, expectedLatestID in
+            try await store.save(checkpoint, expectedLatestID: expectedLatestID)
+        }
         self._loadLatest = store.loadLatest
         self._listCheckpoints = nil
         self._loadCheckpoint = nil
@@ -355,6 +409,9 @@ public struct AnyHiveCheckpointStore<Schema: HiveSchema>: Sendable {
 
     public init<Q: HiveCheckpointQueryableStore>(_ store: Q) where Q.Schema == Schema {
         self._save = store.save
+        self._saveExpecting = { checkpoint, expectedLatestID in
+            try await store.save(checkpoint, expectedLatestID: expectedLatestID)
+        }
         self._loadLatest = store.loadLatest
         self._listCheckpoints = { threadID, limit in
             try await store.listCheckpoints(threadID: threadID, limit: limit)
@@ -367,6 +424,12 @@ public struct AnyHiveCheckpointStore<Schema: HiveSchema>: Sendable {
 
     public func save(_ checkpoint: HiveCheckpoint<Schema>) async throws {
         try await _save(checkpoint)
+    }
+
+    /// Compare-and-swap save; forwards to the wrapped store's
+    /// ``HiveCheckpointStore/save(_:expectedLatestID:)``.
+    public func save(_ checkpoint: HiveCheckpoint<Schema>, expectedLatestID: HiveCheckpointID?) async throws {
+        try await _saveExpecting(checkpoint, expectedLatestID)
     }
 
     public func loadLatest(threadID: HiveThreadID) async throws -> HiveCheckpoint<Schema>? {

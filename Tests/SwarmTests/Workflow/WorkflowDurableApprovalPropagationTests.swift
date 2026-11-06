@@ -85,7 +85,7 @@ struct WorkflowDurableApprovalAgentToolObservabilityTests {
         let tracer = SpyTracer()
 
         await #expect(throws: WorkflowToolApprovalRequest.self) {
-            try await WorkflowDurableApprovalGate.$allowed.withValue([]) {
+            try await WorkflowDurableApprovalGate.$ledger.withValue(WorkflowApprovalLedger(approved: [])) {
                 _ = try await ToolExecutionEngine().execute(
                     toolName: "operator",
                     arguments: ["input": .string("delete vm-1")],

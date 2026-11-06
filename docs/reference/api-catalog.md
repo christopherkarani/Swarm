@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 267 (274 including `Internal/GraphRuntime/`)
+- Source files scanned: 269 (276 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2457
 
 ## 1. Swarm (entry point)
@@ -2710,9 +2710,19 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 27 | var | public | WorkflowApprovalRequired.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
 | 30 | var | public | WorkflowApprovalRequired.interruptID | `public let interruptID: String` |
 | 33 | func | public | WorkflowApprovalRequired.init(toolName:arguments:stepCursor:checkpointID:interruptID:) | `public init(toolName: String, arguments: [String: SendableValue], stepCursor: Int, checkpointID: WorkflowCheckpointID, interruptID: String)` |
-| 67 | enum | public | WorkflowApprovalDecision | `public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable` |
-| 69 | case | public | WorkflowApprovalDecision.approve | `public case approve` |
-| 71 | case | public | WorkflowApprovalDecision.reject | `public case reject` |
+| 79 | struct | public | WorkflowResumeConflict | `public struct WorkflowResumeConflict: Error, Sendable, Equatable` |
+| 81 | var | public | WorkflowResumeConflict.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
+| 83 | var | public | WorkflowResumeConflict.reason | `public let reason: String` |
+| 86 | func | public | WorkflowResumeConflict.init(checkpointID:reason:) | `public init(checkpointID: WorkflowCheckpointID, reason: String)` |
+| 110 | struct | public | WorkflowApprovalReplayDiverged | `public struct WorkflowApprovalReplayDiverged: Error, Sendable, Equatable` |
+| 113 | var | public | WorkflowApprovalReplayDiverged.maxAttempts | `public static let maxAttempts: Int` |
+| 116 | var | public | WorkflowApprovalReplayDiverged.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
+| 118 | var | public | WorkflowApprovalReplayDiverged.toolName | `public let toolName: String` |
+| 120 | var | public | WorkflowApprovalReplayDiverged.attempts | `public let attempts: Int` |
+| 123 | func | public | WorkflowApprovalReplayDiverged.init(checkpointID:toolName:attempts:) | `public init(checkpointID: WorkflowCheckpointID, toolName: String, attempts: Int)` |
+| 142 | enum | public | WorkflowApprovalDecision | `public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable` |
+| 149 | case | public | WorkflowApprovalDecision.approve | `public case approve` |
+| 154 | case | public | WorkflowApprovalDecision.reject | `public case reject` |
 
 ### Workflow/WorkflowCheckpointID.swift
 
