@@ -70,6 +70,44 @@ extension WorkflowDurableEngine {
         return claimed
     }
 
+    /// Runs `body` while renewing the claim recorded in `holder`.
+    ///
+    /// A resumed step can outlive ``WorkflowApprovalClaim/lease`` (a slow
+    /// approved tool), and Hive's later commits are plain saves, so an expired
+    /// claim would let another resume execute the approved call too. Every
+    /// third of the lease the claim is re-saved with a fresh timestamp,
+    /// compare-and-swapped against the claim checkpoint last written; renewal
+    /// stops once the resumed run commits (the swap fails). The renewal task
+    /// has finished when this returns or throws, so `holder.current` is the
+    /// claim checkpoint written last.
+    func withRenewal<T: Sendable>(
+        of holder: WorkflowApprovalClaimHolder,
+        store: AnyHiveCheckpointStore<WorkflowDurableSchema>,
+        _ body: () async throws -> T
+    ) async throws -> T {
+        let interval = UInt64(WorkflowApprovalClaim.lease / 3 * 1_000_000_000)
+        let renewal = Task {
+            while true {
+                do {
+                    try await Task.sleep(nanoseconds: interval)
+                } catch {
+                    return
+                }
+                guard await holder.renew(store: store) else { return }
+            }
+        }
+        do {
+            let result = try await body()
+            renewal.cancel()
+            await renewal.value
+            return result
+        } catch {
+            renewal.cancel()
+            await renewal.value
+            throw error
+        }
+    }
+
     /// Best-effort release of a claim after a resume failed before committing.
     ///
     /// Only applies while the claimed checkpoint is still latest; once the
@@ -133,6 +171,36 @@ enum WorkflowApprovalClaimCheckpointID {
     }
 }
 
+/// The latest claim checkpoint a resume wrote, renewed while the resume runs.
+actor WorkflowApprovalClaimHolder {
+    private(set) var current: HiveCheckpoint<WorkflowDurableSchema>
+
+    init(_ claimed: HiveCheckpoint<WorkflowDurableSchema>) {
+        current = claimed
+    }
+
+    /// Re-saves the claim with a fresh timestamp. Returns `false` once a
+    /// commit superseded the claim or another writer took the run.
+    func renew(store: AnyHiveCheckpointStore<WorkflowDurableSchema>) async -> Bool {
+        guard let interruption = current.interruption,
+              var request = try? WorkflowApprovalRequestEnvelope.decoded(from: interruption.payload),
+              request.claim != nil else { return false }
+        request.claim?.claimedAt = Date()
+        guard let payload = try? request.encoded() else { return false }
+        let renewed = current.replacing(
+            id: WorkflowApprovalClaimCheckpointID.claim(after: current.id),
+            interruption: HiveInterrupt(id: interruption.id, payload: payload)
+        )
+        do {
+            try await store.save(renewed, expectedLatestID: current.id)
+        } catch {
+            return false
+        }
+        current = renewed
+        return true
+    }
+}
+
 /// Process-wide guard that keeps two resumes of one run from overlapping.
 ///
 /// Keyed by checkpoint-store identity plus checkpoint ID: handles sharing a
@@ -156,6 +224,11 @@ actor WorkflowDurableResumeGuard {
 
     func release(_ key: Key) {
         active.remove(key)
+    }
+
+    /// Whether a resume of `key` is running in this process.
+    func isActive(_ key: Key) -> Bool {
+        active.contains(key)
     }
 }
 

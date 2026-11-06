@@ -26,7 +26,8 @@ public struct DurableWorkflow: Sendable {
     ///
     /// - Parameter input: Initial workflow input.
     /// - Returns: The workflow's final ``AgentResult``.
-    /// - Throws: ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
+    /// - Throws: ``WorkflowResumeConflict`` when a resume of this run is in
+    ///   flight, or ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
     public func execute(_ input: String) async throws -> AgentResult {
         try await workflow.executeDurableConfigured(
             input: input,
