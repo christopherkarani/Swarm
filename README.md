@@ -110,6 +110,13 @@ after an earlier step.
 | Last agent's answer becomes the next agent's input | `Workflow` |
 | Shared notes, different briefs, N decided after a step | `Job` |
 
+Job-as-product adds tasks with an expected-output contract
+(`JobTask`), results keyed by task name plus a merged summary
+(`Job.run(_:tasks:merge:observer:)`), observer forwarding into helpers,
+and a manager-delegation recipe (`Job.delegate`, where a manager drafts
+briefs from notes before one fan-out). See
+[Job as Product](docs/guide/job-as-product.md).
+
 Add memory, guardrails, retries, fallbacks, streaming, tracing, MCP, and
 optional checkpoint/resume as your application grows.
 
@@ -198,7 +205,7 @@ swift run OnDeviceChat --demo
 | Guardrails | Validate inputs, outputs, and tool arguments before they reach your application. |
 | Streaming | Observe lifecycle, tool, thinking, and output events through `AsyncThrowingStream`. |
 | Resilience | Retry provider inference (`maxAttempts` counts total attempts, minimum 1), circuit breakers, rate limits, fallback chains. |
-| Durable execution | Checkpoint workflow progress and resume after a process restart when the `Integrations` trait is enabled. |
+| Durable execution | Checkpoint workflow progress and resume after a process restart when the `Integrations` trait is enabled. Approval-required tools pause for human review. |
 | MCP | Discover and bridge Model Context Protocol tools. |
 | Observability | Export agent and inference traces with OpenTelemetry or Swift logging. |
 
@@ -231,7 +238,7 @@ await Swarm.configure(provider: myProvider)
 | [Secret Storage](docs/guide/secret-storage.md) | Keychain-backed API keys, redaction, checkpoint file permissions |
 | [Foundation Models](docs/guide/foundation-models.md) | Capture and native session modes |
 | [Voice](docs/guide/voice.md) | Turn-based `VoiceSession` around an existing Agent |
-| [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics, run inspection, fork-from-checkpoint |
+| [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics, run inspection, fork-from-checkpoint, tool approvals |
 | [OpenTelemetry Tracing](docs/guide/opentelemetry-tracing.md) | Traces and propagation |
 | [Front-Facing API](docs/reference/front-facing-api.md) | Public API overview |
 | [API Catalog](docs/reference/api-catalog.md) | Complete symbol reference |

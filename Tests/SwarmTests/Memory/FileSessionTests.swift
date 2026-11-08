@@ -116,6 +116,94 @@ struct FileSessionTests {
         #expect(try await resumed.getAllItems().count == 1)
     }
 
+    @Test("A corrupt file is never overwritten by add, but clearSession recovers it")
+    func corruptFileIsNeverOverwritten() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+
+        let session = FileSession(sessionId: "file-corrupt", directory: directory)
+        let original = Data("{{not a snapshot".utf8)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try original.write(to: session.fileURL)
+
+        // The first add fails to load; the second must not treat the session
+        // as loaded-and-empty and replace the file.
+        await #expect(throws: SessionError.self) {
+            try await session.addItem(.user("first"))
+        }
+        await #expect(throws: SessionError.self) {
+            try await session.addItem(.user("second"))
+        }
+        #expect(try Data(contentsOf: session.fileURL) == original)
+
+        // Clearing discards history by intent, so it replaces the corrupt file.
+        try await session.clearSession()
+        #expect(try await session.getAllItems().isEmpty)
+        try await session.addItem(.user("after clear"))
+
+        let reloaded = FileSession(sessionId: "file-corrupt", directory: directory)
+        #expect(try await reloaded.getAllItems().map(\.content) == ["after clear"])
+    }
+
+    @Test("IDs that sanitize to the same name use distinct files")
+    func sanitizerCollisionsUseDistinctFiles() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+
+        let slash = FileSession(sessionId: "user/1", directory: directory)
+        let underscore = FileSession(sessionId: "user_1", directory: directory)
+        #expect(slash.fileURL != underscore.fileURL)
+
+        try await slash.addItem(.user("from slash"))
+        try await underscore.addItem(.user("from underscore"))
+
+        let reloadedSlash = FileSession(sessionId: "user/1", directory: directory)
+        let reloadedUnderscore = FileSession(sessionId: "user_1", directory: directory)
+        #expect(try await reloadedSlash.getAllItems().map(\.content) == ["from slash"])
+        #expect(try await reloadedUnderscore.getAllItems().map(\.content) == ["from underscore"])
+    }
+
+    @Test("Legacy sanitized-name files are read, migrated, and kept for downgrade")
+    func legacyFilesAreReadAndMigrated() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+
+        let legacyURL = directory.appendingPathComponent("legacy-1.json")
+        let snapshot = SessionSnapshot(sessionId: "legacy-1", items: [.user("old history")])
+        try snapshot.encoded().write(to: legacyURL)
+
+        let session = FileSession(sessionId: "legacy-1", directory: directory)
+        #expect(try await session.getAllItems().map(\.content) == ["old history"])
+
+        try await session.addItem(.user("new"))
+        #expect(FileManager.default.fileExists(atPath: session.fileURL.path))
+        // Kept so an older release can still read the pre-migration history.
+        let legacyAfter = try SessionSnapshot(encoded: Data(contentsOf: legacyURL))
+        #expect(legacyAfter.items.map(\.content) == ["old history"])
+
+        let reloaded = FileSession(sessionId: "legacy-1", directory: directory)
+        #expect(try await reloaded.getAllItems().map(\.content) == ["old history", "new"])
+    }
+
+    @Test("A legacy file owned by a colliding ID is ignored, not adopted")
+    func legacyFileOfCollidingIDIsIgnored() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+
+        // Legacy layout stored "user/1" at user_1.json.
+        let legacyURL = directory.appendingPathComponent("user_1.json")
+        let legacyBytes = try SessionSnapshot(sessionId: "user/1", items: [.user("slash history")]).encoded()
+        try legacyBytes.write(to: legacyURL)
+
+        let underscore = FileSession(sessionId: "user_1", directory: directory)
+        #expect(try await underscore.getAllItems().isEmpty)
+        try await underscore.addItem(.user("underscore history"))
+
+        #expect(try Data(contentsOf: legacyURL) == legacyBytes)
+        let slash = FileSession(sessionId: "user/1", directory: directory)
+        #expect(try await slash.getAllItems().map(\.content) == ["slash history"])
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("swarm-file-session-tests", isDirectory: true)

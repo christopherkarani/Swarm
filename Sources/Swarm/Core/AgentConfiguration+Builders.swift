@@ -440,6 +440,24 @@ extension AgentConfiguration {
         return copy
     }
 
+    /// Sets the maximum number of tool calls that run at the same time.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .parallelToolCalls(true)
+    ///     .maxConcurrentToolCalls(4)
+    /// ```
+    ///
+    /// - Parameter value: The cap. Values below 1 are coerced to 1.
+    /// - Returns: A new configuration with the updated cap.
+    /// - SeeAlso: ``maxConcurrentToolCalls``
+    @discardableResult public func maxConcurrentToolCalls(_ value: Int) -> AgentConfiguration {
+        var copy = self
+        copy.maxConcurrentToolCalls = value
+        return copy
+    }
+
     // MARK: Response Tracking Settings
 
     /// Sets the previous response ID for conversation continuation.

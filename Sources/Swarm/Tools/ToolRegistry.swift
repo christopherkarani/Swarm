@@ -238,10 +238,16 @@ public actor ToolRegistry {
             }
 
             return result
+        } catch let pause as WorkflowToolApprovalRequest {
+            // A nested agent paused for durable approval: not a tool error, so
+            // neither report nor wrap it.
+            throw pause
         } catch {
             // Notify observer for any error (guardrail, execution, or otherwise)
             if let agent, let observer {
-                await observer.onError(context: context, agent: agent, error: error)
+                await ToolErrorReporting.$isReportingToolFailure.withValue(true) {
+                    await observer.onError(context: context, agent: agent, error: error)
+                }
             }
 
             // Re-throw original error or wrap it
@@ -269,4 +275,15 @@ public actor ToolRegistry {
             }
         }
     }
+}
+
+// MARK: - ToolErrorReporting
+
+/// Marks `AgentObserver.onError` calls that report one tool failure.
+///
+/// ``ToolRegistry`` reports every tool error through `onError`, but the run
+/// may recover from it. Observers that track run boundaries read this flag to
+/// tell a tool failure from the error that ends a run.
+enum ToolErrorReporting {
+    @TaskLocal static var isReportingToolFailure = false
 }

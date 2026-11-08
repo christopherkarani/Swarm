@@ -12,7 +12,7 @@ It scores, ranks, compresses, and curates candidate memory in real time before e
 ### Essentials
 
 - <doc:GettingStarted>
-- ``AgentContext``
+- ``ContextWindowEngine``
 - ``ContextWindow``
 
 ### Memory Types

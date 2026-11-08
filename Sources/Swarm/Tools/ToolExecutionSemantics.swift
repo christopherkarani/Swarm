@@ -56,7 +56,9 @@ public struct ToolExecutionSemantics: Codable, Sendable, Equatable {
     ///
     /// ``ParallelToolExecutor`` uses ``mayRunInParallel`` so explicit
     /// ``ToolSideEffectLevel/externalMutation`` does not overlap other calls.
-    /// The Engine host path does not add approval or retry gates from these values.
+    /// The Engine host path pauses durable runs on ``requiresApproval`` (see
+    /// ``WorkflowApprovalRequired``) and adds no retry gate from these values.
+    /// Direct runs execute approval-required tools without pausing.
     public struct RuntimePolicy: Equatable, Sendable {
         /// Whether an orchestrator may retry this tool without caller intervention.
         public let mayRetryAutomatically: Bool

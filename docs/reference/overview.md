@@ -10,7 +10,7 @@ The current API reference covers the supported public surface for Swarm 0.6.6. P
 | [Tools](/reference/front-facing-api) | `@Tool` macro, `FunctionTool`, and `ToolCollection` |
 | [Workflow](/guide/getting-started) | Fluent last-answer chain: sequential, parallel, routed execution |
 | [Job](/reference/front-facing-api) | Shared notes, per-helper briefs, late N fan-out |
-| [Durable execution](/guide/durable-execution) | Checkpoint/resume, signatures, pruning, inspection, fork |
+| [Durable execution](/guide/durable-execution) | Checkpoint/resume, signatures, pruning, inspection, fork, tool approvals |
 | [Handoffs](/reference/front-facing-api) | Agent handoffs and routing between runtime agents |
 | [Memory](/reference/front-facing-api) | Package default (`Agent.makeDefaultMemory()`), Conversation, Vector, Summary, SwiftData backends; file sessions and snapshots |
 | [Streaming](/reference/front-facing-api) | `AgentEvent` streaming and text output |
@@ -24,3 +24,4 @@ The current API reference covers the supported public surface for Swarm 0.6.6. P
 | [Foundation Models modes](/guide/foundation-models) | Capture vs provider-owned tool loop; OS 27 PCC via `.foundationModels(model:)` / `.privateCloudCompute()`; owned-loop `reasoningLevel` and native profile sessions; image attachments; Swarm profile / history → `Transcript`; capture `Transcript` rehydration; `.specific` tool-choice stays prompt-only |
 | [Voice](/guide/voice) | Turn-based `VoiceSession` coordinator; `SpeechToText` / `TextToSpeech` adapters |
 | [Removed in 0.7.0](/reference/front-facing-api) | APIs removed in 0.7.0 (see the migration guide); public-log redaction |
+| [Job as product](/guide/job-as-product) | `JobTask` output contracts, keyed `JobProduct`, manager delegation |

@@ -75,6 +75,8 @@ import Foundation
 ///   ``ToolSideEffectLevel/externalMutation`` is its own serial step so it
 ///   does not overlap any other call. ``ToolExecutionSemantics/automatic``
 ///   remains parallel-eligible.
+/// - At most ``AgentConfiguration/defaultMaxConcurrentToolCalls`` calls run
+///   at once; later calls start as earlier ones finish.
 public actor ParallelToolExecutor {
     // MARK: Public
 

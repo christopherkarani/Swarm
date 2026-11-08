@@ -67,6 +67,13 @@ public enum BackoffStrategy: Sendable {
     // MARK: Public
 
     /// Calculate the delay for a given retry attempt.
+    ///
+    /// The computation is total: it never traps, and always returns a finite,
+    /// non-negative delay. Non-finite or negative parameters and `.custom`
+    /// results are treated as `0`; a negative or NaN `maxDelay` caps at `0`,
+    /// while an infinite `maxDelay` means "uncapped". Growth from finite
+    /// parameters that overflows saturates at `Double.greatestFiniteMagnitude`.
+    /// ``RetryPolicy`` additionally caps each sleep at one hour.
     /// - Parameter attempt: The attempt number (1-indexed).
     /// - Returns: The delay in seconds before the next retry.
     public func delay(forAttempt attempt: Int) -> TimeInterval {
@@ -76,6 +83,10 @@ public enum BackoffStrategy: Sendable {
     /// Calculates the delay using an explicit randomness source so that
     /// jittered strategies produce reproducible sequences (e.g. seeded
     /// generators under test).
+    ///
+    /// Shares the totality guarantees of ``delay(forAttempt:)``: `random`
+    /// always receives a finite, well-ordered range, and its result is
+    /// clamped back into that range.
     /// - Parameters:
     ///   - attempt: The attempt number (1-indexed).
     ///   - random: Replacement for `Double.random(in:)`; receives the legal
@@ -85,38 +96,66 @@ public enum BackoffStrategy: Sendable {
         forAttempt attempt: Int,
         random: @Sendable (ClosedRange<Double>) -> Double
     ) -> TimeInterval {
+        // `Double(attempt) - 1` instead of `Double(attempt - 1)`: the integer
+        // subtraction traps for `Int.min`.
+        let exponent = Double(attempt) - 1
         switch self {
         case let .fixed(delay):
-            return delay
+            return Self.parameter(delay)
 
         case let .linear(initial, increment, maxDelay):
-            let delay = initial + (increment * Double(attempt - 1))
-            return min(delay, maxDelay)
+            let delay = Self.saturated(Self.parameter(initial) + (Self.parameter(increment) * exponent))
+            return min(delay, Self.saturated(maxDelay))
 
         case let .exponential(base, multiplier, maxDelay):
-            let delay = base * pow(multiplier, Double(attempt - 1))
-            return min(delay, maxDelay)
+            let delay = Self.saturated(Self.parameter(base) * pow(Self.parameter(multiplier), exponent))
+            return min(delay, Self.saturated(maxDelay))
 
         case let .exponentialWithJitter(base, multiplier, maxDelay):
-            let exponentialDelay = base * pow(multiplier, Double(attempt - 1))
-            let cappedDelay = min(exponentialDelay, maxDelay)
+            let exponentialDelay = Self.saturated(Self.parameter(base) * pow(Self.parameter(multiplier), exponent))
+            let cappedDelay = min(exponentialDelay, Self.saturated(maxDelay))
             // Add random jitter between 0 and the calculated delay
-            let jitter = random(0...cappedDelay)
-            return jitter
+            return Self.draw(in: 0...cappedDelay, using: random)
 
         case let .decorrelatedJitter(base, maxDelay):
             // Decorrelated jitter: sleep = min(cap, random_between(base, sleep * 3))
             // For the first attempt, use base as the previous sleep
-            let previousSleep = attempt == 1 ? base : base * pow(3.0, Double(attempt - 2))
-            let delay = random(base...(previousSleep * 3.0))
-            return min(delay, maxDelay)
+            let lower = Self.parameter(base)
+            let previousSleep = attempt == 1 ? lower : Self.saturated(lower * pow(3.0, exponent - 1))
+            let upper = max(lower, Self.saturated(previousSleep * 3.0))
+            let delay = Self.draw(in: lower...upper, using: random)
+            return min(delay, Self.saturated(maxDelay))
 
         case .immediate:
             return 0
 
         case let .custom(calculator):
-            return calculator(attempt)
+            return Self.parameter(calculator(attempt))
         }
+    }
+
+    /// A caller-supplied delay or factor: usable only when finite and
+    /// non-negative, otherwise `0`.
+    private static func parameter(_ value: Double) -> Double {
+        value.isFinite && value > 0 ? value : 0
+    }
+
+    /// A computed delay or `maxDelay` cap: NaN and negative values are `0`;
+    /// overflow (and an uncapped `+infinity` maxDelay) saturates at
+    /// `Double.greatestFiniteMagnitude`.
+    private static func saturated(_ value: Double) -> TimeInterval {
+        guard !value.isNaN else { return 0 }
+        return min(max(value, 0), .greatestFiniteMagnitude)
+    }
+
+    /// Draws from `range` and clamps the (possibly injected) result back into it.
+    private static func draw(
+        in range: ClosedRange<Double>,
+        using random: @Sendable (ClosedRange<Double>) -> Double
+    ) -> TimeInterval {
+        let value = random(range)
+        guard !value.isNaN else { return range.lowerBound }
+        return min(max(value, range.lowerBound), range.upperBound)
     }
 
     /// Fixed delay between retries.
@@ -315,7 +354,9 @@ public struct RetryPolicy: Sendable {
             do {
                 return try await operation()
             } catch {
-                if error is CancellationError || Task.isCancelled {
+                // Durable approval pauses are not failures; retrying would
+                // re-ask without a human decision.
+                if error is CancellationError || error is WorkflowToolApprovalRequest || Task.isCancelled {
                     throw error
                 }
 

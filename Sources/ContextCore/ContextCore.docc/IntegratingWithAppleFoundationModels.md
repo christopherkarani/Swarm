@@ -27,7 +27,7 @@ var config = ContextConfiguration.default
 config.embeddingProvider = AppleFoundationEmbeddingProvider()
 config.tokenCounter = FoundationModelsTokenCounter()
 
-let context = try AgentContext(configuration: config)
+let context = try ContextWindowEngine(configuration: config)
 ```
 
 ## Notes

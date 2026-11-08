@@ -9,93 +9,114 @@ import Foundation
 ///
 /// This serves as the bridge between the internal hook-based observation system
 /// and the external stream-based observation API.
+///
+/// With `holdsOutputTokens`, `.output(.token)` events (and every event queued
+/// behind one, to keep order) are held until the outermost run ends. They are
+/// released just before `.lifecycle(.completed)`, or dropped before
+/// `.lifecycle(.failed)` so a tripped output guardrail never leaks the text.
 internal struct EventStreamObserver: AgentObserver {
     /// The continuation to yield events to.
     private let continuation: AsyncThrowingStream<AgentEvent, Error>.Continuation
     private let toolCallStore = ToolCallStore()
+    private let tokenGate: OutputTokenGate?
 
     /// Creates a new event stream hook.
-    /// - Parameter continuation: The continuation to yield events to.
-    init(continuation: AsyncThrowingStream<AgentEvent, Error>.Continuation) {
+    /// - Parameters:
+    ///   - continuation: The continuation to yield events to.
+    ///   - holdsOutputTokens: Whether to hold token events until the run succeeds.
+    init(
+        continuation: AsyncThrowingStream<AgentEvent, Error>.Continuation,
+        holdsOutputTokens: Bool = false
+    ) {
         self.continuation = continuation
+        tokenGate = holdsOutputTokens ? OutputTokenGate() : nil
     }
 
     // MARK: - AgentObserver Implementation
 
     func onAgentStart(context _: AgentContext?, agent _: any AgentRuntime, input: String) async {
-        continuation.yield(.lifecycle(.started(input: input)))
+        await tokenGate?.runStarted()
+        await emit(.lifecycle(.started(input: input)))
     }
 
     func onAgentEnd(context _: AgentContext?, agent _: any AgentRuntime, result: AgentResult) async {
-        continuation.yield(.lifecycle(.completed(result: result)))
+        await endRun(with: .lifecycle(.completed(result: result)), succeeded: true)
     }
 
     func onError(context _: AgentContext?, agent _: any AgentRuntime, error: Error) async {
-        if let agentError = error as? AgentError {
-            continuation.yield(.lifecycle(.failed(error: agentError)))
-        } else {
-            continuation.yield(.lifecycle(.failed(error: .internalError(reason: error.localizedDescription))))
+        let agentError = error as? AgentError ?? .internalError(reason: error.localizedDescription)
+        let event = AgentEvent.lifecycle(.failed(error: agentError))
+        // `ToolRegistry` also reports tool failures here, and the run may
+        // recover from them. Only a run-level error ends a run.
+        guard !ToolErrorReporting.isReportingToolFailure else {
+            await emit(event)
+            return
         }
+        await endRun(with: event, succeeded: false)
     }
 
     func onToolStart(context _: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async {
         await toolCallStore.record(call)
-        continuation.yield(.tool(.started(call: call)))
+        await emit(.tool(.started(call: call)))
     }
 
     func onToolCallPartial(context _: AgentContext?, agent _: any AgentRuntime, update: PartialToolCallUpdate) async {
-        continuation.yield(.tool(.partial(update: update)))
+        await emit(.tool(.partial(update: update)))
     }
 
     func onToolEnd(context _: AgentContext?, agent _: any AgentRuntime, result: ToolResult) async {
         let call = await toolCallStore.take(id: result.callId)
             ?? ToolCall(id: result.callId, toolName: "unknown", arguments: [:])
-        emitToolCompletion(call: call, result: result)
+        await emitToolCompletion(call: call, result: result)
     }
 
     func onToolEnd(context _: AgentContext?, agent _: any AgentRuntime, invocation: ToolInvocation) async {
         _ = await toolCallStore.take(id: invocation.result.callId)
-        continuation.yield(.tool(.completed(invocation)))
-        emitFailedIfNeeded(call: invocation.call, result: invocation.result)
+        await emit(.tool(.completed(invocation)))
+        await emitFailedIfNeeded(call: invocation.call, result: invocation.result)
+    }
+
+    func onToolApprovalRequested(context _: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async {
+        continuation.yield(.tool(.approvalRequested(call: call)))
     }
 
     func onThinking(context _: AgentContext?, agent _: any AgentRuntime, thought: String) async {
-        continuation.yield(.output(.thinking(thought: thought)))
+        await emit(.output(.thinking(thought: thought)))
     }
 
     func onThinkingPartial(context _: AgentContext?, agent _: any AgentRuntime, partialThought: String) async {
-        continuation.yield(.output(.thinkingPartial(partialThought)))
+        await emit(.output(.thinkingPartial(partialThought)))
     }
 
     func onOutputToken(context _: AgentContext?, agent _: any AgentRuntime, token: String) async {
-        continuation.yield(.output(.token(token)))
+        await emit(.output(.token(token)))
     }
 
     func onIterationStart(context _: AgentContext?, agent _: any AgentRuntime, number: Int) async {
-        continuation.yield(.lifecycle(.iterationStarted(number: number)))
+        await emit(.lifecycle(.iterationStarted(number: number)))
     }
 
     func onIterationEnd(context _: AgentContext?, agent _: any AgentRuntime, number: Int) async {
-        continuation.yield(.lifecycle(.iterationCompleted(number: number)))
+        await emit(.lifecycle(.iterationCompleted(number: number)))
     }
 
     func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async {
-        continuation.yield(.observation(.guardrailTriggered(name: guardrailName, type: guardrailType, message: result.message)))
+        await emit(.observation(.guardrailTriggered(name: guardrailName, type: guardrailType, message: result.message)))
     }
 
     func onHandoff(context: AgentContext?, fromAgent: any AgentRuntime, toAgent: any AgentRuntime) async {
         let fromName = fromAgent.configuration.name.isEmpty ? String(describing: type(of: fromAgent)) : fromAgent.configuration.name
         let toName = toAgent.configuration.name.isEmpty ? String(describing: type(of: toAgent)) : toAgent.configuration.name
 
-        continuation.yield(.handoff(.requested(from: fromName, to: toName, reason: nil)))
+        await emit(.handoff(.requested(from: fromName, to: toName, reason: nil)))
     }
 
     func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async {
-        continuation.yield(.observation(.llmStarted(model: nil, promptTokens: nil)))
+        await emit(.observation(.llmStarted(model: nil, promptTokens: nil)))
     }
 
     func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async {
-        continuation.yield(.observation(.llmCompleted(
+        await emit(.observation(.llmCompleted(
             model: nil,
             promptTokens: usage?.inputTokens,
             completionTokens: usage?.outputTokens,
@@ -104,26 +125,46 @@ internal struct EventStreamObserver: AgentObserver {
     }
 
     func onInferenceRetry(context _: AgentContext?, agent _: any AgentRuntime, attempt: Int, error: Error) async {
-        continuation.yield(.observation(.inferenceRetry(
+        await emit(.observation(.inferenceRetry(
             attempt: attempt,
             message: error.localizedDescription
         )))
     }
 
-    private func emitToolCompletion(call: ToolCall, result: ToolResult) {
-        continuation.yield(.tool(.completed(call: call, result: result)))
-        emitFailedIfNeeded(call: call, result: result)
+    private func emitToolCompletion(call: ToolCall, result: ToolResult) async {
+        await emit(.tool(.completed(call: call, result: result)))
+        await emitFailedIfNeeded(call: call, result: result)
     }
 
-    private func emitFailedIfNeeded(call: ToolCall, result: ToolResult) {
+    private func emitFailedIfNeeded(call: ToolCall, result: ToolResult) async {
         guard !result.isSuccess else {
             return
         }
         let errorMessage = result.errorMessage ?? "Unknown error"
-        continuation.yield(.tool(.failed(
+        await emit(.tool(.failed(
             call: call,
             error: ToolFailureCause.messageOnly(toolName: call.toolName, message: errorMessage)
         )))
+    }
+
+    private func emit(_ event: AgentEvent) async {
+        guard let tokenGate else {
+            continuation.yield(event)
+            return
+        }
+        for released in await tokenGate.submit(event) {
+            continuation.yield(released)
+        }
+    }
+
+    private func endRun(with terminal: AgentEvent, succeeded: Bool) async {
+        guard let tokenGate else {
+            continuation.yield(terminal)
+            return
+        }
+        for released in await tokenGate.runEnded(with: terminal, succeeded: succeeded) {
+            continuation.yield(released)
+        }
     }
 }
 
@@ -139,5 +180,55 @@ private actor ToolCallStore {
     func take(id: UUID) -> ToolCall? {
         defer { calls.removeValue(forKey: id) }
         return calls[id]
+    }
+}
+
+// MARK: - OutputTokenGate
+
+/// Holds token events until the outermost run's output guardrails have passed.
+///
+/// Handoff targets report through the same observer, so nested `onAgentStart`
+/// / `onAgentEnd` pairs are counted and only the outermost end releases.
+private actor OutputTokenGate {
+    private var depth = 0
+    private var held: [AgentEvent] = []
+
+    func runStarted() {
+        depth += 1
+    }
+
+    /// Returns the events to yield now; the rest stay queued in order.
+    func submit(_ event: AgentEvent) -> [AgentEvent] {
+        if case .output(.token) = event {
+            held.append(event)
+            return []
+        }
+        guard held.isEmpty else {
+            held.append(event)
+            return []
+        }
+        return [event]
+    }
+
+    /// Ends one run. The outermost end releases the queue followed by
+    /// `terminal`; held tokens are released only when the run succeeded.
+    ///
+    /// An end with no open run (a runtime outside `Agent` may end without a
+    /// start) is unmatched: `terminal` queues behind held events and nothing
+    /// is released, so it cannot bypass the outermost run's guardrails.
+    func runEnded(with terminal: AgentEvent, succeeded: Bool) -> [AgentEvent] {
+        guard depth > 0 else {
+            return submit(terminal)
+        }
+        depth -= 1
+        guard depth == 0 else {
+            return submit(terminal)
+        }
+        let queued = held
+        held = []
+        let released = succeeded ? queued : queued.filter { event in
+            if case .output(.token) = event { false } else { true }
+        }
+        return released + [terminal]
     }
 }

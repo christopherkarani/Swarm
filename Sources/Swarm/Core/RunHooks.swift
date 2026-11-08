@@ -114,6 +114,17 @@ public protocol AgentObserver: Sendable {
     ///     ``ToolResult/callId``.
     func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async
 
+    /// Called when a durable run pauses for human approval of a tool call.
+    ///
+    /// The tool has not executed. Fires instead of ``onToolStart(context:agent:call:)``
+    /// for the paused call.
+    ///
+    /// - Parameters:
+    ///   - context: Optional agent context for orchestration scenarios.
+    ///   - agent: The agent that requested the tool.
+    ///   - call: The paused tool call.
+    func onToolApprovalRequested(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async
+
     /// Called when an LLM inference begins.
     ///
     /// `[InferenceMessage]` is the source of truth for the transcript the
@@ -226,6 +237,9 @@ public extension AgentObserver {
     func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async {
         await onToolEnd(context: context, agent: agent, result: invocation.result)
     }
+
+    /// Default no-op implementation for tool approval requests.
+    func onToolApprovalRequested(context _: AgentContext?, agent _: any AgentRuntime, call _: ToolCall) async {}
 
     /// Default no-op implementation for LLM start.
     func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async {}
@@ -395,6 +409,16 @@ package struct CompositeObserver: AgentObserver {
         }
     }
 
+    package func onToolApprovalRequested(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async {
+        await withTaskGroup(of: Void.self) { group in
+            for hook in observers {
+                group.addTask {
+                    await hook.onToolApprovalRequested(context: context, agent: agent, call: call)
+                }
+            }
+        }
+    }
+
     package func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async {
         await withTaskGroup(of: Void.self) { group in
             for hook in observers {
@@ -504,6 +528,13 @@ package struct CompositeObserver: AgentObserver {
 /// - `.warning`: Guardrail triggered
 /// - `.error`: Error events
 ///
+/// ## Content redaction
+///
+/// User input, model thinking, and output tokens are user data. By default
+/// they are logged only as a character count, and output tokens only at
+/// `.trace`. Pass `logsContent: true` to log input and thinking (truncated to
+/// 100 characters) and each output token at `.debug`, for local debugging.
+///
 /// Example:
 /// ```swift
 /// let agent = Agent(
@@ -515,10 +546,18 @@ package struct CompositeObserver: AgentObserver {
 public struct LoggingObserver: AgentObserver {
     // MARK: Public
 
+    /// Whether user and model content is written to the log.
+    public let logsContent: Bool
+
     // MARK: - Initialization
 
     /// Creates a new logging hook.
-    public init() {}
+    ///
+    /// - Parameter logsContent: Log input, thinking, and output-token text
+    ///   instead of only their length. Default: `false`.
+    public init(logsContent: Bool = false) {
+        self.logsContent = logsContent
+    }
 
     // MARK: - AgentObserver Implementation
 
@@ -528,8 +567,7 @@ public struct LoggingObserver: AgentObserver {
         } else {
             ""
         }
-        let truncatedInput = input.count > 100 ? String(input.prefix(100)) + "..." : input
-        Log.agents.info("LegacyAgent started\(contextId) - input: \"\(truncatedInput)\"")
+        Log.agents.info("LegacyAgent started\(contextId) - input: \(contentDescription(input))")
     }
 
     public func onAgentEnd(context: AgentContext?, agent _: any AgentRuntime, result: AgentResult) async {
@@ -594,6 +632,15 @@ public struct LoggingObserver: AgentObserver {
         )
     }
 
+    public func onToolApprovalRequested(context: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async {
+        let contextId = if let context {
+            " [context: \(context.executionId)]"
+        } else {
+            ""
+        }
+        Log.agents.info("Tool approval requested\(contextId) - name: \(call.toolName)")
+    }
+
     public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [InferenceMessage]) async {
         let contextId = if let context {
             " [context: \(context.executionId)]"
@@ -638,8 +685,7 @@ public struct LoggingObserver: AgentObserver {
         } else {
             ""
         }
-        let truncatedThought = thought.count > 100 ? String(thought.prefix(100)) + "..." : thought
-        Log.agents.info("LegacyAgent thinking\(contextId): \"\(truncatedThought)\"")
+        Log.agents.info("LegacyAgent thinking\(contextId): \(contentDescription(thought))")
     }
 
     public func onOutputToken(context: AgentContext?, agent _: any AgentRuntime, token: String) async {
@@ -648,7 +694,11 @@ public struct LoggingObserver: AgentObserver {
         } else {
             ""
         }
-        Log.agents.debug("LegacyAgent output token\(contextId): \"\(token)\"")
+        if logsContent {
+            Log.agents.debug("LegacyAgent output token\(contextId): \"\(token)\"")
+        } else {
+            Log.agents.trace("LegacyAgent output token\(contextId): \(token.count) chars")
+        }
     }
 
     public func onIterationStart(context: AgentContext?, agent _: any AgentRuntime, number: Int) async {
@@ -674,6 +724,16 @@ public struct LoggingObserver: AgentObserver {
     // MARK: Private
 
     // MARK: - Private Helpers
+
+    /// Log text for user or model content: quoted and truncated to 100
+    /// characters when ``logsContent`` is on, otherwise only its length.
+    func contentDescription(_ text: String) -> String {
+        guard logsContent else {
+            return "<redacted, \(text.count) chars>"
+        }
+        let truncated = text.count > 100 ? String(text.prefix(100)) + "..." : text
+        return "\"\(truncated)\""
+    }
 
     /// Returns a display name for an agent, falling back to type name if configuration name is empty.
     private func agentDisplayName(_ agent: any AgentRuntime) -> String {

@@ -32,7 +32,7 @@ Consolidation periodically scans episodic memory for near-duplicate chunks, prom
 │         Your App / Bebop            │  ← domain logic, UI, business rules
 ├─────────────────────────────────────┤
 │           ContextCore               │  ← this framework
-│  AgentContext · WindowPacker        │
+│  ContextWindowEngine · WindowPacker        │
 │  ConsolidationEngine · Scoring      │
 │  Metal kernels (5 shaders, Apple)   │
 ├─────────────────────────────────────┤
@@ -46,7 +46,7 @@ Consolidation periodically scans episodic memory for near-duplicate chunks, prom
 
 ## Portability
 
-``AgentContext`` prefers Metal-backed engines when Metal is available and
+``ContextWindowEngine`` prefers Metal-backed engines when Metal is available and
 falls back to the portable CPU engines (``CPUScoringEngine``,
 ``CPUAttentionEngine``, ``CPUCompressionEngine``,
 ``CPUConsolidationEngine``) otherwise, so the same API builds and runs on

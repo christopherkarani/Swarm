@@ -51,6 +51,10 @@ struct ToolExecutionEngine: Sendable {
         /// ``ToolResult`` only stores a message string. The façade keeps this
         /// instance so continue-on-error and fail-fast can preserve error identity.
         let caughtError: (any Error)?
+        /// `true` when a durable replay returned the call's recorded outcome
+        /// instead of executing it. Callers skip side effects such as memory
+        /// writes that already happened when the call executed.
+        var replayed = false
     }
 
     func execute(
@@ -66,25 +70,48 @@ struct ToolExecutionEngine: Sendable {
         stopOnToolError: Bool
     ) async throws -> Outcome {
         let call = ToolCall(providerCallId: providerCallId, toolName: toolName, arguments: arguments)
+        if let recorded = await WorkflowDurableApprovalGate.replay(call: call) {
+            return try replayedOutcome(
+                call: call,
+                recorded: recorded,
+                resultBuilder: resultBuilder,
+                stopOnToolError: stopOnToolError
+            )
+        }
+        let consumedApproval = try await WorkflowDurableApprovalGate.check(
+            call: call,
+            registry: registry,
+            agent: agent,
+            context: context,
+            observer: observer
+        )
         _ = resultBuilder.addToolCall(call)
 
         await observer?.onToolStart(context: context, agent: agent, call: call)
 
         let spanId: UUID? = if let tracing { await tracing.traceToolCall(name: toolName, arguments: arguments) } else { nil }
 
+        // Calls a nested agent makes inside this tool are journaled under this
+        // scope, so this call's own entry replaces them once it finishes.
+        let journalScope = WorkflowDurableApprovalGate.childScope(for: call)
         let startTime = clock.nowNanoseconds()
         do {
-            let output = try await registry.execute(
-                toolNamed: toolName,
-                arguments: arguments,
-                agent: agent,
-                context: context,
-                observer: observer
-            )
+            // No observer: the registry would report every tool error through
+            // `onError` (a run failure). Tool failures are reported below via
+            // `onToolEnd`; only a run that actually fails calls `onError`.
+            let output = try await WorkflowDurableApprovalGate.$scope.withValue(journalScope) {
+                try await registry.execute(
+                    toolNamed: toolName,
+                    arguments: arguments,
+                    agent: agent,
+                    context: context
+                )
+            }
 
             let measured = elapsedDuration(since: startTime)
             let result = ToolResult.success(callId: call.id, output: output, duration: measured)
             _ = resultBuilder.addToolResult(result)
+            await WorkflowDurableApprovalGate.record(call: call, outcome: .success(output), ownScope: journalScope)
 
             if let tracing, let spanId {
                 await tracing.traceToolResult(spanId: spanId, name: toolName, result: output.description, duration: measured)
@@ -97,12 +124,44 @@ struct ToolExecutionEngine: Sendable {
             )
 
             return Outcome(call: call, result: result, caughtError: nil)
+        } catch let pause as WorkflowToolApprovalRequest {
+            // A nested agent (agent-as-tool) paused for durable approval; the
+            // pause belongs to the workflow, not to this tool's result. Surface
+            // the nested request and close this call without a failure so start
+            // and end events stay paired. This call is not journaled, so it
+            // gives back its approval for the replay.
+            if consumedApproval {
+                await WorkflowDurableApprovalGate.restore(call: call)
+            }
+            await closePausedCall(
+                call,
+                pause: pause,
+                spanId: spanId,
+                startTime: startTime,
+                agent: agent,
+                context: context,
+                observer: observer,
+                tracing: tracing
+            )
+            throw pause
         } catch {
             let measured = elapsedDuration(since: startTime)
             let errorMessage = (error as? AgentError)?.localizedDescription ?? error.localizedDescription
 
             let result = ToolResult.failure(callId: call.id, error: errorMessage, duration: measured)
             _ = resultBuilder.addToolResult(result)
+            if error is CancellationError || Task.isCancelled {
+                // Not journaled, so the approval stays available to the replay.
+                if consumedApproval {
+                    await WorkflowDurableApprovalGate.restore(call: call)
+                }
+            } else {
+                await WorkflowDurableApprovalGate.record(
+                    call: call,
+                    outcome: .failure(errorMessage),
+                    ownScope: journalScope
+                )
+            }
 
             if let tracing, let spanId {
                 await tracing.traceToolError(spanId: spanId, name: toolName, error: error)
@@ -123,6 +182,33 @@ struct ToolExecutionEngine: Sendable {
             }
 
             return Outcome(call: call, result: result, caughtError: error)
+        }
+    }
+
+    /// Builds the outcome of a call whose result a durable replay recorded earlier.
+    ///
+    /// The call and result go into the step's ``AgentResult``; observers and
+    /// tracing are not notified again, since they saw the original execution.
+    private func replayedOutcome(
+        call: ToolCall,
+        recorded: WorkflowJournaledOutcome,
+        resultBuilder: AgentResult.Builder,
+        stopOnToolError: Bool
+    ) throws -> Outcome {
+        _ = resultBuilder.addToolCall(call)
+        switch recorded {
+        case .success(let output):
+            let result = ToolResult.success(callId: call.id, output: output, duration: .zero)
+            _ = resultBuilder.addToolResult(result)
+            return Outcome(call: call, result: result, caughtError: nil, replayed: true)
+        case .failure(let message):
+            let result = ToolResult.failure(callId: call.id, error: message, duration: .zero)
+            _ = resultBuilder.addToolResult(result)
+            let error = AgentError.toolFailure(toolName: call.toolName, message: message, cause: nil)
+            if stopOnToolError {
+                throw error
+            }
+            return Outcome(call: call, result: result, caughtError: error, replayed: true)
         }
     }
 
@@ -174,6 +260,9 @@ struct ToolExecutionEngine: Sendable {
     /// each overlapping call; results are merged onto `resultBuilder` in input
     /// order. Observer and tracing callbacks for a concurrent group follow
     /// completion order.
+    ///
+    /// At most `maxConcurrentCalls` calls of a concurrent group run at once;
+    /// the next call starts when one finishes. Values below 1 are treated as 1.
     func executeBatch(
         _ calls: [some ToolCallGoal],
         registry: ToolRegistry,
@@ -183,11 +272,13 @@ struct ToolExecutionEngine: Sendable {
         observer: (any AgentObserver)?,
         tracing: TracingHelper?,
         stopOnToolError: Bool,
-        allowConcurrent: Bool
+        allowConcurrent: Bool,
+        maxConcurrentCalls: Int = AgentConfiguration.defaultMaxConcurrentToolCalls
     ) async throws -> [Outcome] {
         guard !calls.isEmpty else {
             return []
         }
+        let concurrencyLimit = max(1, maxConcurrentCalls)
 
         var eligibility: [Bool] = []
         eligibility.reserveCapacity(calls.count)
@@ -219,7 +310,7 @@ struct ToolExecutionEngine: Sendable {
 
             case let .concurrent(range):
                 try await withThrowingTaskGroup(of: (Int, Outcome).self) { taskGroup in
-                    for index in range {
+                    func startCall(at index: Int) {
                         let goal = calls[index]
                         taskGroup.addTask {
                             let isolatedBuilder = AgentResult.Builder()
@@ -240,11 +331,20 @@ struct ToolExecutionEngine: Sendable {
                         }
                     }
 
+                    var pending = range.makeIterator()
+                    for _ in 0 ..< concurrencyLimit {
+                        guard let index = pending.next() else { break }
+                        startCall(at: index)
+                    }
+
                     var collected: [(Int, Outcome)] = []
                     collected.reserveCapacity(range.count)
                     for try await item in taskGroup {
                         try Task.checkCancellation()
                         collected.append(item)
+                        if let index = pending.next() {
+                            startCall(at: index)
+                        }
                     }
                     collected.sort { $0.0 < $1.0 }
                     for (index, outcome) in collected {
@@ -277,6 +377,40 @@ struct ToolExecutionEngine: Sendable {
             collected.append(outcome)
         }
         return collected
+    }
+
+    /// Ends a started call whose tool body paused for a nested durable approval.
+    ///
+    /// Forwards the nested approval request (agent-as-tool runs its inner agent
+    /// without an observer), then closes the span and emits a non-failure
+    /// ``AgentObserver/onToolEnd(context:agent:invocation:)`` carrying a
+    /// paused marker, so consumers that pair start and end events do not show
+    /// the call as running forever.
+    private func closePausedCall(
+        _ call: ToolCall,
+        pause: WorkflowToolApprovalRequest,
+        spanId: UUID?,
+        startTime: UInt64,
+        agent: any AgentRuntime,
+        context: AgentContext?,
+        observer: (any AgentObserver)?,
+        tracing: TracingHelper?
+    ) async {
+        let measured = elapsedDuration(since: startTime)
+        let marker = "paused: awaiting approval for \(pause.toolName)"
+        await observer?.onToolApprovalRequested(
+            context: context,
+            agent: agent,
+            call: ToolCall(toolName: pause.toolName, arguments: pause.arguments)
+        )
+        if let tracing, let spanId {
+            await tracing.traceToolResult(spanId: spanId, name: call.toolName, result: marker, duration: measured)
+        }
+        await observer?.onToolEnd(
+            context: context,
+            agent: agent,
+            invocation: ToolInvocation(call: call, duration: measured, outcome: .success(.string(marker)))
+        )
     }
 
     private func elapsedDuration(since startNanoseconds: UInt64) -> Duration {

@@ -5,9 +5,9 @@ Use Wax as durable long-term memory and ContextCore as the real-time context cur
 ## Integration Pattern
 
 1. Keep durable memories in Wax's long-term store.
-2. On each loop, fetch candidate facts from Wax and inject into ContextCore via ``AgentContext/remember(_:)``.
-3. Append live turns to ``AgentContext``.
-4. Build the final context window with ``AgentContext/buildWindow(currentTask:maxTokens:)``.
+2. On each loop, fetch candidate facts from Wax and inject into ContextCore via ``ContextWindowEngine/remember(_:)``.
+3. Append live turns to ``ContextWindowEngine``.
+4. Build the final context window with ``ContextWindowEngine/buildWindow(currentTask:maxTokens:)``.
 5. Send the formatted window to the model runtime.
 
 ## Bridging Example
@@ -18,7 +18,7 @@ import ContextCore
 func runLoopStep(
     waxFacts: [String],
     userMessage: String,
-    context: AgentContext
+    context: ContextWindowEngine
 ) async throws -> String {
     for fact in waxFacts {
         try await context.remember(fact)
@@ -39,4 +39,4 @@ func runLoopStep(
 
 - Keep Wax as the source of truth for durable memory.
 - Use ContextCore for per-call relevance ranking, compression, and ordering.
-- Periodically checkpoint ContextCore with ``AgentContext/checkpoint(to:)`` for fast restart.
+- Periodically checkpoint ContextCore with ``ContextWindowEngine/checkpoint(to:)`` for fast restart.

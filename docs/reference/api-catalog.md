@@ -5,8 +5,8 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 265 (272 including `Internal/GraphRuntime/`)
-- Public/open symbols cataloged: 2457
+- Source files scanned: 278 (285 including `Internal/GraphRuntime/`)
+- Public/open symbols cataloged: 2475
 
 ## 1. Swarm (entry point)
 
@@ -63,6 +63,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 108 | func | public | AgentConfiguration.modelSettings(_:) | `public @discardableResult func modelSettings(_ value: ModelSettings?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.name(_:) | `public @discardableResult func name(_ value: String) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.parallelToolCalls(_:) | `public @discardableResult func parallelToolCalls(_ value: Bool) -> AgentConfiguration` |
+| — | func | public | AgentConfiguration.maxConcurrentToolCalls(_:) | `public @discardableResult func maxConcurrentToolCalls(_ value: Int) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.previousResponseId(_:) | `public @discardableResult func previousResponseId(_ value: String?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.sessionHistoryLimit(_:) | `public @discardableResult func sessionHistoryLimit(_ value: Int?) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.stopOnToolError(_:) | `public @discardableResult func stopOnToolError(_ value: Bool) -> AgentConfiguration` |
@@ -88,12 +89,14 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 205 | var | public | AgentConfiguration.includeReasoning | `public var includeReasoning: Bool` |
 | 215 | var | public | AgentConfiguration.sessionHistoryLimit | `public var sessionHistoryLimit: Int?` |
 | 235 | var | public | AgentConfiguration.parallelToolCalls | `public var parallelToolCalls: Bool` |
+| — | var | public | AgentConfiguration.maxConcurrentToolCalls | `public var maxConcurrentToolCalls: Int` |
+| — | var | public | AgentConfiguration.defaultMaxConcurrentToolCalls | `public static let defaultMaxConcurrentToolCalls: Int` |
 | 245 | var | public | AgentConfiguration.previousResponseId | `public var previousResponseId: String?` |
 | 253 | var | public | AgentConfiguration.autoPreviousResponseId | `public var autoPreviousResponseId: Bool` |
 | 264 | var | public | AgentConfiguration.defaultTracingEnabled | `public var defaultTracingEnabled: Bool` |
 | 265 | var | public | AgentConfiguration.autoAttachMetricsCollector | `public var autoAttachMetricsCollector: Bool` |
 | 608 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
-| 630 | func | public | AgentConfiguration.init(name:maxIterations:maxConsecutiveToolRepeats:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, maxConsecutiveToolRepeats: Int = 3, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, resilience: ResilienceConfiguration = .disabled)` |
+| 630 | func | public | AgentConfiguration.init(name:maxIterations:maxConsecutiveToolRepeats:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:maxConcurrentToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, maxConsecutiveToolRepeats: Int = 3, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, maxConcurrentToolCalls: Int = AgentConfiguration.defaultMaxConcurrentToolCalls, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, resilience: ResilienceConfiguration = .disabled)` |
 | 108 | func | public | AgentConfiguration.resilience(_:) | `public @discardableResult func resilience(_ value: ResilienceConfiguration) -> AgentConfiguration` |
 | 345 | var | public | AgentConfiguration.description | `public var description: String { get }` |
 
@@ -169,6 +172,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 82 | case | public | AgentEvent.Tool.partial(update:) | `public case partial(update: PartialToolCallUpdate)` |
 | 85 | case | public | AgentEvent.Tool.completed(call:result:) | `public case completed(call: ToolCall, result: ToolResult)` |
 | 88 | case | public | AgentEvent.Tool.failed(call:error:) | `public case failed(call: ToolCall, error: AgentError)` |
+| 94 | case | public | AgentEvent.Tool.approvalRequested(call:) | `public case approvalRequested(call: ToolCall)` |
 | 94 | func | public | AgentEvent.Tool.completed(_:) | `public static func completed(_ invocation: ToolInvocation) -> Self` |
 | 100 | enum | public | AgentEvent.Output | `public enum Output` |
 | 102 | case | public | AgentEvent.Output.token(_:) | `public case token(String)` |
@@ -916,6 +920,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 89 | func | public | AgentObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 98 | func | public | AgentObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
 | 117 | func | public | AgentObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async` |
+| 128 | func | public | AgentObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 129 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async` |
 | 154 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async` |
 | 125 | func | public | AgentObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
@@ -932,6 +937,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 187 | func | public | AgentObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 190 | func | public | AgentObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
 | 244 | func | public | AgentObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async` |
+| 260 | func | public | AgentObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context _: AgentContext?, agent _: any AgentRuntime, call _: ToolCall) async` |
 | 249 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async` |
 | 256 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context _: AgentContext?, agent _: any AgentRuntime, response _: String, usage _: TokenUsage?) async` |
 | 199 | func | public | AgentObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context _: AgentContext?, guardrailName _: String, guardrailType _: GuardrailType, result _: GuardrailResult) async` |
@@ -949,6 +955,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 300 | func | public | CompositeObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 310 | func | public | CompositeObserver.onToolCallPartial(context:agent:update:) | `public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async` |
 | 320 | func | public | CompositeObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
+| 444 | func | public | CompositeObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 399 | func | public | CompositeObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async` |
 | 420 | func | public | CompositeObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async` |
 | 350 | func | public | CompositeObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
@@ -958,7 +965,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 390 | func | public | CompositeObserver.onIterationStart(context:agent:number:) | `public func onIterationStart(context: AgentContext?, agent: any AgentRuntime, number: Int) async` |
 | 400 | func | public | CompositeObserver.onIterationEnd(context:agent:number:) | `public func onIterationEnd(context: AgentContext?, agent: any AgentRuntime, number: Int) async` |
 | 437 | struct | public | LoggingObserver | `public struct LoggingObserver` |
-| 443 | func | public | LoggingObserver.init() | `public init()` |
+| — | var | public | LoggingObserver.logsContent | `public let logsContent: Bool` |
+| — | func | public | LoggingObserver.init(logsContent:) | `public init(logsContent: Bool = false)` |
 | 447 | func | public | LoggingObserver.onAgentStart(context:agent:input:) | `public func onAgentStart(context: AgentContext?, agent _: any AgentRuntime, input: String) async` |
 | 457 | func | public | LoggingObserver.onAgentEnd(context:agent:result:) | `public func onAgentEnd(context: AgentContext?, agent _: any AgentRuntime, result: AgentResult) async` |
 | 466 | func | public | LoggingObserver.onError(context:agent:error:) | `public func onError(context: AgentContext?, agent _: any AgentRuntime, error: any Error) async` |
@@ -966,6 +974,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 486 | func | public | LoggingObserver.onToolStart(context:agent:call:) | `public func onToolStart(context: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async` |
 | 495 | func | public | LoggingObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent _: any AgentRuntime, result: ToolResult) async` |
 | 628 | func | public | LoggingObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent _: any AgentRuntime, invocation: ToolInvocation) async` |
+| 664 | func | public | LoggingObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context: AgentContext?, agent _: any AgentRuntime, call: ToolCall) async` |
 | 640 | func | public | LoggingObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages: [InferenceMessage]) async` |
 | 649 | func | public | LoggingObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent _: any AgentRuntime, response _: String, usage: TokenUsage?) async` |
 | 530 | func | public | LoggingObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
@@ -2583,6 +2592,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | func | public | DurableWorkflow.inspect() | `public func inspect() async throws -> DurableWorkflowRunInspection` |
 | — | func | public | DurableWorkflow.inspect(run:) | `public func inspect(run: WorkflowCheckpointID) async throws -> DurableWorkflowRunInspection` |
 | — | func | public | DurableWorkflow.resume(_:from:forkingFrom:) | `public func resume(_ input: String, from checkpointID: WorkflowCheckpointID, forkingFrom sourceCheckpointID: String) async throws -> AgentResult` |
+| — | func | public | DurableWorkflow.resume(decision:from:) | `public func resume(decision: WorkflowApprovalDecision, from checkpointID: WorkflowCheckpointID) async throws -> AgentResult` |
 
 ### Workflow/DurableWorkflowInspection.swift
 
@@ -2591,6 +2601,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | enum | public | DurableWorkflowPhase | `public enum DurableWorkflowPhase` |
 | — | case | public | DurableWorkflowPhase.running(stepCursor:iterationCursor:lastResult:) | `public case running(stepCursor: Int, iterationCursor: Int, lastResult: AgentResult?)` |
 | — | case | public | DurableWorkflowPhase.completed | `public case completed(AgentResult)` |
+| — | case | public | DurableWorkflowPhase.rejected(toolName:reason:) | `public case rejected(toolName: String, reason: String)` |
 | — | struct | public | DurableWorkflowCheckpointSnapshot | `public struct DurableWorkflowCheckpointSnapshot` |
 | — | var | public | DurableWorkflowCheckpointSnapshot.checkpointID | `public let checkpointID: String` |
 | — | var | public | DurableWorkflowCheckpointSnapshot.stepIndex | `public let stepIndex: Int` |
@@ -2608,6 +2619,31 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | var | public | DurableWorkflowRunInspection.latest | `public var latest: DurableWorkflowCheckpointSnapshot? { get }` |
 | — | var | public | DurableWorkflowRunInspection.isCompleted | `public var isCompleted: Bool { get }` |
 | — | var | public | DurableWorkflowRunInspection.signatureMatches | `public var signatureMatches: Bool { get }` |
+
+### Workflow/WorkflowDurableApproval.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 15 | struct | public | WorkflowApprovalRequired | `public struct WorkflowApprovalRequired: Error, Sendable, Equatable` |
+| 17 | var | public | WorkflowApprovalRequired.toolName | `public let toolName: String` |
+| 20 | var | public | WorkflowApprovalRequired.arguments | `public let arguments: [String: SendableValue]` |
+| 24 | var | public | WorkflowApprovalRequired.stepCursor | `public let stepCursor: Int` |
+| 27 | var | public | WorkflowApprovalRequired.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
+| 30 | var | public | WorkflowApprovalRequired.interruptID | `public let interruptID: String` |
+| 33 | func | public | WorkflowApprovalRequired.init(toolName:arguments:stepCursor:checkpointID:interruptID:) | `public init(toolName: String, arguments: [String: SendableValue], stepCursor: Int, checkpointID: WorkflowCheckpointID, interruptID: String)` |
+| 79 | struct | public | WorkflowResumeConflict | `public struct WorkflowResumeConflict: Error, Sendable, Equatable` |
+| 81 | var | public | WorkflowResumeConflict.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
+| 83 | var | public | WorkflowResumeConflict.reason | `public let reason: String` |
+| 86 | func | public | WorkflowResumeConflict.init(checkpointID:reason:) | `public init(checkpointID: WorkflowCheckpointID, reason: String)` |
+| 110 | struct | public | WorkflowApprovalReplayDiverged | `public struct WorkflowApprovalReplayDiverged: Error, Sendable, Equatable` |
+| 113 | var | public | WorkflowApprovalReplayDiverged.maxAttempts | `public static let maxAttempts: Int` |
+| 116 | var | public | WorkflowApprovalReplayDiverged.checkpointID | `public let checkpointID: WorkflowCheckpointID` |
+| 118 | var | public | WorkflowApprovalReplayDiverged.toolName | `public let toolName: String` |
+| 120 | var | public | WorkflowApprovalReplayDiverged.attempts | `public let attempts: Int` |
+| 123 | func | public | WorkflowApprovalReplayDiverged.init(checkpointID:toolName:attempts:) | `public init(checkpointID: WorkflowCheckpointID, toolName: String, attempts: Int)` |
+| 142 | enum | public | WorkflowApprovalDecision | `public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable` |
+| 149 | case | public | WorkflowApprovalDecision.approve | `public case approve` |
+| 154 | case | public | WorkflowApprovalDecision.reject | `public case reject` |
 
 ### Workflow/WorkflowCheckpointID.swift
 
@@ -2677,7 +2713,30 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 85 | func | public | JobSession.ingest(_:) | `public func ingest(_ record: JobRecord) async` |
 | 97 | func | public | JobSession.window(query:tokenLimit:) | `public func window(query: String, tokenLimit: Int) async -> String` |
 | 107 | func | public | JobSession.records(kind:) | `public func records(kind: String) async -> [JobRecord]` |
-| 117 | func | public | JobSession.fanOut(_:) | `public func fanOut(_ children: [JobChild]) async throws -> [JobChildResult]` |
+| 118 | func | public | JobSession.fanOut(_:observer:) | `public func fanOut(_ children: [JobChild], observer: (any AgentObserver)? = nil) async throws -> [JobChildResult]` |
+
+### Job/JobTask.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 9 | struct | public | JobTask | `public struct JobTask` |
+| 10 | var | public | JobTask.name | `public let name: String` |
+| 11 | var | public | JobTask.agent | `public let agent: any AgentRuntime` |
+| 12 | var | public | JobTask.brief | `public let brief: String` |
+| 13 | var | public | JobTask.expectedOutput | `public let expectedOutput: String` |
+| 15 | func | public | JobTask.init(name:agent:brief:expectedOutput:) | `public init(name: String, agent: some AgentRuntime, brief: String, expectedOutput: String = "")` |
+| 41 | struct | public | JobProduct | `public struct JobProduct` |
+| 43 | var | public | JobProduct.results | `public let results: [String: AgentResult]` |
+| 46 | var | public | JobProduct.summary | `public let summary: String` |
+| 48 | func | public | JobProduct.init(results:summary:) | `public init(results: [String: AgentResult], summary: String)` |
+| 58 | struct | public | JobAssignment | `public struct JobAssignment` |
+| 59 | var | public | JobAssignment.name | `public let name: String` |
+| 60 | var | public | JobAssignment.agent | `public let agent: any AgentRuntime` |
+| 61 | var | public | JobAssignment.notesQuery | `public let notesQuery: String` |
+| 62 | var | public | JobAssignment.expectedOutput | `public let expectedOutput: String` |
+| 64 | func | public | JobAssignment.init(name:agent:notesQuery:expectedOutput:) | `public init(name: String, agent: some AgentRuntime, notesQuery: String, expectedOutput: String = "")` |
+| 104 | func | public | Job.run(_:tasks:merge:observer:) | `public func run(_ input: String, tasks: [JobTask], merge: Workflow.MergeStrategy = .structured, observer: (any AgentObserver)? = nil) async throws -> JobProduct` |
+| 145 | func | public | Job.delegate(_:manager:assignments:merge:observer:tokenLimit:prepare:) | `public func delegate(_ input: String, manager: some AgentRuntime, assignments: [JobAssignment], merge: Workflow.MergeStrategy = .structured, observer: (any AgentObserver)? = nil, tokenLimit: Int = 4000, prepare: @Sendable (JobSession) async throws -> Void = { _ in }) async throws -> JobProduct` |
 
 ### Job/JobStore.swift
 
@@ -2735,7 +2794,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | — | class | public | StdioMCPServer | `public actor StdioMCPServer` |
 | — | var | public | StdioMCPServer.defaultEnvironmentAllowlist | `public static let defaultEnvironmentAllowlist: Set<String>` |
 | — | var | public | StdioMCPServer.defaultSandboxPATH | `public static let defaultSandboxPATH: String` |
-| — | func | public | StdioMCPServer.init(command:arguments:environment:inheritedEnvironmentKeys:workingDirectory:allowedWorkingDirectoryRoot:name:timeout:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, inheritedEnvironmentKeys: Set<String> = [], workingDirectory: URL? = nil, allowedWorkingDirectoryRoot: URL? = nil, name: String, timeout: TimeInterval = 30.0) throws` |
+| — | var | public | StdioMCPServer.defaultMaxMessageSize | `public static let defaultMaxMessageSize: Int` |
+| — | func | public | StdioMCPServer.init(command:arguments:environment:inheritedEnvironmentKeys:workingDirectory:allowedWorkingDirectoryRoot:name:timeout:maxMessageSize:) | `public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, inheritedEnvironmentKeys: Set<String> = [], workingDirectory: URL? = nil, allowedWorkingDirectoryRoot: URL? = nil, name: String, timeout: TimeInterval = 30.0, maxMessageSize: Int = StdioMCPServer.defaultMaxMessageSize) throws` |
 | — | func | public | StdioMCPServer.callToolRaw(name:arguments:) | `public func callToolRaw(name: String, arguments: [String : SendableValue]) async throws -> SendableValue` |
 
 ### MCP/MCPCapabilities.swift
@@ -3488,7 +3548,10 @@ Without it this product is a hollow module exposing ``OpenTelemetryTrait``.
 | 30 | struct | public | OTLPHTTPExporterConfiguration | `public struct OTLPHTTPExporterConfiguration` |
 | 32 | var | public | OTLPHTTPExporterConfiguration.defaultEndpoint | `public static let defaultEndpoint: URL` |
 | 35 | var | public | OTLPHTTPExporterConfiguration.default | `public static let \`default\`: OTLPHTTPExporterConfiguration` |
-| 72 | func | public | OTLPHTTPExporterConfiguration.init(endpoint:headers:resourceAttributes:maxBatchSize:scheduleDelay:maxRetries:retryBackoff:) | `public init(endpoint: URL = defaultEndpoint, headers: [String : String] = [:], resourceAttributes: [String : String] = ["service.name": "swarm"], maxBatchSize: Int = 64, scheduleDelay: Duration = .seconds(5), maxRetries: Int = 1, retryBackoff: Duration = .milliseconds(200))` |
+| 94 | func | public | OTLPHTTPExporterConfiguration.init(endpoint:headers:resourceAttributes:maxBatchSize:scheduleDelay:maxRetries:retryBackoff:maxQueueSize:maxExportAttempts:syncTimeout:) | `public init(endpoint: URL = defaultEndpoint, headers: [String : String] = [:], resourceAttributes: [String : String] = ["service.name": "swarm"], maxBatchSize: Int = 64, scheduleDelay: Duration = .seconds(5), maxRetries: Int = 1, retryBackoff: Duration = .milliseconds(200), maxQueueSize: Int = 2048, maxExportAttempts: Int = 3, syncTimeout: TimeInterval = 10)` |
+| 178 | func | public | OTLPHTTPExporterConfiguration.maxQueueSize(_:) | `func maxQueueSize(_ value: Int) -> OTLPHTTPExporterConfiguration` |
+| 186 | func | public | OTLPHTTPExporterConfiguration.maxExportAttempts(_:) | `func maxExportAttempts(_ value: Int) -> OTLPHTTPExporterConfiguration` |
+| 194 | func | public | OTLPHTTPExporterConfiguration.syncTimeout(_:) | `func syncTimeout(_ value: TimeInterval) -> OTLPHTTPExporterConfiguration` |
 
 #### Sources/SwarmOpenTelemetry/OTLPHTTPTraceExporter.swift
 
@@ -3496,6 +3559,8 @@ Without it this product is a hollow module exposing ``OpenTelemetryTrait``.
 |------|------|--------|------|-----------|
 | 30 | class | public | OTLPHTTPTraceExporter | `public final class OTLPHTTPTraceExporter` |
 | 40 | func | public | OTLPHTTPTraceExporter.init(configuration:session:) | `public init(configuration: OTLPHTTPExporterConfiguration = .default, session: URLSession = .shared)` |
+| 87 | var | public | OTLPHTTPTraceExporter.droppedSpanCount | `public var droppedSpanCount: Int { get }` |
+| 92 | var | public | OTLPHTTPTraceExporter.queuedSpanCount | `public var queuedSpanCount: Int { get }` |
 | 219 | enum | public | OpenTelemetryTracing | `public enum OpenTelemetryTracing` |
 | 230 | func | public | OpenTelemetryTracing.configureOTLPHTTPExport(configuration:session:) | `public static func configureOTLPHTTPExport(configuration: OTLPHTTPExporterConfiguration = .default, session: URLSession = .shared) -> OTLPHTTPTraceExporter` |
 

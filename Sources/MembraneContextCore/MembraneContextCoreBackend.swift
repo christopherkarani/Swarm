@@ -67,8 +67,8 @@ public actor MembraneContextCoreBackend: MembraneContextBackend {
         lastSnapshot
     }
 
-    private func makeContext(from request: ContextRequest) async throws -> AgentContext {
-        let context = try AgentContext(configuration: configuration)
+    private func makeContext(from request: ContextRequest) async throws -> ContextWindowEngine {
+        let context = try ContextWindowEngine(configuration: configuration)
         let sessionID = UUID(uuidString: request.metadata.sessionID) ?? UUID()
         try await context.beginSession(id: sessionID, systemPrompt: request.systemPrompt)
 
@@ -100,7 +100,7 @@ public actor MembraneContextCoreBackend: MembraneContextBackend {
         """
     }
 
-    private func checkpointData(for context: AgentContext) async throws -> Data {
+    private func checkpointData(for context: ContextWindowEngine) async throws -> Data {
         let url = temporaryCheckpointURL()
         try await context.checkpoint(to: url)
         defer { try? fileManager.removeItem(at: url) }

@@ -106,11 +106,36 @@ extension Agent {
         return try DecodedStructuredAgentResult<Output>.decoding(result, as: type)
     }
 
+    /// Executes the agent and streams its events.
+    ///
+    /// ## Output guardrails and token streaming
+    ///
+    /// Output guardrails can only judge the finished output. When this agent
+    /// has ``outputGuardrails``, `.output(.token)` events are therefore held
+    /// until the guardrails pass, then released just before
+    /// `.lifecycle(.completed)`. If a guardrail trips, the held tokens are
+    /// discarded and the stream ends with `.lifecycle(.failed)`, so blocked
+    /// text never reaches the consumer. To keep event order, any event that
+    /// arrives after the first held token waits with it.
+    ///
+    /// The trade-off: with output guardrails there is no incremental token
+    /// display. Without output guardrails, tokens stream live as before.
+    /// A user-supplied `observer` always receives tokens live.
+    ///
+    /// - Parameters:
+    ///   - input: The user's input/query.
+    ///   - session: Optional session for conversation history management.
+    ///   - observer: Optional observer that also receives every callback.
+    /// - Returns: A stream of ``AgentEvent`` values that ends after the
+    ///   terminal lifecycle event, or throws the run's error.
     public func stream(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
         let agent = self
         return StreamHelper.makeTrackedStream(bufferingPolicy: .unbounded) { continuation in
             // Create event bridge observer
-            let streamObserver = EventStreamObserver(continuation: continuation)
+            let streamObserver = EventStreamObserver(
+                continuation: continuation,
+                holdsOutputTokens: !agent.outputGuardrails.isEmpty
+            )
 
             // Combine with user-provided observer
             let combinedObserver: any AgentObserver = if let userObserver = observer {
@@ -253,15 +278,22 @@ extension Agent {
             // Store turn in session for conversation persistence
             // Session is the source of truth for conversation history
             if let session {
-                try await session.addItems([userMessage] + toolLoopOutcome.transcriptMessages)
+                // Describe only this turn's items instead of re-reading the whole
+                // session every run. The turn transcript is always built at the
+                // current schema version, so the validation below is a defensive
+                // invariant check that runs before the write; it does not detect
+                // incompatible items already stored in the session.
+                // `swarm.transcript.hash` is the hash of the items this turn appended.
+                let turnItems = [userMessage] + toolLoopOutcome.transcriptMessages
+                let turnTranscript = SwarmTranscript(memoryMessages: turnItems)
+                try turnTranscript.validateReplayCompatibility()
+                try await session.addItems(turnItems)
 
-                let persistedTranscript = SwarmTranscript(memoryMessages: try await session.getAllItems())
-                try persistedTranscript.validateReplayCompatibility()
                 _ = resultBuilder.setMetadata(
                     Self.transcriptSchemaVersionMetadataKey,
-                    .string(persistedTranscript.schemaVersion.rawValue)
+                    .string(turnTranscript.schemaVersion.rawValue)
                 )
-                if let transcriptHash = try? persistedTranscript.transcriptHash() {
+                if let transcriptHash = try? turnTranscript.transcriptHash() {
                     _ = resultBuilder.setMetadata(Self.transcriptHashMetadataKey, .string(transcriptHash))
                 }
             } else if let activeMemory, dependencies.shouldPersistNoSessionTurnToDefaultMemory {

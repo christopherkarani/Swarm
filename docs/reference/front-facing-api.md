@@ -574,6 +574,45 @@ WorkflowCheckpointing.fileSystem(directory: URL, retention: WorkflowCheckpointRe
 WorkflowCheckpointRetention.default // keep-latest 16 per run
 ```
 
+### Durable tool approvals
+
+A tool with `ToolExecutionSemantics(approvalRequirement: .always)` pauses a
+durable run instead of executing. `execute` throws `WorkflowApprovalRequired`;
+`resume(decision:from:)` continues from the same or a fresh process sharing the
+checkpoint store. `.approve` replays the paused step and lets the approved call
+through when the replay regenerates the same call (otherwise it pauses again
+with the new call); `.reject` checkpoints a terminal rejection and fails with
+`WorkflowError.humanApprovalRejected` without executing. Within one resumed
+execution each approval covers one matching call. Concurrent resumes of one checkpoint (same process
+or another process sharing the store) execute once; the loser throws
+`WorkflowResumeConflict`. The resumed step replays from its start, but tool
+calls the step already executed return their journaled result instead of running
+again, and their memory writes are not repeated. A replay that keeps diverging
+from the approved call throws `WorkflowApprovalReplayDiverged` after
+`WorkflowApprovalReplayDiverged.maxAttempts` approve-resumes. No edited-arguments
+resume, no approval timeout. Pauses surface on the `AgentEvent` stream as
+`AgentEvent.Tool.approvalRequested` via
+`AgentObserver.onToolApprovalRequested`.
+
+```swift
+public struct WorkflowApprovalRequired: Error, Sendable, Equatable {
+    public let toolName: String
+    public let arguments: [String: SendableValue]
+    public let stepCursor: Int
+    public let checkpointID: WorkflowCheckpointID
+    public let interruptID: String
+}
+
+public enum WorkflowApprovalDecision: String, Sendable, Equatable, Codable {
+    case approve
+    case reject
+}
+
+public struct DurableWorkflow: Sendable {
+    public func resume(decision: WorkflowApprovalDecision, from checkpointID: WorkflowCheckpointID) async throws -> AgentResult
+}
+```
+
 File-backed stores prune to keep-latest-N per run and load through a directory
 manifest. Resume identity is step kind + position + explicit `signature:` —
 not `fileID:line`. See [Durable Execution](/guide/durable-execution).
@@ -662,6 +701,62 @@ v1 does not checkpoint.
 match. `JobSession.window` always renders from `store.records()` with a
 case-insensitive substring of kind or text; the store does not implement
 `window`.
+
+### Job as product (JobTask, JobProduct, delegation)
+
+Tasks add an expected-output contract to the brief; the product convenience
+returns results keyed by task name plus a summary merged with
+`Workflow.MergeStrategy`. `fanOut` and both conveniences forward an optional
+`AgentObserver` to every child `agent.run`.
+
+```swift
+public struct JobTask: Sendable {
+    public let name: String
+    public let agent: any AgentRuntime
+    public let brief: String
+    public let expectedOutput: String
+    public init(name: String, agent: some AgentRuntime, brief: String, expectedOutput: String = "")
+}
+
+public struct JobProduct: Sendable, Equatable {
+    public let results: [String: AgentResult]
+    public let summary: String
+    public init(results: [String: AgentResult], summary: String)
+}
+
+public struct JobAssignment: Sendable {
+    public let name: String
+    public let agent: any AgentRuntime
+    public let notesQuery: String
+    public let expectedOutput: String
+    public init(name: String, agent: some AgentRuntime, notesQuery: String, expectedOutput: String = "")
+}
+
+public extension Job {
+    func run(
+        _ input: String,
+        tasks: [JobTask],
+        merge: Workflow.MergeStrategy = .structured,
+        observer: (any AgentObserver)? = nil
+    ) async throws -> JobProduct
+    func delegate(
+        _ input: String,
+        manager: some AgentRuntime,
+        assignments: [JobAssignment],
+        merge: Workflow.MergeStrategy = .structured,
+        observer: (any AgentObserver)? = nil,
+        tokenLimit: Int = 4000,
+        prepare: @Sendable (JobSession) async throws -> Void = { _ in }
+    ) async throws -> JobProduct
+}
+```
+
+`Job.delegate` is the manager-delegation recipe: the manager drafts one
+brief per assignment from the shared notes, then a single fan-out runs every
+helper. The one-fan-out gate still holds per run; for multi-round work,
+reuse the same `Job` or store so rounds share the notes box, and decide each
+round's N after seeing the previous round's product. See
+[Job as Product](/guide/job-as-product).
 
 ## 8) InputGuard and OutputGuard
 

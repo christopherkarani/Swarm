@@ -1,8 +1,17 @@
 #if SWARM_INTEGRATIONS
 import Foundation
 import HiveCore
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
-protocol WorkflowDurableCheckpointStore: Sendable {
+/// A durable workflow checkpoint backend.
+///
+/// Class-bound so the engine can key its in-process resume guard on the
+/// backend's identity.
+protocol WorkflowDurableCheckpointStore: AnyObject, Sendable {
     var runtimeStore: AnyHiveCheckpointStore<WorkflowDurableSchema> { get }
     func containsCheckpoint(for checkpointID: String) async throws -> Bool
     /// Full checkpoint history for a run, ordered oldest first (newest last).
@@ -40,7 +49,28 @@ actor WorkflowInMemoryCheckpointStore: WorkflowDurableCheckpointStore, HiveCheck
         checkpoints.append(checkpoint)
     }
 
+    /// Atomic compare-and-swap: actor isolation makes the compare and the
+    /// append one step.
+    func save(
+        _ checkpoint: HiveCheckpoint<WorkflowDurableSchema>,
+        expectedLatestID: HiveCheckpointID?
+    ) async throws {
+        let latestID = latest(threadID: checkpoint.threadID)?.id
+        guard latestID == expectedLatestID else {
+            throw HiveCheckpointConflict(
+                threadID: checkpoint.threadID,
+                expectedLatestID: expectedLatestID,
+                actualLatestID: latestID
+            )
+        }
+        checkpoints.append(checkpoint)
+    }
+
     func loadLatest(threadID: HiveThreadID) async throws -> HiveCheckpoint<WorkflowDurableSchema>? {
+        latest(threadID: threadID)
+    }
+
+    private func latest(threadID: HiveThreadID) -> HiveCheckpoint<WorkflowDurableSchema>? {
         checkpoints
             .filter { $0.threadID == threadID }
             .max { lhs, rhs in
@@ -172,6 +202,35 @@ actor WorkflowFileCheckpointStore: WorkflowDurableCheckpointStore, HiveCheckpoin
 
     func save(_ checkpoint: HiveCheckpoint<WorkflowDurableSchema>) async throws {
         try ensureDirectoryExists()
+        try withDirectoryLock {
+            try write(checkpoint)
+        }
+    }
+
+    /// Atomic compare-and-swap across processes sharing the directory.
+    ///
+    /// The compare and the write run under an exclusive advisory `flock` on
+    /// the checkpoint directory; plain ``save(_:)`` takes the same lock, so
+    /// two processes resuming the same run cannot both win.
+    func save(
+        _ checkpoint: HiveCheckpoint<WorkflowDurableSchema>,
+        expectedLatestID: HiveCheckpointID?
+    ) async throws {
+        try ensureDirectoryExists()
+        try withDirectoryLock {
+            let latestID = try latest(threadID: checkpoint.threadID)?.id
+            guard latestID == expectedLatestID else {
+                throw HiveCheckpointConflict(
+                    threadID: checkpoint.threadID,
+                    expectedLatestID: expectedLatestID,
+                    actualLatestID: latestID
+                )
+            }
+            try write(checkpoint)
+        }
+    }
+
+    private func write(_ checkpoint: HiveCheckpoint<WorkflowDurableSchema>) throws {
         let fileName = checkpointFileName(
             threadID: checkpoint.threadID,
             checkpointID: checkpoint.id
@@ -198,6 +257,10 @@ actor WorkflowFileCheckpointStore: WorkflowDurableCheckpointStore, HiveCheckpoin
 
     func loadLatest(threadID: HiveThreadID) async throws -> HiveCheckpoint<WorkflowDurableSchema>? {
         try ensureDirectoryExists()
+        return try latest(threadID: threadID)
+    }
+
+    private func latest(threadID: HiveThreadID) throws -> HiveCheckpoint<WorkflowDurableSchema>? {
         let manifest = try loadManifestForRead()
         let entries = (manifest.runs[threadID.rawValue] ?? []).sorted(by: Self.isOlderThan)
         let decoder = JSONDecoder()
@@ -380,6 +443,24 @@ actor WorkflowFileCheckpointStore: WorkflowDurableCheckpointStore, HiveCheckpoin
             with: "_",
             options: .regularExpression
         )
+    }
+
+    /// Runs `body` while holding an exclusive advisory lock on the directory.
+    ///
+    /// Locks the directory's own descriptor rather than a lock file, so the
+    /// directory keeps holding only checkpoints and the manifest.
+    private func withDirectoryLock<T>(_ body: () throws -> T) throws -> T {
+        let lockPath = directory.path
+        let descriptor = lockPath.withCString { open($0, O_RDONLY) }
+        guard descriptor >= 0 else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: lockPath])
+        }
+        defer { close(descriptor) }
+        guard flock(descriptor, LOCK_EX) == 0 else {
+            throw CocoaError(.fileLocking, userInfo: [NSFilePathErrorKey: lockPath])
+        }
+        defer { flock(descriptor, LOCK_UN) }
+        return try body()
     }
 
     private func ensureDirectoryExists() throws {

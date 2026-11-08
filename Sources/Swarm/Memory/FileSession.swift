@@ -28,9 +28,24 @@ import Foundation
 /// loaded — last writer wins per mutation, not per message.
 ///
 /// ## File Layout
-/// `<directory>/<sanitized-sessionId>.json`, where the session ID keeps
-/// alphanumerics plus `-_.` and every other scalar becomes `_` (capped at
-/// 128 characters), so hostile IDs cannot escape the directory.
+/// `<directory>/<sanitized-sessionId>-<hash>.json`. The readable prefix keeps
+/// alphanumerics plus `-_.` and maps every other scalar to `_` (capped at
+/// 128 characters), so hostile IDs cannot escape the directory. The suffix is
+/// a 64-bit FNV-1a hash of the raw session ID in hex, so IDs that sanitize to
+/// the same prefix (`"user/1"` and `"user_1"`) never share a file.
+///
+/// Files written by earlier releases as `<sanitized-sessionId>.json` are
+/// still read when they hold this session's ID; the first successful write
+/// stores the history under the new name. The legacy file is left in place
+/// so an older release can still read the pre-migration history after a
+/// downgrade; once the new file exists it always wins.
+///
+/// ## Load Failures
+/// If the file exists but cannot be read or decoded, every operation throws
+/// and the file is left untouched: a session never replaces history it
+/// failed to load. The one exception is ``clearSession()``, which discards
+/// history by intent and therefore overwrites an unreadable file with an
+/// empty session — the API's recovery path for a corrupt file.
 public actor FileSession: Session {
     // MARK: Public
 
@@ -119,9 +134,13 @@ public actor FileSession: Session {
     }
 
     /// Clears all items and persists the empty session.
+    ///
+    /// Unlike the other operations, this does not load the existing file
+    /// first: clearing discards the history anyway, so an unreadable or
+    /// corrupt file is replaced by an empty session instead of throwing.
     public func clearSession() async throws {
-        try ensureLoaded()
         items.removeAll()
+        loaded = true
         try persist()
     }
 
@@ -129,6 +148,11 @@ public actor FileSession: Session {
 
     /// File holding this session's snapshot.
     nonisolated var fileURL: URL {
+        directory.appendingPathComponent("\(sanitizedSessionId)-\(sessionIdHash).json")
+    }
+
+    /// Pre-hash file name used by earlier releases; read for migration only.
+    nonisolated var legacyFileURL: URL {
         directory.appendingPathComponent("\(sanitizedSessionId).json")
     }
 
@@ -147,12 +171,43 @@ public actor FileSession: Session {
         return String(base.prefix(128))
     }
 
+    /// 64-bit FNV-1a of the raw session ID's UTF-8 bytes, as 16 hex digits.
+    ///
+    /// Deterministic across processes and platforms (unlike `Hasher`), so the
+    /// same ID always maps to the same file.
+    private nonisolated var sessionIdHash: String {
+        var hash: UInt64 = 0xCBF2_9CE4_8422_2325
+        for byte in sessionId.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x0000_0100_0000_01B3
+        }
+        let hex = String(hash, radix: 16)
+        return String(repeating: "0", count: 16 - hex.count) + hex
+    }
+
+    /// Loads the snapshot once. `loaded` flips only after a successful read,
+    /// so a failed load keeps throwing instead of exposing an empty session
+    /// whose next write would replace the unread file.
     private func ensureLoaded() throws {
         guard !loaded else { return }
-        defer { loaded = true }
-        let url = fileURL
+        if let snapshot = try readSnapshot(at: fileURL) {
+            guard snapshot.sessionId == sessionId else {
+                throw SessionError.invalidState(
+                    reason: "File session '\(sessionId)' holds data for session '\(snapshot.sessionId)'"
+                )
+            }
+            items = snapshot.items
+        } else if let legacy = try readSnapshot(at: legacyFileURL), legacy.sessionId == sessionId {
+            // A legacy file holding another ID belongs to a colliding session; ignore it.
+            items = legacy.items
+        }
+        loaded = true
+    }
+
+    /// Reads and decodes the snapshot at `url`; `nil` when no file exists.
+    private func readSnapshot(at url: URL) throws -> SessionSnapshot? {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            return
+            return nil
         }
         let data: Data
         do {
@@ -163,9 +218,8 @@ public actor FileSession: Session {
                 underlyingError: error.localizedDescription
             )
         }
-        let snapshot: SessionSnapshot
         do {
-            snapshot = try SessionSnapshot(encoded: data)
+            return try SessionSnapshot(encoded: data)
         } catch let sessionError as SessionError {
             throw sessionError
         } catch {
@@ -174,12 +228,6 @@ public actor FileSession: Session {
                 underlyingError: error.localizedDescription
             )
         }
-        guard snapshot.sessionId == sessionId else {
-            throw SessionError.invalidState(
-                reason: "File session '\(sessionId)' holds data for session '\(snapshot.sessionId)'"
-            )
-        }
-        items = snapshot.items
     }
 
     private func persist() throws {

@@ -81,6 +81,12 @@ enum OpenAICompatibleCodec: Sendable {
         return request
     }
 
+    /// Builds the chat-completions request body.
+    ///
+    /// Only `reasoning.effort` is threaded through to `reasoning_effort`, and
+    /// only while `reasoning.enabled` is not `false`; `maxTokens` and
+    /// `exclude` have no chat-completions counterpart and are intentionally
+    /// dropped.
     static func requestBody(
         configuration: OpenAICompatibleProviderConfiguration,
         messages: [InferenceMessage],
@@ -109,8 +115,28 @@ enum OpenAICompatibleCodec: Sendable {
                 configuration: configuration,
                 tools: tools,
                 structuredOutput: structuredOutput
-            )
+            ),
+            reasoningEffort: reasoningEffortWire(options.reasoning)
         )
+    }
+
+    /// Maps core reasoning settings to the chat-completions `reasoning_effort`
+    /// value.
+    ///
+    /// The key is omitted when `enabled == false`, when no effort is set, and
+    /// for ``ReasoningEffort/none``: chat-completions has no portable "off"
+    /// value, so `.none` falls back to the provider's default, which on
+    /// reasoning-by-default models still reasons.
+    private static func reasoningEffortWire(_ reasoning: ReasoningConfig?) -> String? {
+        guard let reasoning, reasoning.enabled != false, let effort = reasoning.effort else {
+            return nil
+        }
+        switch effort {
+        case .none:
+            return nil
+        case .xhigh, .high, .medium, .low, .minimal:
+            return effort.rawValue
+        }
     }
 
     private static func responseFormatWire(

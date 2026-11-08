@@ -1,6 +1,6 @@
 import Foundation
 
-/// Runtime counters and latency snapshots for ``AgentContext``.
+/// Runtime counters and latency snapshots for ``ContextWindowEngine``.
 public struct ContextStats: Sendable, Codable, Hashable {
     /// Number of episodic chunks currently stored.
     public var episodicCount: Int
@@ -10,7 +10,7 @@ public struct ContextStats: Sendable, Codable, Hashable {
     public var proceduralCount: Int
     /// Total number of sessions started.
     public var totalSessions: Int
-    /// Latest ``AgentContext/buildWindow(currentTask:maxTokens:)`` latency in milliseconds.
+    /// Latest ``ContextWindowEngine/buildWindow(currentTask:maxTokens:)`` latency in milliseconds.
     public var lastBuildWindowLatencyMs: Double
     /// Latest consolidation latency in milliseconds.
     public var lastConsolidationLatencyMs: Double

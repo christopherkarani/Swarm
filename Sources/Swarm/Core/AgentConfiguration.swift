@@ -165,6 +165,7 @@ private extension InferencePolicy {
 /// - ``includeReasoning(_:)`` - Set reasoning inclusion
 /// - ``sessionHistoryLimit(_:)`` - Set history limit
 /// - ``parallelToolCalls(_:)`` - Set parallel execution
+/// - ``maxConcurrentToolCalls(_:)`` - Cap concurrent tool calls
 /// - ``previousResponseId(_:)`` - Set response continuation
 /// - ``autoPreviousResponseId(_:)`` - Set auto response tracking
 /// - ``defaultTracingEnabled(_:)`` - Set default tracing
@@ -508,6 +509,23 @@ public struct AgentConfiguration: Sendable, Equatable {
     /// - SeeAlso: ``Agent/tools``, ``AgentConfiguration/stopOnToolError``
     public var parallelToolCalls: Bool
 
+    /// Maximum number of tool calls that run at the same time when
+    /// ``parallelToolCalls`` is enabled.
+    ///
+    /// A model can request many tool calls in one turn. Without a cap each
+    /// becomes a concurrent task, which can exhaust sockets, file handles, or
+    /// rate limits. Calls beyond the cap start as earlier calls finish; result
+    /// order is unchanged.
+    ///
+    /// Default: ``defaultMaxConcurrentToolCalls`` (8). Values below 1, from the
+    /// initializer or a later write, are coerced to 1.
+    public var maxConcurrentToolCalls: Int {
+        didSet { maxConcurrentToolCalls = Self.coercedMaxConcurrentToolCalls(maxConcurrentToolCalls) }
+    }
+
+    /// Default for ``maxConcurrentToolCalls``.
+    public static let defaultMaxConcurrentToolCalls = 8
+
     // MARK: - Response Tracking Settings
 
     /// Previous response ID for conversation continuation.
@@ -660,6 +678,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - contextProfile: Context budgeting profile. Default: `.platformDefault`
     ///   - inferencePolicy: Inference routing policy hints. Default: nil
     ///   - parallelToolCalls: Enable parallel tool execution. Default: false
+    ///   - maxConcurrentToolCalls: Cap on tool calls running at once. Default: ``defaultMaxConcurrentToolCalls``
     ///   - previousResponseId: Previous response ID for continuation. Default: nil
     ///   - autoPreviousResponseId: Enable auto response ID tracking. Default: false
     ///   - defaultTracingEnabled: Enable default tracing when no tracer configured. Default: true
@@ -683,6 +702,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         sessionHistoryLimit: Int? = 50,
         contextMode: ContextMode = .adaptive,
         parallelToolCalls: Bool = false,
+        maxConcurrentToolCalls: Int = AgentConfiguration.defaultMaxConcurrentToolCalls,
         previousResponseId: String? = nil,
         autoPreviousResponseId: Bool = false,
         defaultTracingEnabled: Bool = true,
@@ -707,6 +727,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.sessionHistoryLimit = sessionHistoryLimit
         self.contextMode = contextMode
         self.parallelToolCalls = parallelToolCalls
+        self.maxConcurrentToolCalls = Self.coercedMaxConcurrentToolCalls(maxConcurrentToolCalls)
         self.previousResponseId = previousResponseId
         self.autoPreviousResponseId = autoPreviousResponseId
         self.defaultTracingEnabled = defaultTracingEnabled
@@ -725,6 +746,12 @@ private extension AgentConfiguration {
         guard value < 1 else { return value }
         Log.agents.warning("AgentConfiguration: maxIterations \(value) must be >= 1; using 1")
         return max(1, value)
+    }
+
+    static func coercedMaxConcurrentToolCalls(_ value: Int) -> Int {
+        guard value < 1 else { return value }
+        Log.agents.warning("AgentConfiguration: maxConcurrentToolCalls \(value) must be >= 1; using 1")
+        return 1
     }
 
     static func coercedMaxConsecutiveToolRepeats(_ value: Int) -> Int {
@@ -777,6 +804,7 @@ extension AgentConfiguration: CustomStringConvertible {
             sessionHistoryLimit: \(sessionHistoryLimit.map(String.init) ?? "nil"),
             contextMode: \(contextMode),
             parallelToolCalls: \(parallelToolCalls),
+            maxConcurrentToolCalls: \(maxConcurrentToolCalls),
             previousResponseId: \(previousResponseId.map { "\"\($0)\"" } ?? "nil"),
             autoPreviousResponseId: \(autoPreviousResponseId),
             defaultTracingEnabled: \(defaultTracingEnabled),

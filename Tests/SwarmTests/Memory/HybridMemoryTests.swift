@@ -236,6 +236,7 @@ struct HybridMemoryTests {
         await mockSummarizer.stub(result: "Forced summary")
 
         let config = HybridMemory.Configuration(
+            shortTermMaxMessages: 10,
             summarizationThreshold: 100
         )
         let memory = HybridMemory(
@@ -243,7 +244,8 @@ struct HybridMemoryTests {
             summarizer: mockSummarizer
         )
 
-        for i in 1...10 {
+        // 15 messages through a 10-message window: 5 are evicted and summarizable.
+        for i in 1...15 {
             await memory.add(.user("Message \(i)"))
         }
 
@@ -313,5 +315,78 @@ struct HybridMemoryTests {
         #expect(diagnostics.totalMessagesProcessed == 20)
         #expect(diagnostics.hasSummary == true)
         #expect(diagnostics.summarizationCount >= 1)
+    }
+    // MARK: - Double-Context Regression Tests
+
+    @Test("Summary input only contains messages evicted from the short-term window")
+    func summarizesOnlyEvictedMessages() async throws {
+        let mockSummarizer = MockSummarizer()
+        await mockSummarizer.stub(result: "Evicted summary")
+
+        let memory = HybridMemory(
+            configuration: .init(shortTermMaxMessages: 10, summarizationThreshold: 20),
+            summarizer: mockSummarizer
+        )
+
+        for i in 1...20 {
+            await memory.add(.user("Message #\(i)#"))
+        }
+
+        let call = try #require(await mockSummarizer.lastCall)
+        for i in 1...10 {
+            #expect(call.text.contains("Message #\(i)#"), "evicted message \(i) should be summarized")
+        }
+        for i in 11...20 {
+            #expect(!call.text.contains("Message #\(i)#"), "in-window message \(i) must not be summarized")
+        }
+    }
+
+    @Test("Context never sends a message both in the summary and the recent window")
+    func contextHasNoDuplicatedMessages() async {
+        let memory = HybridMemory(
+            configuration: .init(shortTermMaxMessages: 10, summarizationThreshold: 20),
+            summarizer: TruncatingSummarizer.shared
+        )
+
+        for i in 1...20 {
+            await memory.add(.user("Message #\(i)#"))
+        }
+
+        let context = await memory.context(for: "q", tokenLimit: 100_000)
+        for i in 1...20 {
+            let occurrences = context.components(separatedBy: "Message #\(i)#").count - 1
+            #expect(occurrences <= 1, "message \(i) appears \(occurrences) times")
+        }
+        #expect(await memory.diagnostics().pendingMessages == 0)
+    }
+
+    @Test("Force summarize leaves in-window messages alone")
+    func forceSummarizeSkipsWindow() async {
+        let mockSummarizer = MockSummarizer()
+        await mockSummarizer.stub(result: "Forced summary")
+
+        let memory = HybridMemory(
+            configuration: .init(shortTermMaxMessages: 10, summarizationThreshold: 100),
+            summarizer: mockSummarizer
+        )
+        for i in 1...5 {
+            await memory.add(.user("Message \(i)"))
+        }
+
+        await memory.forceSummarize()
+
+        #expect(await mockSummarizer.callCount == 0)
+        #expect(await memory.hasSummary == false)
+    }
+
+    @Test("Threshold clamp uses the clamped short-term size")
+    func thresholdClampUsesClampedWindow() {
+        let config = HybridMemory.Configuration(
+            shortTermMaxMessages: 5, // clamped to 10
+            summarizationThreshold: 15
+        )
+
+        #expect(config.shortTermMaxMessages == 10)
+        #expect(config.summarizationThreshold == 20)
     }
 }
