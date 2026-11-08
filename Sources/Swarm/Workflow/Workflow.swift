@@ -661,6 +661,10 @@ public struct Workflow: Sendable {
             for _ in 0 ..< attempts {
                 do {
                     return try await primary.run(input, session: nil, observer: observer)
+                } catch let pause as WorkflowToolApprovalRequest {
+                    // A durable approval pause is not a failure: surface it so
+                    // the human decides, instead of retrying or falling back.
+                    throw pause
                 } catch {
                     lastError = error
                 }

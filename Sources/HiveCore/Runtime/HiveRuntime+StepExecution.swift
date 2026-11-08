@@ -246,6 +246,13 @@ extension HiveRuntime {
         nextState.deferredFrontier = state.deferredFrontier + commitResult.deferredFrontier
 
         let selectedInterrupt = try selectInterrupt(tasks: tasks, outputs: outputs)
+        // A step that delivered a resume payload resolves the pending interrupt.
+        // Clear it before building this step's checkpoint; otherwise a resumed
+        // step that ends the run persists a stale interruption that can be
+        // resumed (and its decision re-applied) again.
+        if resume != nil, selectedInterrupt == nil {
+            nextState.interruption = nil
+        }
         var checkpointToSave: HiveCheckpoint<Schema>?
         let shouldSaveForPolicy: Bool
         switch options.checkpointPolicy {

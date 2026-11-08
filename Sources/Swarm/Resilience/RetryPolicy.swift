@@ -354,7 +354,9 @@ public struct RetryPolicy: Sendable {
             do {
                 return try await operation()
             } catch {
-                if error is CancellationError || Task.isCancelled {
+                // Durable approval pauses are not failures; retrying would
+                // re-ask without a human decision.
+                if error is CancellationError || error is WorkflowToolApprovalRequest || Task.isCancelled {
                     throw error
                 }
 
