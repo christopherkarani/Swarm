@@ -275,6 +275,18 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     }
     public var endpointURL: URL? { nil }
 
+    /// Exact prompt token counter for on-device sessions (OS 26.4+).
+    ///
+    /// Uses `SystemLanguageModel.tokenCount(for:)`, so memory retrieval and
+    /// prompt budgeting count with the model's own tokenizer. `nil` for
+    /// Private Cloud Compute, other `LanguageModel` backends, and older
+    /// systems, which keeps the environment's heuristic counter. Like every
+    /// provider counter, it replaces a counter set with
+    /// `.promptTokenCounter(_:)` for runs on this provider.
+    public var promptTokenCounter: (any PromptTokenCounter)? {
+        sessionModel.promptTokenCounter
+    }
+
     public var capabilities: InferenceProviderCapabilities {
         var capabilities: InferenceProviderCapabilities = [
             .conversationMessages,

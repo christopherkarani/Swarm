@@ -122,6 +122,17 @@ PCC uses a 32K context window and a daily quota.
 `PrivateCloudComputeLanguageModel.Error.quotaLimitReached` maps to
 ``AgentError/rateLimitExceeded(retryAfter:)``.
 
+## Exact token counts (OS 26.4+)
+
+On-device sessions expose
+``FoundationModelsInferenceProvider/promptTokenCounter``, backed by Apple's
+`SystemLanguageModel.tokenCount(for:)`. Agent uses it for memory retrieval
+and prompt budgeting, so trimming matches the model's own tokenizer instead
+of a character estimate. Private Cloud Compute, other `LanguageModel`
+backends, and systems before 26.4 return `nil` and keep the environment's
+heuristic counter. If a count throws, Swarm falls back to the heuristic for
+that call.
+
 ## Image attachments (OS 27)
 
 Attach images to any ``InferenceMessage`` via the `attachments` sidecar:

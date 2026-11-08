@@ -17,6 +17,11 @@ struct FoundationModelsSessionModel: Sendable {
     let isAvailable: Bool
     /// True only for on-device `SystemLanguageModel` backing (never PCC).
     let runsOnDevice: Bool
+    /// Exact token counter for `SystemLanguageModel` backing on OS 26.4+.
+    ///
+    /// `nil` for Private Cloud Compute, other `LanguageModel` backends, and
+    /// older systems; Agent then keeps the environment's heuristic counter.
+    let promptTokenCounter: (any PromptTokenCounter)?
 
     private let build: @Sendable (
         _ tools: [any FoundationModels.Tool],
@@ -51,6 +56,7 @@ struct FoundationModelsSessionModel: Sendable {
             displayName: "systemLanguageModel",
             isAvailable: model.availability == .available,
             runsOnDevice: true,
+            promptTokenCounter: Self.nativeTokenCounter(for: model),
             build: legacy,
             buildProfile: { tools, snapshot, history in
                 if #available(macOS 27.0, iOS 27.0, visionOS 27.0, *) {
@@ -95,6 +101,7 @@ struct FoundationModelsSessionModel: Sendable {
             displayName: name,
             isAvailable: Self.isAvailable(boxed),
             runsOnDevice: boxed is SystemLanguageModel,
+            promptTokenCounter: (boxed as? SystemLanguageModel).flatMap(Self.nativeTokenCounter(for:)),
             build: legacy,
             buildProfile: { tools, snapshot, history in
                 let profile = FoundationModelsNativeDynamicProfile(
@@ -135,6 +142,14 @@ struct FoundationModelsSessionModel: Sendable {
         history: Transcript?
     ) -> LanguageModelSession {
         buildProfile(tools, snapshot, history)
+    }
+
+    /// The on-device tokenizer counter when the OS provides `tokenCount(for:)`.
+    static func nativeTokenCounter(for model: SystemLanguageModel) -> (any PromptTokenCounter)? {
+        if #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) {
+            return FoundationModelsPromptTokenCounter(model: model)
+        }
+        return nil
     }
 
     @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
