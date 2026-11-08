@@ -251,7 +251,14 @@ struct OpenAICompatibleChatChunk: Sendable, Equatable {
         guard prompt != nil || completion != nil else {
             return nil
         }
-        return TokenUsage(inputTokens: prompt ?? 0, outputTokens: completion ?? 0)
+        let promptDetails = object["prompt_tokens_details"] as? [String: Any]
+        let completionDetails = object["completion_tokens_details"] as? [String: Any]
+        return TokenUsage(
+            inputTokens: prompt ?? 0,
+            outputTokens: completion ?? 0,
+            cachedInputTokens: intValue(promptDetails?["cached_tokens"]),
+            reasoningTokens: intValue(completionDetails?["reasoning_tokens"])
+        )
     }
 
     private static func parseMessage(_ value: Any?) -> Message? {
@@ -343,7 +350,9 @@ struct OpenAICompatibleChatChunk: Sendable, Equatable {
         }
         return TokenUsage(
             inputTokens: usage.promptTokens ?? 0,
-            outputTokens: usage.completionTokens ?? 0
+            outputTokens: usage.completionTokens ?? 0,
+            cachedInputTokens: usage.cachedTokens,
+            reasoningTokens: usage.reasoningTokens
         )
     }
 
@@ -396,7 +405,9 @@ private struct WireChunkPayload: Decodable, Sendable {
         {
             usage = TokenUsage(
                 inputTokens: wireUsage.promptTokens ?? 0,
-                outputTokens: wireUsage.completionTokens ?? 0
+                outputTokens: wireUsage.completionTokens ?? 0,
+                cachedInputTokens: wireUsage.cachedTokens,
+                reasoningTokens: wireUsage.reasoningTokens
             )
         } else {
             usage = nil
@@ -492,16 +503,31 @@ private struct WireGoogleExtraPayload: Decodable, Sendable {
 private struct WireUsagePayload: Decodable, Sendable {
     var promptTokens: Int?
     var completionTokens: Int?
+    var cachedTokens: Int?
+    var reasoningTokens: Int?
 
     enum CodingKeys: String, CodingKey {
         case promptTokens = "prompt_tokens"
         case completionTokens = "completion_tokens"
+        case promptTokensDetails = "prompt_tokens_details"
+        case completionTokensDetails = "completion_tokens_details"
+    }
+
+    enum DetailsKeys: String, CodingKey {
+        case cachedTokens = "cached_tokens"
+        case reasoningTokens = "reasoning_tokens"
     }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         promptTokens = lossyTokenCount(from: container, forKey: .promptTokens)
         completionTokens = lossyTokenCount(from: container, forKey: .completionTokens)
+        if let details = try? container.nestedContainer(keyedBy: DetailsKeys.self, forKey: .promptTokensDetails) {
+            cachedTokens = lossyTokenCount(from: details, forKey: .cachedTokens)
+        }
+        if let details = try? container.nestedContainer(keyedBy: DetailsKeys.self, forKey: .completionTokensDetails) {
+            reasoningTokens = lossyTokenCount(from: details, forKey: .reasoningTokens)
+        }
     }
 }
 

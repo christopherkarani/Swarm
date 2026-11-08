@@ -26,7 +26,9 @@ import FoundationNetworking
 /// - Structured ``InferenceMessage`` history (roles, `tool_calls`, `tool_call_id`)
 /// - Function calling via ``ToolSchema``
 /// - SSE streaming, including incremental tool-call argument deltas
-/// - Token usage from `usage.prompt_tokens` / `usage.completion_tokens`
+/// - Token usage from `usage.prompt_tokens` / `usage.completion_tokens`,
+///   plus `prompt_tokens_details.cached_tokens` and
+///   `completion_tokens_details.reasoning_tokens` when the server sends them
 ///   (`stream_options.include_usage` is requested when streaming)
 /// - Structured outputs: native `response_format` when
 ///   ``OpenAICompatibleStructuredOutputMode/nativeJSONSchema`` is set;

@@ -1124,13 +1124,15 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 14 | struct | public | TokenUsage | `public struct TokenUsage` |
-| 16 | var | public | TokenUsage.inputTokens | `public let inputTokens: Int` |
-| 19 | var | public | TokenUsage.outputTokens | `public let outputTokens: Int` |
-| 22 | var | public | TokenUsage.totalTokens | `public var totalTokens: Int { get }` |
-| 30 | func | public | TokenUsage.init(inputTokens:outputTokens:) | `public init(inputTokens: Int, outputTokens: Int)` |
-| 36 | func | public | TokenUsage.merging(_:) | `public func merging(_ other: TokenUsage) -> TokenUsage` |
-| 51 | var | public | TokenUsage.description | `public var description: String { get }` |
+| 25 | struct | public | TokenUsage | `public struct TokenUsage` |
+| 27 | var | public | TokenUsage.inputTokens | `public let inputTokens: Int` |
+| 30 | var | public | TokenUsage.outputTokens | `public let outputTokens: Int` |
+| 38 | var | public | TokenUsage.cachedInputTokens | `public let cachedInputTokens: Int?` |
+| 46 | var | public | TokenUsage.reasoningTokens | `public let reasoningTokens: Int?` |
+| 49 | var | public | TokenUsage.totalTokens | `public var totalTokens: Int { get }` |
+| 61 | func | public | TokenUsage.init(inputTokens:outputTokens:cachedInputTokens:reasoningTokens:) | `public init(inputTokens: Int, outputTokens: Int, cachedInputTokens: Int? = nil, reasoningTokens: Int? = nil)` |
+| 82 | func | public | TokenUsage.merging(_:) | `public func merging(_ other: TokenUsage) -> TokenUsage` |
+| 102 | var | public | TokenUsage.description | `public var description: String { get }` |
 
 ## 3. Agents
 
