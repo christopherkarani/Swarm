@@ -58,14 +58,16 @@ struct WorkflowDurableCancellationTests {
     func cancellationDuringCompletionFlushPersistsCheckpoint() async throws {
         let backend = GatedCheckpointStore()
         let probe = CancellationProbe()
-        let workflow = Workflow()
+        let durable = Workflow()
             .step(RecordingStepAgent(probe: probe))
             .durable
-            .checkpoint(id: "wf-cancel-flush", policy: .onCompletion)
-            .durable
-            .checkpointing(WorkflowCheckpointing(backend: backend))
+            .configured(
+                id: WorkflowCheckpointID("wf-cancel-flush"),
+                store: WorkflowCheckpointing(backend: backend),
+                policy: .onCompletion
+            )
 
-        let task = Task { try await workflow.durable.execute("start") }
+        let task = Task { try await durable.execute("start") }
         try await backend.waitUntilSaveStarted()
         task.cancel()
         await backend.releaseSaves()
