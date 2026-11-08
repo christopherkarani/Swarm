@@ -150,12 +150,10 @@ private func run(arguments: [String]) async throws {
         .step(monitor)
         .repeatUntil(maxIterations: 4) { $0.output.lowercased().contains("done") }
         .durable
-        .checkpoint(id: "pipeline-monitor", policy: .everyStep)
-        .durable
-        .checkpointing(checkpointing)
+        .configured(id: WorkflowCheckpointID("pipeline-monitor"), store: checkpointing, policy: .everyStep)
 
-    _ = try await durableWorkflow.durable.execute("start")
-    let resumed = try await durableWorkflow.durable.execute("ignored", resumeFrom: "pipeline-monitor")
+    _ = try await durableWorkflow.execute("start")
+    let resumed = try await durableWorkflow.resume("ignored", from: WorkflowCheckpointID("pipeline-monitor"))
     print("resumed=\(resumed.output)")
 
     if demoMode {

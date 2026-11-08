@@ -6,7 +6,7 @@ End-to-end Swarm demo for multi-agent workflows and durable execution.
 
 - Sequential `Workflow().step(...).step(...).run(...)`
 - Parallel fan-out with `.parallel(..., merge: .structured)`
-- Durable checkpoint + resume (`.durable.checkpoint` / `.durable.execute`)
+- Durable checkpoint + resume (`.durable.configured` / `DurableWorkflow.resume`)
 - Optional live Foundation Models for both agents
 - Deterministic `--demo` mode with scripted providers (CI-safe)
 

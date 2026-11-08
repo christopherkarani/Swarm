@@ -19,7 +19,7 @@ memory, Membrane adapters, and web helpers:
 | Surface | Lean default | With Integrations |
 |---------|--------------|-------------------|
 | `Agent.makeDefaultMemory()` | `SlidingWindowMemory` | `DefaultAgentMemory` (ContextCore + Wax) |
-| Durable execute with checkpoint / `resumeFrom` | Warns at checkpoint factories; throws `durableRuntimeUnavailable` | Full Hive durable engine |
+| `DurableWorkflow` execute / resume | Warns at checkpoint factories; throws `durableRuntimeUnavailable` | Full Hive durable engine |
 | Membrane / web helpers | Unavailable or no-op; `WebSearchTool` warns at init and throws on execute | Linked and active |
 | Default semantic embeddings | n/a (lean uses `SlidingWindowMemory`) | `DefaultAgentMemory.isSemanticMemoryAvailable` is `false` until `SemanticEmbeddingAvailability.ensureModelAvailable()` (or a bundled/cached MiniLM)
 
@@ -157,7 +157,7 @@ try Agent(
 )
 ```
 
-Effective handoff tool names must be unique among themselves and must not equal a registered tool `name` (enabled or not). Two `Agent` values passed as `handoffAgents:` without overrides collide as `handoff_to_agent` and throw `AgentError.duplicateHandoffToolName`. A colliding tool throws `AgentError.handoffToolNameCollidesWithTool`. The same checks run on `withHandoffs`, `withTools`, and `Agent.Builder` handoff setters. Give each handoff a distinct `toolNameOverride` when targets share a runtime type.
+Effective handoff tool names must be unique among themselves and must not equal a registered tool `name` (enabled or not). Two `Agent` values passed as `handoffAgents:` without overrides collide as `handoff_to_agent` and throw `AgentError.duplicateHandoffToolName`. A colliding tool throws `AgentError.handoffToolNameCollidesWithTool`. The same checks run on `withHandoffs` and `withTools`. Give each handoff a distinct `toolNameOverride` when targets share a runtime type.
 
 ## 4) Agent (V3 canonical init with @ToolBuilder)
 
@@ -443,7 +443,6 @@ public struct Workflow: Sendable {
         case structured
         case indexed
         case firstCompleted
-        case first // deprecated, renamed: firstCompleted
         case custom(@Sendable ([AgentResult]) -> String)
     }
 
@@ -501,16 +500,13 @@ public struct Workflow: Sendable {
 Requires the **`Integrations`** SwiftPM trait (`traits: ["Integrations"]` or
 `--traits Integrations`) for real checkpoint/resume at **execute** time.
 
-With checkpoint/resume configured (or `resumeFrom` set), lean builds warn at
-`WorkflowCheckpointing.inMemory()` / `.fileSystem(directory:)`,
-`.durable.configured(id:store:)`, and `.durable.checkpoint` / `.checkpointing`,
-then throw `WorkflowError.durableRuntimeUnavailable` with the rebuild remedy.
+Lean builds warn at `WorkflowCheckpointing.inMemory()` /
+`.fileSystem(directory:)` and `.durable.configured(id:store:)`.
 `DurableWorkflow.execute` / `resume` / `inspect` / fork-`resume` always throw
-that error on lean builds because both identity and store are required.
-Without deprecated checkpoint
-configuration, bare `Workflow.Durable.execute` still runs as a non-durable
-workflow. Query `WorkflowCheckpointing.isAvailable` or
-`Workflow.Durable.isAvailable` before opting in.
+`WorkflowError.durableRuntimeUnavailable` with the rebuild remedy on lean
+builds because both identity and store are required. A plain `Workflow.run`
+still runs as a non-durable workflow. Query `WorkflowCheckpointing.isAvailable`
+or `Workflow.Durable.isAvailable` before opting in.
 
 ```swift
 public struct WorkflowCheckpointID: Hashable, Sendable, RawRepresentable, Codable {
@@ -561,15 +557,6 @@ public extension Workflow {
             store: WorkflowCheckpointing,
             policy: CheckpointPolicy = .onCompletion
         ) -> DurableWorkflow
-
-        @available(*, deprecated, message: "Use configured(id:store:policy:).")
-        func checkpoint(id: String, policy: CheckpointPolicy = .onCompletion) -> Workflow
-        @available(*, deprecated, message: "Use configured(id:store:policy:).")
-        func checkpointing(_ checkpointing: WorkflowCheckpointing) -> Workflow
-        @available(*, deprecated, message: "Use Workflow.fallback(primary:to:retries:).")
-        func fallback(primary: some AgentRuntime, to backup: some AgentRuntime, retries: Int = 0) -> Workflow
-        @available(*, deprecated, message: "Use DurableWorkflow.execute(_:) or resume(_:from:).")
-        func execute(_ input: String, resumeFrom checkpointID: String? = nil) async throws -> AgentResult
     }
 
     func fallback(
@@ -804,17 +791,12 @@ public protocol OutputGuardrail: Sendable {
 
 `AgentContext` orchestration slots (`originalInput`, `previousOutput`,
 `currentAgentName`, `executionPath`, `startTime`) are typed `ContextKey`
-statics. Prefer `set(.originalInput, "…")` / `get(.originalInput)` over the
-deprecated `AgentContextKey` get/set. Typed `ContextKey` writes stay in the
-slot store introduced with the unified context; `snapshot` still projects
-those names. The deprecated `AgentContextProviding` protocol remains
-functional for compatibility: conformers provide a `contextKey`, then use
-`setTyped(_:)`, `typed(_:)`, `removeTyped(_:)`, and `hasTyped(_:)`. These
-type-indexed methods use a separate legacy namespace and do not appear in
-string-keyed snapshots. Migrate new code to ``ContextKey`` (`ContextKey<Value>`) and the
-`setTyped(_:value:)` / `getTyped(_:)` accessors. The deprecated
-`AgentContextKey` overloads of `get(_:)` and `set(_:value:)` remain available
-for existing string-keyed callers until the 0.7.0 breaking boundary.
+statics. Use `set(.originalInput, "…")` / `get(.originalInput)`. Typed
+`ContextKey` writes live in the slot store introduced with the unified
+context; `snapshot` still projects those names. Store custom values with
+``ContextKey`` (`ContextKey<Value>`) and the `setTyped(_:value:)` /
+`getTyped(_:)` accessors. `AgentContextKey` and `AgentContextProviding` were
+removed in 0.7.0.
 
 ## 9) Memory factories
 
@@ -900,29 +882,19 @@ system prompts; `nil` renders under the generic "Relevant Context from Memory"
 heading with no guidance text.
 
 Memory lifecycle, retrieval, seeding, and prompt metadata are direct
-requirements on `Memory`; implement them on the memory type itself.
-
-The former marker protocols remain public and deprecated so existing conformances
-continue to compile: `MemorySessionLifecycle`, `MemorySessionReplayAware`,
-`MemoryRetrievalPolicyAware`, `MemorySessionImportPolicy`, and
-`MemoryPromptDescriptor`. Their corresponding `Memory` requirements are
-`beginMemorySession()` / `endMemorySession()`, `importSessionHistory(_:)`,
-`context(for: MemoryQuery)`, `allowsAutomaticSessionSeeding`, and
-`memoryPromptMetadata`.
-
-`MemoryPromptDescriptor` is bridged to `Memory.memoryPromptMetadata`: its title,
-guidance, and priority are combined into `MemoryPromptMetadata`, preserving
-prompt labels for existing conformers without source changes. New conformers
-should implement the direct `Memory` requirements; the runtime does not probe
-the legacy marker protocols.
+requirements on `Memory` with defaults; implement them on the memory type
+itself: `beginMemorySession()` / `endMemorySession()`,
+`importSessionHistory(_:)`, `context(for: MemoryQuery)`,
+`allowsAutomaticSessionSeeding`, and `memoryPromptMetadata`. The 0.6 marker
+protocols that mirrored these requirements were removed in 0.7.0.
 
 ## 10) HandoffTool
 
 Agents passed via the `handoffs` or `handoffAgents` init parameters are automatically wrapped as tool calls. The LLM can invoke them to delegate control.
 
-Default names come from the target runtime type (`handoff_to_` + snake_case of `type(of:)`). `Agent` initialization, `withHandoffs`, `withTools`, and `Agent.Builder` handoff setters reject duplicate effective names (`AgentError.duplicateHandoffToolName`) and names that collide with a registered tool (`AgentError.handoffToolNameCollidesWithTool`), including disabled tools. After that check, the in-loop handoff map keeps the first entry if a name were ever repeated.
+Default names come from the target runtime type (`handoff_to_` + snake_case of `type(of:)`). `Agent` initialization, `withHandoffs`, and `withTools` reject duplicate effective names (`AgentError.duplicateHandoffToolName`) and names that collide with a registered tool (`AgentError.handoffToolNameCollidesWithTool`), including disabled tools. After that check, the in-loop handoff map keeps the first entry if a name were ever repeated.
 
-`AnyHandoffConfiguration` and `HandoffConfiguration` store a ``HandoffHistory`` value (`none`, `nested`, or `summarized(maxTokens:)`) so history strategy survives type erasure. ``nestHandoffHistory`` remains available as a derived boolean for source compatibility.
+`AnyHandoffConfiguration` and `HandoffConfiguration` store a ``HandoffHistory`` value (`none`, `nested`, or `summarized(maxTokens:)`) so history strategy survives type erasure. ``nestHandoffHistory`` is a read-only boolean projection of `history`.
 
 ```swift
 // Via V3 canonical init
@@ -946,9 +918,9 @@ let specialist = supportAgent.asHandoff {
 }
 ```
 
-Use ``HandoffOptions/history(_:)`` or ``HandoffConfiguration``'s `history:` parameter instead of the deprecated `nestHandoffHistory:` boolean initializers.
+Use ``HandoffOptions/history(_:)`` or ``HandoffConfiguration``'s `history:` parameter to choose the history strategy.
 
-Coordinator and in-loop dispatch always call ``AgentRuntime/handleHandoff(_:context:session:observer:)``. The default implementation filters reserved request-context prefixes (`auth`, `user_id`, `authorization`, `session`, `internal.`), writes `handoff_source` and optional `handoff_reason`, records execution, and runs the target with the supplied session and observer. `HandoffHistory.nested` and `.summarized` pass a nested session; `.none` passes `nil`. Override `handleHandoff` on any `AgentRuntime` — `as? HandoffReceiver` is gone. `HandoffReceiver` remains as a deprecated empty refinement.
+Coordinator and in-loop dispatch always call ``AgentRuntime/handleHandoff(_:context:session:observer:)``. The default implementation filters reserved request-context prefixes (`auth`, `user_id`, `authorization`, `session`, `internal.`), writes `handoff_source` and optional `handoff_reason`, records execution, and runs the target with the supplied session and observer. `HandoffHistory.nested` and `.summarized` pass a nested session; `.none` passes `nil`. Override `handleHandoff` on any `AgentRuntime`.
 
 ## 11) Inference providers
 
@@ -1038,15 +1010,6 @@ public struct InferenceMessage: Sendable, Equatable {
 
     public init(body: Body)
 
-    @available(*, deprecated, message: "Use init(body:) or the role factories.")
-    public init(
-        role: Role,
-        content: String,
-        name: String? = nil,
-        toolCallID: String? = nil,
-        toolCalls: [ToolCall] = []
-    )
-
     public static func system(_ content: String) -> InferenceMessage
     public static func user(_ content: String) -> InferenceMessage
     public static func assistant(_ content: String, toolCalls: [ToolCall] = []) -> InferenceMessage
@@ -1054,21 +1017,14 @@ public struct InferenceMessage: Sendable, Equatable {
 }
 ```
 
-Prefer `InferenceMessage(body:)` or the role factories (`system`, `user`, `assistant`, `tool`). The payload is a closed `Body`: a user or system message cannot store tool calls, and a tool result always has a name. Historical `role`, `content`, `name`, `toolCallID`, and `toolCalls` remain as computed projections of `body`. Assistant `toolCalls` are `InferenceMessage.ToolCall` values, not host `ToolCall` records.
-
-The deprecated memberwise `init(role:content:name:toolCallID:toolCalls:)` maps `.system` → `.system(content)`, `.user` → `.user(content)`, `.assistant` → `.assistant(content, toolCalls:)`, and `.tool` → `.tool(name: name ?? "tool", content: content, toolCallID:)`. Extra fields for that role are dropped.
+Use `InferenceMessage(body:)` or the role factories (`system`, `user`, `assistant`, `tool`). The payload is a closed `Body`: a user or system message cannot store tool calls, and a tool result always has a name. Historical `role`, `content`, `name`, `toolCallID`, and `toolCalls` remain as computed projections of `body`. Assistant `toolCalls` are `InferenceMessage.ToolCall` values, not host `ToolCall` records.
 
 Agent reads ``InferenceProviderCapabilities`` and ``InferenceProvider/promptTokenCounter``
-directly from ``InferenceProvider``. Deprecated marker protocols remain available
-for source compatibility, but capability bits and the structured-message methods
-are the single provider integration seam. Agent does not dispatch through marker
-protocol identities.
+directly from ``InferenceProvider``. Capability bits and the structured-message
+methods are the single provider integration seam.
 
 Use ``InferenceProviderCapabilities/resolved(for:)`` for canonical capability
-resolution. The deprecated ``InferenceProviderCapabilities/inferred(from:)``
-helper remains available as a forwarding compatibility shim until a future
-breaking boundary is explicitly documented; it has the same capability
-semantics as ``resolved(for:)``.
+resolution.
 
 ### Provider factories (dot-syntax)
 
@@ -1080,9 +1036,7 @@ Built-in inference is Apple Foundation Models (on-device) and
 Prompt-string methods remain for one minor so existing backends compile. Agent
 and tests call the messages methods only. Prompt-string methods default to
 wrapping `prompt` as a user message. Capability bits and the structured-message
-methods are the live dispatch surface. Deprecated marker protocols remain
-available for source compatibility: `PromptTokenCountingInferenceProvider`,
-`StructuredOutputInferenceProvider`, and `ToolCallStreamingInferenceProvider`.
+methods are the live dispatch surface.
 
 ```swift
 .foundationModels()                 // On-device first-class provider
@@ -1111,9 +1065,8 @@ Opt in to a provider-owned tool loop with
 ``InferenceProvider/foundationModelsOwningToolLoop()``. Agent reads
 ``InferenceProviderCapabilities/providerOwnedToolLoop`` and always calls
 ``InferenceProvider/generateWithToolCalls(messages:tools:options:toolExecutor:)``
-(or the streaming counterpart). It never type-casts the adapter.
-``AgentConfiguration/foundationModelsExecution`` is ignored. Choose the loop
-by constructing ``InferenceProvider/foundationModelsOwningToolLoop()``.
+(or the streaming counterpart). It never type-casts the adapter. Choose the
+loop by constructing ``InferenceProvider/foundationModelsOwningToolLoop()``.
 Capture remains the default. Structured outputs use guided generation when
 the JSON Schema maps; otherwise prompt+parse.
 OS 27 owned-loop can set ``FoundationModelsProviderConfiguration/reasoningLevel``
@@ -1292,15 +1245,6 @@ public struct ToolResult: Sendable {
     public var isSuccess: Bool { get }
     public var output: SendableValue { get }       // `.null` on failure
     public var errorMessage: String? { get }      // `nil` on success
-
-    @available(*, deprecated, message: "Use ToolResult.success(...) or .failure(callId:error:duration:)")
-    public init(
-        callId: UUID,
-        isSuccess: Bool,
-        output: SendableValue,
-        duration: Duration,
-        errorMessage: String? = nil
-    )
 }
 
 public struct ToolCallRecord: Sendable {
@@ -1321,7 +1265,7 @@ public struct ToolCallRecord: Sendable {
 }
 ```
 
-Prefer `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. The deprecated `ToolResult.init(callId:isSuccess:output:duration:errorMessage:)` and `ToolCallRecord` compatibility initializer remain available until the documented breaking boundary. They map independently supplied fields to the closed outcome using the historical rules: success ignores `errorMessage`, failure ignores `output`, and a nil failure message becomes `"Tool execution failed"`. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
+Construct values with `ToolResult.success` / `.failure` and `ToolCallRecord.success` / `.failure`. Codable still decodes the historical boolean + optional JSON shape and encodes those same keys from the closed outcome.
 
 `AgentEvent.Tool.completed(_ invocation:)` yields `.completed(call:result:)` from a paired `ToolInvocation`. The enum associated values stay `call` and `result`.
 
@@ -1337,9 +1281,8 @@ strings alone, such as trait-gate or configuration errors):
 public case toolFailure(toolName: String, message: String?, cause: (any Error)?)
 ```
 
-The previous `AgentError.toolExecutionFailed(toolName:underlyingError:)` case is deprecated
-but remains fully constructible and matchable; `message` carries the same flattened string
-that `underlyingError` used to.
+The 0.6 `AgentError.toolExecutionFailed(toolName:underlyingError:)` case was removed in
+0.7.0; match `toolFailure` and read `message` for the flattened string.
 
 Handoff identity failures are thrown from `Agent` initialization, not from the tool loop:
 
@@ -1443,13 +1386,12 @@ let greet = #Tool("greet", "Greets a person") { (name: String) in
 
 ## 14) Companion products
 
-The package exports four public library products:
+The package exports three public library products:
 
 | Product | Source surface | Public entry points |
 |---------|----------------|---------------------|
 | `Swarm` | `Sources/Swarm` | Agents, tools, workflows, memory, guardrails, providers, MCP client/bridge, workspace, resilience, observability, macros, voice coordinator |
 | `SwarmOpenTelemetry` | `Sources/SwarmOpenTelemetry` | Requires `traits: ["OpenTelemetry"]`. `OpenTelemetryInferenceProvider`, `InferenceProvider.instrumentedWithOpenTelemetry(...)`, `AgentRuntime.instrumentedWithOpenTelemetry(...)`, `OTLPHTTPTraceExporter`, `OpenTelemetryTracing`, `OpenTelemetryTracePropagation`, and `SwarmRuntimeTracer` |
-| `SwarmMembrane` | `Sources/SwarmMembrane` | **Deprecated.** Hollow re-export (`@_exported import Swarm`). Import `Swarm` and use `MembraneEnvironment`, `MembraneFeatureConfiguration`, `MembraneAgentAdapter`, and `DefaultMembraneAgentAdapter` under `Sources/Swarm/Integration/Membrane/`. The product will be removed in 0.7.0. |
 | `SwarmMCP` | `Sources/SwarmMCP` | Requires `traits: ["MCP"]`. `SwarmMCPServerService`, `SwarmMCPToolCatalog`, `SwarmMCPToolExecutor`, `SwarmMCPToolExecutionError`, and `SwarmMCPToolRegistryAdapter`. Swarm's MCP *client* stays in the `Swarm` product and does not need this trait. |
 
 ### OpenTelemetry wrappers
@@ -1487,8 +1429,7 @@ requests inject W3C `traceparent` from the current span. See
 ### MCP server adapter
 
 The core `Swarm` product includes MCP client-side primitives. The client
-connection protocol is `MCPServerConnection` (`MCPServer` remains as a
-deprecated typealias). Built-in transports are streamable HTTP and stdio:
+connection protocol is `MCPServerConnection`. Built-in transports are streamable HTTP and stdio:
 
 ```swift
 let http = try HTTPMCPServer(
@@ -1557,49 +1498,11 @@ restart after `stop()`.
 - `Workflow` is the last-answer chain. `Job` is the shared-notes job with per-helper briefs.
 - No legacy types: `AgentBuilder`, `AnyAgent`, `AnyTool`, `ClosureInputGuardrail`, `ClosureOutputGuardrail`, `AgentBlueprint`, `AgentLoop`.
 
-## 16) Deprecation sunset schedule
+## 16) Removed in 0.7.0
 
-Deprecated API keeps working until its removal boundary; nothing below is
-silently broken. Migrate at your pace, starting with the 0.7.0 group.
-
-| Deprecated API | Use instead | Removal |
-|---|---|---|
-| `Agent.Builder` compatibility shim | `Agent` initializers or `withTools(_:)` | 0.7.0 |
-| `SwarmMembrane` product | `import Swarm` | 0.7.0 |
-| `AgentContextProviding` protocol | `ContextKey<Value>` with `setTyped(_:value:)` / `getTyped(_:)` | 0.7.0 |
-| `AgentContext` `AgentContextProviding` overloads (`setTyped(_:)`, `typed(_:)`, `removeTyped(_:)`, `hasTyped(_:)`) | `ContextKey<Value>` overloads | 0.7.0 |
-| `RunHooks.onLLMStart` `[MemoryMessage]` overload | `[InferenceMessage]` overload | 0.7 |
-| No-backend `persistent()` factory overload | Explicit backend (`SwiftDataBackend.persistent()` on Apple, or `InMemoryBackend()`) | 0.7.0 |
-| `AgentContextKey` get/set | Typed `ContextKey` accessors such as `get(.originalInput)` | Later minor |
-| `HandoffReceiver` | Override `handleHandoff` on any `AgentRuntime` | Later minor |
-| `nestHandoffHistory:` boolean initializers | `history: HandoffHistory` | Later minor |
-| `ToolResult.init(callId:isSuccess:output:duration:errorMessage:)` | `ToolResult.success` / `.failure` | Documented breaking boundary (§12) |
-| `ToolCallRecord` compatibility initializer | `ToolCallRecord.success` / `.failure` | Documented breaking boundary (§12) |
-| `AgentError.toolExecutionFailed` | `toolFailure(toolName:message:cause:)` | Later minor |
-| `GuardrailResult` compatibility initializer | `passed` / `tripwire` | Later minor |
-| `AgentResponse` compatibility initializer | `ToolCallRecord.success` / `.failure` | Later minor |
-| `InferenceMessage` memberwise `init(role:content:name:toolCallID:toolCalls:)` | `init(body:)` or the role factories | Later minor |
-| `PromptTokenCountingInferenceProvider` | `promptTokenCounter` on `InferenceProvider` | Later minor |
-| `StructuredOutputInferenceProvider` | `InferenceProviderCapabilities.structuredOutputs` + `generateStructured` | Later minor |
-| `ToolCallStreamingInferenceProvider` | `streamingToolCalls` + `streamWithToolCalls` | Later minor |
-| `ConversationInferenceProvider` and its `Streaming` / `ToolCallStreaming` / `StructuredOutput` refinements | `InferenceProvider` | Later minor |
-| `CapabilityReportingInferenceProvider` | Capabilities declared on `InferenceProvider` | Later minor |
-| `InferenceProviderCapabilities.inferred(from:)` | `resolved(for:)` | Later minor |
-| `FoundationModelsExecutionMode` / `foundationModelsExecution` (ignored flag) | Provider-owned tool-loop adapters | Later minor |
-| `MemorySessionLifecycle` | `beginMemorySession()` / `endMemorySession()` on `Memory` | Later minor |
-| `MemorySessionReplayAware` | `importSessionHistory(_:)` on `Memory` | Later minor |
-| `MemoryRetrievalPolicyAware` | `context(for: MemoryQuery)` on `Memory` | Later minor |
-| `MemorySessionImportPolicy` | `allowsAutomaticSessionSeeding` on `Memory` | Later minor |
-| `MemoryPromptDescriptor` (and the `memoryPromptTitle` / `memoryPromptGuidance` / `memoryPriority` members) | `memoryPromptMetadata` on `Memory` | Later minor |
-| `WaxIntegration` | `IntegrationsTrait.isEnabled`, `WaxMemory`, or `WaxEmbeddingProviderAdapter` | Later minor |
-| `MCPServer` | `MCPServerConnection` | Later minor |
-| `Retry` | `RetryPolicy` | Later minor |
-| `Fallback` | `FallbackChain` | Later minor |
-| `Workflow` `checkpoint(id:)` / `checkpointing(_:)` builders | `configured(id:store:policy:)` | Later minor |
-| `Workflow` legacy `fallback(...)` builder | `Workflow.fallback(primary:to:retries:)` | Later minor |
-| `Workflow.run(_:resumeFrom:)` | `execute(_:resumeFrom:)` | Later minor |
-| Legacy `Workflow.execute(_:resumeFrom:)` | `DurableWorkflow.execute(_:)` or `resume(_:from:)` | Later minor |
-| `Workflow.first` | `firstCompleted` | Later minor |
+Every API deprecated during 0.5–0.6 was removed in 0.7.0, along with the
+hollow `SwarmMembrane` product. See the
+[0.7.0 migration guide](../migration/0.7.0.md) for the full before/after table.
 
 ## 16b) Public-log redaction
 

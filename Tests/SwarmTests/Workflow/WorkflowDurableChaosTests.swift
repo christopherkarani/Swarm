@@ -38,15 +38,18 @@ private func runChaosScenario(iteration: Int) async throws {
 
     try await WorkflowDurableFaultInjection.$controller.withValue(controller) {
         for index in faults.indices {
-            let resumeFrom = try await checkpointing.containsCheckpoint(for: checkpointID)
-                ? checkpointID
-                : nil
+            let shouldResume = try await checkpointing.containsCheckpoint(for: checkpointID)
+            let durable = makeChaosWorkflow(
+                log: log,
+                checkpointing: checkpointing,
+                checkpointID: checkpointID
+            )
             do {
-                _ = try await makeChaosWorkflow(
-                    log: log,
-                    checkpointing: checkpointing,
-                    checkpointID: checkpointID
-                ).durable.execute("start", resumeFrom: resumeFrom)
+                if shouldResume {
+                    _ = try await durable.resume("start", from: WorkflowCheckpointID(checkpointID))
+                } else {
+                    _ = try await durable.execute("start")
+                }
                 Issue.record("expected injected fault \(faults[index]) on attempt \(index)")
             } catch let fault as WorkflowDurableInjectedFault {
                 #expect(fault.point == faults[index])
@@ -58,7 +61,7 @@ private func runChaosScenario(iteration: Int) async throws {
         log: log,
         checkpointing: checkpointing,
         checkpointID: checkpointID
-    ).durable.execute("ignored", resumeFrom: checkpointID)
+    ).resume("ignored", from: WorkflowCheckpointID(checkpointID))
 
     #expect(result.output == "C")
     let counts = await log.counts
@@ -74,15 +77,13 @@ private func makeChaosWorkflow(
     log: ExecutionLog,
     checkpointing: WorkflowCheckpointing,
     checkpointID: String
-) -> Workflow {
+) -> DurableWorkflow {
     Workflow()
         .step(ChaosAgent(label: "A", log: log))
         .step(ChaosAgent(label: "B", log: log))
         .step(ChaosAgent(label: "C", log: log))
         .durable
-        .checkpoint(id: checkpointID, policy: .everyStep)
-        .durable
-        .checkpointing(checkpointing)
+        .configured(id: WorkflowCheckpointID(checkpointID), store: checkpointing, policy: .everyStep)
 }
 
 private func assertCheckpointsAreWellFormed(in directory: URL) throws {

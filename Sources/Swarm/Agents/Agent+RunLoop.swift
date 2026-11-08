@@ -244,7 +244,6 @@ extension Agent {
             let ownsToolLoop = provider.capabilities.contains(.providerOwnedToolLoop)
             let executionGate = ownsToolLoop ? ProviderOwnedLoopGate() : nil
             let pendingHandoff = OwnedLoopPendingHandoff()
-            configuration.warnIfDeprecatedNativeSessionFlag()
             let toolLoopOutcome = try await AgentEnvironmentValues.$current.withValue(runtimeEnvironment) {
                 var turnRunner = AgentTurnRunner(
                     agent: self,

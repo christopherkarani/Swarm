@@ -7,18 +7,6 @@ import Foundation
 @testable import Swarm
 import Testing
 
-// MARK: - Collision Contexts
-
-private struct ContextTypeA: AgentContextProviding {
-    static let contextKey = "same"
-    let n: Int
-}
-
-private struct ContextTypeB: AgentContextProviding {
-    static let contextKey = "same"
-    let n: Int
-}
-
 // MARK: - AgentContextKeySurfaceTests
 
 @Suite("AgentContext key surfaces")
@@ -26,14 +14,8 @@ struct AgentContextKeySurfaceTests {
 
     // MARK: - Orchestration Key Names (REQ-001)
 
-    @Test("orchestration ContextKey names match AgentContextKey raw values")
-    func orchestrationKeyNamesMatchLegacyRawValues() {
-        #expect(ContextKey<String>.originalInput.name == AgentContextKey.originalInput.rawValue)
-        #expect(ContextKey<String>.previousOutput.name == AgentContextKey.previousOutput.rawValue)
-        #expect(ContextKey<String>.currentAgentName.name == AgentContextKey.currentAgentName.rawValue)
-        #expect(ContextKey<[String]>.executionPath.name == AgentContextKey.executionPath.rawValue)
-        #expect(ContextKey<Date>.startTime.name == AgentContextKey.startTime.rawValue)
-
+    @Test("orchestration ContextKey names keep their wire names")
+    func orchestrationKeyNamesKeepWireNames() {
         #expect(ContextKey<String>.originalInput.name == "original_input")
         #expect(ContextKey<String>.previousOutput.name == "previous_output")
         #expect(ContextKey<String>.currentAgentName.name == "current_agent_name")
@@ -55,9 +37,6 @@ struct AgentContextKeySurfaceTests {
         #expect(snapshot["current_agent_name"] == .string("Fetcher"))
         #expect(snapshot["execution_path"] == .array([.string("Fetcher")]))
         #expect(snapshot["start_time"] == .double(context.createdAt.timeIntervalSince1970))
-
-        #expect(snapshot[AgentContextKey.originalInput.rawValue] == .string("User query"))
-        #expect(snapshot[AgentContextKey.executionPath.rawValue] == .array([.string("Fetcher")]))
     }
 
     @Test("typed ContextKey set updates the same snapshot slots")
@@ -117,46 +96,15 @@ struct AgentContextKeySurfaceTests {
         #expect(await context.get(.timestamp)?.timeIntervalSince1970 == 1_800_000_000)
     }
 
-    // MARK: - Deprecated AgentContextKey (REQ-005)
+    // MARK: - Raw String Writes
 
-    @Test("deprecated AgentContextKey get and set still function")
-    func deprecatedAgentContextKeyAccessorsStillWork() async {
+    @Test("raw string write replaces a typed orchestration slot")
+    func rawStringWriteReplacesTypedOrchestrationSlot() async {
         let context = AgentContext(input: "seed")
-
-        await context.set(AgentContextKey.metadata, value: .string("meta"))
-        #expect(await context.get(AgentContextKey.metadata) == .string("meta"))
-        #expect(await context.get("metadata") == .string("meta"))
-
-        await context.set(AgentContextKey.previousOutput, value: .string("legacy"))
-        #expect(await context.get(AgentContextKey.previousOutput)?.stringValue == "legacy")
-        #expect(await context.get(.previousOutput) == "legacy")
-
-        await context.set(AgentContextKey.originalInput, value: .string("legacy-original"))
-        #expect(await context.get(.originalInput) == "legacy-original")
-        #expect(await context.get(AgentContextKey.originalInput)?.stringValue == "legacy-original")
-
-        let start = Date(timeIntervalSince1970: 1_700_000_000)
-        await context.set(AgentContextKey.startTime, value: .double(start.timeIntervalSince1970))
-        #expect(await context.get(.startTime)?.timeIntervalSince1970 == 1_700_000_000)
+        #expect(await context.get(.originalInput) == "seed")
 
         await context.set("original_input", value: .string("raw-original"))
         #expect(await context.get(.originalInput) == "raw-original")
         #expect(await context.snapshot["original_input"] == .string("raw-original"))
     }
-
-    // MARK: - Type-Indexed Typed Contexts (REQ-006, AC-003)
-
-    @Test("two AgentContextProviding types that share contextKey both persist")
-    func sharedContextKeyTypesBothPersist() async {
-        let context = AgentContext(input: "seed")
-        await context.setTyped(ContextTypeA(n: 1))
-        await context.setTyped(ContextTypeB(n: 2))
-
-        #expect(ContextTypeA.contextKey == ContextTypeB.contextKey)
-        #expect(await context.typed(ContextTypeA.self)?.n == 1)
-        #expect(await context.typed(ContextTypeB.self)?.n == 2)
-        #expect(await context.hasTyped(ContextTypeA.self))
-        #expect(await context.hasTyped(ContextTypeB.self))
-    }
-
 }

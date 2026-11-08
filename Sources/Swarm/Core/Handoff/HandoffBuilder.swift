@@ -89,30 +89,6 @@ public struct AnyHandoffConfiguration: Sendable {
         self.when = when
         self.history = history
     }
-
-    /// Creates a type-erased handoff configuration using a boolean history flag.
-    ///
-    /// - Parameter nestHandoffHistory: When `true`, maps to ``HandoffHistory/nested``; otherwise ``HandoffHistory/none``.
-    @available(*, deprecated, message: "Use history: HandoffHistory instead")
-    public init(
-        targetAgent: any AgentRuntime,
-        toolNameOverride: String? = nil,
-        toolDescription: String? = nil,
-        onTransfer: OnTransferCallback? = nil,
-        transform: TransformCallback? = nil,
-        when: WhenCallback? = nil,
-        nestHandoffHistory: Bool
-    ) {
-        self.init(
-            targetAgent: targetAgent,
-            toolNameOverride: toolNameOverride,
-            toolDescription: toolDescription,
-            onTransfer: onTransfer,
-            transform: transform,
-            when: when,
-            history: nestHandoffHistory ? .nested : .none
-        )
-    }
 }
 
 // MARK: - AnyHandoffConfiguration + Computed Properties

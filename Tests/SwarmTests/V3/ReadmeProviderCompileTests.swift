@@ -231,8 +231,12 @@ struct ReadmeProviderCompileTests {
 
         _ = Workflow()
             .step(monitor)
-            .durable.checkpoint(id: "monitor-v1", policy: .everyStep)
-            .durable.checkpointing(.fileSystem(directory: checkpointsURL))
+            .durable
+            .configured(
+                id: WorkflowCheckpointID("monitor-v1"),
+                store: .fileSystem(directory: checkpointsURL),
+                policy: .everyStep
+            )
     }
 
     @Test("README Provider selection sample compiles")

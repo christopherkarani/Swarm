@@ -11,14 +11,12 @@ struct WorkflowHiveEngineTests {
         let workflow = Workflow()
             .step(LocalConstantAgent(output: "ok"))
             .durable
-            .checkpoint(id: "hive-engine-1", policy: .everyStep)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("hive-engine-1"), store: checkpointing, policy: .everyStep)
 
-        let first = try await workflow.durable.execute("start")
+        let first = try await workflow.execute("start")
         #expect(first.output == "ok")
 
-        let resumed = try await workflow.durable.execute("ignored", resumeFrom: "hive-engine-1")
+        let resumed = try await workflow.resume("ignored", from: WorkflowCheckpointID("hive-engine-1"))
         #expect(resumed.output == "ok")
     }
 
@@ -28,12 +26,10 @@ struct WorkflowHiveEngineTests {
         let workflow = Workflow()
             .step(LocalConstantAgent(output: "final"))
             .durable
-            .checkpoint(id: "hive-engine-2", policy: .onCompletion)
-            .durable
-            .checkpointing(checkpointing)
+            .configured(id: WorkflowCheckpointID("hive-engine-2"), store: checkpointing, policy: .onCompletion)
 
-        _ = try await workflow.durable.execute("start")
-        let resumed = try await workflow.durable.execute("ignored", resumeFrom: "hive-engine-2")
+        _ = try await workflow.execute("start")
+        let resumed = try await workflow.resume("ignored", from: WorkflowCheckpointID("hive-engine-2"))
         #expect(resumed.output == "final")
     }
 }

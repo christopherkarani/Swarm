@@ -5,7 +5,7 @@ Generated from `Sources/Swarm/` on 2026-04-30; source-verified and refreshed for
 Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That command does not regenerate exhaustive rows; update high-risk public rows by hand after source changes.
 
 - Scope: all `.swift` files under `Sources/Swarm/`, excluding `Internal/GraphRuntime/`
-- Source files scanned: 278 (285 including `Internal/GraphRuntime/`)
+- Source files scanned: 277 (284 including `Internal/GraphRuntime/`)
 - Public/open symbols cataloged: 2475
 
 ## 1. Swarm (entry point)
@@ -54,7 +54,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 108 | func | public | AgentConfiguration.autoAttachMetricsCollector(_:) | `public @discardableResult func autoAttachMetricsCollector(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.defaultTracingEnabled(_:) | `public @discardableResult func defaultTracingEnabled(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.enableStreaming(_:) | `public @discardableResult func enableStreaming(_ value: Bool) -> AgentConfiguration` |
-| 108 | func | public | AgentConfiguration.foundationModelsExecution(_:) | `public @discardableResult func foundationModelsExecution(_ value: FoundationModelsExecutionMode) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.includeReasoning(_:) | `public @discardableResult func includeReasoning(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.includeToolCallDetails(_:) | `public @discardableResult func includeToolCallDetails(_ value: Bool) -> AgentConfiguration` |
 | 108 | func | public | AgentConfiguration.inferencePolicy(_:) | `public @discardableResult func inferencePolicy(_ value: InferencePolicy?) -> AgentConfiguration` |
@@ -96,12 +95,8 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 253 | var | public | AgentConfiguration.autoPreviousResponseId | `public var autoPreviousResponseId: Bool` |
 | 264 | var | public | AgentConfiguration.defaultTracingEnabled | `public var defaultTracingEnabled: Bool` |
 | 265 | var | public | AgentConfiguration.autoAttachMetricsCollector | `public var autoAttachMetricsCollector: Bool` |
-| 126 | enum | public | FoundationModelsExecutionMode | `public enum FoundationModelsExecutionMode` |
-| 130 | case | public | FoundationModelsExecutionMode.capture | `public case capture` |
-| 139 | case | public | FoundationModelsExecutionMode.nativeSession | `public case nativeSession` |
-| 604 | var | public | AgentConfiguration.foundationModelsExecution | `public var foundationModelsExecution: FoundationModelsExecutionMode` |
 | 608 | var | public | AgentConfiguration.resilience | `public var resilience: ResilienceConfiguration` |
-| 630 | func | public | AgentConfiguration.init(name:maxIterations:maxConsecutiveToolRepeats:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:maxConcurrentToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:foundationModelsExecution:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, maxConsecutiveToolRepeats: Int = 3, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, maxConcurrentToolCalls: Int = AgentConfiguration.defaultMaxConcurrentToolCalls, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, foundationModelsExecution: FoundationModelsExecutionMode = .capture, resilience: ResilienceConfiguration = .disabled)` |
+| 630 | func | public | AgentConfiguration.init(name:maxIterations:maxConsecutiveToolRepeats:timeout:temperature:maxTokens:stopSequences:modelSettings:contextProfile:inferencePolicy:enableStreaming:includeToolCallDetails:stopOnToolError:includeReasoning:sessionHistoryLimit:contextMode:parallelToolCalls:maxConcurrentToolCalls:previousResponseId:autoPreviousResponseId:defaultTracingEnabled:autoAttachMetricsCollector:resilience:) | `public init(name: String = "Agent", maxIterations: Int = 10, maxConsecutiveToolRepeats: Int = 3, timeout: Duration = .seconds(60), temperature: Double = 1.0, maxTokens: Int? = nil, stopSequences: [String] = [], modelSettings: ModelSettings? = nil, contextProfile: ContextProfile = .platformDefault, inferencePolicy: InferencePolicy? = nil, enableStreaming: Bool = true, includeToolCallDetails: Bool = true, stopOnToolError: Bool = false, includeReasoning: Bool = true, sessionHistoryLimit: Int? = 50, contextMode: ContextMode = .adaptive, parallelToolCalls: Bool = false, maxConcurrentToolCalls: Int = AgentConfiguration.defaultMaxConcurrentToolCalls, previousResponseId: String? = nil, autoPreviousResponseId: Bool = false, defaultTracingEnabled: Bool = true, autoAttachMetricsCollector: Bool = false, resilience: ResilienceConfiguration = .disabled)` |
 | 108 | func | public | AgentConfiguration.resilience(_:) | `public @discardableResult func resilience(_ value: ResilienceConfiguration) -> AgentConfiguration` |
 | 345 | var | public | AgentConfiguration.description | `public var description: String { get }` |
 
@@ -129,7 +124,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 26 | case | public | AgentError.timeout(duration:) | `public case timeout(duration: Duration)` |
 | 29 | case | public | AgentError.invalidLoop(reason:) | `public case invalidLoop(reason: String)` |
 | 34 | case | public | AgentError.toolNotFound(name:) | `public case toolNotFound(name: String)` |
-| 37 | case | public | AgentError.toolExecutionFailed(toolName:underlyingError:) | `public case toolExecutionFailed(toolName: String, underlyingError: String)` |
 | 305 | case | public | AgentError.toolFailure(toolName:message:cause:) | `public case toolFailure(toolName: String, message: String?, cause: (any Error)?)` |
 | 40 | case | public | AgentError.invalidToolArguments(toolName:reason:) | `public case invalidToolArguments(toolName: String, reason: String)` |
 | 45 | case | public | AgentError.inferenceProviderUnavailable(reason:) | `public case inferenceProviderUnavailable(reason: String)` |
@@ -230,7 +224,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 300 | var | public | ToolResult.output | `public var output: SendableValue { get }` |
 | 310 | var | public | ToolResult.errorMessage | `public var errorMessage: String? { get }` |
 | 321 | func | public | ToolResult.init(callId:duration:outcome:) | `public init(callId: UUID, duration: Duration, outcome: ToolResult.Outcome)` |
-| 332 | func | public | ToolResult.init(callId:isSuccess:output:duration:errorMessage:) | `public init(callId: UUID, isSuccess: Bool, output: SendableValue, duration: Duration, errorMessage: String? = nil)` (deprecated) |
 | 355 | func | public | ToolResult.success(callId:output:duration:) | `public static func success(callId: UUID, output: SendableValue, duration: Duration) -> ToolResult` |
 | 365 | func | public | ToolResult.failure(callId:error:duration:) | `public static func failure(callId: UUID, error: String, duration: Duration) -> ToolResult` |
 | 400 | var | public | ToolCall.description | `public var description: String { get }` |
@@ -260,7 +253,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 72 | var | public | ToolCallRecord.isSuccess | `public var isSuccess: Bool { get }` |
 | 82 | var | public | ToolCallRecord.errorMessage | `public var errorMessage: String? { get }` |
 | 95 | func | public | ToolCallRecord.init(toolName:arguments:duration:timestamp:outcome:) | `public init(toolName: String, arguments: [String : SendableValue] = [:], duration: Duration = .zero, timestamp: Date = Date(), outcome: ToolCallRecord.Outcome)` |
-| 116 | func | public | ToolCallRecord.init(toolName:arguments:result:duration:timestamp:isSuccess:errorMessage:) | `public init(toolName: String, arguments: [String : SendableValue] = [:], result: SendableValue = .null, duration: Duration = .zero, timestamp: Date = Date(), isSuccess: Bool = true, errorMessage: String? = nil)` (deprecated) |
 | 136 | func | public | ToolCallRecord.success(toolName:arguments:result:duration:timestamp:) | `public static func success(toolName: String, arguments: [String : SendableValue] = [:], result: SendableValue, duration: Duration = .zero, timestamp: Date = Date()) -> ToolCallRecord` |
 | 152 | func | public | ToolCallRecord.failure(toolName:arguments:error:duration:timestamp:) | `public static func failure(toolName: String, arguments: [String : SendableValue] = [:], error: String, duration: Duration = .zero, timestamp: Date = Date()) -> ToolCallRecord` |
 | 84 | var | public | ToolCallRecord.description | `public var description: String { get }` |
@@ -571,15 +563,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 24 | enum | public | AgentContextKey | `public enum AgentContextKey` _(Availability: * (deprecated); Use typed ContextKey orchestration statics such as ContextKey.originalInput.)_ |
-| 26 | case | public | AgentContextKey.originalInput | `public case originalInput` |
-| 29 | case | public | AgentContextKey.previousOutput | `public case previousOutput` |
-| 32 | case | public | AgentContextKey.currentAgentName | `public case currentAgentName` |
-| 35 | case | public | AgentContextKey.executionPath | `public case executionPath` |
-| 38 | case | public | AgentContextKey.startTime | `public case startTime` |
-| 41 | case | public | AgentContextKey.metadata | `public case metadata` |
-| 81 | protocol | public | AgentContextProviding | `public protocol AgentContextProviding : Sendable` (Availability: * (deprecated); Use `ContextKey<Value>` with `setTyped(_:value:)` / `getTyped(_:)` instead; this protocol will be removed in 0.7.0.) |
-| 83 | var | public | AgentContextProviding.contextKey | `public static var contextKey: String { get }` |
 | 118 | class | public | AgentContext | `public actor AgentContext` |
 | 122 | var | public | AgentContext.originalInput | `public nonisolated let originalInput: String` |
 | 125 | var | public | AgentContext.executionId | `public nonisolated let executionId: UUID` |
@@ -588,9 +571,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 149 | var | public | AgentContext.snapshot | `public var snapshot: [String : SendableValue] { get }` |
 | 164 | func | public | AgentContext.init(input:initialValues:) | `public init(input: String, initialValues: [String : SendableValue] = [:])` |
 | 206 | func | public | AgentContext.get(_:) | `public func get(_ key: String) -> SendableValue?` |
-| 216 | func | public | AgentContext.get(_:) | `public func get(_ key: AgentContextKey) -> SendableValue?` _(Availability: * (deprecated); Use typed ContextKey accessors such as get(.originalInput).)_ |
 | 225 | func | public | AgentContext.set(_:value:) | `public func set(_ key: String, value: SendableValue)` |
-| 240 | func | public | AgentContext.set(_:value:) | `public func set(_ key: AgentContextKey, value: SendableValue)` _(Availability: * (deprecated); Use typed ContextKey accessors such as set(.originalInput, _).)_ |
 | 283 | func | public | AgentContext.remove(_:) | `public @discardableResult func remove(_ key: String) -> SendableValue?` |
 | 292 | func | public | AgentContext.addMessage(_:) | `public func addMessage(_ message: MemoryMessage)` |
 | 302 | func | public | AgentContext.getMessages() | `public func getMessages() -> [MemoryMessage]` |
@@ -601,10 +582,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 347 | func | public | AgentContext.getPreviousOutput() | `public func getPreviousOutput() -> String?` |
 | 367 | func | public | AgentContext.merge(from:overwrite:) | `public func merge(from other: AgentContext, overwrite: Bool = false) async` |
 | 421 | func | public | AgentContext.copy(additionalValues:) | `public func copy(additionalValues: [String : SendableValue] = [:]) -> AgentContext` |
-| 449 | func | public | AgentContext.setTyped(_:) | `public func setTyped<T>(_ context: T) where T : AgentContextProviding` (Availability: * (deprecated); Use `ContextKey<Value>` with `setTyped(_:value:)` instead; this overload will be removed in 0.7.0.) |
-| 458 | func | public | AgentContext.typed(_:) | `public func typed<T>(_: T.Type) -> T? where T : AgentContextProviding` (Availability: * (deprecated); Use `ContextKey<Value>` with `getTyped(_:)` instead; this overload will be removed in 0.7.0.) |
-| 468 | func | public | AgentContext.removeTyped(_:) | `public @discardableResult func removeTyped<T>(_: T.Type) -> T? where T : AgentContextProviding` (Availability: * (deprecated); Use `ContextKey<Value>` with `removeTyped(_:)` instead; this overload will be removed in 0.7.0.) |
-| 477 | func | public | AgentContext.hasTyped(_:) | `public func hasTyped<T>(_: T.Type) -> Bool where T : AgentContextProviding` (Availability: * (deprecated); Use `ContextKey<Value>` with `hasTyped(_:)` instead; this overload will be removed in 0.7.0.) |
 | 574 | var | public | AgentContext.description | `public nonisolated var description: String { get }` |
 | 588 | var | public | AgentContext.debugDescription | `public nonisolated var debugDescription: String { get }` |
 
@@ -676,7 +653,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 94 | var | public | HandoffResult.transferredContext | `public let transferredContext: [String : SendableValue]` |
 | 97 | var | public | HandoffResult.timestamp | `public let timestamp: Date` |
 | 107 | func | public | HandoffResult.init(targetAgentName:input:result:transferredContext:timestamp:) | `public init(targetAgentName: String, input: String, result: AgentResult, transferredContext: [String : SendableValue], timestamp: Date = Date())` |
-| 129 | protocol | public | HandoffReceiver | `@available(*, deprecated, message: "Use AgentRuntime.handleHandoff(_:context:session:observer:) instead.") public protocol HandoffReceiver : AgentRuntime` |
 | 457 | var | public | HandoffRequest.description | `public var description: String { get }` |
 | 472 | var | public | HandoffResult.description | `public var description: String { get }` |
 
@@ -693,7 +669,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 40 | var | public | AnyHandoffConfiguration.when | `public let when: WhenCallback?` |
 | 43 | var | public | AnyHandoffConfiguration.nestHandoffHistory | `public let nestHandoffHistory: Bool` |
 | 50 | func | public | AnyHandoffConfiguration.init(_:) | `public init(_ configuration: HandoffConfiguration<some AgentRuntime>)` |
-| 70 | func | public | AnyHandoffConfiguration.init(targetAgent:toolNameOverride:toolDescription:onTransfer:transform:when:nestHandoffHistory:) | `public init(targetAgent: any AgentRuntime, toolNameOverride: String? = nil, toolDescription: String? = nil, onTransfer: OnTransferCallback? = nil, transform: TransformCallback? = nil, when: WhenCallback? = nil, nestHandoffHistory: Bool = false)` |
 | 93 | var | public | AnyHandoffConfiguration.effectiveToolName | `public var effectiveToolName: String { get }` |
 | 102 | var | public | AnyHandoffConfiguration.effectiveToolDescription | `public var effectiveToolDescription: String { get }` |
 
@@ -720,7 +695,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 216 | var | public | HandoffConfiguration.transform | `public let transform: TransformCallback?` |
 | 222 | var | public | HandoffConfiguration.when | `public let when: WhenCallback?` |
 | 229 | var | public | HandoffConfiguration.nestHandoffHistory | `public let nestHandoffHistory: Bool` |
-| 243 | func | public | HandoffConfiguration.init(targetAgent:toolNameOverride:toolDescription:onTransfer:transform:when:nestHandoffHistory:) | `public init(targetAgent: Target, toolNameOverride: String? = nil, toolDescription: String? = nil, onTransfer: OnTransferCallback? = nil, transform: TransformCallback? = nil, when: WhenCallback? = nil, nestHandoffHistory: Bool = false)` |
 | 269 | var | public | HandoffConfiguration.effectiveToolName | `public var effectiveToolName: String { get }` |
 | 282 | var | public | HandoffConfiguration.effectiveToolDescription | `public var effectiveToolDescription: String { get }` |
 
@@ -775,7 +749,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 56 | case | public | WorkflowError.humanApprovalTimeout(prompt:) | `public case humanApprovalTimeout(prompt: String)` |
 | 59 | case | public | WorkflowError.humanApprovalRejected(prompt:reason:) | `public case humanApprovalRejected(prompt: String, reason: String)` |
 | 62 | case | public | WorkflowError.invalidWorkflow(reason:) | `public case invalidWorkflow(reason: String)` |
-| 65 | case | public | WorkflowError.checkpointStoreRequired | `public case checkpointStoreRequired` |
 | 68 | case | public | WorkflowError.checkpointNotFound(id:) | `public case checkpointNotFound(id: String)` |
 | 71 | case | public | WorkflowError.resumeDefinitionMismatch(reason:) | `public case resumeDefinitionMismatch(reason: String)` |
 | 77 | var | public | WorkflowError.errorDescription | `public var errorDescription: String? { get }` |
@@ -949,7 +922,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 117 | func | public | AgentObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async` |
 | 128 | func | public | AgentObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 129 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async` |
-| 145 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `@available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.") public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async` |
 | 154 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async` |
 | 125 | func | public | AgentObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
 | 133 | func | public | AgentObserver.onThinking(context:agent:thought:) | `public func onThinking(context: AgentContext?, agent: any AgentRuntime, thought: String) async` |
@@ -967,7 +939,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 244 | func | public | AgentObserver.onToolEnd(context:agent:invocation:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, invocation: ToolInvocation) async` |
 | 260 | func | public | AgentObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context _: AgentContext?, agent _: any AgentRuntime, call _: ToolCall) async` |
 | 249 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [InferenceMessage]) async` |
-| 253 | func | public | AgentObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `@available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.") public func onLLMStart(context _: AgentContext?, agent _: any AgentRuntime, systemPrompt _: String?, inputMessages _: [MemoryMessage]) async` |
 | 256 | func | public | AgentObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context _: AgentContext?, agent _: any AgentRuntime, response _: String, usage _: TokenUsage?) async` |
 | 199 | func | public | AgentObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context _: AgentContext?, guardrailName _: String, guardrailType _: GuardrailType, result _: GuardrailResult) async` |
 | 202 | func | public | AgentObserver.onThinking(context:agent:thought:) | `public func onThinking(context _: AgentContext?, agent _: any AgentRuntime, thought _: String) async` |
@@ -986,7 +957,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 320 | func | public | CompositeObserver.onToolEnd(context:agent:result:) | `public func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async` |
 | 444 | func | public | CompositeObserver.onToolApprovalRequested(context:agent:call:) | `public func onToolApprovalRequested(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async` |
 | 399 | func | public | CompositeObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `public func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [InferenceMessage]) async` |
-| 410 | func | public | CompositeObserver.onLLMStart(context:agent:systemPrompt:inputMessages:) | `@available(*, deprecated, message: "Use onLLMStart(context:agent:systemPrompt:inputMessages:) with [InferenceMessage]. InferenceMessage is the source of truth; this MemoryMessage requirement will be removed in 0.7.") package func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async` |
 | 420 | func | public | CompositeObserver.onLLMEnd(context:agent:response:usage:) | `public func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: TokenUsage?) async` |
 | 350 | func | public | CompositeObserver.onGuardrailTriggered(context:guardrailName:guardrailType:result:) | `public func onGuardrailTriggered(context: AgentContext?, guardrailName: String, guardrailType: GuardrailType, result: GuardrailResult) async` |
 | 360 | func | public | CompositeObserver.onThinking(context:agent:thought:) | `public func onThinking(context: AgentContext?, agent: any AgentRuntime, thought: String) async` |
@@ -1182,29 +1152,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 303 | func | public | Agent.cancel() | `public func cancel() async` |
 | 313 | func | public | Agent.stream(_:session:observer:) | `public func stream(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) -> AsyncThrowingStream<AgentEvent, any Error>` |
 | 336 | func | public | Agent.runWithResponse(_:session:observer:) | `public func runWithResponse(_ input: String, session: (any Session)? = nil, observer: (any AgentObserver)? = nil) async throws -> AgentResponse` |
-| 1259 | struct | public | Agent.Builder | `@available(*, deprecated, message: "Use an Agent initializer or withTools(_:). Agent.Builder compatibility will be removed in 0.7.0.") public struct Builder` |
-| 1265 | func | public | Agent.Builder.init() | `public init()` |
-| 1273 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [any AnyJSONTool]) -> Agent.Builder` (deprecated) |
-| 1283 | func | public | Agent.Builder.tools(_:) | `public @discardableResult func tools(_ tools: [some Tool]) -> Agent.Builder` |
-| 1293 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: some AnyJSONTool) -> Agent.Builder` (deprecated) |
-| 1303 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: any AnyJSONTool) -> Agent.Builder` (deprecated) |
-| 1313 | func | public | Agent.Builder.addTool(_:) | `public @discardableResult func addTool(_ tool: some Tool) -> Agent.Builder` |
-| 1322 | func | public | Agent.Builder.withBuiltInTools() | `public @discardableResult func withBuiltInTools() -> Agent.Builder` |
-| 1332 | func | public | Agent.Builder.instructions(_:) | `public @discardableResult func instructions(_ instructions: String) -> Agent.Builder` |
-| 1342 | func | public | Agent.Builder.configuration(_:) | `public @discardableResult func configuration(_ configuration: AgentConfiguration) -> Agent.Builder` |
-| 1352 | func | public | Agent.Builder.memory(_:) | `public @discardableResult func memory(_ memory: any Memory) -> Agent.Builder` |
-| 1362 | func | public | Agent.Builder.inferenceProvider(_:) | `public @discardableResult func inferenceProvider(_ provider: any InferenceProvider) -> Agent.Builder` |
-| 1372 | func | public | Agent.Builder.tracer(_:) | `public @discardableResult func tracer(_ tracer: any Tracer) -> Agent.Builder` |
-| 1382 | func | public | Agent.Builder.inputGuardrails(_:) | `public @discardableResult func inputGuardrails(_ guardrails: [any InputGuardrail]) -> Agent.Builder` |
-| 1392 | func | public | Agent.Builder.addInputGuardrail(_:) | `public @discardableResult func addInputGuardrail(_ guardrail: any InputGuardrail) -> Agent.Builder` |
-| 1402 | func | public | Agent.Builder.outputGuardrails(_:) | `public @discardableResult func outputGuardrails(_ guardrails: [any OutputGuardrail]) -> Agent.Builder` |
-| 1412 | func | public | Agent.Builder.addOutputGuardrail(_:) | `public @discardableResult func addOutputGuardrail(_ guardrail: any OutputGuardrail) -> Agent.Builder` |
-| 1422 | func | public | Agent.Builder.guardrailRunnerConfiguration(_:) | `public @discardableResult func guardrailRunnerConfiguration(_ configuration: GuardrailRunnerConfiguration) -> Agent.Builder` |
-| 1432 | func | public | Agent.Builder.handoffs(_:) | `public @discardableResult func handoffs(_ handoffs: [AnyHandoffConfiguration]) throws -> Agent.Builder` |
-| 1442 | func | public | Agent.Builder.addHandoff(_:) | `public @discardableResult func addHandoff(_ handoff: AnyHandoffConfiguration) throws -> Agent.Builder` |
-| 1457 | func | public | Agent.Builder.handoff(to:configure:) | `public @discardableResult func handoff<Target>(to target: Target, configure: (HandoffOptions<Target>) -> HandoffOptions<Target> = { $0 }) throws -> Agent.Builder where Target : AgentRuntime` |
-| 1476 | func | public | Agent.Builder.handoffs(_:) | `public @discardableResult func handoffs<each Target>(_ targets: repeat each Target) throws -> Agent.Builder where repeat each Target : AgentRuntime` |
-| 1485 | func | public | Agent.Builder.build() | `public func build() throws -> Agent` |
 | 1542 | func | public | Agent.init(name:instructions:tools:inferenceProvider:memory:tracer:configuration:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffs:) | `public init(name: String, instructions: String = "", tools: [any AnyJSONTool] = [], inferenceProvider: (any InferenceProvider)? = nil, memory: (any Memory)? = nil, tracer: (any Tracer)? = nil, configuration: AgentConfiguration = .default, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffs: [AnyHandoffConfiguration] = []) throws` |
 | 1604 | func | public | Agent.init(name:instructions:tools:inferenceProvider:memory:tracer:configuration:inputGuardrails:outputGuardrails:guardrailRunnerConfiguration:handoffAgents:) | `public init(name: String, instructions: String = "", tools: [any AnyJSONTool] = [], inferenceProvider: (any InferenceProvider)? = nil, memory: (any Memory)? = nil, tracer: (any Tracer)? = nil, configuration: AgentConfiguration = .default, inputGuardrails: [any InputGuardrail] = [], outputGuardrails: [any OutputGuardrail] = [], guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default, handoffAgents: [any AgentRuntime]) throws` |
 
@@ -1440,7 +1387,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 305 | func | public | ToolBuilder.buildExpression(_:) | `public static func buildExpression(_ expression: FoundationModelsNativeTool) -> ToolCollection` _(Availability: macOS 26.0+, iOS 26.0+, visionOS 26.0+; Requires FoundationModels)_ |
 | 315 | func | public | ToolBuilder.buildExpression(_:) | `public static func buildExpression<T>(_ expression: T) -> ToolCollection where T : FoundationModels.Tool` _(Availability: macOS 26.0+, iOS 26.0+, visionOS 26.0+; Requires FoundationModels)_ |
 | 305 | func | public | ToolBuilder.buildLimitedAvailability(_:) | `public static func buildLimitedAvailability(_ component: [any AnyJSONTool]) -> [any AnyJSONTool]` |
-| 312 | typealias | public | ToolArrayBuilder | `public typealias ToolArrayBuilder = ToolBuilder` _(Availability: * (deprecated); renamed to ToolBuilder)_ |
 
 ### Tools/ToolSchema.swift
 
@@ -1740,33 +1686,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 24 | var | public | MemoryPromptMetadata.guidance | `public var guidance: String?` |
 | 27 | var | public | MemoryPromptMetadata.priority | `public var priority: MemoryPriorityHint` |
 | 29 | init | public | MemoryPromptMetadata.init(title:guidance:priority:) | `public init(title: String, guidance: String?, priority: MemoryPriorityHint)` |
-| 47 | protocol | public | MemoryPromptDescriptor | `public protocol MemoryPromptDescriptor : Sendable` _(Availability: * (deprecated); Return MemoryPromptMetadata from your Memory conformance's memoryPromptMetadata instead.)_ |
-| 49 | var | public | MemoryPromptDescriptor.memoryPromptTitle | `public var memoryPromptTitle: String { get }` |
-| 52 | var | public | MemoryPromptDescriptor.memoryPromptGuidance | `public var memoryPromptGuidance: String? { get }` |
-| 55 | var | public | MemoryPromptDescriptor.memoryPriority | `public var memoryPriority: MemoryPriorityHint { get }` |
-
-`MemoryPromptDescriptor` remains a source-compatibility marker. The constrained
-`Memory where Self: MemoryPromptDescriptor` extension bridges its members into
-`Memory.memoryPromptMetadata`, preserving prompt labels for existing conformers.
-
-### Memory/MemoryRetrievalPolicy.swift
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 42 | protocol | public | MemoryRetrievalPolicyAware | `public protocol MemoryRetrievalPolicyAware : Memory` _(Availability: * (deprecated); Implement context(for: MemoryQuery) on your Memory conformance instead.)_ |
-| 44 | func | public | MemoryRetrievalPolicyAware.context(for:) | `public func context(for query: MemoryQuery) async -> String` |
-| 61 | protocol | public | MemorySessionImportPolicy | `public protocol MemorySessionImportPolicy : Sendable` _(Availability: * (deprecated); Implement allowsAutomaticSessionSeeding on your Memory conformance instead.)_ |
-| 63 | var | public | MemorySessionImportPolicy.allowsAutomaticSessionSeeding | `public var allowsAutomaticSessionSeeding: Bool { get }` |
-
-### Memory/MemorySessionLifecycle.swift
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 9 | protocol | public | MemorySessionLifecycle | `public protocol MemorySessionLifecycle : Memory` _(Availability: * (deprecated); Implement beginMemorySession() and endMemorySession() on your Memory conformance instead.)_ |
-| 11 | func | public | MemorySessionLifecycle.beginMemorySession() | `public func beginMemorySession() async` |
-| 14 | func | public | MemorySessionLifecycle.endMemorySession() | `public func endMemorySession() async` |
-| 24 | protocol | public | MemorySessionReplayAware | `public protocol MemorySessionReplayAware : Memory` _(Availability: * (deprecated); Implement importSessionHistory(_:) on your Memory conformance instead.)_ |
-| 26 | func | public | MemorySessionReplayAware.importSessionHistory(_:) | `public func importSessionHistory(_ messages: [MemoryMessage]) async` |
 
 ### Memory/PersistentMemory.swift
 
@@ -2600,8 +2519,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 21 | typealias | public | Retry | `@available(*, deprecated, renamed: "RetryPolicy") public typealias Retry = RetryPolicy` |
-| 28 | typealias | public | Fallback | `@available(*, deprecated, renamed: "FallbackChain") public typealias Fallback = FallbackChain` |
 
 ### Resilience/ResilienceConfiguration.swift
 
@@ -2746,7 +2663,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 141 | case | public | Workflow.MergeStrategy.structured | `public case structured` |
 | 158 | case | public | Workflow.MergeStrategy.indexed | `public case indexed` |
 | 174 | case | public | Workflow.MergeStrategy.firstCompleted | `public case firstCompleted` |
-| 182 | case | public | Workflow.MergeStrategy.first | `public case first` _(Availability: * (deprecated); renamed to firstCompleted)_ |
 | 202 | case | public | Workflow.MergeStrategy.custom(_:) | `public case custom(@Sendable ([AgentResult]) -> String)` |
 | 218 | func | public | Workflow.init() | `public init()` |
 | 238 | func | public | Workflow.step(_:) | `public func step(_ agent: some AgentRuntime) -> Workflow` |
@@ -2759,7 +2675,7 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 449 | func | public | Workflow.observed(by:) | `public func observed(by observer: some AgentObserver) -> Workflow` |
 | — | func | public | Workflow.fallback(primary:to:retries:) | `public func fallback(primary: some AgentRuntime, to backup: some AgentRuntime, retries: Int = 0) -> Workflow` |
 | 476 | func | public | Workflow.run(_:) | `public func run(_ input: String) async throws -> AgentResult` |
-| 528 | func | public | Workflow.stream(_:) | `public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>` |
+| 520 | func | public | Workflow.stream(_:) | `public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>` |
 
 ### Workflow/WorkflowCheckpointing.swift
 
@@ -3006,7 +2922,6 @@ Refresh the header counts with `scripts/ci/refresh-api-catalog-header.sh`. That 
 | 265 | func | public | MCPServerConnection.readResource(uri:) | `public func readResource(uri: String) async throws -> MCPResourceContent` |
 | 276 | func | public | MCPServerConnection.requireToolsCapability() | `public func requireToolsCapability() async throws` |
 | 288 | func | public | MCPServerConnection.requireResourcesCapability() | `public func requireResourcesCapability() async throws` |
-| — | typealias | public | MCPServer | `@available(*, deprecated, renamed: "MCPServerConnection") public typealias MCPServer = MCPServerConnection` |
 
 ### MCP/MCPToolBridge.swift
 
@@ -3053,7 +2968,6 @@ Provider-facing conversation message. The payload is a closed `Body`; `role`, `c
 | 160 | var | public | InferenceMessage.toolCalls | `public var toolCalls: [InferenceMessage.ToolCall] { get }` |
 | 114 | struct | public | InferenceMessage.Attachment | `public struct Attachment: Sendable, Equatable` |
 | 172 | func | public | InferenceMessage.init(body:attachments:) | `public init(body: InferenceMessage.Body, attachments: [InferenceMessage.Attachment] = [])` |
-| 192 | func | public | InferenceMessage.init(role:content:name:toolCallID:toolCalls:) | `@available(*, deprecated, message: "Use init(body:) or the role factories.") public init(role: InferenceMessage.Role, content: String, name: String? = nil, toolCallID: String? = nil, toolCalls: [InferenceMessage.ToolCall] = [])` |
 | 211 | func | public | InferenceMessage.system(_:) | `public static func system(_ content: String) -> InferenceMessage` |
 | 215 | func | public | InferenceMessage.user(_:attachments:) | `public static func user(_ content: String, attachments: [InferenceMessage.Attachment] = []) -> InferenceMessage` |
 | 219 | func | public | InferenceMessage.assistant(_:toolCalls:) | `public static func assistant(_ content: String, toolCalls: [InferenceMessage.ToolCall] = []) -> InferenceMessage` |
@@ -3221,8 +3135,6 @@ Swarm capture-path types. Owned-loop consumes ``Profile`` / ``ProfileHistoryPoli
 | 17 | case | public | InferenceStreamUpdate.toolCallsCompleted(_:) | `public case toolCallsCompleted([InferenceResponse.ParsedToolCall])` |
 | 20 | case | public | InferenceStreamUpdate.usage(_:) | `public case usage(TokenUsage)` |
 | 23 | case | public | InferenceStreamUpdate.finishedTurn(_:) | `public case finishedTurn(InferenceResponse)` |
-| 34 | protocol | public | ToolCallStreamingInferenceProvider | `public protocol ToolCallStreamingInferenceProvider : InferenceProvider` _(Deprecated compatibility identity; Agent reads `InferenceProviderCapabilities.streamingToolCalls`.)_ |
-| 36 | func | public | ToolCallStreamingInferenceProvider.streamWithToolCalls(prompt:tools:options:) | `public func streamWithToolCalls(prompt: String, tools: [ToolSchema], options: InferenceOptions) -> AsyncThrowingStream<InferenceStreamUpdate, any Error>` |
 
 ## 12. Integration (Membrane + Wax)
 
@@ -3285,15 +3197,6 @@ Integrations links on all platforms: Linux uses the portable ContextCore/Membran
 | 9 | func | public | WaxEmbeddingProviderAdapter.init(_:normalize:providerName:) | `public init(_ base: any EmbeddingProvider, normalize: Bool = false, providerName: String? = "swarm")` |
 | 24 | var | public | WaxEmbeddingProviderAdapter.dimensions | `public var dimensions: Int { get }` |
 | 26 | func | public | WaxEmbeddingProviderAdapter.embed(_:) | `public func embed(_ text: String) async throws -> [Float]` |
-
-### Integration/Wax/WaxIntegration.swift
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 8 | struct | public | WaxIntegration | `@available(*, deprecated, message: "Use IntegrationsTrait.isEnabled, WaxMemory, or WaxEmbeddingProviderAdapter instead.") public struct WaxIntegration` |
-| 10 | func | public | WaxIntegration.init() | `@available(*, deprecated, message: "WaxIntegration is retained only for source compatibility.") public init()` |
-| 14 | var | public | WaxIntegration.isEnabled | `@available(*, deprecated, message: "Use IntegrationsTrait.isEnabled instead.") public var isEnabled: Bool { get }` |
-| 20 | var | public | WaxIntegration.debugDescription | `@available(*, deprecated, message: "WaxIntegration.debugDescription is retained only for source compatibility.") public static var debugDescription: String { get }` |
 
 ### Integration/Wax/WaxMemory.swift
 
@@ -3675,23 +3578,6 @@ Without it this product is a hollow module exposing ``OpenTelemetryTrait``.
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
 | 6 | typealias | public | SwarmRuntimeTracer | `public typealias SwarmRuntimeTracer = Tracer` |
-
-### SwarmMembrane
-
-#### Sources/SwarmMembrane/SwarmMembrane.swift
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 1 | export | public | SwarmMembrane | `@_exported import Swarm` |
-
-`SwarmMembrane` is a **deprecated** hollow re-export (`@_exported import Swarm`).
-Import `Swarm` instead. Its user-facing symbols are the public Membrane
-integration APIs cataloged in section 12 under
-`Sources/Swarm/Integration/Membrane/`. The product will be removed in 0.7.0.
-
-| Line | Kind | Access | Name | Signature |
-|------|------|--------|------|-----------|
-| 8 | enum | public | SwarmMembraneProduct | `@available(*, deprecated, message: "Import Swarm instead. SwarmMembrane is a hollow re-export and will be removed in 0.7.0.") public enum SwarmMembraneProduct: Sendable` |
 
 ### SwarmMCP
 

@@ -530,7 +530,7 @@ struct AgentWorkspaceTests {
     }
 }
 
-private actor PolicyAwareMemoryStub: Memory, MemoryRetrievalPolicyAware {
+private actor PolicyAwareMemoryStub: Memory {
     let contextToReturn: String
     private(set) var addCalls: [MemoryMessage] = []
     private(set) var queries: [MemoryQuery] = []
@@ -560,7 +560,7 @@ private actor PolicyAwareMemoryStub: Memory, MemoryRetrievalPolicyAware {
     func clear() async {}
 }
 
-private actor SessionImportOptOutMemory: Memory, MemorySessionImportPolicy {
+private actor SessionImportOptOutMemory: Memory {
     private(set) var addCalls: [MemoryMessage] = []
 
     var count: Int { get async { 0 } }

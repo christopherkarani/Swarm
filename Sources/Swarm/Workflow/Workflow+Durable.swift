@@ -9,10 +9,9 @@ public extension Workflow {
 
         /// Whether the durable Hive engine is linked in this build.
         ///
-        /// Configuration APIs (``configured(id:store:policy:)``, ``checkpoint(id:policy:)``,
-        /// ``checkpointing(_:)``) still type-check on lean builds.
-        /// ``DurableWorkflow/execute(_:)`` and ``execute(_:resumeFrom:)`` throw when
-        /// checkpointing is configured until you rebuild with `--traits Integrations`.
+        /// ``configured(id:store:policy:)`` still type-checks on lean builds.
+        /// ``DurableWorkflow/execute(_:)`` and ``DurableWorkflow/resume(_:from:)``
+        /// throw until you rebuild with `--traits Integrations`.
         public static var isAvailable: Bool {
             IntegrationsTrait.isEnabled
         }
@@ -20,33 +19,6 @@ public extension Workflow {
         public enum CheckpointPolicy: Sendable {
             case onCompletion
             case everyStep
-        }
-
-        /// Enables workflow checkpointing for this workflow.
-        @available(*, deprecated, message: "Use configured(id:store:policy:) to build a DurableWorkflow.")
-        public func checkpoint(id: String, policy: CheckpointPolicy = .onCompletion) -> Workflow {
-            IntegrationsTrait.warnIfUnavailable(
-                feature: "Durable workflow checkpointing",
-                logger: Log.orchestration
-            )
-            var copy = workflow
-            copy.advancedConfiguration.checkpoint = Workflow.CheckpointConfiguration(
-                id: id,
-                policy: policy
-            )
-            return copy
-        }
-
-        /// Configures checkpoint persistence for durable workflow execution.
-        @available(*, deprecated, message: "Use configured(id:store:policy:) to build a DurableWorkflow.")
-        public func checkpointing(_ checkpointing: WorkflowCheckpointing) -> Workflow {
-            IntegrationsTrait.warnIfUnavailable(
-                feature: "Durable workflow checkpointing",
-                logger: Log.orchestration
-            )
-            var copy = workflow
-            copy.advancedConfiguration.checkpointing = checkpointing
-            return copy
         }
 
         /// Builds a fully configured durable workflow with checkpoint identity and persistence.
@@ -66,29 +38,6 @@ public extension Workflow {
                 policy: policy
             )
         }
-
-        /// Adds a workflow-level fallback step.
-        @available(*, deprecated, message: "Use Workflow.fallback(primary:to:retries:) instead.")
-        public func fallback(
-            primary: some AgentRuntime,
-            to backup: some AgentRuntime,
-            retries: Int = 0
-        ) -> Workflow {
-            workflow.fallback(primary: primary, to: backup, retries: retries)
-        }
-
-        /// Executes a durable workflow, optionally resuming from a checkpoint ID.
-        @available(*, deprecated, message: "Use DurableWorkflow.execute(_:) or DurableWorkflow.resume(_:from:).")
-        public func execute(_ input: String, resumeFrom checkpointID: String? = nil) async throws -> AgentResult {
-            try await workflow.executeDurable(input, resumeFrom: checkpointID)
-        }
-
-        /// Backward-compatible alias for `execute(_:resumeFrom:)`.
-        @available(*, deprecated, renamed: "execute(_:resumeFrom:)")
-        public func run(_ input: String, resumeFrom checkpointID: String? = nil) async throws -> AgentResult {
-            try await execute(input, resumeFrom: checkpointID)
-        }
-
     }
 }
 
@@ -194,55 +143,6 @@ extension Workflow {
         throw WorkflowError.durableRuntimeUnavailable(
             reason: IntegrationsTrait.requirementMessage(for: "Durable workflow fork")
         )
-        #endif
-    }
-
-    func executeDurable(_ input: String, resumeFrom checkpointID: String?) async throws -> AgentResult {
-        #if SWARM_INTEGRATIONS
-        guard let checkpoint = advancedConfiguration.checkpoint else {
-            if checkpointID != nil {
-                throw WorkflowError.invalidWorkflow(
-                    reason: "Cannot resume a workflow without durable checkpoint configuration"
-                )
-            }
-            return try await executeWithTimeout {
-                try await executeDirect(input: input)
-            }
-        }
-
-        guard let checkpointing = advancedConfiguration.checkpointing else {
-            throw WorkflowError.checkpointStoreRequired
-        }
-
-        let resolvedCheckpointID = checkpointID ?? checkpoint.id
-        if checkpointID != nil {
-            guard try await checkpointing.containsCheckpoint(for: resolvedCheckpointID) else {
-                throw WorkflowError.checkpointNotFound(id: resolvedCheckpointID)
-            }
-        }
-
-        WorkflowDurableIdentity.warnIfUsingImplicitIdentity(self)
-
-        let engine = WorkflowDurableEngine(
-            workflow: self,
-            checkpointing: checkpointing,
-            checkpointID: resolvedCheckpointID,
-            policy: checkpoint.policy,
-            resume: checkpointID != nil
-        )
-
-        return try await executeWithTimeout {
-            try await engine.run(startInput: input)
-        }
-        #else
-        if checkpointID != nil || advancedConfiguration.checkpoint != nil || advancedConfiguration.checkpointing != nil {
-            throw WorkflowError.durableRuntimeUnavailable(
-                reason: IntegrationsTrait.requirementMessage(for: "Durable workflow execution")
-            )
-        }
-        return try await executeWithTimeout {
-            try await executeDirect(input: input)
-        }
         #endif
     }
 }

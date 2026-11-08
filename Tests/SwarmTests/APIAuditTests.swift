@@ -22,25 +22,6 @@ private struct DisabledTool: AnyJSONTool {
     }
 }
 
-// MARK: - TestUserContext
-
-/// A typed context for testing `AgentContextProviding`.
-private struct TestUserContext: AgentContextProviding {
-    static let contextKey = "test_user_context"
-
-    let userId: String
-    let isAdmin: Bool
-}
-
-// MARK: - TestSessionContext
-
-/// A second typed context to test multiple typed contexts.
-private struct TestSessionContext: AgentContextProviding {
-    static let contextKey = "test_session_context"
-
-    let sessionId: String
-}
-
 // MARK: - APIAuditTests
 
 final class APIAuditTests: XCTestCase {
@@ -243,79 +224,6 @@ final class APIAuditTests: XCTestCase {
         XCTAssertEqual(handoffs.first?.targetAgent.name, "Billing")
     }
 
-    // MARK: - Agent.Builder Compatibility Tests
-
-    func testAgentBuilderHandoffToAddsSingleTarget() async throws {
-        let billing = try Agent(name: "Billing", instructions: "Handle billing")
-
-        let triage = try Agent.Builder()
-            .instructions("Route requests")
-            .handoff(to: billing)
-            .build()
-
-        XCTAssertEqual(triage.handoffs.count, 1)
-        XCTAssertEqual(triage.handoffs.first?.targetAgent.name, "Billing")
-    }
-
-    func testAgentBuilderVariadicHandoffsAddsAllTargets() async throws {
-        let billing = try Agent(name: "Billing", instructions: "Handle billing")
-        let support = try Agent(name: "Support", instructions: "Handle support")
-        let sales = try Agent(name: "Sales", instructions: "Handle sales")
-
-        XCTAssertThrowsError(
-            try Agent.Builder()
-                .instructions("Route requests")
-                .handoffs(billing, support, sales)
-                .build()
-        ) { error in
-            XCTAssertEqual(
-                error as? AgentError,
-                .duplicateHandoffToolName(name: "handoff_to_agent")
-            )
-        }
-    }
-
-    func testAgentBuilderHandoffsWithUniqueOverridesAddsAllTargets() async throws {
-        let billing = try Agent(name: "Billing", instructions: "Handle billing")
-        let support = try Agent(name: "Support", instructions: "Handle support")
-        let sales = try Agent(name: "Sales", instructions: "Handle sales")
-
-        let triage = try Agent.Builder()
-            .instructions("Route requests")
-            .handoffs([
-                AnyHandoffConfiguration(targetAgent: billing, toolNameOverride: "handoff_to_billing"),
-                AnyHandoffConfiguration(targetAgent: support, toolNameOverride: "handoff_to_support"),
-                AnyHandoffConfiguration(targetAgent: sales, toolNameOverride: "handoff_to_sales"),
-            ])
-            .build()
-
-        XCTAssertEqual(triage.handoffs.count, 3)
-        XCTAssertEqual(triage.handoffs[0].targetAgent.name, "Billing")
-        XCTAssertEqual(triage.handoffs[1].targetAgent.name, "Support")
-        XCTAssertEqual(triage.handoffs[2].targetAgent.name, "Sales")
-    }
-
-    func testAgentBuilderHandoffOptionsMapToConfiguration() async throws {
-        let billing = try Agent(name: "Billing", instructions: "Handle billing")
-
-        let triage = try Agent.Builder()
-            .instructions("Route requests")
-            .handoff(to: billing) {
-                $0
-                    .name("transfer_to_billing")
-                    .description("Transfer billing/refund issues")
-                    .policy(.strict)
-                    .history(.summarized(maxTokens: 300))
-            }
-            .build()
-
-        XCTAssertEqual(triage.handoffs.count, 1)
-        XCTAssertEqual(triage.handoffs[0].toolNameOverride, "transfer_to_billing")
-        XCTAssertEqual(triage.handoffs[0].toolDescription, "Transfer billing/refund issues")
-        XCTAssertTrue(triage.handoffs[0].nestHandoffHistory)
-        XCTAssertEqual(triage.handoffs[0].history, .summarized(maxTokens: 300))
-    }
-
     // MARK: - AgentTool Tests
 
     func testAgentToolCreation() async throws {
@@ -462,80 +370,6 @@ final class APIAuditTests: XCTestCase {
         XCTAssertNil(handoff.when)
         XCTAssertFalse(handoff.nestHandoffHistory)
         XCTAssertEqual(handoff.history, .none)
-    }
-
-    // MARK: - AgentContextProviding Tests
-
-    func testSetTypedAndRetrieveTyped() async {
-        let context = AgentContext(input: "test")
-        let userContext = TestUserContext(userId: "user_123", isAdmin: true)
-
-        await context.setTyped(userContext)
-        let retrieved: TestUserContext? = await context.typed(TestUserContext.self)
-
-        XCTAssertNotNil(retrieved)
-        XCTAssertEqual(retrieved?.userId, "user_123")
-        XCTAssertEqual(retrieved?.isAdmin, true)
-    }
-
-    func testTypedReturnsNilWhenNotSet() async {
-        let context = AgentContext(input: "test")
-        let retrieved: TestUserContext? = await context.typed(TestUserContext.self)
-        XCTAssertNil(retrieved)
-    }
-
-    func testHasTypedReturnsTrueWhenSet() async {
-        let context = AgentContext(input: "test")
-        await context.setTyped(TestUserContext(userId: "u1", isAdmin: false))
-
-        let hasIt = await context.hasTyped(TestUserContext.self)
-        XCTAssertTrue(hasIt)
-    }
-
-    func testHasTypedReturnsFalseWhenNotSet() async {
-        let context = AgentContext(input: "test")
-        let hasIt = await context.hasTyped(TestUserContext.self)
-        XCTAssertFalse(hasIt)
-    }
-
-    func testRemoveTypedRemovesContext() async {
-        let context = AgentContext(input: "test")
-        await context.setTyped(TestUserContext(userId: "u1", isAdmin: false))
-
-        let removed: TestUserContext? = await context.removeTyped(TestUserContext.self)
-        XCTAssertNotNil(removed)
-        XCTAssertEqual(removed?.userId, "u1")
-
-        let afterRemoval: TestUserContext? = await context.typed(TestUserContext.self)
-        XCTAssertNil(afterRemoval)
-    }
-
-    func testRemoveTypedReturnsNilWhenNotSet() async {
-        let context = AgentContext(input: "test")
-        let removed: TestUserContext? = await context.removeTyped(TestUserContext.self)
-        XCTAssertNil(removed)
-    }
-
-    func testMultipleTypedContextsCoexist() async {
-        let context = AgentContext(input: "test")
-        await context.setTyped(TestUserContext(userId: "u1", isAdmin: true))
-        await context.setTyped(TestSessionContext(sessionId: "s1"))
-
-        let user: TestUserContext? = await context.typed(TestUserContext.self)
-        let session: TestSessionContext? = await context.typed(TestSessionContext.self)
-
-        XCTAssertEqual(user?.userId, "u1")
-        XCTAssertEqual(session?.sessionId, "s1")
-    }
-
-    func testSetTypedOverwritesPrevious() async {
-        let context = AgentContext(input: "test")
-        await context.setTyped(TestUserContext(userId: "u1", isAdmin: false))
-        await context.setTyped(TestUserContext(userId: "u2", isAdmin: true))
-
-        let retrieved: TestUserContext? = await context.typed(TestUserContext.self)
-        XCTAssertEqual(retrieved?.userId, "u2")
-        XCTAssertEqual(retrieved?.isAdmin, true)
     }
 
     // MARK: - AgentContext Basic Tests

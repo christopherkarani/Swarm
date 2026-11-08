@@ -61,9 +61,6 @@ public enum WorkflowError: Error, Sendable, Equatable {
     /// Workflow definition is invalid or cannot be executed.
     case invalidWorkflow(reason: String)
 
-    /// Advanced workflow checkpoint execution requires an explicit checkpoint store.
-    case checkpointStoreRequired
-
     /// No checkpoint exists for the requested checkpoint ID.
     case checkpointNotFound(id: String)
 
@@ -105,8 +102,6 @@ extension WorkflowError: LocalizedError {
             return "Human approval rejected for '\(prompt)': \(reason)"
         case let .invalidWorkflow(reason):
             return "Invalid workflow: \(reason)"
-        case .checkpointStoreRequired:
-            return "Workflow checkpointing requires an explicit checkpoint store"
         case let .checkpointNotFound(id):
             return "Workflow checkpoint not found: \(id)"
         case let .resumeDefinitionMismatch(reason):
@@ -148,8 +143,6 @@ extension WorkflowError: CustomDebugStringConvertible {
             return "WorkflowError.humanApprovalRejected(prompt: \(prompt), reason: \(reason))"
         case let .invalidWorkflow(reason):
             return "WorkflowError.invalidWorkflow(reason: \(reason))"
-        case .checkpointStoreRequired:
-            return "WorkflowError.checkpointStoreRequired"
         case let .checkpointNotFound(id):
             return "WorkflowError.checkpointNotFound(id: \(id))"
         case let .resumeDefinitionMismatch(reason):
