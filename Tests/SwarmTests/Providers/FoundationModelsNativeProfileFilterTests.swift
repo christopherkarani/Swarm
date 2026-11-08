@@ -1,6 +1,6 @@
 // FoundationModelsNativeProfileFilterTests.swift
 //
-// Owned-loop DynamicProfile tool deny — helper-level, no live Apple required.
+// Owned-loop DynamicAgentProfile tool deny — helper-level, no live Apple required.
 
 import Foundation
 @testable import Swarm
@@ -15,7 +15,7 @@ struct FoundationModelsNativeProfileFilterTests {
 
     private var allTools: [ToolSchema] { [search, calc, denyMe] }
 
-    @Test("Profile excluding a tool is applied before native session bind")
+    @Test("AgentProfile excluding a tool is applied before native session bind")
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
     func profileExcludingDropsDeniedTool() {
         #if os(tvOS) || os(watchOS)
@@ -23,7 +23,7 @@ struct FoundationModelsNativeProfileFilterTests {
         #else
         let provider = FoundationModelsInferenceProvider(
             profile: StaticDynamicProfile(
-                Profile(
+                AgentProfile(
                     id: "review",
                     instructions: "Be precise.",
                     toolFilter: .excluding(["deny_me"])
@@ -40,7 +40,7 @@ struct FoundationModelsNativeProfileFilterTests {
         #endif
     }
 
-    @Test("Profile only-allow list is the executing set")
+    @Test("AgentProfile only-allow list is the executing set")
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
     func profileOnlyKeepsAllowedTool() {
         #if os(tvOS) || os(watchOS)
@@ -48,7 +48,7 @@ struct FoundationModelsNativeProfileFilterTests {
         #else
         let provider = FoundationModelsInferenceProvider(
             profile: StaticDynamicProfile(
-                Profile(
+                AgentProfile(
                     id: "calc-only",
                     instructions: "Use calc.",
                     toolFilter: .only(["calc"])
@@ -64,7 +64,7 @@ struct FoundationModelsNativeProfileFilterTests {
         #endif
     }
 
-    @Test("Profile toolChoice.none binds no executing tools")
+    @Test("AgentProfile toolChoice.none binds no executing tools")
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
     func profileToolChoiceNoneClearsTools() {
         #if os(tvOS) || os(watchOS)
@@ -72,7 +72,7 @@ struct FoundationModelsNativeProfileFilterTests {
         #else
         let provider = FoundationModelsInferenceProvider(
             profile: StaticDynamicProfile(
-                Profile(
+                AgentProfile(
                     id: "no-tools",
                     instructions: "Do not call tools.",
                     generation: .init(toolChoice: ToolChoice.none)
@@ -148,7 +148,7 @@ struct FoundationModelsNativeProfileFilterTests {
         #else
         let provider = FoundationModelsInferenceProvider(
             profile: StaticDynamicProfile(
-                Profile(
+                AgentProfile(
                     id: "review",
                     instructions: "Review.",
                     toolFilter: .excluding(["deny_me"]),

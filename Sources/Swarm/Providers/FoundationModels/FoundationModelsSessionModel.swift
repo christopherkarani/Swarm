@@ -7,7 +7,7 @@ import FoundationModels
 ///
 /// OS 26 sessions always use ``SystemLanguageModel``. OS 27 can wrap any
 /// Apple `LanguageModel`, including ``PrivateCloudComputeLanguageModel``.
-/// This is not a Swarm ``DynamicProfile``.
+/// This is not a Swarm ``DynamicAgentProfile``.
 @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
 @available(tvOS, unavailable)
 @available(watchOS, unavailable)

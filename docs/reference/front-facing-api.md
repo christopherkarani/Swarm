@@ -1047,8 +1047,8 @@ available for source compatibility: `PromptTokenCountingInferenceProvider`,
 
 ```swift
 .foundationModels()                 // On-device first-class provider
-.foundationModels(model: .default)  // Apple SystemLanguageModel (not Swarm Profile)
-.foundationModels(profile: profile) // Swarm DynamicProfile re-resolved each turn
+.foundationModels(model: .default)  // Apple SystemLanguageModel (not Swarm AgentProfile)
+.foundationModels(profile: profile) // Swarm DynamicAgentProfile re-resolved each turn
 .foundationModels(model: pcc)       // OS 27 Apple LanguageModel / PCC
 .privateCloudCompute()              // OS 27 PCC convenience (quota-aware IfAvailable variant)
 .openAICompatible(.ollama(model: "llama3.2"))
@@ -1061,7 +1061,7 @@ available for source compatibility: `PromptTokenCountingInferenceProvider`,
 |----------------|-------------|-------|
 | `.foundationModels()` | `FoundationModelsInferenceProvider` | Built-in on-device path; Agent-owned tool loop (capture). Optional `model:` is Apple `SystemLanguageModel`. |
 | `.foundationModelsOwningToolLoop()` | `FoundationModelsInferenceProvider` | Same type; advertises a provider-owned tool loop |
-| `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Capture adapter driven by Swarm ``DynamicProfile`` (not Apple's OS 27 `LanguageModelSession.DynamicProfile`) |
+| `.foundationModels(profile:)` | `FoundationModelsInferenceProvider` | Capture adapter driven by Swarm ``DynamicAgentProfile`` (not Apple's OS 27 `LanguageModelSession.DynamicProfile`) |
 | `.foundationModels(model:)` | `FoundationModelsInferenceProvider` | OS 27+ Apple `LanguageModel`, including `PrivateCloudComputeLanguageModel`. `ifAvailable(model:)` does not fall back to on-device. |
 | `.privateCloudCompute()` | `FoundationModelsInferenceProvider` | OS 27+ PCC convenience. `.privateCloudComputeIfAvailable()` returns nil when PCC is unavailable or its daily quota is exhausted; neither falls back to on-device. PCC-backed providers do not advertise `.privateInference`. |
 | `.openAICompatible(_:)` | `OpenAICompatibleProvider` | OpenAI / Azure / OpenRouter / Ollama / LM Studio over Chat Completions; Linux-first |
@@ -1082,7 +1082,7 @@ OS 27 owned-loop can set ``FoundationModelsProviderConfiguration/reasoningLevel`
 ``ToolChoice/specific(toolName:)`` has no Apple `ToolCallingMode` case and
 stays a prompt sentence.
 Owned-loop applies Swarm ``ProfileHistoryPolicy`` before seeding a text-only
-Apple `Transcript`. It does not rename Swarm ``DynamicProfile`` to Apple's
+Apple `Transcript`. It does not rename Swarm ``DynamicAgentProfile`` to Apple's
 `LanguageModelSession.DynamicProfile`. It does build the Apple session from
 a native `LanguageModelSession(profile:history:)` on OS 27, so the resolved
 instructions, tools, and knobs flow through one Apple session.

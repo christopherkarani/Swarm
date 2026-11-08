@@ -243,7 +243,7 @@ extension FoundationModelsInferenceProvider {
             throw AgentError.modelNotAvailable(model: sessionModel.displayName)
         }
 
-        // Resolve before bridging so DynamicProfile toolFilter / toolChoice.none
+        // Resolve before bridging so DynamicAgentProfile toolFilter / toolChoice.none
         // bind onto LanguageModelSession (same order as capture-mode generateWithToolCalls).
         let requestedTools = nativeExecutingToolSchemas(
             messages: messages,

@@ -1,9 +1,9 @@
 import Foundation
 
-/// Maps a resolved Swarm ``Profile`` onto owned-loop session inputs.
+/// Maps a resolved Swarm ``AgentProfile`` onto owned-loop session inputs.
 ///
 /// This is **not** Apple's `LanguageModelSession.DynamicProfile`. Swarm
-/// ``DynamicProfile`` / ``Profile`` / ``ProfileHistoryPolicy`` stay Swarm
+/// ``DynamicAgentProfile`` / ``AgentProfile`` / ``ProfileHistoryPolicy`` stay Swarm
 /// types. Owned-loop uses the resolved instructions, tool filter, and
 /// history policy. Capture still goes through ``DynamicProfileResolution``.
 ///
@@ -21,7 +21,7 @@ enum FoundationModelsAppleProfileBridge: Sendable {
     }
 
     static func plan(
-        profile: Profile?,
+        profile: AgentProfile?,
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions,
