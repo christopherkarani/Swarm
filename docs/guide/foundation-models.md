@@ -32,6 +32,10 @@ let agent = try Agent("Be helpful.", configuration: config,
 }
 ```
 
+The same path takes Apple's OS 27 system tools, such as `OCRTool` and
+`BarcodeReaderTool`, because they are `FoundationModels.Tool` values: list
+them in the closure next to your own tools.
+
 ## Comparison
 
 | | Capture (default) | Native session (experimental) |
