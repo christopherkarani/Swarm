@@ -52,9 +52,7 @@ public actor HTTPTextToSpeech: TextToSpeech {
         guard text.contains(where: { !$0.isWhitespace }) else {
             throw VoiceError.synthesisFailed(reason: "Utterance is empty.")
         }
-        let configuration = configuration
-        let interrupt = interrupt
-        let task = Task<Data, Error> {
+        do {
             var request = URLRequest(url: configuration.endpoint)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -67,15 +65,11 @@ public actor HTTPTextToSpeech: TextToSpeech {
                 "input": text,
             ]
             request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-            let (data, response) = try await configuration.session.data(for: request)
+            let (data, response) = try await interrupt.data(for: request, session: configuration.session)
             guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
                 throw VoiceError.synthesisFailed(reason: "HTTP speech failed.")
             }
-            return data
-        }
-        interrupt.store { task.cancel() }
-        do {
-            lastAudio = try await task.value
+            lastAudio = data
         } catch {
             if let cancelled = VoiceCancellation.error(for: error) {
                 throw cancelled

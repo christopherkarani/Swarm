@@ -107,11 +107,9 @@ public actor ElevenLabsTextToSpeech: StreamingTextToSpeech {
         guard text.contains(where: { !$0.isWhitespace }) else {
             throw VoiceError.synthesisFailed(reason: "Utterance is empty.")
         }
-        let configuration = configuration
-        let interrupt = interrupt
-        let task = Task<Data, Error> {
+        do {
             let request = try Self.synthesisRequest(configuration: configuration, text: text)
-            let (data, response) = try await configuration.session.data(for: request)
+            let (data, response) = try await interrupt.data(for: request, session: configuration.session)
             guard let http = response as? HTTPURLResponse else {
                 throw VoiceError.synthesisFailed(reason: "ElevenLabs speech failed.")
             }
@@ -120,11 +118,7 @@ public actor ElevenLabsTextToSpeech: StreamingTextToSpeech {
                     reason: Self.apiErrorMessage(data, status: http.statusCode, fallback: "speech")
                 )
             }
-            return data
-        }
-        interrupt.store { task.cancel() }
-        do {
-            lastAudio = try await task.value
+            lastAudio = data
         } catch {
             if let cancelled = VoiceCancellation.error(for: error) {
                 throw cancelled
@@ -244,8 +238,20 @@ public actor ElevenLabsTextToSpeech: StreamingTextToSpeech {
             }
         }
 
+        /// Ends the download with ``VoiceError/cancelled`` now; stops the transfer off-thread.
+        ///
+        /// On Linux, `URLSessionTask.cancel()` waits for the session work queue,
+        /// so a load already finishing there would otherwise report success.
         func cancel() {
-            lock.withLock { task?.cancel() }
+            let alreadyFinished: Bool = lock.withLock {
+                defer { finished = true }
+                return finished
+            }
+            guard !alreadyFinished else { return }
+            onCompletion(.failure(.cancelled))
+            DispatchQueue.global(qos: .utility).async {
+                self.lock.withLock { self.session }?.invalidateAndCancel()
+            }
         }
 
         func urlSession(

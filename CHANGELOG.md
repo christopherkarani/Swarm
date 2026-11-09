@@ -20,6 +20,14 @@ Releases before 0.6.0 are recorded only in git tags and GitHub releases.
 
 - Conversation history rendering goes through one unified renderer (#266).
 
+### Fixed
+
+- `stop()` on the HTTP and ElevenLabs voice adapters no longer deadlocks on
+  Linux when it races a response that is finishing, and streamed ElevenLabs
+  synthesis now ends with `VoiceError.cancelled` on Linux instead of
+  completing normally. Already-cancelled callers now fail with
+  `VoiceError.cancelled` before any request is sent.
+
 ## [0.6.6] - 2026-09-26
 
 ### Added
