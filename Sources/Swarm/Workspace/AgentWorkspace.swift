@@ -119,6 +119,15 @@ public struct AgentWorkspace: Sendable {
             }
         }
 
+        for (url, error) in memoryNoteFailures() {
+            issues.append(
+                WorkspaceValidationIssue(
+                    path: relativePath(for: url),
+                    message: error.localizedDescription
+                )
+            )
+        }
+
         return WorkspaceValidationReport(issues: issues)
     }
 
@@ -175,28 +184,47 @@ extension AgentWorkspace {
         }
     }
 
+    /// Loads every well-formed memory note.
+    ///
+    /// Read-only: malformed notes are skipped and logged, never moved or
+    /// rewritten. ``validate()`` reports them.
     func loadMemoryNotes() throws -> [WorkspaceMemoryNote] {
+        scanMemoryNotes().compactMap { url, result in
+            switch result {
+            case .success(let note):
+                return note
+            case .failure(let error):
+                Log.memory.warning("WorkspaceMemory: Skipping malformed note at \(url.path): \(error.localizedDescription)")
+                return nil
+            }
+        }
+    }
+
+    /// Memory notes that fail to parse, with their errors.
+    func memoryNoteFailures() -> [(url: URL, error: any Error)] {
+        scanMemoryNotes().compactMap { url, result in
+            guard case .failure(let error) = result else { return nil }
+            return (url, error)
+        }
+    }
+
+    private func scanMemoryNotes() -> [(url: URL, result: Result<WorkspaceMemoryNote, any Error>)] {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: memoryDirectory.path) else {
             return []
         }
 
-        var notes: [WorkspaceMemoryNote] = []
+        var results: [(url: URL, result: Result<WorkspaceMemoryNote, any Error>)] = []
         for kind in WorkspaceMemoryNote.Kind.allCases {
             let kindDirectory = memoryDirectory.appendingPathComponent(kind.directoryName, isDirectory: true)
             guard let enumerator = fileManager.enumerator(at: kindDirectory, includingPropertiesForKeys: nil) else {
                 continue
             }
             for case let url as URL in enumerator where url.pathExtension.lowercased() == "md" {
-                do {
-                    notes.append(try parseMemoryNote(at: url, expectedKind: kind))
-                } catch {
-                    try? quarantineMalformedNote(at: url)
-                    Log.memory.warning("WorkspaceMemory: Skipping malformed note at \(url.path): \(error.localizedDescription)")
-                }
+                results.append((url, Result { try parseMemoryNote(at: url, expectedKind: kind) }))
             }
         }
-        return notes
+        return results
     }
 }
 
@@ -310,7 +338,7 @@ extension AgentWorkspace {
         do {
             document = try WorkspaceMarkdownDocument.parse(raw, requireFrontMatterClosure: true)
         } catch let error as AgentWorkspaceError {
-            throw remap(error: error, to: relativePath(for: url))
+            throw error.relocated(to: relativePath(for: url))
         }
 
         let schemaVersion = try document.requiredInt("schema_version", path: relativePath(for: url))
@@ -365,7 +393,7 @@ extension AgentWorkspace {
         do {
             document = try WorkspaceMarkdownDocument.parse(raw, requireFrontMatterClosure: true)
         } catch let error as AgentWorkspaceError {
-            throw remap(error: error, to: relativePath(for: url))
+            throw error.relocated(to: relativePath(for: url))
         }
 
         let name = try document.requiredString("name", path: relativePath(for: url))
@@ -393,31 +421,15 @@ extension AgentWorkspace {
 
     func parseMemoryNote(at url: URL, expectedKind: WorkspaceMemoryNote.Kind) throws -> WorkspaceMemoryNote {
         let raw = try String(contentsOf: url, encoding: .utf8)
-        let document: WorkspaceMarkdownDocument
-        do {
-            document = try WorkspaceMarkdownDocument.parse(raw, requireFrontMatterClosure: true)
-        } catch let error as AgentWorkspaceError {
-            throw remap(error: error, to: relativePath(for: url))
-        }
-
-        let id = try document.requiredString("id", path: relativePath(for: url))
-        let title = try document.requiredString("title", path: relativePath(for: url))
-        let kindValue = try document.requiredString("kind", path: relativePath(for: url))
-        guard kindValue == expectedKind.rawValue else {
-            throw AgentWorkspaceError.invalidMemoryNote(
-                path: relativePath(for: url),
-                reason: "expected kind '\(expectedKind.rawValue)' but found '\(kindValue)'"
-            )
-        }
-
+        let decoded = try WorkspaceNoteCodec.decode(raw, expectedKind: expectedKind, path: relativePath(for: url))
         return WorkspaceMemoryNote(
-            id: id,
-            kind: expectedKind,
-            title: title,
-            body: document.body.trimmingCharacters(in: .whitespacesAndNewlines),
-            tags: document.stringArray("tags") ?? [],
-            status: document.string("status"),
-            revision: document.int("revision") ?? 1,
+            id: decoded.id,
+            kind: decoded.fields.kind,
+            title: decoded.fields.title,
+            body: decoded.fields.body,
+            tags: decoded.fields.tags,
+            status: decoded.fields.status,
+            revision: decoded.fields.revision,
             path: url
         )
     }
@@ -452,22 +464,6 @@ extension AgentWorkspace {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
-    private func quarantineMalformedNote(at url: URL) throws {
-        let fileManager = FileManager.default
-        let quarantineDirectory = writableRoot
-            .appendingPathComponent(".swarm/quarantine", isDirectory: true)
-        try fileManager.createDirectory(at: quarantineDirectory, withIntermediateDirectories: true, attributes: nil)
-
-        let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        let destination = quarantineDirectory.appendingPathComponent("\(timestamp)-\(url.lastPathComponent)")
-
-        guard fileManager.fileExists(atPath: url.path), !fileManager.fileExists(atPath: destination.path) else {
-            return
-        }
-
-        try fileManager.moveItem(at: url, to: destination)
-    }
-
     func relativePath(for url: URL) -> String {
         if let range = url.path.range(of: bundleRoot.path) {
             let suffix = String(url.path[range.upperBound...])
@@ -498,23 +494,28 @@ extension AgentWorkspace {
         return value
     }
 
-    private func remap(error: AgentWorkspaceError, to path: String) -> AgentWorkspaceError {
-        switch error {
+}
+
+extension AgentWorkspaceError {
+    /// The same error reported against `path` (parsers throw with a placeholder path).
+    func relocated(to path: String) -> AgentWorkspaceError {
+        switch self {
         case .invalidFrontMatter(_, let reason):
-            return .invalidFrontMatter(path: path, reason: reason)
+            .invalidFrontMatter(path: path, reason: reason)
         case .invalidField(_, let field, let reason):
-            return .invalidField(path: path, field: field, reason: reason)
+            .invalidField(path: path, field: field, reason: reason)
         case .invalidSkillDirectory(_, let expectedName, let actualName):
-            return .invalidSkillDirectory(path: path, expectedName: expectedName, actualName: actualName)
+            .invalidSkillDirectory(path: path, expectedName: expectedName, actualName: actualName)
         case .invalidMemoryNote(_, let reason):
-            return .invalidMemoryNote(path: path, reason: reason)
+            .invalidMemoryNote(path: path, reason: reason)
         case .missingAgentSpec, .missingSkill:
-            return error
+            self
         }
     }
 }
 
-private struct WorkspaceMarkdownDocument {
+/// Minimal front-matter markdown parser shared by agent specs, skills, and notes.
+struct WorkspaceMarkdownDocument {
     enum FrontMatterValue: Equatable {
         case string(String)
         case int(Int)
@@ -523,7 +524,16 @@ private struct WorkspaceMarkdownDocument {
         case dictionary([String: String])
     }
 
+    /// A front-matter value's source text, before typing or quote stripping.
+    enum RawValue: Equatable {
+        /// Text after `key:` on the same line, trimmed.
+        case inline(String)
+        /// Indented lines under `key:`, untrimmed.
+        case block([String])
+    }
+
     let metadata: [String: FrontMatterValue]
+    let rawValues: [String: RawValue]
     let body: String
 
     static func parse(_ text: String, requireFrontMatterClosure: Bool) throws -> WorkspaceMarkdownDocument {
@@ -533,6 +543,7 @@ private struct WorkspaceMarkdownDocument {
         guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else {
             return WorkspaceMarkdownDocument(
                 metadata: [:],
+                rawValues: [:],
                 body: normalized.trimmingCharacters(in: .newlines)
             )
         }
@@ -541,13 +552,15 @@ private struct WorkspaceMarkdownDocument {
             if requireFrontMatterClosure {
                 throw AgentWorkspaceError.invalidFrontMatter(path: "<inline>", reason: "missing closing ---")
             }
-            return WorkspaceMarkdownDocument(metadata: [:], body: normalized.trimmingCharacters(in: .newlines))
+            return WorkspaceMarkdownDocument(metadata: [:], rawValues: [:], body: normalized.trimmingCharacters(in: .newlines))
         }
 
         let metadataLines = Array(lines[1..<closingIndex])
         let bodyLines = Array(lines[(closingIndex + 1)...])
+        let (metadata, rawValues) = try parseMetadataLines(metadataLines)
         return WorkspaceMarkdownDocument(
-            metadata: try parseMetadataLines(metadataLines),
+            metadata: metadata,
+            rawValues: rawValues,
             body: bodyLines.joined(separator: "\n").trimmingCharacters(in: .newlines)
         )
     }
@@ -598,8 +611,9 @@ private struct WorkspaceMarkdownDocument {
         return value
     }
 
-    private static func parseMetadataLines(_ lines: [String]) throws -> [String: FrontMatterValue] {
+    private static func parseMetadataLines(_ lines: [String]) throws -> ([String: FrontMatterValue], [String: RawValue]) {
         var metadata: [String: FrontMatterValue] = [:]
+        var rawValues: [String: RawValue] = [:]
         var index = 0
 
         while index < lines.count {
@@ -624,6 +638,7 @@ private struct WorkspaceMarkdownDocument {
 
             if !remainder.isEmpty {
                 metadata[key] = parseInlineValue(remainder)
+                rawValues[key] = .inline(remainder)
                 index += 1
                 continue
             }
@@ -645,12 +660,14 @@ private struct WorkspaceMarkdownDocument {
 
             if nested.isEmpty {
                 metadata[key] = .string("")
+                rawValues[key] = .inline("")
             } else {
                 metadata[key] = try parseNestedValue(nested)
+                rawValues[key] = .block(nested)
             }
         }
 
-        return metadata
+        return (metadata, rawValues)
     }
 
     private static func parseInlineValue(_ value: String) -> FrontMatterValue {

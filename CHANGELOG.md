@@ -19,6 +19,19 @@ Releases before 0.6.0 are recorded only in git tags and GitHub releases.
 ### Changed
 
 - Conversation history rendering goes through one unified renderer (#266).
+- Workspace memory reads no longer quarantine notes: `WorkspaceMemory` reads
+  skip and log malformed notes and leave them in place, and
+  `AgentWorkspace.validate()` now reports them. Notes are no longer moved to
+  `.swarm/quarantine/`.
+- `WorkspaceWriter` writes notes as `schema_version: 2`, quoting and escaping
+  any title, tag, or status that is not a plain token. Existing
+  `schema_version: 1` notes still load with the values they had.
+
+### Fixed
+
+- Workspace notes whose title starts with `[` (for example `[WIP]`) are read
+  back as text instead of being treated as malformed and quarantined; quotes,
+  backslashes, and newlines in titles, tags, and status now round-trip.
 
 ## [0.6.6] - 2026-09-26
 
