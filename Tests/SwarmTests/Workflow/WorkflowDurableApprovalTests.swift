@@ -382,6 +382,25 @@ struct WorkflowDurableApprovalTests {
         #expect(fixture.prepareRuns.value == 1)
         #expect(await fixture.toolCounter.count == 1)
     }
+
+    /// A rejected run is terminal for `resume`, but `execute` starts it over.
+    @Test("execute right after a rejection starts a new run")
+    func executeAfterRejectionStartsNewRun() async throws {
+        let fixture = try await PausedTwoStepFixture.make(checkpointID: "approval-execute-after-reject")
+        _ = try await fixture.pause()
+
+        let rejection = try await #require(throws: WorkflowError.self) {
+            _ = try await fixture.workflow.resume(decision: .reject, from: fixture.checkpointID)
+        }
+        guard case .humanApprovalRejected = rejection else {
+            Issue.record("expected humanApprovalRejected, got \(rejection)")
+            return
+        }
+
+        let repaused = try await fixture.pause(expectedPrepareRuns: 2)
+        #expect(repaused.toolName == "delete_vm")
+        #expect(await fixture.toolCounter.count == 0)
+    }
 }
 
 /// Counts synchronous calls across tasks.
@@ -435,13 +454,13 @@ struct PausedTwoStepFixture {
     }
 
     /// Executes until the run pauses and returns the pause error.
-    func pause() async throws -> WorkflowApprovalRequired {
+    func pause(expectedPrepareRuns: Int = 1) async throws -> WorkflowApprovalRequired {
         await scriptToolCall()
         let required = try await #require(throws: WorkflowApprovalRequired.self) {
             _ = try await workflow.execute("go")
         }
         #expect(required.stepCursor == 1)
-        #expect(prepareRuns.value == 1)
+        #expect(prepareRuns.value == expectedPrepareRuns)
         return required
     }
 
