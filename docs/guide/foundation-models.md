@@ -32,6 +32,10 @@ let agent = try Agent("Be helpful.", configuration: config,
 }
 ```
 
+The same path takes Apple's OS 27 system tools, such as `OCRTool` and
+`BarcodeReaderTool`, because they are `FoundationModels.Tool` values: list
+them in the closure next to your own tools.
+
 ## Comparison
 
 | | Capture (default) | Native session (experimental) |
@@ -121,6 +125,64 @@ inference.
 PCC uses a 32K context window and a daily quota.
 `PrivateCloudComputeLanguageModel.Error.quotaLimitReached` maps to
 ``AgentError/rateLimitExceeded(retryAfter:)``.
+
+## Bring any LanguageModel (OS 27)
+
+OS 27 FoundationModels runs every model behind one protocol,
+`LanguageModel`. Swarm accepts any conforming model through
+``InferenceProvider/foundationModels(model:configuration:profile:)``, so the
+same `Agent`, tools, memory, guardrails, and workflows work with each of
+these:
+
+| Model | Where it runs | Comes from |
+| --- | --- | --- |
+| `SystemLanguageModel` | On device | FoundationModels |
+| `PrivateCloudComputeLanguageModel` | Apple Private Cloud Compute | FoundationModels |
+| `MLXLanguageModel` | On device (Mac GPU), open-weight models | Apple's open-source package |
+| `CoreAILanguageModel` | On device (Neural Engine), open-weight models | Apple's open-source package |
+| Claude, Gemini | The partner's cloud | Anthropic's and Google's Swift packages |
+
+Add the package that provides the model with Swift Package Manager, build the
+model value the way that package documents, and pass it in:
+
+```swift
+import FoundationModels
+import Swarm
+
+@available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
+func makeAgent(using model: some LanguageModel) throws -> Agent {
+    try Agent(
+        "You are a helpful assistant.",
+        inferenceProvider: .foundationModels(model: model)
+    ) {
+        WeatherTool()
+    }
+}
+
+let onDevice = try makeAgent(using: SystemLanguageModel.default)
+let cloud = try makeAgent(using: PrivateCloudComputeLanguageModel())
+```
+
+What changes with the model:
+
+- **Privacy.** Only `SystemLanguageModel` advertises `.privateInference`.
+  Every other model sends prompts off the device or, for MLX and Core AI,
+  runs code from a package you chose.
+- **Availability.** Use ``FoundationModelsInferenceProvider/ifAvailable(model:configuration:profile:ownsToolLoop:)``
+  when the call site needs a `nil` instead of a provider whose first request
+  fails. Swarm reads `availability` for Apple's two models and treats other
+  models as available.
+- **Context size.** The provider windows each prompt to the model's context
+  size: `contextSize` for `SystemLanguageModel`, 32,768 tokens for Private
+  Cloud Compute, and a 4,096-token fallback for every other model. That
+  fallback also applies to models with larger windows, such as Claude or
+  Gemini, until Swarm can read their size.
+- **Credentials.** Partner models need an access token. Do not ship API keys
+  in the app binary; fetch a token at runtime and keep it in the Keychain
+  (see [Secret storage](secret-storage.md)).
+
+On OS 26 and on Linux, `LanguageModel` is not available. Use
+``OpenAICompatibleProvider`` there (see [Remote Providers](remote-providers.md)).
 
 ## Image attachments (OS 27)
 

@@ -138,6 +138,7 @@ full contract, including MCP and web-search wiring.
 | Provider | Use when | Data leaves the device? |
 |---|---|---|
 | ``FoundationModelsInferenceProvider`` | Apple platforms with Apple Intelligence | No |
+| ``FoundationModelsInferenceProvider`` with a partner `LanguageModel` | OS 27 apps using Claude or Gemini through Anthropic's or Google's Swift package ([guide](foundation-models.md#bring-any-languagemodel-os-27)) | Yes — to that partner |
 | OpenAI / Azure / OpenRouter | Cloud models, Linux, or no Apple Intelligence | Yes — to that host |
 | Ollama / LM Studio | Local HTTP models, Linux CI, offline labs | Yes — to `localhost` (still HTTP) |
 | Your own `InferenceProvider` | A non–OpenAI-compatible backend | Depends on the implementation |
