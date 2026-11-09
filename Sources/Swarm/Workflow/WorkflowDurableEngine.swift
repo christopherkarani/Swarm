@@ -115,7 +115,6 @@ struct WorkflowDurableEngine: Sendable {
     let checkpointing: WorkflowCheckpointing
     let checkpointID: String
     let policy: Workflow.Durable.CheckpointPolicy
-    let resume: Bool
 
     /// Single Integrations-engine conversion from a typed checkpoint identity to a Hive thread ID.
     /// Callers must not construct `HiveThreadID` from an arbitrary session string.
@@ -123,114 +122,99 @@ struct WorkflowDurableEngine: Sendable {
         HiveThreadID(checkpointID.rawValue)
     }
 
-    func run(startInput: String) async throws -> AgentResult {
+    /// Runs one entry into the durable run.
+    ///
+    /// The latest checkpoint is read once and classified, and the pure
+    /// ``WorkflowDurablePlan`` decides what happens before any runtime work.
+    /// A paused run is neither restarted nor resumed past its approval:
+    /// `.start` and `.resume` throw the original ``WorkflowApprovalRequired``.
+    ///
+    /// `.decide` delivers a human approval decision to the paused run.
+    /// `.approve` carries the approved call (plus earlier approvals in the
+    /// pause chain) into the resumed step; `.reject` commits the terminal
+    /// ``WorkflowDurablePhase/rejected(toolName:reason:)`` phase and fails the
+    /// run with ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without
+    /// executing. A later entry on a rejected run reports the same rejection
+    /// (`.start` begins a new run). Concurrent resumes do not both execute: the
+    /// in-process guard and the compare-and-swap claim (`claimApproval`) make
+    /// the losers throw ``WorkflowResumeConflict``.
+    func run(_ entry: WorkflowDurableEntry) async throws -> AgentResult {
         if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
             throw error
         }
-        guard resume else { return try await runHoldingGuard(startInput: startInput) }
+        if case .start = entry {
+            return try await runHoldingGuard(entry)
+        }
         return try await withResumeGuard {
-            try await runHoldingGuard(startInput: startInput)
+            try await runHoldingGuard(entry)
         }
     }
 
-    private func runHoldingGuard(startInput: String) async throws -> AgentResult {
+    private func runHoldingGuard(_ entry: WorkflowDurableEntry) async throws -> AgentResult {
         if let controller = WorkflowDurableFaultInjection.controller {
             await controller.beginAttempt()
         }
         let components = try makeRuntimeComponents()
-
-        if resume {
-            guard try await checkpointing.containsCheckpoint(for: checkpointID) else {
-                throw WorkflowError.checkpointNotFound(id: checkpointID)
-            }
-            try Self.throwIfRejected(
-                try await components.runtime.getLatestCheckpoint(threadID: components.threadID)
-            )
-        } else {
-            try await throwIfResumeInFlight(components: components)
+        if case .start = entry {
+            try await throwIfResumeActiveInProcess()
         }
 
-        let input: WorkflowDurableInput = resume ? .resume : .start(
-            input: startInput,
-            signature: workflow.workflowSignature
-        )
+        let checkpoint = try await components.runtime.getLatestCheckpoint(threadID: components.threadID)
+        let status = try WorkflowDurableCheckpointStatus(latest: checkpoint)
+        switch WorkflowDurablePlan.plan(entry, status, checkpointID: checkpointID, now: Date()) {
+        case .fail(let failure):
+            throw failure.error
+        case .startFresh(let input):
+            return try await execute(.start(input: input, signature: workflow.workflowSignature), components)
+        case .continueRun:
+            return try await execute(.resume, components)
+        case .deliver(_, let envelope):
+            guard let checkpoint,
+                  let interruption = checkpoint.interruption,
+                  case .awaitingApproval(let request, _) = status
+            else {
+                throw WorkflowError.invalidWorkflow(reason: "No paused tool approval for checkpoint '\(checkpointID)'")
+            }
+            return try await deliver(
+                envelope,
+                request: request,
+                checkpoint: checkpoint,
+                interruption: interruption,
+                components: components
+            )
+        }
+    }
+
+    private func execute(
+        _ input: WorkflowDurableInput,
+        _ components: WorkflowDurableRuntimeComponents
+    ) async throws -> AgentResult {
         let handle = await components.runtime.run(
             threadID: components.threadID,
             input: input,
             options: runOptions(for: policy)
         )
-
         let outcome = try await Self.awaitOutcome(of: handle)
         return try await finish(outcome, components: components)
     }
 
-    /// Delivers a human approval decision to a run paused on ``WorkflowApprovalRequired``.
-    ///
-    /// The pending interrupt is read back from the latest checkpoint, so the
-    /// caller only names the checkpoint thread. `.approve` carries the approved
-    /// call (plus earlier approvals in the pause chain) into the resumed step;
-    /// `.reject` commits the terminal ``WorkflowDurablePhase/rejected(toolName:reason:)``
-    /// phase and fails the run with
-    /// ``WorkflowError/humanApprovalRejected(prompt:reason:)`` without executing.
-    /// A later decision on a rejected run reports the same rejection. Concurrent
-    /// resumes do not both execute: the in-process guard and the compare-and-swap
-    /// claim (`claimApproval`) make the losers throw ``WorkflowResumeConflict``.
-    func resumeApproval(decision: WorkflowApprovalDecision) async throws -> AgentResult {
-        if let error = WorkflowTransition.validationError(for: workflow.workflowTransitionPolicy) {
-            throw error
-        }
-        return try await withResumeGuard {
-            try await resumeApprovalHoldingGuard(decision: decision)
-        }
-    }
-
-    private func resumeApprovalHoldingGuard(decision: WorkflowApprovalDecision) async throws -> AgentResult {
-        if let controller = WorkflowDurableFaultInjection.controller {
-            await controller.beginAttempt()
-        }
-        let components = try makeRuntimeComponents()
-
-        guard try await checkpointing.containsCheckpoint(for: checkpointID) else {
-            throw WorkflowError.checkpointNotFound(id: checkpointID)
-        }
-        return try await deliver(decision, components: components)
-    }
-
-    /// Reads the pending interrupt, claims it, and resumes it. Callers hold
+    /// Claims the paused approval and resumes it with `envelope`. Callers hold
     /// the resume guard, and the claim keeps other processes out, so the read
     /// and the resumed commit cannot interleave with another decision.
     private func deliver(
-        _ decision: WorkflowApprovalDecision,
+        _ envelope: WorkflowApprovalDecisionEnvelope,
+        request: WorkflowApprovalRequestEnvelope,
+        checkpoint: HiveCheckpoint<WorkflowDurableSchema>,
+        interruption: HiveInterrupt<WorkflowDurableSchema>,
         components: WorkflowDurableRuntimeComponents
     ) async throws -> AgentResult {
-        guard let checkpoint = try await components.runtime.getLatestCheckpoint(threadID: components.threadID)
-        else {
-            throw WorkflowError.checkpointNotFound(id: checkpointID)
-        }
-        try Self.throwIfRejected(checkpoint)
-        guard let interruption = checkpoint.interruption else {
-            throw WorkflowError.invalidWorkflow(reason: "No paused tool approval for checkpoint '\(checkpointID)'")
-        }
-        let request = try WorkflowApprovalRequestEnvelope.decoded(from: interruption.payload)
-        try refuseDivergentApproval(decision, request: request)
+        let resumePayload = try envelope.encoded()
         let claimed = try await claimApproval(
             checkpoint,
             interruption: interruption,
             request: request,
             store: components.store
         )
-        var approved = request.approved
-        if decision == .approve {
-            approved.append(WorkflowApprovedCall(toolName: request.toolName, arguments: request.arguments))
-        }
-        let resumePayload = try WorkflowApprovalDecisionEnvelope(
-            decision: decision,
-            toolName: request.toolName,
-            arguments: request.arguments,
-            approved: approved,
-            journal: request.journal,
-            divergentResumes: request.divergentResumes
-        ).encoded()
 
         let holder = WorkflowApprovalClaimHolder(claimed)
         do {
@@ -256,22 +240,6 @@ struct WorkflowDurableEngine: Sendable {
         }
     }
 
-    /// Refuses an `.approve` that would extend the divergence streak to
-    /// ``WorkflowApprovalReplayDiverged/maxAttempts``, before the step runs, so
-    /// a refused approve executes nothing and leaves the pause as it was.
-    private func refuseDivergentApproval(
-        _ decision: WorkflowApprovalDecision,
-        request: WorkflowApprovalRequestEnvelope
-    ) throws {
-        let streak = request.divergentResumes ?? 0
-        guard decision == .approve, streak + 1 >= WorkflowApprovalReplayDiverged.maxAttempts else { return }
-        throw WorkflowApprovalReplayDiverged(
-            checkpointID: WorkflowCheckpointID(checkpointID),
-            toolName: request.toolName,
-            attempts: streak + 1
-        )
-    }
-
     /// Maps a run outcome to the caller's result, persisting terminal state.
     ///
     /// A rejection is terminal state too, so it is flushed under
@@ -290,13 +258,12 @@ struct WorkflowDurableEngine: Sendable {
         }
     }
 
-    /// Refuses a fresh start over a run that a resume currently holds.
+    /// Refuses a fresh start over a run that this process is resuming.
     ///
     /// Starting rewrites the run from step 0, so it must not overlap a resume
-    /// in this process (the resume guard) or anywhere sharing the store (a
-    /// live approval claim on the latest checkpoint). Other run IDs and runs
-    /// with no resume in flight start normally.
-    private func throwIfResumeInFlight(components: WorkflowDurableRuntimeComponents) async throws {
+    /// in this process. A resume in another process sharing the store holds a
+    /// live claim on the paused approval, which the plan refuses.
+    private func throwIfResumeActiveInProcess() async throws {
         let key = WorkflowDurableResumeGuard.Key(
             store: ObjectIdentifier(checkpointing.backend),
             checkpointID: checkpointID
@@ -307,29 +274,6 @@ struct WorkflowDurableEngine: Sendable {
                 reason: "a resume of this checkpoint is in progress in this process"
             )
         }
-        guard let interruption = try await components.store.loadLatest(threadID: components.threadID)?.interruption,
-              let request = try? WorkflowApprovalRequestEnvelope.decoded(from: interruption.payload),
-              let claim = request.claim,
-              claim.isLive(at: Date())
-        else { return }
-        throw WorkflowResumeConflict(
-            checkpointID: WorkflowCheckpointID(checkpointID),
-            reason: "the paused approval is held by a resume claimed at \(claim.claimedAt)"
-        )
-    }
-
-    /// Reports a checkpointed rejection before any runtime work.
-    ///
-    /// The rejecting step's checkpoint can still carry the original interrupt
-    /// (Hive clears it in memory after the checkpoint is built), so the phase,
-    /// not the interrupt, decides whether the run is terminal. Undecodable
-    /// phases fall through to the runtime's own error reporting.
-    private static func throwIfRejected(_ checkpoint: HiveCheckpoint<WorkflowDurableSchema>?) throws {
-        guard let data = checkpoint?.globalDataByChannelID[WorkflowDurableSchema.phaseKey.id.rawValue],
-              let phase = try? WorkflowCheckpointCodec<WorkflowDurablePhase>().decode(data),
-              case .rejected(let toolName, let reason) = phase
-        else { return }
-        throw WorkflowError.humanApprovalRejected(prompt: toolName, reason: reason)
     }
 
     private func makeRuntimeComponents() throws -> WorkflowDurableRuntimeComponents {
@@ -553,10 +497,9 @@ struct WorkflowDurableFork: Sendable {
             workflow: workflow,
             checkpointing: checkpointing,
             checkpointID: targetRun.rawValue,
-            policy: policy,
-            resume: true
+            policy: policy
         )
-        return try await engine.run(startInput: startInput)
+        return try await engine.run(.resume)
     }
 }
 
@@ -973,8 +916,7 @@ enum WorkflowDurableEngineTesting {
             workflow: Workflow(),
             checkpointing: WorkflowCheckpointing.inMemory(),
             checkpointID: "testing",
-            policy: .onCompletion,
-            resume: false
+            policy: .onCompletion
         )
         return try engine.extractResult(from: output)
     }
