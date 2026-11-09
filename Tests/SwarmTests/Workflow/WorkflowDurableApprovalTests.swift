@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Swarm
 
@@ -346,6 +347,134 @@ struct WorkflowDurableApprovalTests {
                 from: WorkflowCheckpointID("approval-missing")
             )
         }
+    }
+
+    @Test("plain resume of a paused run reports the original approval")
+    func plainResumeOfPausedRunReportsOriginalApproval() async throws {
+        let fixture = try await PausedTwoStepFixture.make(checkpointID: "approval-plain-resume")
+        let original = try await fixture.pause()
+
+        await #expect(throws: original) {
+            _ = try await fixture.workflow.resume("ignored", from: fixture.checkpointID)
+        }
+        #expect(fixture.prepareRuns.value == 1)
+        #expect(await fixture.toolCounter.count == 0)
+
+        let result = try await fixture.approve()
+        #expect(result.output == "done")
+        #expect(fixture.prepareRuns.value == 1)
+        #expect(await fixture.toolCounter.count == 1)
+    }
+
+    @Test("execute on a paused run reports the original approval without restarting")
+    func executeOnPausedRunDoesNotRestart() async throws {
+        let fixture = try await PausedTwoStepFixture.make(checkpointID: "approval-execute-paused")
+        let original = try await fixture.pause()
+
+        await #expect(throws: original) {
+            _ = try await fixture.workflow.execute("go")
+        }
+        #expect(fixture.prepareRuns.value == 1)
+        #expect(await fixture.toolCounter.count == 0)
+
+        let result = try await fixture.approve()
+        #expect(result.output == "done")
+        #expect(fixture.prepareRuns.value == 1)
+        #expect(await fixture.toolCounter.count == 1)
+    }
+
+    /// A rejected run is terminal for `resume`, but `execute` starts it over.
+    @Test("execute right after a rejection starts a new run")
+    func executeAfterRejectionStartsNewRun() async throws {
+        let fixture = try await PausedTwoStepFixture.make(checkpointID: "approval-execute-after-reject")
+        _ = try await fixture.pause()
+
+        let rejection = try await #require(throws: WorkflowError.self) {
+            _ = try await fixture.workflow.resume(decision: .reject, from: fixture.checkpointID)
+        }
+        guard case .humanApprovalRejected = rejection else {
+            Issue.record("expected humanApprovalRejected, got \(rejection)")
+            return
+        }
+
+        let repaused = try await fixture.pause(expectedPrepareRuns: 2)
+        #expect(repaused.toolName == "delete_vm")
+        #expect(await fixture.toolCounter.count == 0)
+    }
+}
+
+/// Counts synchronous calls across tasks.
+final class ApprovalSyncCounter: Sendable {
+    private let storage = Mutex(0)
+
+    var value: Int {
+        storage.withLock { $0 }
+    }
+
+    func increment() {
+        storage.withLock { $0 += 1 }
+    }
+}
+
+/// A two-step durable workflow whose second step pauses on `delete_vm`.
+///
+/// Step 0 counts its runs, so a test can tell whether the run restarted.
+struct PausedTwoStepFixture {
+    let workflow: DurableWorkflow
+    let checkpointID: WorkflowCheckpointID
+    let provider: MockInferenceProvider
+    let prepareRuns: ApprovalSyncCounter
+    let toolCounter: ApprovalToolCounter
+
+    static func make(checkpointID: String) async throws -> PausedTwoStepFixture {
+        let prepareRuns = ApprovalSyncCounter()
+        let prepare = MockAgentRuntime(responseFactory: {
+            prepareRuns.increment()
+            return "prepared"
+        })
+        let toolCounter = ApprovalToolCounter()
+        let provider = await MockInferenceProvider()
+        let agent = try makeApprovalTestAgent(
+            tools: [makeApprovalCountingTool(name: "delete_vm", counter: toolCounter)],
+            provider: provider
+        )
+        let id = WorkflowCheckpointID(checkpointID)
+        let workflow = Workflow()
+            .step(prepare)
+            .step(agent)
+            .durable
+            .configured(id: id, store: .inMemory(), policy: .everyStep)
+        return PausedTwoStepFixture(
+            workflow: workflow,
+            checkpointID: id,
+            provider: provider,
+            prepareRuns: prepareRuns,
+            toolCounter: toolCounter
+        )
+    }
+
+    /// Executes until the run pauses and returns the pause error.
+    func pause(expectedPrepareRuns: Int = 1) async throws -> WorkflowApprovalRequired {
+        await scriptToolCall()
+        let required = try await #require(throws: WorkflowApprovalRequired.self) {
+            _ = try await workflow.execute("go")
+        }
+        #expect(required.stepCursor == 1)
+        #expect(prepareRuns.value == expectedPrepareRuns)
+        return required
+    }
+
+    /// Approves the pause and returns the finished result.
+    func approve() async throws -> AgentResult {
+        await scriptToolCall()
+        return try await workflow.resume(decision: .approve, from: checkpointID)
+    }
+
+    private func scriptToolCall() async {
+        await provider.configureToolCallingSequence(
+            toolCalls: [("delete_vm", ["id": .string("vm-1")])],
+            finalAnswer: "done"
+        )
     }
 }
 

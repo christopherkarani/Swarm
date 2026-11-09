@@ -42,67 +42,36 @@ public extension Workflow {
 }
 
 extension Workflow {
-    func executeDurableApprovalConfigured(
-        decision: WorkflowApprovalDecision,
+    /// Runs one durable entry under this workflow's timeout.
+    ///
+    /// The engine classifies the latest checkpoint once and decides from it;
+    /// this wrapper only builds the engine.
+    func executeDurable(
+        _ entry: WorkflowDurableEntry,
         checkpointID: WorkflowCheckpointID,
         checkpointing: WorkflowCheckpointing,
         policy: Workflow.Durable.CheckpointPolicy
     ) async throws -> AgentResult {
         #if SWARM_INTEGRATIONS
-        guard try await checkpointing.containsCheckpoint(for: checkpointID.rawValue) else {
-            throw WorkflowError.checkpointNotFound(id: checkpointID.rawValue)
-        }
-
         WorkflowDurableIdentity.warnIfUsingImplicitIdentity(self)
 
         let engine = WorkflowDurableEngine(
             workflow: self,
             checkpointing: checkpointing,
             checkpointID: checkpointID.rawValue,
-            policy: policy,
-            resume: true
+            policy: policy
         )
 
         return try await executeWithTimeout {
-            try await engine.resumeApproval(decision: decision)
+            try await engine.run(entry)
         }
         #else
-        throw WorkflowError.durableRuntimeUnavailable(
-            reason: IntegrationsTrait.requirementMessage(for: "Durable workflow approval resume")
-        )
-        #endif
-    }
-
-    func executeDurableConfigured(
-        input: String,
-        checkpointID: WorkflowCheckpointID,
-        checkpointing: WorkflowCheckpointing,
-        policy: Workflow.Durable.CheckpointPolicy,
-        resume: Bool
-    ) async throws -> AgentResult {
-        #if SWARM_INTEGRATIONS
-        if resume {
-            guard try await checkpointing.containsCheckpoint(for: checkpointID.rawValue) else {
-                throw WorkflowError.checkpointNotFound(id: checkpointID.rawValue)
-            }
+        let feature = switch entry {
+        case .decide: "Durable workflow approval resume"
+        case .start, .resume: "Durable workflow execution"
         }
-
-        WorkflowDurableIdentity.warnIfUsingImplicitIdentity(self)
-
-        let engine = WorkflowDurableEngine(
-            workflow: self,
-            checkpointing: checkpointing,
-            checkpointID: checkpointID.rawValue,
-            policy: policy,
-            resume: resume
-        )
-
-        return try await executeWithTimeout {
-            try await engine.run(startInput: input)
-        }
-        #else
         throw WorkflowError.durableRuntimeUnavailable(
-            reason: IntegrationsTrait.requirementMessage(for: "Durable workflow execution")
+            reason: IntegrationsTrait.requirementMessage(for: feature)
         )
         #endif
     }

@@ -24,36 +24,50 @@ public struct DurableWorkflow: Sendable {
 
     /// Starts a durable workflow run.
     ///
+    /// Starting replaces earlier progress on this run's checkpoint thread,
+    /// including a completed or rejected run, but never a paused approval: when
+    /// the run is paused on a tool approval, this throws the
+    /// ``WorkflowApprovalRequired`` the run paused with and runs nothing.
+    /// Resolve the pause with ``resume(decision:from:)``.
+    ///
     /// - Parameter input: Initial workflow input.
     /// - Returns: The workflow's final ``AgentResult``.
-    /// - Throws: ``WorkflowResumeConflict`` when a resume of this run is in
-    ///   flight, or ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
+    /// - Throws: ``WorkflowApprovalRequired`` when the run pauses for approval
+    ///   or is already paused, ``WorkflowResumeConflict`` when a resume of this
+    ///   run is in flight, or ``WorkflowError/durableRuntimeUnavailable(reason:)``
+    ///   on lean builds.
     public func execute(_ input: String) async throws -> AgentResult {
-        try await workflow.executeDurableConfigured(
-            input: input,
+        try await workflow.executeDurable(
+            .start(input: input),
             checkpointID: checkpointID,
             checkpointing: checkpointing,
-            policy: policy,
-            resume: false
+            policy: policy
         )
     }
 
     /// Resumes a durable workflow from a saved checkpoint.
     ///
+    /// A run paused on a tool approval does not continue here: this throws the
+    /// ``WorkflowApprovalRequired`` the run paused with and runs nothing.
+    /// Resolve the pause with ``resume(decision:from:)``.
+    ///
     /// - Parameters:
-    ///   - input: Input passed to the resumed run (may be ignored when the checkpoint already
-    ///     carries progress).
+    ///   - input: Ignored; the resumed run continues from the checkpoint's own
+    ///     input and progress.
     ///   - checkpointID: The checkpoint thread to resume.
     /// - Returns: The workflow's final ``AgentResult``.
     /// - Throws: ``WorkflowError/checkpointNotFound(id:)`` when no checkpoint exists,
-    ///   or ``WorkflowError/durableRuntimeUnavailable(reason:)`` on lean builds.
+    ///   ``WorkflowApprovalRequired`` when the run is paused for approval (or
+    ///   pauses again), ``WorkflowError/humanApprovalRejected(prompt:reason:)``
+    ///   when the run was rejected, ``WorkflowResumeConflict`` when another
+    ///   resume holds the run, or ``WorkflowError/durableRuntimeUnavailable(reason:)``
+    ///   on lean builds.
     public func resume(_ input: String, from checkpointID: WorkflowCheckpointID) async throws -> AgentResult {
-        try await workflow.executeDurableConfigured(
-            input: input,
+        try await workflow.executeDurable(
+            .resume,
             checkpointID: checkpointID,
             checkpointing: checkpointing,
-            policy: policy,
-            resume: true
+            policy: policy
         )
     }
 
@@ -111,8 +125,8 @@ public struct DurableWorkflow: Sendable {
         decision: WorkflowApprovalDecision,
         from checkpointID: WorkflowCheckpointID
     ) async throws -> AgentResult {
-        try await workflow.executeDurableApprovalConfigured(
-            decision: decision,
+        try await workflow.executeDurable(
+            .decide(decision),
             checkpointID: checkpointID,
             checkpointing: checkpointing,
             policy: policy

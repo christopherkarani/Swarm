@@ -19,6 +19,12 @@ Releases before 0.6.0 are recorded only in git tags and GitHub releases.
 ### Changed
 
 - Conversation history rendering goes through one unified renderer (#266).
+- Durable workflows paused on a tool approval no longer restart or leak
+  runtime errors: `DurableWorkflow.execute(_:)` and `resume(_:from:)` on a
+  paused run throw the original `WorkflowApprovalRequired` without running
+  anything (previously `execute` discarded the pause and re-ran from step 0,
+  and `resume` surfaced an internal Hive `interruptPending` error). Resolve the
+  pause with `resume(decision:from:)`.
 
 ## [0.6.6] - 2026-09-26
 
