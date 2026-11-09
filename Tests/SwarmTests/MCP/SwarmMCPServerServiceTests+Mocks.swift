@@ -2,7 +2,7 @@
 import Foundation
 import Logging
 import MCP
-@testable import Swarm
+@_spi(ColonyInternal) @testable import Swarm
 import SwarmMCP
 
 actor SwarmMCPToolCatalogStub: SwarmMCPToolCatalog {
@@ -90,6 +90,32 @@ struct SwarmMCPTestHarness {
         return SwarmMCPTestHarness(service: service, client: client)
     }
 
+    /// Builds a started harness whose throttle reads time from `clock`.
+    static func make(
+        catalog: some SwarmMCPToolCatalog,
+        executor: some SwarmMCPToolExecutor,
+        maxRequestsPerSecond: Double,
+        maxConcurrentRequests: Int,
+        clock: any SwarmClock
+    ) async throws -> SwarmMCPTestHarness {
+        let service = SwarmMCPServerService(
+            name: "swarm-mcp-test-server",
+            version: "1.0.0",
+            toolCatalog: catalog,
+            toolExecutor: executor,
+            maxRequestsPerSecond: maxRequestsPerSecond,
+            maxConcurrentRequests: maxConcurrentRequests,
+            clock: clock
+        )
+        let client = Client(name: "swarm-mcp-test-client", version: "1.0.0")
+        let transports = await InMemoryTransport.createConnectedPair()
+
+        try await service.start(transport: transports.server)
+        _ = try await client.connect(transport: transports.client)
+
+        return SwarmMCPTestHarness(service: service, client: client)
+    }
+
     func shutdown() async {
         await client.disconnect()
         await service.stop()
@@ -100,17 +126,33 @@ enum SwarmMCPServerServiceTestError: Error, Sendable, Equatable {
     case unreachable(String)
 }
 
-actor DelayedTransport: Transport {
-    let logger: Logger = .init(label: "swarm.tests.delayed-transport")
+/// Transport whose `connect()` signals entry and then suspends until
+/// `releaseConnect()` is called, so tests can observe a start in progress
+/// without sleeping.
+actor GatedTransport: Transport {
+    let logger: Logger = .init(label: "swarm.tests.gated-transport")
 
-    private let connectDelay: Duration
+    /// Yields once when `connect()` begins.
+    nonisolated let connectEntered: AsyncStream<Void>
+    private let connectEnteredContinuation: AsyncStream<Void>.Continuation
+    private let release: AsyncStream<Void>
+    private let releaseContinuation: AsyncStream<Void>.Continuation
 
-    init(connectDelay: Duration) {
-        self.connectDelay = connectDelay
+    init() {
+        (connectEntered, connectEnteredContinuation) = AsyncStream.makeStream(of: Void.self)
+        (release, releaseContinuation) = AsyncStream.makeStream(of: Void.self)
+    }
+
+    /// Lets a pending (or future) `connect()` complete.
+    nonisolated func releaseConnect() {
+        releaseContinuation.yield()
     }
 
     func connect() async throws {
-        try await Task.sleep(for: connectDelay)
+        connectEnteredContinuation.yield()
+        for await _ in release {
+            break
+        }
     }
 
     func disconnect() async {}

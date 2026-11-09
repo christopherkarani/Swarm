@@ -17,16 +17,16 @@ import Foundation
 /// `sleep(nanoseconds:)` suspends via `Task.sleep`, propagating cancellation
 /// as `CancellationError`. Durations beyond `Int64.max` nanoseconds
 /// (~292 years) saturate instead of trapping.
-struct LiveSwarmClock: SwarmClock {
+package struct LiveSwarmClock: SwarmClock {
     /// Shared instance; `LiveSwarmClock` is stateless and value-semantic.
-    static let live = LiveSwarmClock()
+    package static let live = LiveSwarmClock()
     private static let reference = ContinuousClock.now
 
-    func nowNanoseconds() -> UInt64 {
+    package func nowNanoseconds() -> UInt64 {
         Self.reference.duration(to: ContinuousClock.now).swarmNanoseconds
     }
 
-    func sleep(nanoseconds: UInt64) async throws {
+    package func sleep(nanoseconds: UInt64) async throws {
         try await Task.sleep(nanoseconds: min(nanoseconds, UInt64(Int64.max)))
     }
 }

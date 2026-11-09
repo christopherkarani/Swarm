@@ -444,11 +444,13 @@ struct SwarmMCPServerServiceTests {
             toolExecutor: executor
         )
 
-        let firstTransport = DelayedTransport(connectDelay: .milliseconds(200))
-        let secondTransport = DelayedTransport(connectDelay: .milliseconds(200))
+        let firstTransport = GatedTransport()
+        let secondTransport = GatedTransport()
+        secondTransport.releaseConnect()
 
         async let firstStart: Void = service.start(transport: firstTransport)
-        try await Task.sleep(for: .milliseconds(20))
+        var entered = firstTransport.connectEntered.makeAsyncIterator()
+        _ = await entered.next()
 
         do {
             try await service.start(transport: secondTransport)
@@ -458,6 +460,7 @@ struct SwarmMCPServerServiceTests {
             #expect((error.errorDescription ?? "").contains("already started"))
         }
 
+        firstTransport.releaseConnect()
         try await firstStart
         await service.stop()
     }
