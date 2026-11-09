@@ -3007,22 +3007,22 @@ First-class Apple Foundation Models path (on-device `SystemLanguageModel`, plus 
 | 133 | struct | public | FoundationModelsInferenceProvider | `public struct FoundationModelsInferenceProvider` |
 | 143 | var | public | FoundationModelsInferenceProvider.isAvailable | `public static var isAvailable: Bool { get }` |
 | 152 | func | public | FoundationModelsInferenceProvider.isAvailable(_:) | `public static func isAvailable(_ model: SystemLanguageModel) -> Bool` |
-| 157 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:ownsToolLoop:model:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider?` |
-| 177 | func | public | FoundationModelsInferenceProvider.ifAvailable(model:configuration:profile:ownsToolLoop:) | `public static func ifAvailable(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider?` |
+| 157 | func | public | FoundationModelsInferenceProvider.ifAvailable(configuration:profile:ownsToolLoop:model:) | `public static func ifAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicAgentProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider?` |
+| 177 | func | public | FoundationModelsInferenceProvider.ifAvailable(model:configuration:profile:ownsToolLoop:) | `public static func ifAvailable(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicAgentProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider?` |
 | 197 | func | public | FoundationModelsInferenceProvider.isPrivateCloudComputeAvailable(_:) | `public static func isPrivateCloudComputeAvailable(_ model: PrivateCloudComputeLanguageModel = .init()) -> Bool` |
-| 208 | func | public | FoundationModelsInferenceProvider.privateCloudComputeIfAvailable(configuration:profile:ownsToolLoop:model:) | `public static func privateCloudComputeIfAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: PrivateCloudComputeLanguageModel = .init()) -> FoundationModelsInferenceProvider?` |
-| 232 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:ownsToolLoop:model:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default)` |
-| 254 | func | public | FoundationModelsInferenceProvider.init(model:configuration:profile:ownsToolLoop:) | `public init(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false)` |
+| 208 | func | public | FoundationModelsInferenceProvider.privateCloudComputeIfAvailable(configuration:profile:ownsToolLoop:model:) | `public static func privateCloudComputeIfAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicAgentProfile)? = nil, ownsToolLoop: Bool = false, model: PrivateCloudComputeLanguageModel = .init()) -> FoundationModelsInferenceProvider?` |
+| 232 | func | public | FoundationModelsInferenceProvider.init(configuration:profile:ownsToolLoop:model:) | `public init(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicAgentProfile)? = nil, ownsToolLoop: Bool = false, model: SystemLanguageModel = .default)` |
+| 254 | func | public | FoundationModelsInferenceProvider.init(model:configuration:profile:ownsToolLoop:) | `public init(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicAgentProfile)? = nil, ownsToolLoop: Bool = false)` |
 | 892 | func | public | InferenceProvider.foundationModels(configuration:model:) | `public static func foundationModels(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
 | 903 | func | public | InferenceProvider.foundationModelsOwningToolLoop(configuration:model:) | `public static func foundationModelsOwningToolLoop(configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
 | 915 | func | public | InferenceProvider.foundationModels(instructions:prewarmOnInit:) | `public static func foundationModels(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
 | 928 | func | public | InferenceProvider.foundationModelsOwningToolLoop(instructions:prewarmOnInit:) | `public static func foundationModelsOwningToolLoop(instructions: String, prewarmOnInit: Bool = false) -> FoundationModelsInferenceProvider` |
-| 945 | func | public | InferenceProvider.foundationModels(profile:configuration:model:) | `public static func foundationModels(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
-| 958 | func | public | InferenceProvider.foundationModelsOwningToolLoop(profile:configuration:model:) | `public static func foundationModelsOwningToolLoop(profile: some DynamicProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
-| 976 | func | public | InferenceProvider.foundationModels(model:configuration:profile:) | `public static func foundationModels(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
-| 990 | func | public | InferenceProvider.foundationModelsOwningToolLoop(model:configuration:profile:) | `public static func foundationModelsOwningToolLoop(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil) -> FoundationModelsInferenceProvider` |
-| 1009 | func | public | InferenceProvider.privateCloudCompute(configuration:profile:ownsToolLoop:) | `public static func privateCloudCompute(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider` |
-| 1026 | func | public | InferenceProvider.privateCloudComputeIfAvailable(configuration:profile:ownsToolLoop:) | `public static func privateCloudComputeIfAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider?` |
+| 945 | func | public | InferenceProvider.foundationModels(profile:configuration:model:) | `public static func foundationModels(profile: some DynamicAgentProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 958 | func | public | InferenceProvider.foundationModelsOwningToolLoop(profile:configuration:model:) | `public static func foundationModelsOwningToolLoop(profile: some DynamicAgentProfile, configuration: FoundationModelsProviderConfiguration = .default, model: SystemLanguageModel = .default) -> FoundationModelsInferenceProvider` |
+| 976 | func | public | InferenceProvider.foundationModels(model:configuration:profile:) | `public static func foundationModels(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicAgentProfile)? = nil) -> FoundationModelsInferenceProvider` |
+| 990 | func | public | InferenceProvider.foundationModelsOwningToolLoop(model:configuration:profile:) | `public static func foundationModelsOwningToolLoop(model: some LanguageModel, configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicAgentProfile)? = nil) -> FoundationModelsInferenceProvider` |
+| 1009 | func | public | InferenceProvider.privateCloudCompute(configuration:profile:ownsToolLoop:) | `public static func privateCloudCompute(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicAgentProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider` |
+| 1026 | func | public | InferenceProvider.privateCloudComputeIfAvailable(configuration:profile:ownsToolLoop:) | `public static func privateCloudComputeIfAvailable(configuration: FoundationModelsProviderConfiguration = .default, profile: (any DynamicAgentProfile)? = nil, ownsToolLoop: Bool = false) -> FoundationModelsInferenceProvider?` |
 
 ### Providers/FoundationModels/FoundationModelsReasoningLevel.swift
 
@@ -3058,20 +3058,23 @@ Experimental adapter wrapping a user `FoundationModels.Tool` as a Swarm `AnyJSON
 
 ### Providers/FoundationModels/DynamicProfile.swift
 
-Swarm capture-path types. Owned-loop consumes ``Profile`` / ``ProfileHistoryPolicy`` through an internal Apple profile bridge; these names are not `LanguageModelSession.DynamicProfile`.
+Swarm capture-path types. Owned-loop consumes ``AgentProfile`` / ``ProfileHistoryPolicy`` through an internal Apple profile bridge; these names are not `LanguageModelSession.DynamicProfile`.
 
 | Line | Kind | Access | Name | Signature |
 |------|------|--------|------|-----------|
-| 30 | struct | public | Profile | `public struct Profile` |
-| 84 | enum | public | ProfileToolFilter | `public enum ProfileToolFilter` |
-| 106 | struct | public | ProfileGenerationOverrides | `public struct ProfileGenerationOverrides` |
-| 148 | enum | public | ProfileHistoryPolicy | `public enum ProfileHistoryPolicy` |
-| 198 | struct | public | DynamicInstructions | `public struct DynamicInstructions` |
-| 247 | protocol | public | DynamicProfile | `public protocol DynamicProfile` |
-| 253 | struct | public | StaticDynamicProfile | `public struct StaticDynamicProfile` |
-| 264 | struct | public | ClosureDynamicProfile | `public struct ClosureDynamicProfile` |
-| 291 | class | public | ProfileMode | `public final class ProfileMode<Mode>` |
-| 314 | struct | public | ModeSwitchingDynamicProfile | `public struct ModeSwitchingDynamicProfile<Mode>` |
+| 32 | struct | public | AgentProfile | `public struct AgentProfile` |
+| 86 | enum | public | ProfileToolFilter | `public enum ProfileToolFilter` |
+| 108 | struct | public | ProfileGenerationOverrides | `public struct ProfileGenerationOverrides` |
+| 150 | enum | public | ProfileHistoryPolicy | `public enum ProfileHistoryPolicy` |
+| 200 | struct | public | AgentInstructions | `public struct AgentInstructions` |
+| 250 | protocol | public | DynamicAgentProfile | `public protocol DynamicAgentProfile` |
+| 256 | struct | public | StaticDynamicProfile | `public struct StaticDynamicProfile` |
+| 267 | struct | public | ClosureDynamicProfile | `public struct ClosureDynamicProfile` |
+| 294 | class | public | ProfileMode | `public final class ProfileMode<Mode>` |
+| 317 | struct | public | ModeSwitchingDynamicProfile | `public struct ModeSwitchingDynamicProfile<Mode>` |
+| 398 | typealias | public (deprecated) | Profile | `public typealias Profile = AgentProfile` |
+| 403 | typealias | public (deprecated) | DynamicProfile | `public typealias DynamicProfile = DynamicAgentProfile` |
+| 408 | typealias | public (deprecated) | DynamicInstructions | `public typealias DynamicInstructions = AgentInstructions` |
 
 ### Providers/FailoverProvider.swift
 

@@ -504,20 +504,20 @@ let pccAgent = try Agent(
     inferenceProvider: .foundationModels(model: PrivateCloudComputeLanguageModel())
 )
 
-// Swarm DynamicProfile (not Apple's LanguageModelSession.DynamicProfile):
+// Swarm DynamicAgentProfile (not Apple's LanguageModelSession.DynamicProfile):
 // switch instructions/tools/history per capture turn.
 enum Phase { case brainstorm, review }
 let mode = ProfileMode(Phase.brainstorm)
 let profile = ModeSwitchingDynamicProfile(mode: mode) { phase in
     switch phase {
     case .brainstorm:
-        Profile(
+        AgentProfile(
             id: "brainstorm",
             instructions: "Ideate freely.",
             generation: .init(temperature: 1.0)
         )
     case .review:
-        Profile(
+        AgentProfile(
             id: "review",
             instructions: "Be precise and concise.",
             history: .dropToolTranscriptAndKeepLast(count: 12),

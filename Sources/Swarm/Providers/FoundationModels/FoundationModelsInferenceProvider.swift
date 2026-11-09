@@ -99,10 +99,10 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 ///
 /// ## Dynamic profiles
 ///
-/// Pass a Swarm ``DynamicProfile`` to re-resolve instructions, tool filters,
-/// generation overrides, and history policy on every capture turn. That type
-/// is **not** Apple's `LanguageModelSession.DynamicProfile` (OS 27). The
-/// names overlap; the modules do not. Capture still uses the Swarm model.
+/// Pass a Swarm ``DynamicAgentProfile`` to re-resolve instructions, tool filters,
+/// generation overrides, and history policy on every capture turn. It is a
+/// Swarm type, separate from Apple's `LanguageModelSession.DynamicProfile`
+/// (OS 27). Capture still uses the Swarm model.
 /// Owned-loop renders the resolved Swarm profile onto a native Apple
 /// `LanguageModelSession(profile:)` on OS 27 without changing
 /// `.foundationModels(profile:)` call sites.
@@ -112,11 +112,11 @@ public struct FoundationModelsProviderConfiguration: Sendable, Equatable {
 /// let profile = ModeSwitchingDynamicProfile(mode: mode) { phase in
 ///     switch phase {
 ///     case .brainstorm:
-///         Profile(id: "brainstorm", instructions: "Ideate freely.",
-///                 generation: .init(temperature: 1.0))
+///         AgentProfile(id: "brainstorm", instructions: "Ideate freely.",
+///                      generation: .init(temperature: 1.0))
 ///     case .review:
-///         Profile(id: "review", instructions: "Be precise.",
-///                 history: .dropToolTranscriptAndKeepLast(count: 12))
+///         AgentProfile(id: "review", instructions: "Be precise.",
+///                      history: .dropToolTranscriptAndKeepLast(count: 12))
 ///     }
 /// }
 /// let provider: any InferenceProvider = .foundationModels(profile: profile)
@@ -135,7 +135,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     InferenceProviderMetadata
 {
     private let configuration: FoundationModelsProviderConfiguration
-    private let dynamicProfile: (any DynamicProfile)?
+    private let dynamicProfile: (any DynamicAgentProfile)?
     let sessionModel: FoundationModelsSessionModel
     private let ownsToolLoop: Bool
     let nativeSessionStore = FoundationModelsNativeSessionStore()
@@ -157,7 +157,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     /// Creates a provider when Foundation Models are available; otherwise `nil`.
     public static func ifAvailable(
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil,
+        profile: (any DynamicAgentProfile)? = nil,
         ownsToolLoop: Bool = false,
         model: SystemLanguageModel = .default
     ) -> FoundationModelsInferenceProvider? {
@@ -178,7 +178,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     public static func ifAvailable(
         model: some LanguageModel,
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil,
+        profile: (any DynamicAgentProfile)? = nil,
         ownsToolLoop: Bool = false
     ) -> FoundationModelsInferenceProvider? {
         guard FoundationModelsSessionModel.isAvailable(model) else { return nil }
@@ -208,7 +208,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
     public static func privateCloudComputeIfAvailable(
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil,
+        profile: (any DynamicAgentProfile)? = nil,
         ownsToolLoop: Bool = false,
         model: PrivateCloudComputeLanguageModel = .init()
     ) -> FoundationModelsInferenceProvider? {
@@ -232,7 +232,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     ///     ``SystemLanguageModel/default``.
     public init(
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil,
+        profile: (any DynamicAgentProfile)? = nil,
         ownsToolLoop: Bool = false,
         model: SystemLanguageModel = .default
     ) {
@@ -246,7 +246,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     ///
     /// Use ``PrivateCloudComputeLanguageModel`` or any other
     /// `FoundationModels.LanguageModel`. This does not accept a Swarm
-    /// ``DynamicProfile`` in the `model` position — pass that as `profile:`.
+    /// ``DynamicAgentProfile`` in the `model` position — pass that as `profile:`.
     ///
     /// `ifAvailable(model:)` returns `nil` when the concrete model's
     /// `availability` is not `.available`. It does not silently fall back
@@ -255,7 +255,7 @@ public struct FoundationModelsInferenceProvider: InferenceProvider,
     public init(
         model: some LanguageModel,
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil,
+        profile: (any DynamicAgentProfile)? = nil,
         ownsToolLoop: Bool = false
     ) {
         self.configuration = configuration
@@ -934,12 +934,12 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
         )
     }
 
-    /// Creates an on-device provider driven by a Swarm ``DynamicProfile``.
+    /// Creates an on-device provider driven by a Swarm ``DynamicAgentProfile``.
     ///
     /// The profile is re-resolved every generation turn (instructions, tools,
     /// generation overrides, history policy).
     static func foundationModels(
-        profile: some DynamicProfile,
+        profile: some DynamicAgentProfile,
         configuration: FoundationModelsProviderConfiguration = .default,
         model: SystemLanguageModel = .default
     ) -> FoundationModelsInferenceProvider {
@@ -950,9 +950,9 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
         )
     }
 
-    /// Creates an on-device owned-loop adapter driven by a Swarm ``DynamicProfile``.
+    /// Creates an on-device owned-loop adapter driven by a Swarm ``DynamicAgentProfile``.
     static func foundationModelsOwningToolLoop(
-        profile: some DynamicProfile,
+        profile: some DynamicAgentProfile,
         configuration: FoundationModelsProviderConfiguration = .default,
         model: SystemLanguageModel = .default
     ) -> FoundationModelsInferenceProvider {
@@ -967,12 +967,12 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
     /// Creates a provider backed by an Apple `LanguageModel` (OS 27+).
     ///
     /// Pass ``PrivateCloudComputeLanguageModel`` or another `LanguageModel`.
-    /// Swarm ``DynamicProfile`` is the `profile:` argument, not `model:`.
+    /// Swarm ``DynamicAgentProfile`` is the `profile:` argument, not `model:`.
     @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
     static func foundationModels(
         model: some LanguageModel,
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil
+        profile: (any DynamicAgentProfile)? = nil
     ) -> FoundationModelsInferenceProvider {
         FoundationModelsInferenceProvider(
             model: model,
@@ -986,7 +986,7 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
     static func foundationModelsOwningToolLoop(
         model: some LanguageModel,
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil
+        profile: (any DynamicAgentProfile)? = nil
     ) -> FoundationModelsInferenceProvider {
         FoundationModelsInferenceProvider(
             model: model,
@@ -1004,7 +1004,7 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
     @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
     static func privateCloudCompute(
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil,
+        profile: (any DynamicAgentProfile)? = nil,
         ownsToolLoop: Bool = false
     ) -> FoundationModelsInferenceProvider {
         FoundationModelsInferenceProvider(
@@ -1021,7 +1021,7 @@ public extension InferenceProvider where Self == FoundationModelsInferenceProvid
     @available(macOS 27.0, iOS 27.0, visionOS 27.0, *)
     static func privateCloudComputeIfAvailable(
         configuration: FoundationModelsProviderConfiguration = .default,
-        profile: (any DynamicProfile)? = nil,
+        profile: (any DynamicAgentProfile)? = nil,
         ownsToolLoop: Bool = false
     ) -> FoundationModelsInferenceProvider? {
         FoundationModelsInferenceProvider.privateCloudComputeIfAvailable(

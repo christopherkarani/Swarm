@@ -23,7 +23,7 @@ struct FoundationModelsAppleProfileBridgeTests {
 
     @Test("dropToolTranscript maps onto text-only transcript entries")
     func dropToolTranscriptMapsToTextOnlyEntries() {
-        let profile = Profile(
+        let profile = AgentProfile(
             id: "review",
             instructions: "Be precise.",
             toolFilter: .excluding(["search"]),
@@ -52,7 +52,7 @@ struct FoundationModelsAppleProfileBridgeTests {
 
     @Test("keepAll with tool calls cannot rehydrate a Transcript")
     func keepAllWithToolsCannotRehydrate() {
-        let profile = Profile(id: "keep", instructions: "Keep tools.", history: .keepAll)
+        let profile = AgentProfile(id: "keep", instructions: "Keep tools.", history: .keepAll)
         let plan = FoundationModelsAppleProfileBridge.plan(
             profile: profile,
             messages: toolHeavyHistory,
@@ -64,9 +64,9 @@ struct FoundationModelsAppleProfileBridgeTests {
         #expect(plan.entries.contains { if case .toolOutput = $0 { true } else { false } })
     }
 
-    @Test("does not alias Swarm Profile onto Apple DynamicProfile")
+    @Test("does not alias Swarm AgentProfile onto Apple DynamicProfile")
     func swarmTypesStaySwarmTypes() {
-        let profile = Profile(id: "review", instructions: "Be precise.", history: .dropToolTranscript)
+        let profile = AgentProfile(id: "review", instructions: "Be precise.", history: .dropToolTranscript)
         let resolved = StaticDynamicProfile(profile).resolve()
         #expect(resolved.id == "review")
         #expect(resolved.history == .dropToolTranscript)

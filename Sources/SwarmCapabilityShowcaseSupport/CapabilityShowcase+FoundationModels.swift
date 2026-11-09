@@ -56,7 +56,7 @@ func runFoundationModelsScenario(context: CapabilityScenarioContext) async throw
             // Profile-driven factory stays first-class and Sendable.
             let mode = ProfileMode("showcase")
             let profile = ModeSwitchingDynamicProfile(mode: mode) { _ in
-                Profile(
+                AgentProfile(
                     id: "showcase",
                     instructions: "Be concise.",
                     generation: .init(temperature: 0.2)

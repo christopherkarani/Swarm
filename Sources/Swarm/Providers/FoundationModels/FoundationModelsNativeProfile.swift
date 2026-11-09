@@ -5,7 +5,7 @@ import FoundationModels
 
 /// Apple `LanguageModelSession.DynamicProfile` rendering one resolved Swarm turn.
 ///
-/// This **is** Apple's type (unlike Swarm ``DynamicProfile``): the builder
+/// This **is** Apple's type (unlike Swarm ``DynamicAgentProfile``): the builder
 /// evaluates to exactly one `Profile` — instructions plus the bound tools —
 /// with the resolved model and generation knobs applied as modifiers.
 /// ``FoundationModelsSessionModel`` builds owned-loop sessions from this via

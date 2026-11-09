@@ -266,10 +266,12 @@ swift package plugin --allow-writing-to-package-directory swiftformat
   dependency and no `LLM.*` / `cloudProvider` façade.
 - Native tool calling bridges Swarm `ToolSchema` to Apple's
   `FoundationModels.Tool`.
-- Swarm `DynamicProfile` / `Profile` / `DynamicInstructions` / `ProfileMode`
-  are Swarm types used by `.foundationModels(profile:)`. They are **not**
-  Apple's `LanguageModelSession.DynamicProfile` (OS 27). Do not mix the
-  modules. Capture still re-resolves the Swarm profile each turn.
+- Swarm `DynamicAgentProfile` / `AgentProfile` / `AgentInstructions` /
+  `ProfileMode` are Swarm types used by `.foundationModels(profile:)`. They
+  are **not** Apple's `LanguageModelSession.DynamicProfile` / `Profile` /
+  `DynamicInstructions` (OS 27). The old Swarm names `DynamicProfile` /
+  `Profile` / `DynamicInstructions` are deprecated typealiases; use the new
+  names in new code. Capture still re-resolves the Swarm profile each turn.
 
 ### Mocks & Test Helpers
 

@@ -56,10 +56,10 @@ Apple `GenerationOptions.ToolCallingMode` is `allowed` / `disallowed` /
 keeps the prompt sentence that names the tool and maps the generation mode to
 `.allowed`.
 
-Owned-loop applies the Swarm ``Profile`` (instructions, ``ProfileToolFilter``,
+Owned-loop applies the Swarm ``AgentProfile`` (instructions, ``ProfileToolFilter``,
 ``ProfileHistoryPolicy``) before creating the session. Text-only history is
 seeded as an Apple `Transcript`. History that still has tool calls flattens
-into a `Prompt`. Swarm ``DynamicProfile`` is not Apple's
+into a `Prompt`. Swarm ``DynamicAgentProfile`` is not Apple's
 `LanguageModelSession.DynamicProfile`.
 
 Native mode exists so you can take Apple's session loop for multi-round tools
@@ -95,7 +95,7 @@ checkpoints do not fire.
 Requires macOS/iOS 26+ with Apple Intelligence available. Check
 ``FoundationModelsInferenceProvider/isAvailable(_:)`` against the
 `SystemLanguageModel` you will use (default or `SystemLanguageModel(useCase:)`).
-That type is Apple's, not Swarm ``DynamicProfile``. Linux and CI use
+That type is Apple's, not Swarm ``DynamicAgentProfile``. Linux and CI use
 ``OpenAICompatibleProvider`` (see [Remote Providers](remote-providers.md)) or
 capture-equivalent mock providers. ``.foundationModelsOwningToolLoop()`` still
 constructs; the first ``generateWithToolCalls`` / ``streamWithToolCalls``
@@ -107,7 +107,7 @@ or ``FoundationModelsInferenceProvider/ifAvailable(model:)``.
 `ifAvailable(model:)` returns `nil` when that model's `availability` is not
 `.available`. It does **not** silently construct
 `SystemLanguageModel.default` — build an on-device provider yourself when PCC
-is offline or over quota. Swarm ``DynamicProfile`` is still the `profile:`
+is offline or over quota. Swarm ``DynamicAgentProfile`` is still the `profile:`
 argument, not `model:`.
 
 The ``InferenceProvider/privateCloudCompute()`` convenience skips the
@@ -148,14 +148,31 @@ on OS 27. Attachments may carry in-memory `data` or a local `fileURL`;
 remote URLs without bytes are never fetched. Audio attachments are ignored
 today.
 
+## Profile names (0.7)
+
+Swarm's profile types were renamed so they no longer collide with Apple's
+OS 27 FoundationModels names when a file imports both modules:
+
+| Before 0.7 | Now | Apple's type with the old name |
+| --- | --- | --- |
+| `Profile` | ``AgentProfile`` | `Profile` |
+| `DynamicProfile` | ``DynamicAgentProfile`` | `LanguageModelSession.DynamicProfile` |
+| `DynamicInstructions` | ``AgentInstructions`` | `DynamicInstructions` |
+
+The old names still compile as deprecated typealiases and will be removed
+in a later breaking release. `ProfileMode`, `ProfileToolFilter`,
+`ProfileHistoryPolicy`, `ProfileGenerationOverrides`,
+`StaticDynamicProfile`, `ClosureDynamicProfile`, and
+`ModeSwitchingDynamicProfile` keep their names.
+
 ## Native profile sessions (OS 27)
 
 The owned loop builds its Apple session from a native
 `LanguageModelSession(profile:history:)` on OS 27: the resolved Swarm
-``Profile`` (instructions, bound tools, temperature, token limit, reasoning
+``AgentProfile`` (instructions, bound tools, temperature, token limit, reasoning
 level, tool-calling mode) renders onto one Apple `Profile`, so session
 replacement keeps the transcript while the resolved turn inputs stay current.
-Swarm ``DynamicProfile`` keeps its name and module — only the Apple session
+Swarm ``DynamicAgentProfile`` stays a Swarm type — only the Apple session
 construction changed. Older systems use the same legacy
 `LanguageModelSession(model:tools:)` construction as before.
 

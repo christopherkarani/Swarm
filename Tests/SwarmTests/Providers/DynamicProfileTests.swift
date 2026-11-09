@@ -53,10 +53,10 @@ struct DynamicProfileTests {
         #expect(combined.contains(where: { $0.role == .tool }) == false)
     }
 
-    @Test("DynamicInstructions merge concatenates text and tools")
+    @Test("AgentInstructions merge concatenates text and tools")
     func instructionsMerge() {
-        let base = DynamicInstructions("You are a craft facilitator.", tools: ["title"])
-        let expert = DynamicInstructions("You know origami folds.", tools: ["fold_db", "title"])
+        let base = AgentInstructions("You are a craft facilitator.", tools: ["title"])
+        let expert = AgentInstructions("You know origami folds.", tools: ["fold_db", "title"])
         let merged = base + expert
 
         #expect(merged.text.contains("craft facilitator"))
@@ -64,10 +64,10 @@ struct DynamicProfileTests {
         #expect(merged.toolNames == ["title", "fold_db"])
     }
 
-    @Test("Profile from DynamicInstructions sets tool filter")
+    @Test("AgentProfile from AgentInstructions sets tool filter")
     func profileFromInstructions() {
-        let instructions = DynamicInstructions("Brainstorm ideas.", tools: ["title", "search"])
-        let profile = Profile(id: "brainstorm", dynamicInstructions: instructions)
+        let instructions = AgentInstructions("Brainstorm ideas.", tools: ["title", "search"])
+        let profile = AgentProfile(id: "brainstorm", dynamicInstructions: instructions)
 
         #expect(profile.id == "brainstorm")
         #expect(profile.instructions.contains("Brainstorm"))
@@ -94,9 +94,9 @@ struct DynamicProfileTests {
         let profile = ModeSwitchingDynamicProfile(mode: mode) { phase in
             switch phase {
             case .a:
-                Profile(id: "a", instructions: "Phase A")
+                AgentProfile(id: "a", instructions: "Phase A")
             case .b:
-                Profile(id: "b", instructions: "Phase B", history: .dropToolTranscript)
+                AgentProfile(id: "b", instructions: "Phase B", history: .dropToolTranscript)
             }
         }
 
@@ -112,7 +112,7 @@ struct DynamicProfileTests {
         let profile = ClosureDynamicProfile {
             let n = counter.current
             counter.current = n + 1
-            return Profile(id: "n\(n)", instructions: "turn \(n)")
+            return AgentProfile(id: "n\(n)", instructions: "turn \(n)")
         }
 
         #expect(profile.resolve().id == "n0")
@@ -123,7 +123,7 @@ struct DynamicProfileTests {
 
     @Test("DynamicProfileResolution applies full stack")
     func resolutionStack() {
-        let profile = Profile(
+        let profile = AgentProfile(
             id: "review",
             instructions: "Review carefully.",
             toolFilter: .only(["calc"]),
@@ -167,10 +167,25 @@ struct DynamicProfileTests {
     @Test("StaticDynamicProfile is stable")
     func staticProfile() {
         let profile = StaticDynamicProfile(
-            Profile(id: "fixed", instructions: "Always this.")
+            AgentProfile(id: "fixed", instructions: "Always this.")
         )
         #expect(profile.resolve().id == "fixed")
         #expect(profile.resolve().instructions == "Always this.")
+    }
+
+    @Test("Deprecated pre-0.7 names still resolve to the renamed types")
+    func deprecatedNamesStillCompile() {
+        // Uses the deprecated typealiases on purpose; the warnings are expected.
+        let instructions: DynamicInstructions = DynamicInstructions("Be brief.", tools: ["search"])
+        let profile: Profile = Profile(id: "legacy", dynamicInstructions: instructions)
+        let dynamic: any DynamicProfile = StaticDynamicProfile(profile)
+
+        #expect(dynamic.resolve() == AgentProfile(
+            id: "legacy",
+            instructions: "Be brief.",
+            toolFilter: .only(["search"])
+        ))
+        #expect(type(of: instructions) == AgentInstructions.self)
     }
 }
 
@@ -181,7 +196,7 @@ struct DynamicProfileFoundationModelsTests {
     @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
     func providerCarriesProfile() {
         let profile = StaticDynamicProfile(
-            Profile(id: "coach", instructions: "Be a craft coach.")
+            AgentProfile(id: "coach", instructions: "Be a craft coach.")
         )
         let provider = FoundationModelsInferenceProvider(profile: profile)
         #expect(provider.modelName == "systemLanguageModel/coach")
@@ -204,13 +219,13 @@ struct DynamicProfileFoundationModelsTests {
         let profile = ModeSwitchingDynamicProfile(mode: mode) { phase in
             switch phase {
             case .short:
-                Profile(
+                AgentProfile(
                     id: "short",
                     instructions: "Reply with exactly one word: PING",
                     generation: .init(temperature: 0)
                 )
             case .long:
-                Profile(
+                AgentProfile(
                     id: "long",
                     instructions: "Reply with exactly one word: PONG",
                     generation: .init(temperature: 0)

@@ -1,18 +1,19 @@
 // DynamicProfile.swift
 // Swarm Framework
 //
-// Swarm Dynamic Profiles — capture-path agent configuration.
+// Swarm agent profiles — capture-path agent configuration.
 //
-// This file defines Swarm's `DynamicProfile` / `Profile` / `DynamicInstructions`.
-// Those types are **not** Apple's `LanguageModelSession.DynamicProfile` (OS 27
-// FoundationModels). Same names, different modules. Do not import both and
-// expect them to be interchangeable.
+// This file defines Swarm's `DynamicAgentProfile` / `AgentProfile` /
+// `AgentInstructions`. Before 0.7 they were named `DynamicProfile` /
+// `Profile` / `DynamicInstructions`, which collide with Apple's OS 27
+// FoundationModels names. The old names remain as deprecated typealiases
+// at the bottom of this file.
 //
 // Capture mode still resolves the Swarm profile every turn:
 //
 // 1. Re-resolves instructions, tools, options, and history policy.
 // 2. Supports baton-pass mode switching via ``ProfileMode``.
-// 3. Composes reusable instruction + tool bundles via ``DynamicInstructions``.
+// 3. Composes reusable instruction + tool bundles via ``AgentInstructions``.
 // 4. Plugs into ``FoundationModelsInferenceProvider``.
 //
 // Apple's native `LanguageModelSession(profile:)` is the owned-loop bridge
@@ -21,14 +22,14 @@
 
 import Foundation
 
-// MARK: - Profile
+// MARK: - AgentProfile
 
-/// A single agent configuration phase (Apple-style `LanguageModelSession.Profile`).
+/// A single agent configuration phase, modeled on Apple's `Profile`.
 ///
 /// Profiles group instructions, tool visibility, generation overrides, and
-/// transcript history policy. A ``DynamicProfile`` resolves one of these on
+/// transcript history policy. A ``DynamicAgentProfile`` resolves one of these on
 /// every generation turn.
-public struct Profile: Sendable, Equatable {
+public struct AgentProfile: Sendable, Equatable {
     /// Stable identifier for logging and handoff tools (e.g. `"brainstorm"`, `"review"`).
     public var id: String
 
@@ -59,10 +60,10 @@ public struct Profile: Sendable, Equatable {
         self.history = history
     }
 
-    /// Creates a profile from composable ``DynamicInstructions``.
+    /// Creates a profile from composable ``AgentInstructions``.
     public init(
         id: String,
-        dynamicInstructions: DynamicInstructions,
+        dynamicInstructions: AgentInstructions,
         toolFilter: ProfileToolFilter? = nil,
         generation: ProfileGenerationOverrides = .init(),
         history: ProfileHistoryPolicy = .keepAll
@@ -124,7 +125,7 @@ public struct ProfileGenerationOverrides: Sendable, Equatable {
 
     /// Merges profile overrides into request options.
     ///
-    /// Profile values fill in when present; request `structuredOutput`,
+    /// AgentProfile values fill in when present; request `structuredOutput`,
     /// `stopSequences`, and continuation fields are always preserved from the request.
     public func merging(into request: InferenceOptions) -> InferenceOptions {
         var merged = request
@@ -190,13 +191,13 @@ public enum ProfileHistoryPolicy: Sendable, Equatable {
     }
 }
 
-// MARK: - DynamicInstructions
+// MARK: - AgentInstructions
 
-/// Composable instructions + preferred tool names (Apple-style `DynamicInstructions`).
+/// Composable instructions + preferred tool names, modeled on Apple's `DynamicInstructions`.
 ///
 /// Nesting / merging concatenates instruction text and unions tool preferences,
 /// matching the WWDC 2026 composition model.
-public struct DynamicInstructions: Sendable, Equatable {
+public struct AgentInstructions: Sendable, Equatable {
     /// Ordered instruction paragraphs.
     public var segments: [String]
 
@@ -223,54 +224,54 @@ public struct DynamicInstructions: Sendable, Equatable {
     }
 
     /// Merges another instructions bundle (append text, append unique tool names).
-    public func merging(_ other: DynamicInstructions) -> DynamicInstructions {
+    public func merging(_ other: AgentInstructions) -> AgentInstructions {
         var names = toolNames
         for name in other.toolNames where !names.contains(name) {
             names.append(name)
         }
-        return DynamicInstructions(
+        return AgentInstructions(
             segments: segments + other.segments,
             toolNames: names
         )
     }
 
-    public static func + (lhs: DynamicInstructions, rhs: DynamicInstructions) -> DynamicInstructions {
+    public static func + (lhs: AgentInstructions, rhs: AgentInstructions) -> AgentInstructions {
         lhs.merging(rhs)
     }
 }
 
-// MARK: - DynamicProfile protocol
+// MARK: - DynamicAgentProfile protocol
 
-/// Resolves the active ``Profile`` for the next generation turn.
+/// Resolves the active ``AgentProfile`` for the next generation turn.
 ///
 /// Swarm calls ``resolve()`` at the start of each capture `generate` /
 /// `generateWithToolCalls`. This protocol is not Apple's
 /// `LanguageModelSession.DynamicProfile`.
-public protocol DynamicProfile: Sendable {
+public protocol DynamicAgentProfile: Sendable {
     /// Returns the profile that should drive the next model turn.
-    func resolve() -> Profile
+    func resolve() -> AgentProfile
 }
 
 /// A profile that never changes.
-public struct StaticDynamicProfile: DynamicProfile {
-    private let profile: Profile
+public struct StaticDynamicProfile: DynamicAgentProfile {
+    private let profile: AgentProfile
 
-    public init(_ profile: Profile) {
+    public init(_ profile: AgentProfile) {
         self.profile = profile
     }
 
-    public func resolve() -> Profile { profile }
+    public func resolve() -> AgentProfile { profile }
 }
 
 /// A profile resolved by a closure (re-evaluated every turn).
-public struct ClosureDynamicProfile: DynamicProfile {
-    private let body: @Sendable () -> Profile
+public struct ClosureDynamicProfile: DynamicAgentProfile {
+    private let body: @Sendable () -> AgentProfile
 
-    public init(_ body: @escaping @Sendable () -> Profile) {
+    public init(_ body: @escaping @Sendable () -> AgentProfile) {
         self.body = body
     }
 
-    public func resolve() -> Profile { body() }
+    public func resolve() -> AgentProfile { body() }
 }
 
 // MARK: - Mode switching (baton-pass)
@@ -282,9 +283,9 @@ public struct ClosureDynamicProfile: DynamicProfile {
 /// let mode = ProfileMode(Phase.brainstorm)
 /// let profile = ModeSwitchingDynamicProfile(mode: mode) { phase in
 ///     switch phase {
-///     case .brainstorm: Profile(id: "brainstorm", instructions: "…")
-///     case .plan: Profile(id: "plan", instructions: "…")
-///     case .review: Profile(id: "review", instructions: "…")
+///     case .brainstorm: AgentProfile(id: "brainstorm", instructions: "…")
+///     case .plan: AgentProfile(id: "plan", instructions: "…")
+///     case .review: AgentProfile(id: "review", instructions: "…")
 ///     }
 /// }
 /// // Later, from a handoff tool:
@@ -313,19 +314,19 @@ public final class ProfileMode<Mode: Hashable & Sendable>: @unchecked Sendable {
 }
 
 /// Dynamic profile that switches definition based on a shared ``ProfileMode``.
-public struct ModeSwitchingDynamicProfile<Mode: Hashable & Sendable>: DynamicProfile {
+public struct ModeSwitchingDynamicProfile<Mode: Hashable & Sendable>: DynamicAgentProfile {
     private let mode: ProfileMode<Mode>
-    private let makeProfile: @Sendable (Mode) -> Profile
+    private let makeProfile: @Sendable (Mode) -> AgentProfile
 
     public init(
         mode: ProfileMode<Mode>,
-        profile makeProfile: @escaping @Sendable (Mode) -> Profile
+        profile makeProfile: @escaping @Sendable (Mode) -> AgentProfile
     ) {
         self.mode = mode
         self.makeProfile = makeProfile
     }
 
-    public func resolve() -> Profile {
+    public func resolve() -> AgentProfile {
         makeProfile(mode.current)
     }
 }
@@ -335,7 +336,7 @@ public struct ModeSwitchingDynamicProfile<Mode: Hashable & Sendable>: DynamicPro
 enum DynamicProfileResolution {
     /// Applies a resolved profile to messages, tools, and options.
     static func apply(
-        _ profile: Profile?,
+        _ profile: AgentProfile?,
         messages: [InferenceMessage],
         tools: [ToolSchema],
         options: InferenceOptions,
@@ -388,3 +389,20 @@ enum DynamicProfileResolution {
         return [.system(instructions)] + messages
     }
 }
+
+// MARK: - Deprecated names
+
+/// Renamed to ``AgentProfile`` so it does not collide with Apple's
+/// FoundationModels `Profile` when a file imports both modules.
+@available(*, deprecated, renamed: "AgentProfile")
+public typealias Profile = AgentProfile
+
+/// Renamed to ``DynamicAgentProfile`` so it does not collide with Apple's
+/// `LanguageModelSession.DynamicProfile` when a file imports both modules.
+@available(*, deprecated, renamed: "DynamicAgentProfile")
+public typealias DynamicProfile = DynamicAgentProfile
+
+/// Renamed to ``AgentInstructions`` so it does not collide with Apple's
+/// FoundationModels `DynamicInstructions` when a file imports both modules.
+@available(*, deprecated, renamed: "AgentInstructions")
+public typealias DynamicInstructions = AgentInstructions
