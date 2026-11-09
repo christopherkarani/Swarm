@@ -211,6 +211,11 @@ a later `.approve`, `.reject`, or `resume(_:from:)` on that run reports the same
 that reaches another approval-required tool pauses again with its own
 `WorkflowApprovalRequired`.
 
+A paused run only moves forward through `resume(decision:from:)`. A plain
+`resume(_:from:)` or an `execute(_:)` on the paused checkpoint ID throws the
+same `WorkflowApprovalRequired` the run paused with and runs nothing, so a
+pending approval is never dropped and step 0 side effects never re-run.
+
 Approval binds to the exact call, not to the step. The resumed run replays the
 paused step from its start, inference included, and the approved call runs
 only if the replay regenerates the same tool name and arguments (compared after
