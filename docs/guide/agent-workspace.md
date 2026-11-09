@@ -240,7 +240,7 @@ Runtime behavior is strict for listed specs/skills and tolerant for memory notes
 - invalid listed `SKILL.md` files fail `Agent.spec`
 - bad specs fail when you try to build that agent
 - malformed memory notes are skipped and logged
-- malformed memory notes are moved to `.swarm/quarantine/`
+- malformed memory notes are left in place and reported by `validate()`
 - missing `AGENTS.md` is allowed
 
 ## Error Handling

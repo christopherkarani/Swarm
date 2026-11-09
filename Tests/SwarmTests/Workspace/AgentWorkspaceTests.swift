@@ -528,6 +528,88 @@ struct AgentWorkspaceTests {
         #expect(firstContents.contains("First fact"))
         #expect(secondContents.contains("Second fact"))
     }
+
+    @Test("Bracketed note titles round-trip through workspace memory without quarantine")
+    func bracketedNoteTitleRoundTripsThroughWorkspaceMemory() async throws {
+        let workspaceRoot = try makeWorkspaceRoot()
+        defer { try? FileManager.default.removeItem(at: workspaceRoot) }
+        let workspace = try makeWorkspace(root: workspaceRoot)
+
+        let noteURL = try await workspace.makeWriter()
+            .recordFact(title: "[WIP]", content: "Rollout plan for the gizmo service.")
+        let memory = WorkspaceMemory(workspace: workspace, activatedSkills: [])
+
+        let context = await memory.context(for: "gizmo rollout", tokenLimit: 500)
+        let count = await memory.count
+
+        #expect(context.contains("[Memory: [WIP]]"))
+        #expect(context.contains("Rollout plan for the gizmo service."))
+        #expect(count == 1)
+        #expect(FileManager.default.fileExists(atPath: noteURL.path))
+        #expect(!FileManager.default.fileExists(atPath: quarantineDirectory(in: workspace).path))
+        #expect(try await workspace.validate().isValid)
+    }
+
+    @Test("Malformed memory notes are skipped by reads, left in place, and reported by validate")
+    func malformedMemoryNoteIsSkippedAndReported() async throws {
+        let workspaceRoot = try makeWorkspaceRoot()
+        defer { try? FileManager.default.removeItem(at: workspaceRoot) }
+        let workspace = try makeWorkspace(root: workspaceRoot)
+        let brokenURL = workspace.memoryDirectory.appendingPathComponent("facts/broken-note.md")
+        try writeFile(
+            at: brokenURL,
+            contents: """
+            ---
+            schema_version: 1
+            id: broken
+            kind: fact
+            ---
+            A note without a title.
+            """
+        )
+        let memory = WorkspaceMemory(workspace: workspace, activatedSkills: [])
+
+        let count = await memory.count
+        let isEmpty = await memory.isEmpty
+        let context = await memory.context(for: "note", tokenLimit: 500)
+        let report = try await workspace.validate()
+
+        #expect(count == 0)
+        #expect(isEmpty)
+        #expect(context.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: brokenURL.path))
+        #expect(!FileManager.default.fileExists(atPath: quarantineDirectory(in: workspace).path))
+        #expect(report.isValid == false)
+        #expect(report.issues.contains { $0.path.hasSuffix("facts/broken-note.md") && $0.message.contains("title") })
+    }
+
+    @Test("Completing a task preserves titles and tags that need quoting")
+    func completeTaskPreservesTitlesAndTagsThatNeedQuoting() async throws {
+        let workspaceRoot = try makeWorkspaceRoot()
+        defer { try? FileManager.default.removeItem(at: workspaceRoot) }
+        let workspace = try makeWorkspace(root: workspaceRoot)
+        let title = #"Fix "quotes" in [brackets]: C:\temp"#
+        let tags = ["area: io", "#urgent", "[p1]"]
+        let writer = WorkspaceWriter(
+            workspace: workspace,
+            now: { Date(timeIntervalSince1970: 1_800_000_000) },
+            makeID: { "0123abcd-task" }
+        )
+
+        let createdURL = try await writer.createTask(title: title, content: "Investigate.", tags: tags)
+        let completedURL = try await writer.completeTask(id: "0123abcd-task", resolution: "Done.")
+        let note = try workspace.parseMemoryNote(at: completedURL, expectedKind: .task)
+
+        #expect(createdURL.resolvingSymlinksInPath() == completedURL.resolvingSymlinksInPath())
+        #expect(createdURL.lastPathComponent == "fix-quotes-in-brackets-c-temp-0123abcd.md")
+        #expect(note.title == title)
+        #expect(note.tags == tags)
+        #expect(note.status == "completed")
+        #expect(note.revision == 2)
+        #expect(note.body == "Investigate.\n\nResolution:\nDone.")
+        #expect(try String(contentsOf: completedURL, encoding: .utf8).contains(#"updated_at: "2027-01-15T08:00:00Z""#))
+        #expect(try await workspace.validate().isValid)
+    }
 }
 
 private actor PolicyAwareMemoryStub: Memory {
@@ -591,6 +673,18 @@ private func makeWorkspaceRoot() throws -> URL {
         withIntermediateDirectories: true
     )
     return root
+}
+
+private func makeWorkspace(root: URL) throws -> AgentWorkspace {
+    try AgentWorkspace(
+        bundleRoot: root,
+        writableRoot: root.appendingPathComponent("Writable", isDirectory: true),
+        indexCacheRoot: root.appendingPathComponent("Cache", isDirectory: true)
+    )
+}
+
+private func quarantineDirectory(in workspace: AgentWorkspace) -> URL {
+    workspace.writableRoot.appendingPathComponent(".swarm/quarantine", isDirectory: true)
 }
 
 private func writeFile(at url: URL, contents: String) throws {
