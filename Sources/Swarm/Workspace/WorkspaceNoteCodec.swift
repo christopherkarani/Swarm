@@ -3,7 +3,8 @@ import Foundation
 /// The user-controlled fields of a workspace memory note.
 ///
 /// These are the values ``WorkspaceNoteCodec`` round-trips: for any fields `x`
-/// with a non-empty title and a body without surrounding whitespace,
+/// with a non-empty title, and a body without surrounding whitespace or `\r\n`
+/// line endings (the parser normalizes them to `\n`),
 /// `WorkspaceNoteCodec.decode(WorkspaceNoteCodec.encode(x, ...))` yields `x`.
 struct WorkspaceNoteFields: Sendable, Equatable {
     let kind: WorkspaceMemoryNote.Kind

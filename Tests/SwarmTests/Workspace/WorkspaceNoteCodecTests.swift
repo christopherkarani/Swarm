@@ -126,6 +126,23 @@ struct WorkspaceNoteCodecTests {
         """)
     }
 
+    /// Releases before schema 2 ignore `schema_version` on memory notes and
+    /// quarantine any note whose `id`, `title`, or `kind` is not a non-empty
+    /// string. Schema-2 output must satisfy that check so a downgrade never
+    /// moves notes away.
+    @Test("Schema 2 notes stay readable by the pre-schema-2 parser", arguments: trickyScalars)
+    func schema2NotesPassPreSchema2Parser(value: String) throws {
+        let fields = WorkspaceNoteFields(kind: .task, title: value, body: "B", tags: [value], status: value, revision: 1)
+        let text = WorkspaceNoteCodec.encode(fields, id: "note-1", updatedAt: Self.fixedDate)
+
+        let document = try WorkspaceMarkdownDocument.parse(text, requireFrontMatterClosure: true)
+
+        #expect(document.string("id") == "note-1")
+        #expect(document.string("kind") == "task")
+        #expect(document.string("title")?.isEmpty == false)
+        #expect(document.stringArray("tags")?.count == 1)
+    }
+
     // MARK: Backward compatibility (schema_version 1)
 
     struct LegacyCase: Sendable, CustomTestStringConvertible {
