@@ -260,15 +260,21 @@ struct HTTPMCPServerRetryTests {
             return try Self.toolCallSuccess(for: request)
         }
 
+        let recorder = SleepRecorder()
+
         let server = try HTTPMCPServer(
             url: URL(string: "https://mcp.example.com/api")!,
             name: "retry-pre-send",
+            apiKey: nil,
+            timeout: 30,
             maxRetries: 1,
-            session: session
+            session: session,
+            sleep: { await recorder.record($0) }
         )
 
         _ = try await server.callTool(name: "echo", arguments: [:])
         #expect(MockURLProtocol.requestCount == 2)
+        #expect(await recorder.durations == [.seconds(1)])
     }
 
     @Test("Read-only methods still retry transient server failures")
@@ -278,17 +284,23 @@ struct HTTPMCPServerRetryTests {
         defer { MockURLProtocol.reset() }
         MockURLProtocol.handler = { request in try ToolCallFailure.httpStatus(503).respond(to: request) }
 
+        let recorder = SleepRecorder()
+
         let server = try HTTPMCPServer(
             url: URL(string: "https://mcp.example.com/api")!,
             name: "retry-list",
+            apiKey: nil,
+            timeout: 30,
             maxRetries: 1,
-            session: session
+            session: session,
+            sleep: { await recorder.record($0) }
         )
 
         await #expect(throws: MCPError.self) {
             _ = try await server.listTools()
         }
         #expect(MockURLProtocol.requestCount == 2)
+        #expect(await recorder.durations == [.seconds(1)])
     }
 
     @Test("5xx twice then success backs off 1s then 2s without waiting on the clock")
