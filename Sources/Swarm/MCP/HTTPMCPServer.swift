@@ -98,6 +98,39 @@ public actor HTTPMCPServer: MCPServerConnection {
         maxRetries: Int = 3,
         session: URLSession = .shared
     ) throws {
+        try self.init(
+            url: url,
+            name: name,
+            apiKey: apiKey,
+            timeout: timeout,
+            maxRetries: maxRetries,
+            session: session,
+            sleep: Self.taskSleep
+        )
+    }
+
+    /// Creates an HTTP MCP server client whose retry backoff runs through `sleep`.
+    ///
+    /// Tests inject a recording `sleep` to observe the backoff schedule
+    /// without waiting on the clock.
+    ///
+    /// - Parameters:
+    ///   - url: The base URL of the MCP server.
+    ///   - name: A name for this server instance.
+    ///   - apiKey: An optional API key for Bearer token authentication.
+    ///   - timeout: The request timeout interval in seconds.
+    ///   - maxRetries: The maximum number of retry attempts for failed requests.
+    ///   - session: The URLSession to use for requests.
+    ///   - sleep: Waits out each backoff delay chosen by ``MCPRetryDecision``.
+    init(
+        url: URL,
+        name: String,
+        apiKey: String?,
+        timeout: TimeInterval,
+        maxRetries: Int,
+        session: URLSession,
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) throws {
         // Security: Enforce HTTPS when API keys are used to prevent credential exposure.
         if apiKey != nil, url.scheme?.lowercased() != "https" {
             throw MCPError.invalidParams(
@@ -113,6 +146,7 @@ public actor HTTPMCPServer: MCPServerConnection {
         self.timeout = timeout
         self.maxRetries = maxRetries
         self.session = session
+        backoffSleep = sleep
         cachedCapabilities = nil
 
         encoder = JSONEncoder()
@@ -159,6 +193,7 @@ public actor HTTPMCPServer: MCPServerConnection {
         self.timeout = timeout
         self.maxRetries = maxRetries
         self.session = session
+        backoffSleep = Self.taskSleep
         cachedCapabilities = nil
 
         encoder = JSONEncoder()
@@ -356,6 +391,14 @@ public actor HTTPMCPServer: MCPServerConnection {
     /// The maximum number of retry attempts.
     private let maxRetries: Int
 
+    /// Waits out a retry backoff delay; `Task.sleep` outside tests.
+    private let backoffSleep: @Sendable (Duration) async throws -> Void
+
+    /// The production backoff sleep.
+    private static let taskSleep: @Sendable (Duration) async throws -> Void = { duration in
+        try await Task.sleep(for: duration)
+    }
+
     /// Cached capabilities from the server.
     private var cachedCapabilities: MCPCapabilities?
 
@@ -446,41 +489,19 @@ public actor HTTPMCPServer: MCPServerConnection {
         scope: RetryScope,
         _ operation: () async throws -> T
     ) async throws -> T {
-        var lastError: Error?
-
         for attempt in 0..<(maxRetries + 1) {
             do {
                 return try await operation()
-            } catch let error as MCPError {
-                lastError = error
-
-                // Don't retry client errors (4xx range mapped to specific MCP errors)
-                if error.code == MCPError.invalidRequestCode ||
-                    error.code == MCPError.invalidParamsCode ||
-                    error.code == MCPError.methodNotFoundCode ||
-                    (400...499).contains(error.code) {
-                    throw error
-                }
-
-                // Don't retry if this was the last attempt, or if the server
-                // answered (so it received the request) a non-idempotent call.
-                if attempt == maxRetries || scope == .connectionNotEstablished {
-                    throw error
-                }
-
-                // Check for cancellation before sleeping
-                try Task.checkCancellation()
-
-                // Exponential backoff: 1s, 2s, 4s, etc.
-                let delay = pow(2.0, Double(attempt))
-                try await Task.sleep(for: .seconds(delay))
             } catch {
-                lastError = error
-
-                // A non-idempotent request is only resent when it provably
-                // never reached the server; a timeout may have run it already.
-                let mayResend = scope == .transientFailures || Self.isConnectionNotEstablished(error)
-                if attempt == maxRetries || !mayResend {
+                switch MCPRetryDecision.decide(error: error, attempt: attempt, maxRetries: maxRetries, scope: scope) {
+                case let .retry(delay):
+                    // Check for cancellation before sleeping
+                    try Task.checkCancellation()
+                    try await backoffSleep(delay)
+                case .fail:
+                    if let mcpError = error as? MCPError {
+                        throw mcpError
+                    }
                     // Preserve detailed error context for debugging
                     let errorData: [String: SendableValue] = [
                         "originalError": .string(String(describing: error)),
@@ -494,16 +515,10 @@ public actor HTTPMCPServer: MCPServerConnection {
                         data: .dictionary(errorData)
                     )
                 }
-
-                // Check for cancellation before sleeping
-                try Task.checkCancellation()
-
-                let delay = pow(2.0, Double(attempt))
-                try await Task.sleep(for: .seconds(delay))
             }
         }
 
-        throw lastError ?? MCPError.internalError("Request failed after \(maxRetries) retries")
+        throw MCPError.internalError("Request failed after \(maxRetries) retries")
     }
 
     /// Performs a single HTTP request to the MCP server.
@@ -638,6 +653,65 @@ public actor HTTPMCPServer: MCPServerConnection {
             return try MCPWireCodec.jsonRPCPayload(fromSSE: data)
         }
         return data
+    }
+}
+
+// MARK: - MCPRetryDecision
+
+/// What ``HTTPMCPServer`` does after a failed send attempt.
+///
+/// ``decide(error:attempt:maxRetries:scope:)`` is the whole retry policy as a
+/// pure function. The server's send loop only interprets the result: it checks
+/// cancellation, sleeps, and shapes the error it throws.
+enum MCPRetryDecision: Sendable, Equatable {
+    /// Resend after backing off for the given duration.
+    case retry(after: Duration)
+    /// Stop and surface the error.
+    case fail
+
+    /// Classifies a failed attempt.
+    ///
+    /// - Client errors (HTTP 4xx, JSON-RPC invalid request, invalid params,
+    ///   method not found) never retry.
+    /// - Other ``MCPError``s, such as 5xx responses, retry only in
+    ///   ``HTTPMCPServer/RetryScope/transientFailures``: the server answered,
+    ///   so it received the request.
+    /// - Any other error retries in `transientFailures`, and in
+    ///   `connectionNotEstablished` only when it proves the request never left
+    ///   the client.
+    /// - Nothing retries once `attempt` reaches `maxRetries`.
+    ///
+    /// Backoff doubles from one second: 1s, 2s, 4s, …
+    ///
+    /// - Parameters:
+    ///   - error: The error the attempt threw.
+    ///   - attempt: Zero-based index of the attempt that failed.
+    ///   - maxRetries: Retries allowed after the first attempt.
+    ///   - scope: Which failures the request's method may retry.
+    /// - Returns: Whether to resend, and after how long.
+    static func decide(
+        error: any Error,
+        attempt: Int,
+        maxRetries: Int,
+        scope: HTTPMCPServer.RetryScope
+    ) -> MCPRetryDecision {
+        let mayResend = if let mcpError = error as? MCPError {
+            !isClientError(mcpError) && scope == .transientFailures
+        } else {
+            scope == .transientFailures || HTTPMCPServer.isConnectionNotEstablished(error)
+        }
+        guard mayResend, attempt < maxRetries else {
+            return .fail
+        }
+        return .retry(after: .seconds(pow(2.0, Double(attempt))))
+    }
+
+    /// Whether `error` is a client error that resending cannot fix.
+    private static func isClientError(_ error: MCPError) -> Bool {
+        error.code == MCPError.invalidRequestCode ||
+            error.code == MCPError.invalidParamsCode ||
+            error.code == MCPError.methodNotFoundCode ||
+            (400...499).contains(error.code)
     }
 }
 
