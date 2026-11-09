@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 /// Context envelope for Apple Foundation Models capture prompts.
 ///
@@ -15,3 +18,22 @@ enum FoundationModelsContextBudget: Sendable {
         .balanced(maxContextTokens: max(contextSize, 1))
     }
 }
+
+#if canImport(FoundationModels)
+/// Counts prompt tokens with the on-device model's own tokenizer.
+///
+/// Backs ``FoundationModelsInferenceProvider/promptTokenCounter`` for
+/// `SystemLanguageModel` sessions on OS 26.4 and later, so memory and prompt
+/// budgeting use exact counts instead of the character heuristic. When
+/// counting throws, ``PromptTokenBudgeting`` falls back to the heuristic.
+@available(macOS 26.4, iOS 26.4, visionOS 26.4, *)
+@available(tvOS, unavailable)
+@available(watchOS, unavailable)
+struct FoundationModelsPromptTokenCounter: PromptTokenCounter {
+    let model: SystemLanguageModel
+
+    func countTokens(in text: String) async throws -> Int {
+        try await model.tokenCount(for: Prompt(text))
+    }
+}
+#endif
