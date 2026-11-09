@@ -1,7 +1,7 @@
 #if SWARM_MCP
 import Foundation
 import MCP
-import Swarm
+@_spi(ColonyInternal) import Swarm
 
 /// Runtime service that exposes Swarm tools through an MCP server.
 public actor SwarmMCPServerService {
@@ -43,17 +43,12 @@ public actor SwarmMCPServerService {
     private let toolExecutor: any SwarmMCPToolExecutor
     private let server: Server
     private var metrics = Metrics()
-    private var starting = false
-    private var started = false
-    private var hasStarted = false
+    private var lifecycle = Lifecycle.idle
     private var handlersRegistered = false
 
-    // Rate limiting state
-    private let maxRequestsPerSecond: Double
-    private let maxConcurrentRequests: Int
-    private var availableTokens: Double
-    private var lastRefillTime: ContinuousClock.Instant
-    private var activeRequests: Int
+    /// Time source for the request throttle.
+    private let clock: any SwarmClock
+    private var throttle: SwarmMCPThrottle
 
     public init(
         name: String = "swarm-mcp-server",
@@ -65,15 +60,44 @@ public actor SwarmMCPServerService {
         maxRequestsPerSecond: Double = 10,
         maxConcurrentRequests: Int = 50
     ) {
+        self.init(
+            name: name,
+            version: version,
+            instructions: instructions,
+            toolCatalog: toolCatalog,
+            toolExecutor: toolExecutor,
+            configuration: configuration,
+            maxRequestsPerSecond: maxRequestsPerSecond,
+            maxConcurrentRequests: maxConcurrentRequests,
+            clock: LiveSwarmClock.live
+        )
+    }
+
+    /// Creates a service whose request throttle reads time from `clock`.
+    ///
+    /// Package-only seam so tests can drive token refill with a virtual clock;
+    /// the public initializer delegates here with a live continuous clock.
+    package init(
+        name: String = "swarm-mcp-server",
+        version: String = Swarm.version,
+        instructions: String? = nil,
+        toolCatalog: some SwarmMCPToolCatalog,
+        toolExecutor: some SwarmMCPToolExecutor,
+        configuration: Server.Configuration = .strict,
+        maxRequestsPerSecond: Double = 10,
+        maxConcurrentRequests: Int = 50,
+        clock: any SwarmClock
+    ) {
         self.name = name
         self.version = version
         self.toolCatalog = toolCatalog
         self.toolExecutor = toolExecutor
-        self.maxRequestsPerSecond = maxRequestsPerSecond
-        self.maxConcurrentRequests = maxConcurrentRequests
-        self.availableTokens = maxRequestsPerSecond
-        self.lastRefillTime = .now
-        self.activeRequests = 0
+        self.clock = clock
+        throttle = SwarmMCPThrottle(
+            maxRequestsPerSecond: maxRequestsPerSecond,
+            maxConcurrentRequests: maxConcurrentRequests,
+            nowNanoseconds: clock.nowNanoseconds()
+        )
         server = Server(
             name: name,
             version: version,
@@ -88,26 +112,28 @@ public actor SwarmMCPServerService {
         transport: any Transport,
         initializeHook: (@Sendable (Client.Info, Client.Capabilities) async throws -> Void)? = nil
     ) async throws {
-        guard !started && !starting else {
+        switch lifecycle {
+        case .starting, .running:
             throw MCP.MCPError.invalidRequest("SwarmMCPServerService is already started")
-        }
-        guard !hasStarted else {
+        case .stopped:
             throw MCP.MCPError.invalidRequest(
                 "SwarmMCPServerService instances are single-use. Create a new instance to restart."
             )
+        case .idle:
+            break
         }
 
-        starting = true
+        lifecycle = .starting
 
         do {
             await registerHandlersIfNeeded()
             try await server.start(transport: transport, initializeHook: initializeHook)
-            started = true
-            hasStarted = true
-            starting = false
+            lifecycle = .running
             Log.orchestration.info("Swarm MCP server started")
         } catch {
-            starting = false
+            if lifecycle == .starting {
+                lifecycle = .idle
+            }
             throw error
         }
     }
@@ -123,8 +149,12 @@ public actor SwarmMCPServerService {
     /// Stops the MCP server.
     public func stop() async {
         await server.stop()
-        starting = false
-        started = false
+        switch lifecycle {
+        case .running, .stopped:
+            lifecycle = .stopped
+        case .idle, .starting:
+            lifecycle = .idle
+        }
         Log.orchestration.info("Swarm MCP server stopped")
     }
 
@@ -159,36 +189,23 @@ public actor SwarmMCPServerService {
         handlersRegistered = true
     }
 
+    /// Admits the request or rejects it immediately; never waits for a token.
     private func checkRateLimit() throws {
-        let now = ContinuousClock.now
-        let elapsed = now - lastRefillTime
-        let elapsedSeconds = Double(elapsed.components.seconds)
-            + Double(elapsed.components.attoseconds) / 1e18
+        let (decision, next) = throttle.admitting(atNanoseconds: clock.nowNanoseconds())
+        throttle = next
 
-        // Refill tokens based on elapsed time
-        availableTokens = min(
-            maxRequestsPerSecond,
-            availableTokens + elapsedSeconds * maxRequestsPerSecond
-        )
-        lastRefillTime = now
-
-        // Check if token is available
-        guard availableTokens >= 1 else {
+        switch decision {
+        case .admitted:
+            return
+        case .rateLimited:
             throw MCP.MCPError.invalidRequest("Rate limit exceeded: too many requests")
-        }
-
-        // Check concurrent request limit
-        guard activeRequests < maxConcurrentRequests else {
+        case .concurrencyLimited:
             throw MCP.MCPError.invalidRequest("Rate limit exceeded: too many concurrent requests")
         }
-
-        // Consume token and increment active requests
-        availableTokens -= 1
-        activeRequests += 1
     }
 
     private func releaseRateLimit() {
-        activeRequests = max(0, activeRequests - 1)
+        throttle = throttle.releasing()
     }
 
     private func handleListTools() async throws -> ListTools.Result {
@@ -303,6 +320,117 @@ public actor SwarmMCPServerService {
         let ms = (Double(duration.components.seconds) * 1_000)
             + (Double(duration.components.attoseconds) / 1e15)
         metrics.cumulativeCallToolLatencyMs += ms
+    }
+}
+
+// MARK: - Lifecycle
+
+extension SwarmMCPServerService {
+    /// Single-use lifecycle of a service instance.
+    private enum Lifecycle: Sendable, Equatable {
+        /// Never started, or the last start attempt failed; `start` is allowed.
+        case idle
+        /// A `start` call is in flight; concurrent starts are rejected.
+        case starting
+        /// Serving requests.
+        case running
+        /// Stopped after a successful start; the instance cannot restart.
+        case stopped
+    }
+}
+
+// MARK: - SwarmMCPThrottle
+
+/// Pure admission state for the MCP server's request throttle: a token bucket
+/// plus an in-flight request cap.
+///
+/// Transitions return new values and never wait, so a request that finds no
+/// token or no free slot is rejected immediately. Refill math is shared with
+/// `RateLimiter` through `TokenBucketMath`. `maxRequestsPerSecond` is both the
+/// bucket capacity and the per-second refill rate, used as-is: a fractional
+/// rate keeps a fractional capacity, and rates below one, negative, or NaN
+/// never reach a whole token, so they admit nothing.
+struct SwarmMCPThrottle: Sendable, Equatable {
+    /// Outcome of one admission attempt.
+    enum Decision: Sendable, Equatable {
+        /// A token was consumed and an in-flight slot taken.
+        case admitted
+        /// Fewer than one token is available.
+        case rateLimited
+        /// Tokens remain but every in-flight slot is taken.
+        case concurrencyLimited
+    }
+
+    /// Bucket capacity, and tokens added per second of elapsed clock time.
+    let maxRequestsPerSecond: Double
+    /// Maximum number of admitted, unreleased requests.
+    let maxConcurrentRequests: Int
+    /// Tokens available as of `lastRefillNanoseconds`.
+    let tokens: Double
+    /// Clock reading of the most recent refill.
+    let lastRefillNanoseconds: UInt64
+    /// Admitted requests not yet released.
+    let activeRequests: Int
+
+    /// Creates a full bucket (`maxRequestsPerSecond` tokens) with no requests
+    /// in flight.
+    init(maxRequestsPerSecond: Double, maxConcurrentRequests: Int, nowNanoseconds: UInt64) {
+        self.init(
+            maxRequestsPerSecond: maxRequestsPerSecond,
+            maxConcurrentRequests: maxConcurrentRequests,
+            tokens: maxRequestsPerSecond,
+            lastRefillNanoseconds: nowNanoseconds,
+            activeRequests: 0
+        )
+    }
+
+    /// Creates throttle state with explicit token and in-flight counts.
+    init(
+        maxRequestsPerSecond: Double,
+        maxConcurrentRequests: Int,
+        tokens: Double,
+        lastRefillNanoseconds: UInt64,
+        activeRequests: Int
+    ) {
+        self.maxRequestsPerSecond = maxRequestsPerSecond
+        self.maxConcurrentRequests = maxConcurrentRequests
+        self.tokens = tokens
+        self.lastRefillNanoseconds = lastRefillNanoseconds
+        self.activeRequests = activeRequests
+    }
+
+    /// Refills to `now`, then admits the request if a token and an in-flight
+    /// slot are both available. The rate check runs first; a rejection keeps
+    /// the refill but consumes nothing.
+    func admitting(atNanoseconds now: UInt64) -> (Decision, SwarmMCPThrottle) {
+        let refilledTokens = TokenBucketMath.refilled(
+            tokens: tokens,
+            elapsedSeconds: TokenBucketMath.elapsedSeconds(from: lastRefillNanoseconds, to: now),
+            refillRate: maxRequestsPerSecond,
+            capacity: maxRequestsPerSecond
+        )
+        guard refilledTokens >= 1 else {
+            return (.rateLimited, with(tokens: refilledTokens, lastRefill: now, activeRequests: activeRequests))
+        }
+        guard activeRequests < maxConcurrentRequests else {
+            return (.concurrencyLimited, with(tokens: refilledTokens, lastRefill: now, activeRequests: activeRequests))
+        }
+        return (.admitted, with(tokens: refilledTokens - 1, lastRefill: now, activeRequests: activeRequests + 1))
+    }
+
+    /// Frees one in-flight slot; never drops below zero.
+    func releasing() -> SwarmMCPThrottle {
+        with(tokens: tokens, lastRefill: lastRefillNanoseconds, activeRequests: max(0, activeRequests - 1))
+    }
+
+    private func with(tokens: Double, lastRefill: UInt64, activeRequests: Int) -> SwarmMCPThrottle {
+        SwarmMCPThrottle(
+            maxRequestsPerSecond: maxRequestsPerSecond,
+            maxConcurrentRequests: maxConcurrentRequests,
+            tokens: tokens,
+            lastRefillNanoseconds: lastRefill,
+            activeRequests: activeRequests
+        )
     }
 }
 #endif

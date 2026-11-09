@@ -172,19 +172,31 @@ public actor RateLimiter {
 /// without actor code or a live clock. Behavior mirrors the original inline
 /// logic exactly, including clamping at capacity and the finite/positive
 /// guards on computed wait times.
-enum TokenBucketMath {
+package enum TokenBucketMath {
     /// Post-refill token count after adding `elapsedSeconds * refillRate`
     /// tokens, capped at bucket capacity.
     ///
     /// A negative elapsed interval (clock moved backwards) removes tokens at
     /// the same rate, matching the original signed-duration arithmetic.
-    static func refilled(
+    package static func refilled(
         tokens: Double,
         elapsedSeconds: Double,
         refillRate: Double,
         maxTokens: Int
     ) -> Double {
-        min(Double(maxTokens), tokens + elapsedSeconds * refillRate)
+        refilled(tokens: tokens, elapsedSeconds: elapsedSeconds, refillRate: refillRate, capacity: Double(maxTokens))
+    }
+
+    /// Post-refill token count for a bucket whose capacity may be fractional
+    /// or non-finite; `min(capacity, tokens + elapsedSeconds * refillRate)`
+    /// with the capacity as the first operand.
+    package static func refilled(
+        tokens: Double,
+        elapsedSeconds: Double,
+        refillRate: Double,
+        capacity: Double
+    ) -> Double {
+        min(capacity, tokens + elapsedSeconds * refillRate)
     }
 
     /// Seconds to wait until `deficit` additional tokens have accumulated,
@@ -197,7 +209,7 @@ enum TokenBucketMath {
 
     /// Signed elapsed seconds between two nanosecond readings on one clock's
     /// timeline (`endNanoseconds - startNanoseconds`).
-    static func elapsedSeconds(from startNanoseconds: UInt64, to endNanoseconds: UInt64) -> Double {
+    package static func elapsedSeconds(from startNanoseconds: UInt64, to endNanoseconds: UInt64) -> Double {
         Double(Int64(bitPattern: endNanoseconds &- startNanoseconds)) / 1_000_000_000
     }
 }
