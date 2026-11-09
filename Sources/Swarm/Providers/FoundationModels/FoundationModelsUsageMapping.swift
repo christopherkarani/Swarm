@@ -12,7 +12,9 @@ enum FoundationModelsUsageMapping: Sendable {
     static func tokenUsage(from usage: LanguageModelSession.Usage) -> TokenUsage {
         TokenUsage(
             inputTokens: usage.input.totalTokenCount,
-            outputTokens: usage.output.totalTokenCount
+            outputTokens: usage.output.totalTokenCount,
+            cachedInputTokens: usage.input.cachedTokenCount,
+            reasoningTokens: usage.output.reasoningTokenCount
         )
     }
 

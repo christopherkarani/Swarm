@@ -169,19 +169,41 @@ enum OpenAICompatibleWire: Sendable {
     }
 
     /// A `usage` payload with lenient counts.
+    ///
+    /// `cachedTokens` comes from `prompt_tokens_details.cached_tokens` and
+    /// `reasoningTokens` from `completion_tokens_details.reasoning_tokens`.
+    /// A missing or mistyped details object leaves them `nil`.
     struct Usage: Decodable, Sendable, Equatable {
         var promptTokens: Int?
         var completionTokens: Int?
+        var cachedTokens: Int?
+        var reasoningTokens: Int?
 
         private enum CodingKeys: String, CodingKey {
             case promptTokens = "prompt_tokens"
             case completionTokens = "completion_tokens"
+            case promptTokensDetails = "prompt_tokens_details"
+            case completionTokensDetails = "completion_tokens_details"
+        }
+
+        private enum DetailsKeys: String, CodingKey {
+            case cachedTokens = "cached_tokens"
+            case reasoningTokens = "reasoning_tokens"
         }
 
         init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             promptTokens = OpenAICompatibleWire.lenientInt(from: container, forKey: .promptTokens)
             completionTokens = OpenAICompatibleWire.lenientInt(from: container, forKey: .completionTokens)
+            if let details = try? container.nestedContainer(keyedBy: DetailsKeys.self, forKey: .promptTokensDetails) {
+                cachedTokens = OpenAICompatibleWire.lenientInt(from: details, forKey: .cachedTokens)
+            }
+            if let details = try? container.nestedContainer(
+                keyedBy: DetailsKeys.self,
+                forKey: .completionTokensDetails
+            ) {
+                reasoningTokens = OpenAICompatibleWire.lenientInt(from: details, forKey: .reasoningTokens)
+            }
         }
     }
 
