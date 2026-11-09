@@ -184,7 +184,19 @@ package enum TokenBucketMath {
         refillRate: Double,
         maxTokens: Int
     ) -> Double {
-        min(Double(maxTokens), tokens + elapsedSeconds * refillRate)
+        refilled(tokens: tokens, elapsedSeconds: elapsedSeconds, refillRate: refillRate, capacity: Double(maxTokens))
+    }
+
+    /// Post-refill token count for a bucket whose capacity may be fractional
+    /// or non-finite; `min(capacity, tokens + elapsedSeconds * refillRate)`
+    /// with the capacity as the first operand.
+    package static func refilled(
+        tokens: Double,
+        elapsedSeconds: Double,
+        refillRate: Double,
+        capacity: Double
+    ) -> Double {
+        min(capacity, tokens + elapsedSeconds * refillRate)
     }
 
     /// Seconds to wait until `deficit` additional tokens have accumulated,

@@ -120,6 +120,77 @@ struct SwarmMCPServerServiceThrottleAdmissionTests {
 
         #expect([first, second, third, fourth] == [.admitted, .admitted, .rateLimited, .admitted])
     }
+
+    @Test("Fractional rate keeps a fractional capacity")
+    func fractionalRateKeepsFractionalCapacity() {
+        let fresh = SwarmMCPThrottle(maxRequestsPerSecond: 2.5, maxConcurrentRequests: 100, nowNanoseconds: 0)
+
+        let (first, afterFirst) = fresh.admitting(atNanoseconds: 0)
+        let (second, afterSecond) = afterFirst.admitting(atNanoseconds: 0)
+        let (third, afterThird) = afterSecond.admitting(atNanoseconds: 0)
+        // 0.5 tokens left plus 0.2 s * 2.5/s refill reaches one whole token.
+        let (fourth, _) = afterThird.admitting(atNanoseconds: 200_000_000)
+
+        #expect(afterThird.tokens == 0.5)
+        #expect([first, second, third, fourth] == [.admitted, .admitted, .rateLimited, .admitted])
+    }
+
+    @Test(
+        "Admission matches the pre-refactor inline throttle",
+        arguments: [2.5, 1.5, 2, 0.5, 0, -1, Double.nan, Double.infinity]
+    )
+    func matchesLegacyInlineThrottle(rate: Double) {
+        // Sub-second deltas plus one whole-second delta, so both elapsed-time
+        // formulas round identically.
+        let schedule: [UInt64] = [0, 0, 0, 0, 200_000_000, 200_000_000, 650_000_000, 5_650_000_000, 5_650_000_000]
+        var throttle = SwarmMCPThrottle(maxRequestsPerSecond: rate, maxConcurrentRequests: 3, nowNanoseconds: 0)
+        var legacy = LegacyInlineThrottle(maxRequestsPerSecond: rate, maxConcurrentRequests: 3)
+
+        for (step, now) in schedule.enumerated() {
+            let (decision, next) = throttle.admitting(atNanoseconds: now)
+            throttle = next
+            let expected = legacy.check(atNanoseconds: now)
+
+            #expect(decision == expected, "rate \(rate) step \(step)")
+            #expect(
+                throttle.tokens == legacy.availableTokens || (throttle.tokens.isNaN && legacy.availableTokens.isNaN),
+                "rate \(rate) step \(step): \(throttle.tokens) vs \(legacy.availableTokens)"
+            )
+            #expect(throttle.activeRequests == legacy.activeRequests, "rate \(rate) step \(step)")
+        }
+    }
+}
+
+/// Verbatim port of `SwarmMCPServerService.checkRateLimit()` as of 818db589,
+/// with `ContinuousClock` replaced by nanosecond readings. Test oracle only.
+private struct LegacyInlineThrottle {
+    let maxRequestsPerSecond: Double
+    let maxConcurrentRequests: Int
+    var availableTokens: Double
+    var lastRefillNanoseconds: UInt64 = 0
+    var activeRequests = 0
+
+    init(maxRequestsPerSecond: Double, maxConcurrentRequests: Int) {
+        self.maxRequestsPerSecond = maxRequestsPerSecond
+        self.maxConcurrentRequests = maxConcurrentRequests
+        availableTokens = maxRequestsPerSecond
+    }
+
+    mutating func check(atNanoseconds now: UInt64) -> SwarmMCPThrottle.Decision {
+        let elapsed = Duration.nanoseconds(Int64(now) - Int64(lastRefillNanoseconds))
+        let elapsedSeconds = Double(elapsed.components.seconds)
+            + Double(elapsed.components.attoseconds) / 1e18
+        availableTokens = min(
+            maxRequestsPerSecond,
+            availableTokens + elapsedSeconds * maxRequestsPerSecond
+        )
+        lastRefillNanoseconds = now
+        guard availableTokens >= 1 else { return .rateLimited }
+        guard activeRequests < maxConcurrentRequests else { return .concurrencyLimited }
+        availableTokens -= 1
+        activeRequests += 1
+        return .admitted
+    }
 }
 
 // MARK: - Service integration over a virtual clock
@@ -157,7 +228,10 @@ struct SwarmMCPServerServiceThrottleTests {
         #expect(await harness.service.snapshotMetrics().listToolsRequests == 3)
     }
 
-    @Test("Concurrency cap rejects the N+1th in-flight request and frees the slot on completion")
+    @Test(
+        "Concurrency cap rejects the N+1th in-flight request and frees the slot on completion",
+        .timeLimit(.minutes(1))
+    )
     func concurrencyCapRejectsExtraInFlightRequest() async throws {
         let clock = VirtualClock()
         let catalog = SwarmMCPToolCatalogStub(

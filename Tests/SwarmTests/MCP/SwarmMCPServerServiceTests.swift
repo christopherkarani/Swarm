@@ -431,7 +431,7 @@ struct SwarmMCPServerServiceTests {
         }
     }
 
-    @Test("Concurrent start attempts are rejected deterministically")
+    @Test("Concurrent start attempts are rejected deterministically", .timeLimit(.minutes(1)))
     func concurrentStartIsRejected() async throws {
         let catalog = SwarmMCPToolCatalogStub(
             schemas: [ToolSchema(name: "noop", description: "noop", parameters: [])]

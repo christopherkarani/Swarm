@@ -346,10 +346,10 @@ extension SwarmMCPServerService {
 ///
 /// Transitions return new values and never wait, so a request that finds no
 /// token or no free slot is rejected immediately. Refill math is shared with
-/// `RateLimiter` through `TokenBucketMath`. The bucket holds whole requests:
-/// its capacity is `maxRequestsPerSecond` truncated to an integer (rates below
-/// one, negative, or NaN admit nothing), and tokens refill at
-/// `maxRequestsPerSecond` per second.
+/// `RateLimiter` through `TokenBucketMath`. `maxRequestsPerSecond` is both the
+/// bucket capacity and the per-second refill rate, used as-is: a fractional
+/// rate keeps a fractional capacity, and rates below one, negative, or NaN
+/// never reach a whole token, so they admit nothing.
 struct SwarmMCPThrottle: Sendable, Equatable {
     /// Outcome of one admission attempt.
     enum Decision: Sendable, Equatable {
@@ -361,10 +361,8 @@ struct SwarmMCPThrottle: Sendable, Equatable {
         case concurrencyLimited
     }
 
-    /// Bucket capacity in whole requests.
-    let capacity: Int
-    /// Tokens added per second of elapsed clock time.
-    let refillRatePerSecond: Double
+    /// Bucket capacity, and tokens added per second of elapsed clock time.
+    let maxRequestsPerSecond: Double
     /// Maximum number of admitted, unreleased requests.
     let maxConcurrentRequests: Int
     /// Tokens available as of `lastRefillNanoseconds`.
@@ -374,14 +372,13 @@ struct SwarmMCPThrottle: Sendable, Equatable {
     /// Admitted requests not yet released.
     let activeRequests: Int
 
-    /// Creates a full bucket with no requests in flight.
+    /// Creates a full bucket (`maxRequestsPerSecond` tokens) with no requests
+    /// in flight.
     init(maxRequestsPerSecond: Double, maxConcurrentRequests: Int, nowNanoseconds: UInt64) {
-        let capacity = Self.capacity(forRequestsPerSecond: maxRequestsPerSecond)
         self.init(
-            capacity: capacity,
-            refillRatePerSecond: maxRequestsPerSecond,
+            maxRequestsPerSecond: maxRequestsPerSecond,
             maxConcurrentRequests: maxConcurrentRequests,
-            tokens: Double(capacity),
+            tokens: maxRequestsPerSecond,
             lastRefillNanoseconds: nowNanoseconds,
             activeRequests: 0
         )
@@ -395,26 +392,7 @@ struct SwarmMCPThrottle: Sendable, Equatable {
         lastRefillNanoseconds: UInt64,
         activeRequests: Int
     ) {
-        self.init(
-            capacity: Self.capacity(forRequestsPerSecond: maxRequestsPerSecond),
-            refillRatePerSecond: maxRequestsPerSecond,
-            maxConcurrentRequests: maxConcurrentRequests,
-            tokens: tokens,
-            lastRefillNanoseconds: lastRefillNanoseconds,
-            activeRequests: activeRequests
-        )
-    }
-
-    private init(
-        capacity: Int,
-        refillRatePerSecond: Double,
-        maxConcurrentRequests: Int,
-        tokens: Double,
-        lastRefillNanoseconds: UInt64,
-        activeRequests: Int
-    ) {
-        self.capacity = capacity
-        self.refillRatePerSecond = refillRatePerSecond
+        self.maxRequestsPerSecond = maxRequestsPerSecond
         self.maxConcurrentRequests = maxConcurrentRequests
         self.tokens = tokens
         self.lastRefillNanoseconds = lastRefillNanoseconds
@@ -428,8 +406,8 @@ struct SwarmMCPThrottle: Sendable, Equatable {
         let refilledTokens = TokenBucketMath.refilled(
             tokens: tokens,
             elapsedSeconds: TokenBucketMath.elapsedSeconds(from: lastRefillNanoseconds, to: now),
-            refillRate: refillRatePerSecond,
-            maxTokens: capacity
+            refillRate: maxRequestsPerSecond,
+            capacity: maxRequestsPerSecond
         )
         guard refilledTokens >= 1 else {
             return (.rateLimited, with(tokens: refilledTokens, lastRefill: now, activeRequests: activeRequests))
@@ -447,20 +425,12 @@ struct SwarmMCPThrottle: Sendable, Equatable {
 
     private func with(tokens: Double, lastRefill: UInt64, activeRequests: Int) -> SwarmMCPThrottle {
         SwarmMCPThrottle(
-            capacity: capacity,
-            refillRatePerSecond: refillRatePerSecond,
+            maxRequestsPerSecond: maxRequestsPerSecond,
             maxConcurrentRequests: maxConcurrentRequests,
             tokens: tokens,
             lastRefillNanoseconds: lastRefill,
             activeRequests: activeRequests
         )
-    }
-
-    /// Whole-request capacity for a rate, saturating instead of trapping.
-    private static func capacity(forRequestsPerSecond rate: Double) -> Int {
-        guard rate >= 1 else { return 0 }
-        guard rate < Double(Int.max) else { return Int.max }
-        return Int(rate)
     }
 }
 #endif
