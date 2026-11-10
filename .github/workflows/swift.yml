@@ -116,6 +116,13 @@ jobs:
       - name: Lean resolve, build, and test
         run: bash scripts/ci/lean-build-test.sh
 
+      # Wax (Integrations) compiles a C shim against <lz4.h> and <zlib.h> on
+      # Linux; the runner image ships the lz4 CLI but not its headers.
+      - name: Install Integrations system libraries
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q liblz4-dev zlib1g-dev
+
       - name: Build with Integrations trait
         run: |
           rm -rf .build Package.resolved
@@ -130,9 +137,11 @@ jobs:
         timeout-minutes: 90
         run: swift test --no-parallel --traits Integrations,MCP,OpenTelemetry
 
+      # Lean graph: a bare root `swift test` without Integrations compiles the
+      # in-tree integration targets without their trait-gated dependencies.
       - name: Linux OpenAI-compatible provider proof
         if: github.event_name != 'pull_request'
-        run: swift test --no-parallel --filter OpenAICompatible
+        run: SWARM_OMIT_INTEGRATION_TARGETS=1 swift test --no-parallel --filter OpenAICompatible
 
   # Opt-in live microphone proof. Not a merge gate. Does not record samples.
   voice-live:

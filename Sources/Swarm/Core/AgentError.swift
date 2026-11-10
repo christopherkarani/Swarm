@@ -1,3 +1,5 @@
+// Grandfathered over 1000 lines: split pending; new files are gated at 1000 lines.
+// swiftlint:disable file_length
 // AgentError.swift
 // Swarm Framework
 //

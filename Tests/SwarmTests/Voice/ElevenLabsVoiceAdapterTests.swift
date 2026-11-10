@@ -36,8 +36,8 @@ struct ElevenLabsVoiceAdapterTests {
         #expect(transcripts == [SpeechTranscript(text: "hello there", isFinal: true)])
         let request = try #require(ElevenLabsURLProtocol.requests.first)
         #expect(request.url.path.contains("v1/speech-to-text"))
-        #expect(request.headers["xi-api-key"] == "test-key")
-        #expect(request.headers["Authorization"] == nil)
+        #expect(request.header("xi-api-key") == "test-key")
+        #expect(request.header("Authorization") == nil)
         #expect(request.body.contains(Data("scribe_v2".utf8)))
         #expect(request.body.contains(Data("audio.wav".utf8)))
         #expect(request.body.contains(Data("wav".utf8)))
@@ -146,8 +146,8 @@ struct ElevenLabsVoiceAdapterTests {
 
         let request = try #require(ElevenLabsURLProtocol.requests.first)
         #expect(request.url.path.contains("v1/text-to-speech/voice-123"))
-        #expect(request.headers["xi-api-key"] == "test-key")
-        #expect(request.headers["Authorization"] == nil)
+        #expect(request.header("xi-api-key") == "test-key")
+        #expect(request.header("Authorization") == nil)
     }
 
     @Test("ElevenLabs text-to-speech sends output format and voice settings")
@@ -457,6 +457,12 @@ private final class ElevenLabsURLProtocol: URLProtocol {
         let url: URL
         let headers: [String: String]
         let body: Data
+
+        /// Header value by case-insensitive name. swift-corelibs-foundation
+        /// canonicalizes header casing (`xi-api-key` -> `Xi-Api-Key`).
+        func header(_ name: String) -> String? {
+            headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
+        }
     }
 
     struct Stub: Sendable {

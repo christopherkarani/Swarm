@@ -65,10 +65,8 @@ public actor ElevenLabsSpeechToText: SpeechToText {
 
     public nonisolated func start() -> AsyncThrowingStream<SpeechTranscript, Error> {
         StreamHelper.makeTrackedStream { continuation in
-            let task = Task<String, Error> { try await self.transcribePending() }
-            self.interrupt.store { task.cancel() }
             do {
-                let text = try await task.value
+                let text = try await self.transcribePending()
                 continuation.yield(SpeechTranscript(text: text, isFinal: true))
                 continuation.finish()
             } catch {
@@ -107,7 +105,7 @@ public actor ElevenLabsSpeechToText: SpeechToText {
             languageCode: configuration.languageCode,
             boundary: boundary
         )
-        let (data, response) = try await configuration.session.data(for: request)
+        let (data, response) = try await interrupt.data(for: request, session: configuration.session)
         guard let http = response as? HTTPURLResponse else {
             throw VoiceError.speechFailed(reason: "ElevenLabs transcription failed.")
         }
