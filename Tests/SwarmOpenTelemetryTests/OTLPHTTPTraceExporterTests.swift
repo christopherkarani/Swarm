@@ -156,6 +156,8 @@ struct OTLPHTTPTraceExporterTests {
 func traceparentPropagatesAgentToOutboundHeaders() async throws {
     let recorder = RecordingSpanExporter()
     let tracerProvider = TracerProviderBuilder()
+        // Ignore an inherited unsampled TRACEPARENT; the SDK uses it as the root parent.
+        .with(sampler: Samplers.alwaysOn)
         .add(
             spanProcessor: SimpleSpanProcessor(spanExporter: recorder)
                 .reportingOnlySampled(sampled: false)
@@ -192,6 +194,8 @@ private func harvestSpan(
 ) async throws -> SpanData {
     let recorder = RecordingSpanExporter()
     let provider = TracerProviderBuilder()
+        // Ignore an inherited unsampled TRACEPARENT; the SDK uses it as the root parent.
+        .with(sampler: Samplers.alwaysOn)
         .add(
             spanProcessor: SimpleSpanProcessor(spanExporter: recorder)
                 .reportingOnlySampled(sampled: false)

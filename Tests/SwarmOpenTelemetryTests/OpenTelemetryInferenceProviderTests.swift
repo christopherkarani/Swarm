@@ -175,6 +175,8 @@ func erasedOpenTelemetryWrapperForwardsPromptToolStreaming() async throws {
 func agentOpenTelemetryWrapperCreatesOneParentTraceForMultipleLLMCalls() async throws {
     let exporter = RecordingSpanExporter()
     let tracerProvider = TracerProviderBuilder()
+        // Ignore an inherited unsampled TRACEPARENT; the SDK uses it as the root parent.
+        .with(sampler: Samplers.alwaysOn)
         .add(
             spanProcessor: SimpleSpanProcessor(spanExporter: exporter)
                 .reportingOnlySampled(sampled: false)

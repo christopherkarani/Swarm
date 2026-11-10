@@ -406,6 +406,8 @@ private final class DeliveryFlag: @unchecked Sendable {
 private func makeSpan(name: String) throws -> SpanData {
     let recorder = DeliveryRecordingExporter()
     let provider = TracerProviderBuilder()
+        // Ignore an inherited unsampled TRACEPARENT; the SDK uses it as the root parent.
+        .with(sampler: Samplers.alwaysOn)
         .add(spanProcessor: SimpleSpanProcessor(spanExporter: recorder).reportingOnlySampled(sampled: false))
         .build()
     let builder = provider.get(instrumentationName: "test.delivery").spanBuilder(spanName: name)
