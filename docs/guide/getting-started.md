@@ -60,7 +60,9 @@ all platforms with Integrations. Linux uses portable CPU scoring/compression
 engines, the brute-force vector index, hash embeddings, and
 passthrough/in-memory Membrane backends, so `Agent.makeDefaultMemory()` still
 returns `DefaultAgentMemory` (ContextCore + Wax) there. Apple builds
-accelerate the same stack with Metal/CoreML/Accelerate and MetalANNS.
+accelerate the same stack with Metal/CoreML/Accelerate and MetalANNS. On Linux,
+Integrations also needs the lz4 and zlib headers (`apt-get install liblz4-dev
+zlib1g-dev` on Ubuntu) because Wax compiles a small C compression shim.
 
 **Embeddings:** the CoreML MiniLM model is not bundled with Swarm. Call
 `SemanticEmbeddingAvailability.ensureModelAvailable()` to download it on

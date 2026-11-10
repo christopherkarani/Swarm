@@ -219,7 +219,9 @@ swift run OnDeviceChat --demo
 
 Foundation Models and some platform integrations are Apple-only. The
 Integrations memory/Membrane stack builds on Linux with portable CPU/hash
-backends (Metal/CoreML/MetalANNS accelerate on Apple).
+backends (Metal/CoreML/MetalANNS accelerate on Apple). On Linux, Integrations
+also needs the lz4 and zlib headers (`apt-get install liblz4-dev zlib1g-dev`
+on Ubuntu).
 The default Swarm graph is CI-tested on Ubuntu with Swift 6.2. Apple-only features such as Foundation Models, SwiftData, OSLog, and some built-in tool behavior are unavailable or different on Linux; use an OpenAI-compatible provider, inject a mock, or run the deterministic examples.
 
 To configure one provider globally for the default graph:
