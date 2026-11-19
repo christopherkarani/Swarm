@@ -42,6 +42,9 @@ final class IntentToolMacroTests: XCTestCase {
                     @Parameter("Tags")
                     var tags: [String] = []
 
+                    @Parameter("Note", default: "")
+                    var note: String = ""
+
                     func execute() async throws -> String { "" }
                 }
                 """,
@@ -62,6 +65,9 @@ final class IntentToolMacroTests: XCTestCase {
 
                     @Parameter("Tags")
                     var tags: [String] = []
+
+                    @Parameter("Note", default: "")
+                    var note: String = ""
 
                     func execute() async throws -> String { "" }
 
@@ -85,6 +91,9 @@ final class IntentToolMacroTests: XCTestCase {
                         @AppIntents.IntentParameter(title: "Tags", description: "Tags")
                         public var tags: [String]
 
+                        @AppIntents.IntentParameter(title: "Note", description: "Note", default: "")
+                        public var note: String
+
                         public struct UnitsOptions: AppIntents.DynamicOptionsProvider {
                             public init() {
                             }
@@ -104,6 +113,7 @@ final class IntentToolMacroTests: XCTestCase {
                             swarmArguments["days"] = SwarmIntentArgument.encode(self.days)
                             swarmArguments["scale"] = SwarmIntentArgument.encode(self.scale)
                             swarmArguments["tags"] = SwarmIntentArgument.encode(self.tags)
+                            swarmArguments["note"] = SwarmIntentArgument.encode(self.note)
                             let swarmOutput = try await SwarmIntentBridge.run(WeatherTool(), arguments: swarmArguments)
                             return .result(value: swarmOutput, dialog: "\\(swarmOutput)")
                         }

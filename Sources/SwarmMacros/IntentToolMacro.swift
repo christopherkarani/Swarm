@@ -298,11 +298,13 @@ struct IntentParameterSpec {
 
         // `@Tool` structs need an initial value on every stored property, so
         // `var city: String = ""` is usually a placeholder rather than a real
-        // default. Treat empty string/array placeholders as "no default" so
-        // Siri asks for the value instead of silently running with "".
+        // default. Treat empty string/array *initializers* as "no default" so
+        // Siri asks for the value instead of silently running with "". An
+        // explicit `@Parameter(default: "")` is kept.
         let defaultExpression: String?
-        if let value = parameter.defaultValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !["nil", "\"\"", "[]"].contains(value) {
+        let value = parameter.defaultValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let value, value != "nil",
+           parameter.hasExplicitDefault || !["\"\"", "[]"].contains(value) {
             defaultExpression = value
         } else {
             defaultExpression = nil

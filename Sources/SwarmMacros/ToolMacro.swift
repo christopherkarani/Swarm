@@ -232,7 +232,8 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
                         defaultValue: defaultValue,
                         sendableDefaultLiteral: sendableDefault,
                         schemaLiteral: mapped.schemaLiteral,
-                        oneOfOptions: oneOfOptions
+                        oneOfOptions: oneOfOptions,
+                        hasExplicitDefault: paramDefault != nil
                     ))
 
                 case let .diagnostic(diagnostic):
@@ -535,6 +536,9 @@ struct ParameterInfo {
     let schemaLiteral: String
     /// Allowed values from `@Parameter(oneOf:)`, if any.
     var oneOfOptions: [String]?
+    /// True when the default came from `@Parameter(default:)` rather than the
+    /// property initializer.
+    var hasExplicitDefault = false
 }
 
 // MARK: - MacroError
