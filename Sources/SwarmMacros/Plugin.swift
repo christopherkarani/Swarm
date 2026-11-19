@@ -17,5 +17,7 @@ struct SwarmMacrosPlugin: CompilerPlugin {
         PromptMacro.self,
         BuilderMacro.self,
         InlineToolMacro.self,
+        IntentToolMacro.self,
+        AgentIntentMacro.self,
     ]
 }

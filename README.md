@@ -207,6 +207,7 @@ swift run OnDeviceChat --demo
 | Resilience | Retry provider inference (`maxAttempts` counts total attempts, minimum 1), circuit breakers, rate limits, fallback chains. |
 | Durable execution | Checkpoint workflow progress and resume after a process restart when the `Integrations` trait is enabled. Approval-required tools pause for human review. |
 | MCP | Discover and bridge Model Context Protocol tools. |
+| Siri and Shortcuts | Add `@IntentTool` to a `@Tool` struct and it also becomes an App Intent; `@AgentIntent` exposes a whole agent (`SwarmAppIntents` product). |
 | Observability | Export agent and inference traces with OpenTelemetry or Swift logging. |
 
 ## Requirements
@@ -240,6 +241,7 @@ await Swarm.configure(provider: myProvider)
 | [Voice](docs/guide/voice.md) | Turn-based `VoiceSession` around an existing Agent |
 | [Durable Execution](docs/guide/durable-execution.md) | Checkpoint and resume semantics, run inspection, fork-from-checkpoint, tool approvals |
 | [OpenTelemetry Tracing](docs/guide/opentelemetry-tracing.md) | Traces and propagation |
+| [App Intents](docs/guide/app-intents.md) | Expose tools and agents to Siri, Shortcuts, and Apple Intelligence |
 | [Front-Facing API](docs/reference/front-facing-api.md) | Public API overview |
 | [API Catalog](docs/reference/api-catalog.md) | Complete symbol reference |
 
