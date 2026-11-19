@@ -1,9 +1,9 @@
 import Foundation
-import HiveCore
 import Testing
 @testable import Swarm
 
 #if SWARM_INTEGRATIONS
+import HiveCore
 
 /// Holds tool executions until released, so a test can overlap two resumes.
 actor ApprovalToolGate {
