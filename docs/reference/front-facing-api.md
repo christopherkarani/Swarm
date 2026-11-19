@@ -1386,13 +1386,14 @@ let greet = #Tool("greet", "Greets a person") { (name: String) in
 
 ## 14) Companion products
 
-The package exports three public library products:
+The package exports four public library products:
 
 | Product | Source surface | Public entry points |
 |---------|----------------|---------------------|
 | `Swarm` | `Sources/Swarm` | Agents, tools, workflows, memory, guardrails, providers, MCP client/bridge, workspace, resilience, observability, macros, voice coordinator |
 | `SwarmOpenTelemetry` | `Sources/SwarmOpenTelemetry` | Requires `traits: ["OpenTelemetry"]`. `OpenTelemetryInferenceProvider`, `InferenceProvider.instrumentedWithOpenTelemetry(...)`, `AgentRuntime.instrumentedWithOpenTelemetry(...)`, `OTLPHTTPTraceExporter`, `OpenTelemetryTracing`, `OpenTelemetryTracePropagation`, and `SwarmRuntimeTracer` |
 | `SwarmMCP` | `Sources/SwarmMCP` | Requires `traits: ["MCP"]`. `SwarmMCPServerService`, `SwarmMCPToolCatalog`, `SwarmMCPToolExecutor`, `SwarmMCPToolExecutionError`, and `SwarmMCPToolRegistryAdapter`. Swarm's MCP *client* stays in the `Swarm` product and does not need this trait. |
+| `SwarmAppIntents` | `Sources/SwarmAppIntents` | No trait required. `@IntentTool` / `@AgentIntent` macros, `SwarmAgentEntity`, `SwarmAgentEntityQuery`, `AskSwarmAgentIntent`, and `SwarmAppIntentsPackage` (Apple platforms, `canImport(AppIntents)`); `SwarmIntentBridge`, `SwarmIntentError`, `SwarmIntentArgument`, and `SwarmAgentDirectory` on every platform. See [App Intents](../guide/app-intents.md). |
 
 ### OpenTelemetry wrappers
 

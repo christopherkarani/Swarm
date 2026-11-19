@@ -15,10 +15,22 @@ Releases before 0.6.0 are recorded only in git tags and GitHub releases.
   resume (#262).
 - Explicit turn-step boundary API on `AgentTurnKernel` (#265).
 - `ToolFailureCause` factory for turn-path errors (#267).
+- `SwarmAppIntents` product: an App Intents bridge. `@IntentTool` generates an
+  `AppIntent` from a `@Tool` struct, `@AgentIntent` exposes an agent to Siri
+  and Shortcuts, and `SwarmAgentEntity` / `AskSwarmAgentIntent` expose agents
+  registered in `SwarmAgentDirectory` as App Entities. Bridged tools run
+  through `ToolRegistry`, so guardrails still apply. See
+  `docs/guide/app-intents.md`.
 
 ### Changed
 
 - Conversation history rendering goes through one unified renderer (#266).
+
+### Fixed
+
+- `WorkflowDurableApprovalConcurrencyTests` imports `HiveCore` only under
+  `SWARM_INTEGRATIONS`, so lean (`SWARM_OMIT_INTEGRATION_TARGETS=1`) test
+  builds compile again.
 
 ## [0.6.6] - 2026-09-26
 

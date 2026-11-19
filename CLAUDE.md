@@ -25,6 +25,9 @@ built around:
   backends inject `InferenceProvider`. No Conduit / `LLM.*` façade ships with
   Swarm.
 - **MCP** — Model Context Protocol client and server support.
+- **App Intents** — `SwarmAppIntents` bridges `@Tool` structs and agents to
+  Siri / Shortcuts via `@IntentTool` and `@AgentIntent`
+  (`docs/guide/app-intents.md`).
 
 The package uses Swift 6.2 with `StrictConcurrency` enabled across all targets.
 **All public types must be `Sendable`** — the compiler enforces it.
@@ -72,6 +75,8 @@ Swarm/
 │   ├── SwarmMCP/                  # MCP server adapter product (MCP trait)
 │   ├── SwarmOpenTelemetry/        # OTel tracing + OTLP/HTTP export product
 │   │                              #   (OpenTelemetry trait)
+│   ├── SwarmAppIntents/           # App Intents bridge product (@IntentTool,
+│   │                              #   @AgentIntent, SwarmAgentEntity)
 │   ├── SwarmCapabilityShowcase/        # Executable: deterministic showcase CLI
 │   ├── SwarmCapabilityShowcaseSupport/ # Library backing the showcase
 │   ├── SwarmDemo/                 # (opt-in) demo executable
@@ -82,6 +87,7 @@ Swarm/
 │   ├── HiveSwarmTests/            # Hive integration tests
 │   ├── SwarmMacrosTests/          # Macro expansion tests
 │   ├── SwarmOpenTelemetryTests/   # OpenTelemetry trait tests
+│   ├── SwarmAppIntentsTests/      # App Intents bridge runtime (runs on Linux)
 │   └── SwarmCapabilityShowcaseTests/
 ├── Examples/CodeReviewer/         # Standalone example SPM project
 ├── docs/

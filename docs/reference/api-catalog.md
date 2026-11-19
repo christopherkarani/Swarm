@@ -3618,3 +3618,51 @@ is a hollow module exposing ``MCPTrait``.
 | 36 | func | public | SwarmMCPToolRegistryAdapter.init(registry:) | `public init(registry: ToolRegistry)` |
 | 40 | func | public | SwarmMCPToolRegistryAdapter.listTools() | `public func listTools() async throws -> [ToolSchema]` |
 | 44 | func | public | SwarmMCPToolRegistryAdapter.executeTool(named:arguments:) | `public func executeTool(named toolName: String, arguments: [String: SendableValue]) async throws -> SendableValue` |
+
+### SwarmAppIntents
+
+No trait required. The App Intents surface is compiled only where
+`canImport(AppIntents)`; the bridge runtime builds on every platform.
+See [App Intents](../guide/app-intents.md).
+
+#### Sources/SwarmAppIntents/IntentMacros.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 77 | macro | public | IntentTool(_:description:) | `@attached(member, names: named(Intent)) public macro IntentTool(_ title: String? = nil, description: String? = nil)` |
+| 118 | macro | public | AgentIntent(_:description:promptTitle:) | `@attached(member, ...) @attached(extension, conformances: AppIntent) public macro AgentIntent(_ title: String, description: String? = nil, promptTitle: String = "Request")` |
+
+#### Sources/SwarmAppIntents/SwarmIntentBridge.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 39 | enum | public | SwarmIntentBridge | `public enum SwarmIntentBridge` |
+| 50 | func | public | SwarmIntentBridge.run(_:arguments:) | `public static func run<T: Tool>(_ tool: T, arguments: [String: SendableValue]) async throws -> String` |
+| 74 | func | public | SwarmIntentBridge.run(agent:prompt:) | `public static func run(agent: some AgentRuntime, prompt: String) async throws -> String` |
+| 89 | func | public | SwarmIntentBridge.render(_:) | `public static func render(_ value: SendableValue) -> String` |
+| 119 | enum | public | SwarmIntentError | `public enum SwarmIntentError: Error, Sendable, Equatable, LocalizedError` |
+| 153 | protocol | public | SwarmIntentArgumentConvertible | `public protocol SwarmIntentArgumentConvertible` |
+| 159 | enum | public | SwarmIntentArgument | `public enum SwarmIntentArgument` |
+| 161 | func | public | SwarmIntentArgument.encode(_:) | `public static func encode<Value: SwarmIntentArgumentConvertible>(_ value: Value) -> SendableValue?` |
+
+#### Sources/SwarmAppIntents/SwarmAgentDirectory.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 35 | class | public | SwarmAgentDirectory | `public final class SwarmAgentDirectory: Sendable` |
+| 37 | struct | public | SwarmAgentDirectory.Entry | `public struct Entry: Sendable, Identifiable` |
+| 49 | var | public | SwarmAgentDirectory.shared | `public static let shared: SwarmAgentDirectory` |
+| 62 | func | public | SwarmAgentDirectory.register(id:name:summary:makeAgent:) | `public func register(id: String, name: String, summary: String? = nil, makeAgent: @escaping @Sendable () async throws -> any AgentRuntime)` |
+| 82 | func | public | SwarmAgentDirectory.register(_:id:name:summary:) | `public func register(_ agent: some AgentRuntime, id: String, name: String, summary: String? = nil)` |
+| 92 | func | public | SwarmAgentDirectory.unregister(id:) | `public func unregister(id: String)` |
+| 99 | var | public | SwarmAgentDirectory.entries | `public var entries: [Entry] { get }` |
+| 125 | func | public | SwarmAgentDirectory.makeAgent(id:) | `public func makeAgent(id: String) async throws -> any AgentRuntime` |
+
+#### Sources/SwarmAppIntents/SwarmAgentEntity.swift
+
+| Line | Kind | Access | Name | Signature |
+|------|------|--------|------|-----------|
+| 16 | struct | public | SwarmAgentEntity | `public struct SwarmAgentEntity: AppEntity, Sendable` |
+| 53 | struct | public | SwarmAgentEntityQuery | `public struct SwarmAgentEntityQuery: EntityStringQuery, Sendable` |
+| 76 | struct | public | AskSwarmAgentIntent | `public struct AskSwarmAgentIntent: AppIntent` |
+| 108 | struct | public | SwarmAppIntentsPackage | `public struct SwarmAppIntentsPackage: AppIntentsPackage` |

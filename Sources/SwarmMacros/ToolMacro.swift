@@ -133,7 +133,10 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
     // MARK: - Helper Methods
 
     /// Extracts the description string from the macro attribute.
-    private static func extractDescription(from node: AttributeSyntax) -> String? {
+    ///
+    /// Internal (not private) so ``IntentToolMacro`` can read the `@Tool`
+    /// description off the same declaration.
+    static func extractDescription(from node: AttributeSyntax) -> String? {
         guard let arguments = node.arguments?.as(LabeledExprListSyntax.self),
               let firstArg = arguments.first,
               let stringLiteral = firstArg.expression.as(StringLiteralExprSyntax.self) else {
@@ -164,7 +167,10 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
     }
 
     /// Extracts @Parameter annotated properties from the declaration.
-    private static func extractParameters(
+    ///
+    /// Internal (not private) so ``IntentToolMacro`` mirrors exactly the
+    /// parameters `@Tool` exposes to the model.
+    static func extractParameters(
         from declaration: some DeclGroupSyntax
     ) -> (parameters: [ParameterInfo], diagnostics: [Diagnostic]) {
         var parameters: [ParameterInfo] = []
@@ -225,7 +231,9 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
                         typeIsOptional: mapped.isTypeOptional,
                         defaultValue: defaultValue,
                         sendableDefaultLiteral: sendableDefault,
-                        schemaLiteral: mapped.schemaLiteral
+                        schemaLiteral: mapped.schemaLiteral,
+                        oneOfOptions: oneOfOptions,
+                        hasExplicitDefault: paramDefault != nil
                     ))
 
                 case let .diagnostic(diagnostic):
@@ -320,7 +328,7 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
         String(reflecting: value)
     }
 
-    private static func extractStaticStringLiteral(from stringLiteral: StringLiteralExprSyntax) -> String? {
+    static func extractStaticStringLiteral(from stringLiteral: StringLiteralExprSyntax) -> String? {
         let rawDelimiterCount = stringLiteral.openingQuote.text.prefix { $0 == "#" }.count
         var value = ""
 
@@ -526,6 +534,11 @@ struct ParameterInfo {
     let defaultValue: String?
     let sendableDefaultLiteral: String?
     let schemaLiteral: String
+    /// Allowed values from `@Parameter(oneOf:)`, if any.
+    var oneOfOptions: [String]?
+    /// True when the default came from `@Parameter(default:)` rather than the
+    /// property initializer.
+    var hasExplicitDefault = false
 }
 
 // MARK: - MacroError

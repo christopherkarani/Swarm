@@ -28,6 +28,7 @@ swift build \
   --product Swarm \
   --product SwarmMCP \
   --product SwarmOpenTelemetry \
+  --product SwarmAppIntents \
   --product SwarmCapabilityShowcase
 
 echo "lean-build-test: phase 1b — MCP and OpenTelemetry opt-in (omit integration orphans)"

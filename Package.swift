@@ -21,6 +21,7 @@ var packageProducts: [Product] = [
     .library(name: "Swarm", targets: ["Swarm"]),
     .library(name: "SwarmOpenTelemetry", targets: ["SwarmOpenTelemetry"]),
     .library(name: "SwarmMCP", targets: ["SwarmMCP"]),
+    .library(name: "SwarmAppIntents", targets: ["SwarmAppIntents"]),
 ]
 
 if includeDemo {
@@ -199,6 +200,18 @@ var packageTargets: [Target] = [
         ],
         swiftSettings: swarmSwiftSettings
     ),
+    // App Intents bridge: @IntentTool / @AgentIntent, SwarmAgentEntity, and
+    // AskSwarmAgentIntent. The AppIntents surface is `canImport(AppIntents)`-
+    // gated; the runtime bridge builds (and is tested) on Linux too. No extra
+    // package dependencies, so lean resolve is unaffected.
+    .target(
+        name: "SwarmAppIntents",
+        dependencies: [
+            "Swarm",
+            .target(name: "SwarmMacros", condition: .when(traits: [macrosTrait])),
+        ],
+        swiftSettings: swarmSwiftSettings
+    ),
     .target(
         name: "SwarmCapabilityShowcaseSupport",
         dependencies: [
@@ -259,6 +272,13 @@ var packageTargets: [Target] = [
         swiftSettings: [
             .enableExperimentalFeature("StrictConcurrency")
         ]
+    ),
+    .testTarget(
+        name: "SwarmAppIntentsTests",
+        dependencies: [
+            "SwarmAppIntents",
+        ],
+        swiftSettings: swarmSwiftSettings
     ),
     .testTarget(
         name: "SwarmCapabilityShowcaseTests",

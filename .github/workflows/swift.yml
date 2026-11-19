@@ -84,7 +84,10 @@ jobs:
   # Linux: lean default + Integrations (including Hive)
   build-linux:
     name: Build (Linux Core)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to an image that setup-swift@v3's bundled
+    # swiftly rejects ("Unsupported Linux platform"). 24.04 matches the Swift
+    # 6.2.4 ubuntu2404 toolchain.
+    runs-on: ubuntu-24.04
     # Fail fast instead of burning hours when a test hangs.
     timeout-minutes: 150
 
